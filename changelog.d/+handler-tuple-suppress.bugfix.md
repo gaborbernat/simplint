@@ -1,3 +1,0 @@
-[`indistinct-error-class`](../src/rules/classes/indistinct_error_class.md) no longer reports a class that an `except`
-clause catches through a tuple of classes, annotated or starred and defined in any module, or that `contextlib.suppress`
-is given, starred or not.

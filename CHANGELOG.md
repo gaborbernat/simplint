@@ -1,5 +1,702 @@
 # Changelog
 
+## 0.10.2 (2026-11-11)
+
+<a name="release-0-10-2"></a>
+
+<a name="release-0-10-2-changes"></a>
+
+### Changes
+
+- A rule page is now served at `rules/SMP403.html` and a group page at `groups/docstrings.html`, both under the
+  documentation's root. The rule links that `simplint rule` and the JSON, SARIF and rdjson outputs print point at these
+  pages ([#105](https://github.com/gaborbernat/simplint/pull/105)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-2-fixed"></a>
+
+### Fixed
+
+- `--add-ignore` writes its `# simplint: ignore[...]` comment on a line with a blanket `# noqa` too, so the
+  [`blanket-ignore`](src/rules/comments/blanket_ignore.md) and
+  [`suppression-without-reason`](src/rules/comments/suppression_without_reason.md) reports on that line stop showing
+  ([#108](https://github.com/gaborbernat/simplint/pull/108)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--add-noqa=REASON` and `--add-ignore=REASON` replace the whole reason a comment has, including an issue number such
+  as `#12`, instead of keeping the text from that `#` on ([#93](https://github.com/gaborbernat/simplint/pull/93)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-field-syntax`](src/rules/docstrings/rst_field_syntax.md) (SMP910) renames a field alias such as `:arg:` only
+  with `--unsafe-fixes`, as its other fixes do. A plain `--fix` changed the text `__doc__` returns
+  ([#116](https://github.com/gaborbernat/simplint/pull/116)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`all-format`](src/rules/api/all_format.md) (SMP405) leaves a `+=` on `__all__` alone when a plain assignment keeps
+  `__all__` a tuple: one that is not a list or tuple literal, is nested in a block, or has a `noqa` for this rule.
+  Converting the `+=` used to fail with a `TypeError` ([#113](https://github.com/gaborbernat/simplint/pull/113)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`all-format`](src/rules/api/all_format.md) (SMP405) puts the trailing comma after the closing parenthesis of a
+  parenthesized last name instead of inside it ([#113](https://github.com/gaborbernat/simplint/pull/113)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`all-not-last`](src/rules/api/all_not_last.md) no longer moves `__all__` past a later run-time read of it, such as
+  `sys.modules[__name__].__all__` or `globals()`. The report stays, but the fix is withheld
+  ([#91](https://github.com/gaborbernat/simplint/pull/91)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`all-not-last`](src/rules/api/all_not_last.md) no longer moves `__all__` when a function or lambda reads it at run
+  time, such as through `globals()`, `"__all__"` or `sys.modules[__name__].__all__`, or when a comment sits above it or
+  above its `# fmt: off` pair. The report stays, but the fix is withheld
+  ([#113](https://github.com/gaborbernat/simplint/pull/113)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`imprecise-annotation`](src/rules/typing/imprecise_annotation.md) no longer reports `object` used as a value in the
+  metadata of an `Annotated` annotation, such as `Annotated[int, object()]`; `object` as the first argument is still
+  reported ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-unknown-param`](src/rules/docstrings/rst_unknown_param.md) (SMP917) no longer reports `:param x:` of an attrs
+  field `_x`, which attrs takes as `x`. [`rst-missing-param`](src/rules/docstrings/rst_missing_param.md) (SMP916) asks
+  for `x` in that case, and takes the `alias` of a field as its name. An attrs class with an `alias` that is not a
+  string literal has no known parameters, so neither rule reports on it
+  ([#116](https://github.com/gaborbernat/simplint/pull/116)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-backport-import`](src/rules/imports/up_backport_import.md) no longer deletes an `exceptiongroup` import of a name
+  that another module of the run imports from the same module or `__all__` lists. It still reports the import
+  ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md) and
+  [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md) report without a fix when a backslash joins the assignment
+  to the line before it, instead of producing a syntax error that reverts the file
+  ([#115](https://github.com/gaborbernat/simplint/pull/115)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md) reports without a fix when the assignment shares its line
+  with an earlier statement. The fix used to leave that statement on the `with` line, which does not parse
+  ([#98](https://github.com/gaborbernat/simplint/pull/98)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`function-docstring`](src/rules/docstrings/function_docstring.md) (SMP901) keeps the docstring of a class whose body,
+  or the header of a method, lambda or nested class in it, reads `__doc__`, which is that docstring there. Removing it
+  changed the value the class reads ([#116](https://github.com/gaborbernat/simplint/pull/116)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`class-member-order`](src/rules/layout/class_member_order.md) keeps a statement that binds a method's name through a
+  `match` capture or an `except ... as` in place, so the fix no longer moves the method past it
+  ([#110](https://github.com/gaborbernat/simplint/pull/110)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-codecs-open`](src/rules/logic/up_codecs_open.md) parenthesizes a walrus or a `yield` passed as `encoding`,
+  `errors` or `buffering`, so `codecs.open(path, "r", name := "utf-8")` no longer becomes an invalid `open()` call that
+  reverts the file ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-unknown-attribute`](src/rules/docstrings/rst_unknown_attribute.md) (SMP921) counts the methods in a class's `if`
+  and `try` blocks and the loop variables of its body as attributes, so their fields are no longer removed. A loop
+  variable of the class body is a class variable for
+  [`rst-missing-attribute`](src/rules/docstrings/rst_missing_attribute.md) (SMP920) and
+  [`rst-attribute-kind`](src/rules/docstrings/rst_attribute_kind.md) (SMP922) too: SMP920 asks to document it, and
+  SMP922 reports an `:ivar:` for it ([#116](https://github.com/gaborbernat/simplint/pull/116)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`constant-assert`](src/rules/testing/constant_assert.md) (SMP804) no longer drops a comment inside an assertion when
+  it rewrites or deletes the assertion. An assertion holding a comment is reported without a fix
+  ([#93](https://github.com/gaborbernat/simplint/pull/93)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md) reports without a fix when the
+  assignment shares its line with an earlier statement. The fix used to leave that statement on the `with` line, which
+  does not parse ([#98](https://github.com/gaborbernat/simplint/pull/98)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-event-loop-in-coroutine`](src/rules/logic/up_event_loop_in_coroutine.md) no longer rewrites a decorator, default
+  or annotation of an `async def`, which runs outside any loop, so `async def serve(loop=asyncio.get_running_loop())` no
+  longer raises at import. The same defaults of a nested `def` inside a coroutine are now reported, and so are its
+  annotations unless annotations are lazy ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Cover receiverless classmethods and suppression commands that encounter conflicting rules
+  ([#107](https://github.com/gaborbernat/simplint/pull/107)) by [@gaborbernat](https://github.com/gaborbernat).
+- CRLF files get the same reports and fixes as LF files. A comment above a constant still exempts it from
+  [`single-user-constant`](src/rules/layout/single_user_constant.md), and
+  [`definition-before-use`](src/rules/layout/definition_before_use.md) moves a comment above a helper along with the
+  helper ([#92](https://github.com/gaborbernat/simplint/pull/92)) by [@gaborbernat](https://github.com/gaborbernat).
+- Reports that name paths relative to the working directory, from [`import-cycle`](src/rules/imports/import_cycle.md),
+  [`duplicate-code`](src/rules/logic/duplicate_code.md) and
+  [`undocumented-public-api`](src/rules/docstrings/undocumented_public_api.md), are no longer reused by a run from
+  another directory, so they name the paths `--no-cache` does ([#108](https://github.com/gaborbernat/simplint/pull/108))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) and
+  [`dataclass-kw-only`](src/rules/classes/dataclass_kw_only.md) no longer offer a fix for a class whose subclass reaches
+  it under another name, as `from models import Release as Base` followed by `class Tagged(Base)`, or through a
+  module-level `Base = Release` ([#117](https://github.com/gaborbernat/simplint/pull/117)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) no longer offers `frozen=True` for a class written through
+  a parameter annotated `Any`, a protocol, a type alias or a type variable, since none of those names a class of the
+  run. A field the class body annotates with a class of the run is an instance of that class in its methods, even when
+  no method assigns it, so [`dataclass-slots`](src/rules/classes/dataclass_slots.md) sees the writes through it too
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-slots`](src/rules/classes/dataclass_slots.md) no longer offers `slots=True` for a class whose field
+  default is read or assigned through the class, as `Config.timeout`, through an import alias, a subclass or `cls` in a
+  classmethod, or through `type(obj)`, `getattr` and `setattr` simplint cannot tie to one class, since slots replace
+  that class attribute with a descriptor ([#117](https://github.com/gaborbernat/simplint/pull/117)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) and
+  [`dataclass-slots`](src/rules/classes/dataclass_slots.md) no longer offer a fix that breaks code setting attributes
+  under a computed name, through `monkeypatch.setattr` or `mock.patch.object`, weakly referencing the instance, or
+  decorating the class from below `@dataclass`. They also see writes to instances of private classes, such as `_Result`,
+  and of all-caps classes, such as `URL` ([#90](https://github.com/gaborbernat/simplint/pull/90)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-kw-only`](src/rules/classes/dataclass_kw_only.md) rewrites a positional call inside an annotation, as in
+  `Annotated[str, Doc("...")]` or a string annotation, and writes a positional walrus as `name=(name := value)`, where
+  the fix used to make the file invalid Python. A class named in the metadata of `Annotated[...]` is a value, so it gets
+  no fix, and neither does one a concatenated string annotation names
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-slots`](src/rules/classes/dataclass_slots.md) makes its fix unsafe for a class with a keyword such as
+  `metaclass=`, since the slotted copy runs the metaclass twice
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) and
+  [`dataclass-slots`](src/rules/classes/dataclass_slots.md) now see an instance built as `models.Release(...)`, or
+  annotated `models.Release`, as an instance of the class in that module, so a write to it withholds the fix
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) and
+  [`dataclass-slots`](src/rules/classes/dataclass_slots.md) keep their fixes for a class whose nested class writes to
+  its own instances, or whose classmethod writes a class attribute that is not a field. A closure or a parameter that
+  writes the dataclass's instance from a nested class still makes the fix unsafe
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-slots`](src/rules/classes/dataclass_slots.md) no longer offers `slots=True` for an instance that a
+  `weakref.WeakSet`, `WeakKeyDictionary`, `WeakValueDictionary` or `WeakMethod` holds, as those hold their items through
+  `weakref.ref`, wherever the container is used in the checked files
+  ([#117](https://github.com/gaborbernat/simplint/pull/117)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) and
+  [`class-member-order`](src/rules/layout/class_member_order.md) no longer move a comment indented deeper than the
+  definition below it, such as a trailing note at the end of the previous method, along with that definition
+  ([#110](https://github.com/gaborbernat/simplint/pull/110)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) keeps a helper in place when a `def` inside a
+  module-level block, such as `if __name__ == "__main__":`, calls it while the module loads, and when a definition reads
+  an import written below it. The fix used to move those helpers above the code that needs them, which broke the module
+  at import time ([#91](https://github.com/gaborbernat/simplint/pull/91)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dependency-import-guard`](src/rules/imports/dependency_import_guard.md) no longer reports guards around
+  `asyncio.unix_events`, `multiprocessing.popen_forkserver` or the C accelerators CPython imports under a fallback, such
+  as `_json`, which a platform or build may lack. Guards around other private modules, such as `_thread`, are still
+  reported ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`dependency-import-guard`](src/rules/imports/dependency_import_guard.md) no longer reports guards around
+  platform-only and optional standard library modules, such as `_overlapped` or `mmap`, or around CPython's `_test*`
+  extensions. Its unsafe fix no longer adds a suppression to a function-local import that the function uses
+  ([#94](https://github.com/gaborbernat/simplint/pull/94)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-comprehension-unpacking`](src/rules/logic/up_comprehension_unpacking.md) removes the parentheses around a dict's
+  key and value too, so `{(key): (value) for entry in pairs for key, value in entry.items()}` becomes
+  `{**entry for entry in pairs}` instead of an invalid expression that reverted the whole file
+  ([#115](https://github.com/gaborbernat/simplint/pull/115)) by [@gaborbernat](https://github.com/gaborbernat).
+- A `--diff` run no longer caches the reports of a file linted after another file's fix, so the next `check` no longer
+  loses a [`duplicate-code`](src/rules/logic/duplicate_code.md) report
+  ([#108](https://github.com/gaborbernat/simplint/pull/108)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--diff` runs the fix rounds that `--fix` runs, so its diff shows the changes a later round makes, such as a
+  [`dataclass-frozen`](src/rules/classes/dataclass_frozen.md) fix that becomes safe once a rename leaves the class with
+  no other user. Applying the diff gives the files `--fix` writes
+  ([#100](https://github.com/gaborbernat/simplint/pull/100)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`function-docstring`](src/rules/docstrings/function_docstring.md) (SMP901) and
+  [`test-module-docstring`](src/rules/docstrings/test_module_docstring.md) (SMP902) keep a comment after a removed
+  docstring on its own line, which before their fix deleted it along with the docstring. A tool directive such as
+  `# fmt: off`, or a comment holding one, goes with the docstring, as a pragma does; before, it stayed on its own line
+  and changed what the formatter does ([#116](https://github.com/gaborbernat/simplint/pull/116)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`duplicate-code`](src/rules/logic/duplicate_code.md) no longer reports statements that repeat under another `if` as a
+  copy, since the blocks they nest in differ; indentation width still does not count
+  ([#101](https://github.com/gaborbernat/simplint/pull/101)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`duplicate-code`](src/rules/logic/duplicate_code.md) (SMP530) names the first three other modules in sorted order,
+  one place each, and counts the rest. A module that many others repeat a block with no longer hides the modules after
+  the first ones behind a single module's copies, so the report names a module at the line where its copy starts
+  ([#118](https://github.com/gaborbernat/simplint/pull/118)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`early-assignment`](src/rules/logic/early_assignment.md) (SMP526) still reports an assignment with a comment on the
+  line above it, but no longer moves it. The move left the comment behind, above the statement that now came first
+  ([#111](https://github.com/gaborbernat/simplint/pull/111)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` keeps the [`import-cycle`](src/rules/imports/import_cycle.md) and
+  [`duplicate-code`](src/rules/logic/duplicate_code.md) reports of a file it rewrote. Before, the rewritten file lost
+  them, and the run could exit 0 with the cycle still there ([#100](https://github.com/gaborbernat/simplint/pull/100))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`forwarding-function`](src/rules/logic/forwarding_function.md) (SMP501) no longer reports a method of a class that
+  another class derives from, since a subclass may override it and calling the target at each call site would skip that
+  override. A method that forwards through its receiver, such as `self.client.get`, is now reported, and a method that
+  only calls its receiver, such as `self(name)`, is not ([#111](https://github.com/gaborbernat/simplint/pull/111)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`forwarding-function`](src/rules/logic/forwarding_function.md) (SMP501) and
+  [`single-caller-helper`](src/rules/logic/single_caller_helper.md) (SMP505) now count a call whose `(` starts a later
+  line, as in `return [_fill_a` and `(name)]`, the same as a call on one line. A name that only ends its statement, such
+  as `callback = _make_path`, is still only read, not called ([#111](https://github.com/gaborbernat/simplint/pull/111))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`future-annotations`](src/rules/imports/future_annotations.md) marks its fix unsafe when an annotation unions a
+  string with a type, such as `"Node" | None`, or when an import sits under a module-level `if`, since the annotations
+  then fail once evaluated. It no longer offers a fix that would delete a comment on the import's lines
+  ([#94](https://github.com/gaborbernat/simplint/pull/94)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`indistinct-error-class`](src/rules/classes/indistinct_error_class.md) no longer reports a class that an `except`
+  clause catches through a tuple of classes, annotated or starred and defined in any module, or that
+  `contextlib.suppress` is given, starred or not ([#114](https://github.com/gaborbernat/simplint/pull/114)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Hard links to one file are linted once, as symlinks already were. `--fix` no longer fails with an E902
+  `changed while simplint fixed it` error on them, and their reports no longer repeat once per name
+  ([#108](https://github.com/gaborbernat/simplint/pull/108)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md),
+  [`up-asyncio-iscoroutinefunction`](src/rules/logic/up_asyncio_iscoroutinefunction.md) and
+  [`missing-final`](src/rules/typing/missing_final.md) put the import they add above the comment lines that describe the
+  statement it precedes, instead of between that comment and the statement. A line of a docstring that starts with `#`
+  is not such a comment, so the import stays out of the docstring
+  ([#115](https://github.com/gaborbernat/simplint/pull/115)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-final`](src/rules/typing/missing_final.md) no longer adds its import above a module docstring that shares
+  its line with the next statement, which turned `__doc__` into `None`. The report stays, without the fix
+  ([#92](https://github.com/gaborbernat/simplint/pull/92)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-asyncio-iscoroutinefunction`](src/rules/logic/up_asyncio_iscoroutinefunction.md),
+  [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md) and [`missing-final`](src/rules/typing/missing_final.md)
+  keep their report without a fix when the last import shares its line with code, since the new import used to land
+  below that code, which then ran before it ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`import-cycle`](src/rules/imports/import_cycle.md) (SMP308) no longer reports the import in the `else` of
+  `sys.version_info[0] == 3`, which no supported Python runs. It counts the import under a `TYPE_CHECKING` bound to a
+  true constant, and under a public false constant that a star import rebinds, which the module runs and so closes the
+  cycle ([#118](https://github.com/gaborbernat/simplint/pull/118)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`import-cycle`](src/rules/imports/import_cycle.md) no longer treats a module-level flag as false when a block of the
+  module or a `global` declaration rebinds it, as `HAS_JSON = True` in a `try` after `HAS_JSON = False` does, so the
+  imports under the flag count in the cycle check ([#101](https://github.com/gaborbernat/simplint/pull/101)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-attribute-import`](src/rules/imports/module_attribute_import.md) and
+  [`dependency-import-guard`](src/rules/imports/dependency_import_guard.md) no longer delete a comment inside the import
+  or guard they replace. They still report it, without a fix ([#114](https://github.com/gaborbernat/simplint/pull/114))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-inline-markup`](src/rules/docstrings/rst_inline_markup.md) checks the rest of a docstring when its summary line
+  ends in `::`, instead of counting every later line as a literal block
+  ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-argparse-suggest-on-error`](src/rules/logic/up_argparse_suggest_on_error.md) and
+  [`up-utf8-encoding-default`](src/rules/logic/up_utf8_encoding_default.md) keep the parentheses around a positional
+  argument that precedes a removed keyword, so `ArgumentParser(("prog"), suggest_on_error=True)` no longer becomes
+  invalid code ([#92](https://github.com/gaborbernat/simplint/pull/92)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-kw-only`](src/rules/classes/dataclass_kw_only.md) no longer rewrites `cls(...)` in an ordinary method,
+  where `cls` is some other value, and offers no fix for a dataclass another file calls through
+  `getattr(module, "Name")` ([#90](https://github.com/gaborbernat/simplint/pull/90)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-compression-modules`](src/rules/logic/up_compression_modules.md) keeps the `lazy` keyword of a
+  `lazy import gzip`, so the rewritten `lazy from compression import gzip` stays lazy instead of becoming an eager
+  import ([#115](https://github.com/gaborbernat/simplint/pull/115)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-lazy-modules-list`](src/rules/imports/up_lazy_modules_list.md) keeps `__lazy_modules__` when a listed module is
+  also imported under an `if`, `with`, `for`, `while` or `match`, in the `else` or `finally` of a `try`, or by a
+  relative import of the listed package, where the fix would have left the import eager. An import that is `lazy`
+  already no longer gets a second `lazy`, which produced a syntax error and reverted the fixes of the file
+  ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`long-tuple-return`](src/rules/logic/long_tuple_return.md) (SMP528) no longer reports a function whose return
+  annotation is a quoted `"tuple[T, ...]"`. The quoted annotation is read like the unquoted one, which the rule already
+  exempts ([#111](https://github.com/gaborbernat/simplint/pull/111)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-final`](src/rules/typing/missing_final.md) no longer suggests `Final` for a module name that a function
+  writes through `globals()`, or for any name when a computed write through `globals()` may set one
+  ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-final`](src/rules/typing/missing_final.md) no longer offers a fix that makes a parenthesized name such as
+  `(LIMIT) = 3` invalid Python. The other names of the module keep their fixes
+  ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-final`](src/rules/typing/missing_final.md) no longer reports a name that a module-level `vars()` or
+  `locals()` write reassigns, including one in the default, decorator or base of a `def` or `class`
+  ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-from-all`](src/rules/api/missing_from_all.md) (SMP401) no longer drops a comment when it lists names after
+  the last element of `__all__`, or in an empty `__all__` that holds a comment, where it offers no fix. It keeps a
+  `# noqa: F401` on an import that binds a name the listing leaves out
+  ([#93](https://github.com/gaborbernat/simplint/pull/93)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-from-all`](src/rules/api/missing_from_all.md) (SMP401) adds a new name after the closing parenthesis of a
+  parenthesized last name instead of inside it. The `__all__` no longer fails on `from module import *`
+  ([#113](https://github.com/gaborbernat/simplint/pull/113)) by [@gaborbernat](https://github.com/gaborbernat).
+- `check` reports a path that does not exist as Ruff does, as an `E902` io-error, and exits 1, instead of printing a
+  warning and exiting 0 ([#100](https://github.com/gaborbernat/simplint/pull/100)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-assertion-typo`](src/rules/testing/mock_assertion_typo.md) (SMP814) no longer drops a comment inside an
+  assertion when it renames the call. An assertion holding a comment in the text the fix removes is reported without a
+  fix ([#109](https://github.com/gaborbernat/simplint/pull/109)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-attribute-assignment`](src/rules/testing/mock_attribute_assignment.md) (SMP805) no longer passes `cls`, `self`
+  or the private constructor arguments, such as `_new_name`, as keywords. The fix used to make `cls` and `self` raise
+  `TypeError` and configure the mock for the others, instead of setting the attribute; the run of assignments now stops
+  at them ([#109](https://github.com/gaborbernat/simplint/pull/109)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-attribute-assignment`](src/rules/testing/mock_attribute_assignment.md) offers its fix when a comment follows
+  the trailing comma of the constructor call. The fix used to add a second comma before the new keyword, which does not
+  parse, so the fix was rejected ([#98](https://github.com/gaborbernat/simplint/pull/98)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-assertion-typo`](src/rules/testing/mock_assertion_typo.md) fixes `assert (mock.called_once_with(1))` to
+  `mock.assert_called_once_with(1)`. The fix used to keep the closing parenthesis, which does not parse, so the fix was
+  rejected ([#98](https://github.com/gaborbernat/simplint/pull/98)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-comprehension-unpacking`](src/rules/logic/up_comprehension_unpacking.md),
+  [`up-traceback-exception-arguments`](src/rules/logic/up_traceback_exception_arguments.md),
+  [`up-exc-info-exception`](src/rules/logic/up_exc_info_exception.md) and
+  [`up-strptime-date`](src/rules/logic/up_strptime_date.md) no longer delete a comment in the code they rewrite. They
+  report the code without a fix when a comment lies in it ([#93](https://github.com/gaborbernat/simplint/pull/93)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-attribute-import`](src/rules/imports/module_attribute_import.md) offers no fix that removes a module name
+  another module imports or reads. It also offers no fix for a Python builtin's name, such as `set`, since the import
+  would shadow the builtin ([#94](https://github.com/gaborbernat/simplint/pull/94)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md) and
+  [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md) keep their report without a fix when another module reads
+  the module-level name they would remove, through an import, a star import or an attribute, or when `__all__` lists it,
+  so the fix no longer breaks that module ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-variable-prefix`](src/rules/api/module_variable_prefix.md) no longer asks to rename `_` to an empty name or
+  `_class` to the keyword `class`. The fix for those names used to be rejected as a syntax error, and a debug build
+  panicked ([#110](https://github.com/gaborbernat/simplint/pull/110)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` and `--diff` warn about a `noqa` comment Ruff cannot read once, with the line it has in the file on disk,
+  instead of once for each intermediate version of the file, each with line numbers from text that is not on disk
+  ([#100](https://github.com/gaborbernat/simplint/pull/100)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-returns`](src/rules/docstrings/rst_returns.md) (SMP923) no longer reports the `:yields:` of an abstract
+  generator whose body is a placeholder, and no longer asks for `:returns:` there. Its fix deleted the `:yields:` field
+  ([#116](https://github.com/gaborbernat/simplint/pull/116)) by [@gaborbernat](https://github.com/gaborbernat).
+- A cached clean result of [`private-import-path`](src/rules/imports/private_import_path.md) no longer stands once the
+  source module a test mirrors is deleted: a warm run reports the test's private import as a run without the cache does
+  ([#100](https://github.com/gaborbernat/simplint/pull/100)) by [@gaborbernat](https://github.com/gaborbernat).
+- A test's private import is checked again when the source file it mirrors is deleted from a directory outside Ruff's
+  `src` roots, so a stale clean result no longer hides [`private-import-path`](src/rules/imports/private_import_path.md)
+  (SMP310) ([#108](https://github.com/gaborbernat/simplint/pull/108)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-re-error-alias`](src/rules/logic/up_re_error_alias.md) and
+  [`up-re-prefixmatch`](src/rules/logic/up_re_prefixmatch.md) leave a `re` alone when another import of that name, such
+  as `import regex as re` in a `try` block, binds a different module, so the fix no longer renames an `except` clause to
+  a name the other module lacks ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unnamed-regex-group`](src/rules/logic/unnamed_regex_group.md) no longer makes the groups of a pattern non-capturing
+  when the code reads them by number through a class attribute, a name declared `global` or `nonlocal`, or a module name
+  that another module imports or `__all__` lists, reads the rule does not follow
+  ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unnamed-regex-group`](src/rules/logic/unnamed_regex_group.md) (SMP532) and
+  [`unexplained-regex`](src/rules/logic/unexplained_regex.md) now read a `#` comment in a scoped `(?x:...)` group as a
+  comment, so a parenthesis in it is no longer counted as a group. A `(?-x:...)` group under `re.VERBOSE` is read as not
+  verbose, so its `#` and parentheses count ([#111](https://github.com/gaborbernat/simplint/pull/111)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) and
+  [`class-member-order`](src/rules/layout/class_member_order.md) keep the blank lines between two statements that stay
+  adjacent in the same order. The fix used to replace them with the usual separator
+  ([#110](https://github.com/gaborbernat/simplint/pull/110)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-unknown-attribute`](src/rules/docstrings/rst_unknown_attribute.md) no longer reports the `:ivar:` and `:cvar:`
+  fields of names a class body unpacks from a tuple, or of the strings its `__slots__` declares, as attributes the class
+  lacks ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-unknown-param`](src/rules/docstrings/rst_unknown_param.md) deletes a field from a docstring whose remaining text
+  ends in a quote or a backslash, and puts the closing quotes on a line of their own. The fix used to join them to that
+  text, which ends or escapes the string, so the fix was rejected
+  ([#98](https://github.com/gaborbernat/simplint/pull/98)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-missing-param`](src/rules/docstrings/rst_missing_param.md) and
+  [`rst-attribute-kind`](src/rules/docstrings/rst_attribute_kind.md) read a quoted annotation such as `"ClassVar[int]"`
+  as the `ClassVar` it spells, so a class variable declared that way needs no `:param:` field, and an `:ivar:` field for
+  it is reported ([#99](https://github.com/gaborbernat/simplint/pull/99)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-returns`](src/rules/docstrings/rst_returns.md) no longer treats a function as a generator when a lambda in its
+  body yields, so its `:returns:` field is checked as a return field
+  ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-object-sentinel`](src/rules/logic/up_object_sentinel.md) judges a class attribute by the other bindings of its
+  class body, so `Config.MISSING` assigned twice in `Config` is no longer reported, while `Other.LIMIT = object()` is
+  reported even when the module binds `LIMIT` twice ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-object-sentinel`](src/rules/logic/up_object_sentinel.md) names a class attribute with its class, as
+  `sentinel("Config.UNSET")`, so pickling can find it, and no longer offers a fix for a placeholder in a class inside a
+  function ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md),
+  [`up-asyncio-iscoroutinefunction`](src/rules/logic/up_asyncio_iscoroutinefunction.md),
+  [`up-codecs-open`](src/rules/logic/up_codecs_open.md) and
+  [`up-removed-ast-node`](src/rules/logic/up_removed_ast_node.md) keep their report without a fix when a parameter or
+  local, a loop variable or a lambda parameter of a scope that encloses the call takes the module or builtin name the
+  rewrite uses, so the rewritten code no longer calls that binding. A nested function or a comprehension elsewhere in
+  the function does not count ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-from-all`](src/rules/api/missing_from_all.md),
+  [`module-attribute-import`](src/rules/imports/module_attribute_import.md) and
+  [`definition-before-use`](src/rules/layout/definition_before_use.md) keep their autofix available when the first
+  report is suppressed and a later report is still visible ([#106](https://github.com/gaborbernat/simplint/pull/106)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) keeps the order of evaluation when it inlines a value:
+  a fix that moves a call, a lookup or a walrus past the read is now unsafe, and a read in a t-string is reported
+  without a fix. A string with braces that replaces a field in a format spec, as in `{v:{inner}}`, no longer changes
+  what the f-string prints ([#102](https://github.com/gaborbernat/simplint/pull/102)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) (SMP504) no longer inlines a string into a field of a
+  nested f-string before Python 3.12 when the string holds the quote of an enclosing f-string. The fix had made the file
+  fail to parse, which dropped every other fix in it ([#111](https://github.com/gaborbernat/simplint/pull/111)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) (SMP504) no longer inlines a value into a `=` debug
+  field of a raw f-string whose debug text holds the string's quote. The fix wrote the quote with a backslash, which a
+  raw f-string keeps, so the printed text changed ([#111](https://github.com/gaborbernat/simplint/pull/111)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](src/rules/layout/single_user_constant.md) no longer indents the next line of a string that a
+  backslash continues, since the spaces became part of the string's value. The constant is still reported, without a fix
+  ([#110](https://github.com/gaborbernat/simplint/pull/110)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](src/rules/layout/single_user_constant.md) inlines an integer constant as `(30).bit_length()`
+  when an attribute follows it. The fix used to write `30.bit_length()`, which does not parse, so the fix was rejected
+  ([#98](https://github.com/gaborbernat/simplint/pull/98)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-default`](src/rules/logic/unused_default.md) counts a positional call that suppresses
+  [`dataclass-kw-only`](src/rules/classes/dataclass_kw_only.md) like any other call, instead of treating it as a use it
+  cannot follow and keeping the function's defaults ([#89](https://github.com/gaborbernat/simplint/pull/89)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`function-docstring`](src/rules/docstrings/function_docstring.md) drops `Params:` and `Yield:` sections when it turns
+  a docstring into a comment, as the reST docstring rules already read them, and keeps a line such as `: name: text`,
+  which reST does not parse as a field ([#89](https://github.com/gaborbernat/simplint/pull/89)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-field-syntax`](src/rules/docstrings/rst_field_syntax.md) (SMP910) and
+  [`rst-missing-param`](src/rules/docstrings/rst_missing_param.md) (SMP916) read `:kwarg:` and `:kwparam:` as spellings
+  of `:param:`, and `:paramtype:` as one of `:type:`, as Sphinx does, instead of reporting them as unknown fields
+  ([#116](https://github.com/gaborbernat/simplint/pull/116)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-type-field`](src/rules/docstrings/rst_type_field.md) (SMP912) keeps the stars of `*args` and `**kwargs` when its
+  fix drops the type from `:param int \*args:`, which before wrote `:param args:`
+  ([#116](https://github.com/gaborbernat/simplint/pull/116)) by [@gaborbernat](https://github.com/gaborbernat).
+- A line of a multi-line string that starts with `#` is no longer taken for a comment above the next statement. A move
+  of [`definition-before-use`](src/rules/layout/definition_before_use.md) or
+  [`class-member-order`](src/rules/layout/class_member_order.md) used to pull that line along and split the string,
+  which changed its value ([#110](https://github.com/gaborbernat/simplint/pull/110)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `--stdin-filename` applies the file filters a file on disk gets: a notebook, TOML or Markdown name, or a name
+  `--force-exclude` leaves out, reports nothing and exits 0. With `--fix`, its source goes out unchanged. A `.pyi` name
+  is still linted, though a stub on disk is only indexed ([#108](https://github.com/gaborbernat/simplint/pull/108)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `check` reads standard input as Ruff does: with `--stdin-filename` the source is standard input whatever paths come
+  with it, and a `-` beside other paths is no longer standard input. `--add-noqa` and `--add-ignore` refuse standard
+  input instead of editing the files under the working directory
+  ([#100](https://github.com/gaborbernat/simplint/pull/100)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-strptime-date`](src/rules/logic/up_strptime_date.md) no longer applies a safe fix to `.time()` on a format with
+  `%:z`, since `time.strptime` keeps the zone that `.time()` drops, as it does with `%z`
+  ([#99](https://github.com/gaborbernat/simplint/pull/99)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-strptime-date`](src/rules/logic/up_strptime_date.md) makes the `.time()` fix unsafe when the format has a date
+  directive, and the `.date()` and `.time()` fixes unsafe when it has a seconds directive. A safe `--fix` used to
+  rewrite `datetime.strptime(text, "%m-%d %H:%M").time()` into a call that accepts February 29 in a year without a leap
+  day, which the original call rejects with `ValueError`, and `datetime.strptime(text, "%H:%M:%S").time()` into a call
+  that accepts second 60 ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`super-forwarding-method`](src/rules/logic/super_forwarding_method.md) (SMP527) no longer reports a method whose name
+  the class body reads or binds again, such as `__str__ = describe` or an import under an `if`. Deleting such a method
+  made the class body look the name up in the module, so the fix broke the import with a `NameError`
+  ([#111](https://github.com/gaborbernat/simplint/pull/111)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`super-forwarding-method`](src/rules/logic/super_forwarding_method.md) no longer deletes a comment inside the method
+  it would remove, such as one on its `return` line. A method with such a comment is left alone, as one above it already
+  was ([#93](https://github.com/gaborbernat/simplint/pull/93)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-class`](src/rules/testing/test_class.md) dedents each method by the indentation of its class body rather than
+  the file's first indentation. A two-space function above a four-space `class TestThing` used to keep the method nested
+  in that function, where pytest does not collect it ([#98](https://github.com/gaborbernat/simplint/pull/98)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`test-class`](src/rules/testing/test_class.md) (SMP801) no longer flattens onto a function name that another class or
+  another method of the same class already takes, which shadowed a test. The first class keeps its fix; a later class,
+  or a class with two methods of one name, is reported without one
+  ([#109](https://github.com/gaborbernat/simplint/pull/109)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-class`](src/rules/testing/test_class.md) reports without a fix when a method of `class Test` would take the
+  name of a module-level function. The fix used to add a second definition under that name, which replaced the
+  module-level one ([#98](https://github.com/gaborbernat/simplint/pull/98)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`test-only-code`](src/rules/api/test_only_code.md) no longer reports the functions of a module that production code
+  passes on as a value, as `codec = fast` or a default argument does, since the code calls them through that value
+  ([#101](https://github.com/gaborbernat/simplint/pull/101)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-only-parameter`](src/rules/api/test_only_parameter.md) (SMP410) counts the calls of a module that production
+  code star-imports, or that has an `if __name__ == "__main__":` block, as production calls, even when a test imports
+  it. It no longer reports a parameter that such a module passes
+  ([#118](https://github.com/gaborbernat/simplint/pull/118)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-only-code`](src/rules/api/test_only_code.md) (SMP408) also keeps the functions of a module that production code
+  reaches as `app.fast`, that a class body imports, or that a function body imports and loads as a value itself, since
+  the code calls them through that module. A function that only calls the module's functions does not keep the others
+  ([#118](https://github.com/gaborbernat/simplint/pull/118)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`missing-from-all`](src/rules/api/missing_from_all.md) (SMP401) no longer reports a name that only tests import when
+  production code loads its module as a value, as `{"compat": compat}` does. The fix would have listed the name in
+  `__all__` ([#118](https://github.com/gaborbernat/simplint/pull/118)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-traceback-exception-arguments`](src/rules/logic/up_traceback_exception_arguments.md) removes the parentheses
+  around the replaced arguments too. A parenthesized argument used to leave one behind, and the fix was then reverted
+  for the whole file ([#115](https://github.com/gaborbernat/simplint/pull/115)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-warnings-deprecated`](src/rules/logic/up_warnings_deprecated.md) keeps a comment that trails the `warnings.warn`
+  call: with `--unsafe-fixes` the report now stays without a fix instead of deleting the comment with the line
+  ([#115](https://github.com/gaborbernat/simplint/pull/115)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-type-checking-lazy-import`](src/rules/imports/up_type_checking_lazy_import.md) no longer adds a second `lazy` to
+  an import that is `lazy` already, which produced a syntax error and reverted the fixes of the file
+  ([#114](https://github.com/gaborbernat/simplint/pull/114)) by [@gaborbernat](https://github.com/gaborbernat).
+- A file that cannot be read, while `io-error` (E902) is not selected, is no longer cached as clean, so every run logs
+  its warning again ([#108](https://github.com/gaborbernat/simplint/pull/108)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-default`](src/rules/logic/unused_default.md) (SMP506) still reports a default that every call passes, but no
+  longer offers a fix that deletes a comment inside that default
+  ([#111](https://github.com/gaborbernat/simplint/pull/111)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-export`](src/rules/api/unused_export.md) no longer reports the names of an `__all__` that another module
+  imports or reads, as `from module import __all__` or `module.__all__` does. Such a module uses every name the list
+  holds, so `--fix` no longer removes them ([#101](https://github.com/gaborbernat/simplint/pull/101)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-export`](src/rules/api/unused_export.md) (SMP402) no longer turns off for the whole run when a file reads
+  `__all__` off a module it cannot name, such as `sys.modules["json"]`. Only an import of `__all__` or a read of it off
+  a module of the run exempts a module's `__all__` ([#118](https://github.com/gaborbernat/simplint/pull/118)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-export`](src/rules/api/unused_export.md) removes an unused name in parentheses from `__all__`, as in
+  `__all__ = "zeta", ("beta")`, without leaving a parenthesis behind. The fix used to leave one, which does not parse,
+  so the fix was rejected ([#98](https://github.com/gaborbernat/simplint/pull/98)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-export`](src/rules/api/unused_export.md) (SMP402) no longer reports a name of a module that production code
+  loads as a value, as `CONFIG = settings` does, or a submodule that a star import binds through its package's
+  `__all__`. A test that passes the module on exempts nothing ([#118](https://github.com/gaborbernat/simplint/pull/118))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-export`](src/rules/api/unused_export.md) (SMP402) reports without a fix when a removed name sits alone on its
+  line with a comment after it. The fix used to move that comment onto the name before it
+  ([#113](https://github.com/gaborbernat/simplint/pull/113)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-ignore`](src/rules/comments/unused_ignore.md) (SMP009) removes only the directive and its reason when the
+  last selector of a comment is unused. A comment after them on the line, such as `# noqa: E501`, stays instead of being
+  deleted with them ([#93](https://github.com/gaborbernat/simplint/pull/93)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`walrus-candidate`](src/rules/logic/walrus_candidate.md) no longer inlines a name that `locals()`, `vars()`, `eval`
+  or `exec` reads in its function, or that `globals()` reads at module level, since the call would no longer find it
+  ([#102](https://github.com/gaborbernat/simplint/pull/102)) by [@gaborbernat](https://github.com/gaborbernat).
+- A file `--fix` cannot write, such as a read-only one, keeps its reports: the run shows them with the write error, and
+  a later run no longer caches the file as clean and exits 0 ([#100](https://github.com/gaborbernat/simplint/pull/100))
+  by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-2-performance"></a>
+
+### Performance
+
+- [`missing-from-all`](src/rules/api/missing_from_all.md) (SMP401) and [`unused-export`](src/rules/api/unused_export.md)
+  (SMP402) attach their fix to the first report only, instead of copying the whole listing into every report. A module
+  with many names no longer grows its output and memory quadratically
+  ([#93](https://github.com/gaborbernat/simplint/pull/93)) by [@gaborbernat](https://github.com/gaborbernat).
+- The rules that ask whether `__all__` lists a name check a set of the listed names, built once per file, instead of
+  scanning the list for each name: [`missing-from-all`](src/rules/api/missing_from_all.md) (SMP401),
+  [`unexported-public-name`](src/rules/api/unexported_public_name.md) (SMP403),
+  [`test-only-code`](src/rules/api/test_only_code.md) (SMP408),
+  [`unused-definition`](src/rules/api/unused_definition.md) (SMP409),
+  [`test-only-parameter`](src/rules/api/test_only_parameter.md) (SMP410) and
+  [`unused-return-value`](src/rules/api/unused_return_value.md) (SMP411). A module of 64,000 functions, all listed in
+  `__all__`, takes 0.09 seconds under SMP401 instead of 2.8 ([#123](https://github.com/gaborbernat/simplint/pull/123))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-asyncio-iscoroutinefunction`](src/rules/logic/up_asyncio_iscoroutinefunction.md) looks up the imports of the
+  module in a set built once per file, instead of scanning the module body for each call. A module of 32,000
+  `asyncio.iscoroutinefunction()` calls takes 0.10 seconds instead of 1.5
+  ([#123](https://github.com/gaborbernat/simplint/pull/123)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) and
+  [`class-member-order`](src/rules/layout/class_member_order.md) compare each class statement with the others by name
+  instead of with every statement, and share one build of each class order, so a class of 64,000 attributes takes 0.05
+  seconds under SMP201 instead of 2.8 and 0.06 under SMP203 instead of 2.6
+  ([#104](https://github.com/gaborbernat/simplint/pull/104)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-compression-modules`](src/rules/logic/up_compression_modules.md) reads the attributes of the file once and checks
+  each codec and name once, instead of walking the whole module for each import. A module of 32,000 functions that each
+  import `zlib` takes 0.11 seconds instead of 18.0 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Collecting the fields of a `@dataclass` checks each new field against a set instead of the fields before it, so a
+  dataclass with 64,000 fields takes 0.06 seconds instead of 3.9
+  ([#96](https://github.com/gaborbernat/simplint/pull/96)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) finds the `=` debug fields that an edit lies in with a
+  search over the fields of the file, and builds its groups of edits only for the fields that get one. A file of 20,000
+  inlinable pairs and 20,000 `f"{s=}"` fields takes 0.10 seconds under SMP504 instead of 1.7
+  ([#123](https://github.com/gaborbernat/simplint/pull/123)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) finds the annotations that a decorator reads with
+  a binary search over the sorted annotation ranges instead of a scan of all of them, so 32,000 decorated functions take
+  0.12 seconds instead of 4.2 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](src/rules/layout/definition_before_use.md) follows each chain of helpers that a function is
+  used from once, instead of once from every function in it. A chain of 64,000 helpers takes 0.20 seconds under SMP201
+  instead of 2.6 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Checking whether the documentation names a definition in a file outside any package, as in a `tests/` or `scripts/`
+  directory without `__init__.py`, no longer builds a string for each documented name: 10,000 such definitions against
+  20,000 documented names take 0.11 seconds instead of 0.6 ([#88](https://github.com/gaborbernat/simplint/pull/88)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`duplicate-code`](src/rules/logic/duplicate_code.md) pairs a repeated block with three of the modules that repeat it
+  instead of with every one of them, and still counts all of them in its report: 4,000 modules that each repeat the same
+  eight statements take 0.1 seconds instead of 30.4 ([#96](https://github.com/gaborbernat/simplint/pull/96)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`early-assignment`](src/rules/logic/early_assignment.md) searches the scopes nested in a function by offset instead
+  of testing each mention against all of them. A function of 80,000 lambdas takes 0.10 seconds under SMP526 instead of
+  2.3 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`early-assignment`](src/rules/logic/early_assignment.md) searches the string tokens and the statements of a block by
+  position instead of scanning them for each constant, so 32,000 constants assigned above their uses take 0.05 seconds
+  instead of 1.8 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-unittest-enter-context`](src/rules/testing/up_unittest_enter_context.md) counts the names of each test method
+  once instead of scanning the tokens of the whole file for every patch it checks, so 16,000 manual patch sequences take
+  0.15 seconds instead of 3.3 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Finding the exception classes a file's names can refer to, which
+  [`indistinct-error-class`](src/rules/classes/indistinct_error_class.md) relies on, no longer checks every exception
+  class of the run in every file: 16,000 modules that each define an exception class take 0.3 seconds instead of 10.1
+  ([#96](https://github.com/gaborbernat/simplint/pull/96)) by [@gaborbernat](https://github.com/gaborbernat).
+- Finding the exception classes of the project follows each class to its subclasses once, instead of passing over every
+  class for each level of inheritance. A chain of 16,000 modules, each subclassing the exception of the one before,
+  takes 0.96 seconds instead of 5.2 ([#112](https://github.com/gaborbernat/simplint/pull/112)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Fixing a file with many withdrawn fixes no longer holds every intermediate source in memory: 1,600 withdrawn fixes of
+  one rule peak at 212 MiB instead of 4.3 GiB ([#95](https://github.com/gaborbernat/simplint/pull/95)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` runs that rename names across a large project use less memory: the words of each file kept between fix rounds
+  now take about 8 bytes each, which cut peak memory from 830 MB to 474 MB on 3,000 word-heavy modules
+  ([#88](https://github.com/gaborbernat/simplint/pull/88)) by [@gaborbernat](https://github.com/gaborbernat).
+- Files with many `# fmt: skip` comments are checked faster: a 20,000-line module with one on every line takes a quarter
+  of the time it did under `--fix` ([#88](https://github.com/gaborbernat/simplint/pull/88)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`import-cycle`](src/rules/imports/import_cycle.md) keeps the modules of a cycle as ids and names only the first eight
+  of a long one, counting the rest, so a ring of 4,000 modules that import each other in turn takes 0.7 seconds and 172
+  MB instead of 2.4 seconds and 3.3 GB ([#96](https://github.com/gaborbernat/simplint/pull/96)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`import-cycle`](src/rules/imports/import_cycle.md) finds the cycle of a ring of modules without a search from each
+  module and keeps only the shown files of each long cycle in memory: a ring of 32,000 modules takes 2.1 seconds and 0.5
+  GB instead of 50.9 seconds and 4.8 GB ([#112](https://github.com/gaborbernat/simplint/pull/112)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`loop-in-test`](src/rules/testing/loop_in_test.md) follows each chain of local names that a test's table is built
+  from once instead of once per path through it, so eight chained names with twelve references each take under 0.01
+  seconds instead of 16.4 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-assertion-typo`](src/rules/testing/mock_assertion_typo.md) checks each misspelled name against a set of the
+  file's function names instead of scanning every function for each one, so 32,000 misspelled calls take 0.14 seconds
+  instead of 0.9 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A file that imports a module of the run with `import module` shares that module's members with the index instead of
+  copying them for each importer: 8,000 modules that import a module with 8,000 functions take 0.16 seconds and 128 MB
+  instead of 2.2 seconds and 4.9 GB ([#96](https://github.com/gaborbernat/simplint/pull/96)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A cached run lists the directories under each project and search root, to tell whether the documentation or the import
+  layout changed, on all threads instead of one, so a project with a large `node_modules/` or gitignored `target/` tree
+  no longer spends most of a cached run walking it: with 20,000 such directories a fully cached run takes 0.14 seconds
+  instead of 0.22 ([#88](https://github.com/gaborbernat/simplint/pull/88)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Looking up what an imported name refers to no longer scans all of the importing file's imports for each name, so a
+  module of 64,000 top-level `from` imports takes 0.56 seconds instead of 13.9
+  ([#112](https://github.com/gaborbernat/simplint/pull/112)) by [@gaborbernat](https://github.com/gaborbernat).
+- Following a name through a chain of modules that re-export it remembers where each module leads, so every module of
+  the chain no longer walks the rest of it: 8,000 packages that each re-export the name of the one before take 0.2
+  seconds instead of 4.6 ([#96](https://github.com/gaborbernat/simplint/pull/96)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Looking up a re-exported class is memoised again in the files that reach no import cycle, even when the project has
+  one elsewhere. A chain of 16,000 re-exporting packages with two unrelated modules that import each other takes 1.4
+  seconds instead of 20.3 ([#112](https://github.com/gaborbernat/simplint/pull/112)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-param-order`](src/rules/docstrings/rst_param_order.md) and
+  [`rst-type-field`](src/rules/docstrings/rst_type_field.md) look up the parameter of each field in a map instead of
+  scanning the signature, and [`rst-unknown-attribute`](src/rules/docstrings/rst_unknown_attribute.md) finds each
+  attribute's earlier definition by name, so 32,000 parameters or attributes take 0.04 and 0.06 seconds instead of 0.46
+  and 0.57 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md) and
+  [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md) find the function or class around a
+  statement with a search over the file's scopes instead of a scan of all of them. A module of 32,000 functions with a
+  `finally` block each takes 0.22 seconds under SMP512 instead of 1.2, and 5.2 seconds under SMP513 instead of 7.6
+  ([#123](https://github.com/gaborbernat/simplint/pull/123)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-caller-helper`](src/rules/logic/single_caller_helper.md) finds the caller of each helper in a map of the
+  file's functions instead of scanning them, and checks the size of a caller before walking it for loops, so 64,000
+  helpers take 0.31 seconds instead of 2.9 and a caller with 32,000 calls to helpers takes 0.14 seconds instead of 8.8
+  ([#104](https://github.com/gaborbernat/simplint/pull/104)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`walrus-candidate`](src/rules/logic/walrus_candidate.md) looks up the other mentions of each name in one index of the
+  module instead of walking every statement before it, so its time no longer grows with the square of a module's
+  assignments: 16,000 assignment and `if` pairs take 0.06 seconds instead of 9.9
+  ([#88](https://github.com/gaborbernat/simplint/pull/88)) by [@gaborbernat](https://github.com/gaborbernat).
+- A module that star-imports other modules no longer walks the whole chain of star imports behind it again for each
+  importer when looking for exception classes: 16,000 modules, each star-importing the one before, take 0.76 seconds
+  instead of 3.8 ([#112](https://github.com/gaborbernat/simplint/pull/112)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Following names through chains of `import *` re-exports looks each name up in a set of the source's `__all__` and
+  revisits only the modules that gained names, so a chain of 200 modules whose `__all__` lists the whole chain takes
+  0.14 seconds instead of 6.8 ([#88](https://github.com/gaborbernat/simplint/pull/88)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`string-concatenation`](src/rules/logic/string_concatenation.md) reads the bindings of a scope in one walk for all of
+  its names, instead of one walk per name. A module of 16,000 annotated classes, each used by a function, takes 0.16
+  seconds under SMP503 instead of 2.9 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-strptime-date`](src/rules/logic/up_strptime_date.md) counts the identifiers of the file once instead of scanning
+  every token of it for each `strptime` call. A module of 32,000 `datetime.strptime(...).date()` calls takes 0.12
+  seconds instead of 6.7 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`super-forwarding-method`](src/rules/logic/super_forwarding_method.md) looks up the bindings and the classes of a
+  module in indexes built once per file, instead of scanning the class bodies for each method. A class of 64,000
+  forwarding methods takes 0.32 seconds instead of 35.5 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`suppression-without-reason`](src/rules/comments/suppression_without_reason.md) looks up the reason of each
+  suppression in one map of the file's comment lines instead of scanning every comment run for it, so 64,000
+  suppressions take 0.05 seconds instead of 4.8 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unnamed-regex-group`](src/rules/logic/unnamed_regex_group.md) decides once per name whether the code reads a group
+  by index, instead of scanning that name's uses for each pattern bound to it. The repro at 80,000 patterns takes 1.6
+  seconds under SMP532 instead of 3.1 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A file that imports a module outside the run, such as one from the standard library, no longer compares its module
+  name with the path of every file of the run: 16,000 files that import and call standard-library modules take 0.4
+  seconds instead of 1.6 ([#96](https://github.com/gaborbernat/simplint/pull/96)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-definition`](src/rules/api/unused_definition.md) finds the names a class body reads in one walk, instead of
+  walking the whole body for each method and attribute. A class of 32,000 unused methods takes 0.08 seconds under SMP409
+  instead of 10.2 ([#123](https://github.com/gaborbernat/simplint/pull/123)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-definition`](src/rules/api/unused_definition.md) reads the words of a file's doctests once instead of
+  rescanning every docstring for each definition it checks, so 16,000 documented functions take 0.06 seconds instead of
+  3.1 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-ignore`](src/rules/comments/unused_ignore.md) (SMP009) checks the selectors of a file together and lints it
+  again only for the sets whose removal brings a report back, instead of once per selector. On a 900-line file with an
+  ignore comment on every line the run drops from 2.4 s to 22 ms
+  ([#88](https://github.com/gaborbernat/simplint/pull/88)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`walrus-candidate`](src/rules/logic/walrus_candidate.md) reads the names a function declares `global` or `nonlocal`
+  once per function instead of once per assignment it checks, so 32,000 assignment and `if` pairs in one function take
+  0.45 seconds instead of 4.7 ([#104](https://github.com/gaborbernat/simplint/pull/104)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A cached run no longer rebuilds the project index when one file has a syntax error or is not valid UTF-8: a warm run
+  over pandas with such a file takes 0.20 seconds instead of 0.79
+  ([#95](https://github.com/gaborbernat/simplint/pull/95)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.10.1 (2026-11-10)
 
 <a name="release-0-10-1"></a>
