@@ -144,18 +144,6 @@ impl<'a> Semantic<'a> {
         self.module_stores.contains(&range)
     }
 
-    // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
-    // after `from unittest import mock` names `unittest.mock.patch`.
-    pub fn resolves_to(&self, expr: &Expr, segments: &[&str]) -> bool {
-        // An attribute resolves to a name ending in the attribute itself, so any other last segment rules it out.
-        if let Expr::Attribute(attribute) = expr
-            && segments.last() != Some(&attribute.attr.as_str())
-        {
-            return false;
-        }
-        self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
-    }
-
     // How many bindings of `name` the class body at `class` makes in the body's own scope; a method's locals and nested
     // classes or comprehensions have scopes of their own.
     pub fn class_body_bindings(&self, class: TextRange, name: &str) -> usize {
@@ -164,33 +152,6 @@ impl<'a> Semantic<'a> {
             .iter()
             .find(|scope| matches!(scope.kind, ScopeKind::Class(definition) if definition.range() == class))
             .map_or(0, |scope| scope.get_all(name).count())
-    }
-
-    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or
-    // lambda body, a class body that no function inside it encloses, or a comprehension past its first iterable, which
-    // the enclosing scope evaluates.
-    pub fn is_bound_around(&self, name: &str, at: TextRange) -> bool {
-        let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
-        let nested_in_class = |class: TextRange| {
-            scopes().any(|(scope, (node, body))| {
-                (scope.kind.is_function() || scope.kind.is_lambda())
-                    && body.contains_range(at)
-                    && class.contains_range(node)
-            })
-        };
-        let bound_directly = |scope: &Scope| scope.get_all(name).any(|id| !self.model.binding(id).kind.is_global());
-        scopes().any(|(scope, (node, body))| {
-            body.contains_range(at) && bound_directly(scope) && (!scope.kind.is_class() || !nested_in_class(node))
-        }) || self.model.scopes.iter().filter(|scope| scope.kind.is_generator()).any(|scope| {
-            scope.get_all(name).any(|id| {
-                let range = self.model.binding(id).range;
-                self.comprehensions
-                    .iter()
-                    .filter(|(comprehension, _)| comprehension.contains_range(range))
-                    .min_by_key(|(comprehension, _)| comprehension.len())
-                    .is_some_and(|(comprehension, first)| comprehension.contains_range(at) && !first.contains_range(at))
-            })
-        })
     }
 
     // Whether every binding of the name `value` reads in its scope imports `module`, so a name also bound to another
@@ -213,6 +174,18 @@ impl<'a> Semantic<'a> {
     // Whether `expr` is the builtin `name`, not something the file binds the name to in the scope it is read in.
     pub fn is_builtin(&self, expr: &Expr, name: &str) -> bool {
         self.resolves_to(expr, &["", name])
+    }
+
+    // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
+    // after `from unittest import mock` names `unittest.mock.patch`.
+    pub fn resolves_to(&self, expr: &Expr, segments: &[&str]) -> bool {
+        // An attribute resolves to a name ending in the attribute itself, so any other last segment rules it out.
+        if let Expr::Attribute(attribute) = expr
+            && segments.last() != Some(&attribute.attr.as_str())
+        {
+            return false;
+        }
+        self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
     }
 
     // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.
@@ -252,15 +225,6 @@ impl<'a> Semantic<'a> {
         find_binding_value(binding, &self.model)
     }
 
-    // Every binding of `name` in the scope a load of it resolves to, the shadowed ones too; empty when none resolves.
-    pub fn resolved_bindings(&self, name: &ast::ExprName) -> Vec<&RuffBinding<'a>> {
-        let Some(id) = self.model.resolve_name(name) else {
-            return Vec::new();
-        };
-        let scope = self.model.binding(id).scope;
-        self.model.scopes[scope].get_all(name.id.as_str()).map(|id| self.model.binding(id)).collect()
-    }
-
     // Whether a scope of the file binds the name, which shadows a builtin of that name. Ruff adds a builtin's binding
     // on its first lookup, which is not a binding of the file.
     pub fn is_bound_in_file(&self, name: &str) -> bool {
@@ -293,6 +257,19 @@ impl<'a> Semantic<'a> {
             return None;
         }
         binding.statement(&self.model)?.as_function_def_stmt()
+    }
+
+    pub fn is_rebound(&self, name: &str) -> bool {
+        self.bindings(name).len() > 1
+    }
+
+    // Every binding of `name` in the scope a load of it resolves to, the shadowed ones too; empty when none resolves.
+    pub fn resolved_bindings(&self, name: &ast::ExprName) -> Vec<&RuffBinding<'a>> {
+        let Some(id) = self.model.resolve_name(name) else {
+            return Vec::new();
+        };
+        let scope = self.model.binding(id).scope;
+        self.model.scopes[scope].get_all(name.id.as_str()).map(|id| self.model.binding(id)).collect()
     }
 
     // The values a binding gives its name, as far as the rules read them: the value an assignment gives, or each item
@@ -330,17 +307,8 @@ impl<'a> Semantic<'a> {
         self.annotations_are_lazy
     }
 
-    pub fn bindings(&self, name: &str) -> &[Binding] {
-        self.index.bindings.get(name).map_or(&[], Vec::as_slice)
-    }
-
     pub fn all_bindings(&self) -> impl Iterator<Item = (&'a str, &[Binding])> {
         self.index.bindings.iter().map(|(name, bindings)| (*name, bindings.as_slice()))
-    }
-
-    // In source order.
-    pub fn references_to(&self, name: &str) -> &[Reference<'a>] {
-        self.index.references.get(name).map_or(&[], Vec::as_slice)
     }
 
     pub fn references(&self) -> impl Iterator<Item = &Reference<'a>> {
@@ -355,17 +323,40 @@ impl<'a> Semantic<'a> {
         self.index.local_bindings.get(name).map_or(&[], Vec::as_slice)
     }
 
-    pub fn is_rebound(&self, name: &str) -> bool {
-        self.bindings(name).len() > 1
+    // Whether `name` is bound nowhere a read at `at` could see, so a builtin of that name is what `at` reads.
+    pub fn is_free_at(&self, name: &str, at: TextRange) -> bool {
+        !self.is_bound(name) && !self.is_bound_around(name, at)
     }
 
     pub fn is_bound(&self, name: &str) -> bool {
         self.index.bindings.contains_key(name)
     }
 
-    // Whether `name` is bound nowhere a read at `at` could see, so a builtin of that name is what `at` reads.
-    pub fn is_free_at(&self, name: &str, at: TextRange) -> bool {
-        !self.is_bound(name) && !self.is_bound_around(name, at)
+    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or
+    // lambda body, a class body that no function inside it encloses, or a comprehension past its first iterable, which
+    // the enclosing scope evaluates.
+    pub fn is_bound_around(&self, name: &str, at: TextRange) -> bool {
+        let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
+        let nested_in_class = |class: TextRange| {
+            scopes().any(|(scope, (node, body))| {
+                (scope.kind.is_function() || scope.kind.is_lambda())
+                    && body.contains_range(at)
+                    && class.contains_range(node)
+            })
+        };
+        let bound_directly = |scope: &Scope| scope.get_all(name).any(|id| !self.model.binding(id).kind.is_global());
+        scopes().any(|(scope, (node, body))| {
+            body.contains_range(at) && bound_directly(scope) && (!scope.kind.is_class() || !nested_in_class(node))
+        }) || self.model.scopes.iter().filter(|scope| scope.kind.is_generator()).any(|scope| {
+            scope.get_all(name).any(|id| {
+                let range = self.model.binding(id).range;
+                self.comprehensions
+                    .iter()
+                    .filter(|(comprehension, _)| comprehension.contains_range(range))
+                    .min_by_key(|(comprehension, _)| comprehension.len())
+                    .is_some_and(|(comprehension, first)| comprehension.contains_range(at) && !first.contains_range(at))
+            })
+        })
     }
 
     pub fn name_ranges(&self, name: &str) -> Vec<TextRange> {
@@ -379,6 +370,15 @@ impl<'a> Semantic<'a> {
         ranges.sort_by_key(Ranged::start);
         ranges.dedup();
         ranges
+    }
+
+    pub fn bindings(&self, name: &str) -> &[Binding] {
+        self.index.bindings.get(name).map_or(&[], Vec::as_slice)
+    }
+
+    // In source order.
+    pub fn references_to(&self, name: &str) -> &[Reference<'a>] {
+        self.index.references.get(name).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -504,42 +504,6 @@ impl<'a> Index<'a> {
     }
 }
 
-pub struct Binding {
-    pub range: TextRange,
-    pub kind: BindingKind,
-    // Whether the binding is made in the module scope, rather than in a function's `global` assignment.
-    pub module_scope: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum BindingKind {
-    Assignment,
-    Annotated,
-    Augmented,
-    Import,
-    Function,
-    Class,
-    TypeAlias,
-    Target,
-    Other,
-}
-
-#[derive(Clone, Copy)]
-pub struct Reference<'a> {
-    pub name: &'a str,
-    pub range: TextRange,
-    pub statement: usize,
-    pub evaluation: Evaluation,
-    pub function: Option<TextRange>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Evaluation {
-    Runtime,
-    Deferred,
-    Annotation,
-}
-
 // `import a as b` binds its whole alias.
 fn binding_range(model: &SemanticModel, binding_id: BindingId) -> TextRange {
     let binding = model.binding(binding_id);
@@ -573,6 +537,14 @@ fn binding_kind(model: &SemanticModel, binding_id: BindingId) -> BindingKind {
             _ => BindingKind::Assignment,
         },
         _ => BindingKind::Other,
+    }
+}
+
+fn function_range(kind: ScopeKind) -> Option<TextRange> {
+    match kind {
+        ScopeKind::Function(function) => Some(function.range),
+        ScopeKind::Lambda(lambda) => Some(lambda.range),
+        _ => None,
     }
 }
 
@@ -638,14 +610,6 @@ fn is_receiver_instance(model: &SemanticModel, name: &ast::ExprName, receiver: O
     })
 }
 
-fn function_range(kind: ScopeKind) -> Option<TextRange> {
-    match kind {
-        ScopeKind::Function(function) => Some(function.range),
-        ScopeKind::Lambda(lambda) => Some(lambda.range),
-        _ => None,
-    }
-}
-
 fn resolves_to_module(model: &SemanticModel, module_bindings: &FxHashSet<BindingId>, name: &ast::ExprName) -> bool {
     let id = name.id.as_str();
     if model.resolve_name(name).is_some_and(|binding_id| !module_bindings.contains(&binding_id)) {
@@ -660,4 +624,40 @@ fn resolves_to_module(model: &SemanticModel, module_bindings: &FxHashSet<Binding
                 && scope.has(id)
         })
         .is_none_or(|scope| scope.get_all(id).any(|binding_id| model.binding(binding_id).kind.is_global()))
+}
+
+pub struct Binding {
+    pub range: TextRange,
+    pub kind: BindingKind,
+    // Whether the binding is made in the module scope, rather than in a function's `global` assignment.
+    pub module_scope: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum BindingKind {
+    Assignment,
+    Annotated,
+    Augmented,
+    Import,
+    Function,
+    Class,
+    TypeAlias,
+    Target,
+    Other,
+}
+
+#[derive(Clone, Copy)]
+pub struct Reference<'a> {
+    pub name: &'a str,
+    pub range: TextRange,
+    pub statement: usize,
+    pub evaluation: Evaluation,
+    pub function: Option<TextRange>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Evaluation {
+    Runtime,
+    Deferred,
+    Annotation,
 }
