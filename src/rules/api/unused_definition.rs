@@ -1,8 +1,8 @@
 use std::cell::LazyCell;
 
 use ruff_linter::registry::Rule as RuffRule;
-use ruff_python_ast::helpers::{any_over_body, map_subscript};
-use ruff_python_ast::visitor::{Visitor, walk_stmt};
+use ruff_python_ast::helpers::map_subscript;
+use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
@@ -130,6 +130,7 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
     let api = checker.state().public_api(checker);
     let calls = project.calls();
     let class_name = class.name.as_str();
+    let loads = class_loads(class);
     for member in module_statements(&class.body) {
         let (name, range, is_method, decorated) = match member {
             Stmt::FunctionDef(method) => {
@@ -150,7 +151,7 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
             && !project.is_attribute_assigned(name)
             && !project.is_referenced(name)
             && !references_outside(checker, name, member.range())
-            && !is_read_in_class(class, name, member.range())
+            && !is_read_in_class(&loads, name, member.range())
             && !is_in_strings(strings, name, member.range());
         if unused {
             let (verb, caller) = if is_method { ("called or read", "caller") } else { ("read", "reader") };
@@ -172,12 +173,28 @@ fn computed_read_hides(checker: &Checker, name: &str, local_reads: &ComputedRead
 }
 
 // The class body names the member, as `x = property(_get_x)` or a dispatch table of its methods does.
-fn is_read_in_class(class: &ast::StmtClassDef, name: &str, definition: TextRange) -> bool {
-    any_over_body(&class.body, |expr| {
-        expr.as_name_expr().is_some_and(|read| {
-            read.id.as_str() == name && read.ctx.is_load() && !definition.contains_range(read.range)
-        })
-    })
+fn is_read_in_class(loads: &FxHashMap<&str, Vec<TextRange>>, name: &str, definition: TextRange) -> bool {
+    loads.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
+}
+
+// The names the class body loads, with the ranges of the loads, so each member finds its reads in one walk.
+fn class_loads(class: &ast::StmtClassDef) -> FxHashMap<&str, Vec<TextRange>> {
+    struct Loads<'a>(FxHashMap<&'a str, Vec<TextRange>>);
+
+    impl<'a> Visitor<'a> for Loads<'a> {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Name(read) = expr
+                && read.ctx.is_load()
+            {
+                self.0.entry(read.id.as_str()).or_default().push(read.range);
+            }
+            walk_expr(self, expr);
+        }
+    }
+
+    let mut loads = Loads(FxHashMap::default());
+    loads.visit_body(&class.body);
+    loads.0
 }
 
 // The identifiers each string of the module spells, with the ranges of the strings: a string annotation such as
