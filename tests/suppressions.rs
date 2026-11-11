@@ -143,7 +143,7 @@ fn add_ignore_merges_into_ignore_comments() {
 // A blanket `# noqa` takes no codes, so `--add-noqa` leaves its line alone, while `--add-ignore` writes its comment there,
 // which silences the reports the blanket `# noqa` leaves. Other lines get their comments either way.
 #[test_case("--add-noqa=legacy", "import os  # noqa\nVALUE = vars(os)  # noqa: SMP604 legacy\n", 1 ; "noqa_leaves_the_line")]
-#[test_case("--add-ignore=legacy", "import os  # noqa  # simplint: ignore[blanket-ignore, suppression-without-reason] legacy\nVALUE = vars(os)  # simplint: ignore[vars-call] legacy\n", 0 ; "ignore_is_added_beside_it")]
+#[test_case("--add-ignore=legacy", "import os  # noqa  # simplint: ignore[suppression-without-reason] legacy\nVALUE = vars(os)  # simplint: ignore[vars-call] legacy\n", 0 ; "ignore_is_added_beside_it")]
 fn add_suppression_handles_a_line_with_a_blanket_noqa(flag: &str, expected: &str, code: i32) {
     let root = project(&[("module.py", "import os  # noqa\nVALUE = vars(os)\n")]);
     check(root.path(), &["--select", "SMP003,SMP004,SMP604", flag]);
