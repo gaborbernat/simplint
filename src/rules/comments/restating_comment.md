@@ -89,9 +89,17 @@ file.close()
 file.close()
 ```
 
+## Ruff overlap
+
+Ruff's [commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) (ERA001) reports some of the same
+comments without a fix that applies. This rule keeps those comments and reports them with its safe fix, which deletes
+the comment.
+
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [ERA001](https://docs.astral.sh/ruff/rules/commented-out-code/), which reports some of the same comments without an
+  applicable fix; this rule keeps them (see Ruff overlap).
 - [flake8-comments](https://github.com/orsinium-labs/flake8-comments) reports the same comments as
   [CM001](https://github.com/orsinium-labs/flake8-comments/blob/master/flake8_comments/_checker.py), such as
   `# create user` above `user.create()`. It only reports them, where this rule's fix deletes the comment.
