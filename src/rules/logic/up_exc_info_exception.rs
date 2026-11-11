@@ -54,7 +54,7 @@ fn exc_info_module<'a>(checker: &Checker<'a>, expr: &Expr) -> Option<&'a str> {
         return None;
     };
     let attribute = func.as_attribute_expr()?;
-    let no_arguments = arguments.args.is_empty() && arguments.keywords.is_empty();
+    let no_arguments = arguments.is_empty();
     (no_arguments && checker.semantic().resolves_to(func, &["sys", "exc_info"]))
         .then(|| checker.text(attribute.value.as_ref()))
 }

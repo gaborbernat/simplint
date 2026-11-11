@@ -1,9 +1,9 @@
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, AnyParameterRef, Expr, ExprContext, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{ExprCollector, alias_binding};
+use crate::syntax::{ExprCollector, alias_binding, pattern_capture};
 
 // The names a class body reads as it runs: outside its methods, or in their decorators and default values.
 pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
@@ -77,12 +77,7 @@ impl<'a> Visitor<'a> for BoundNames<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        if let ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
-        | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
-        | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) = pattern
-        {
-            self.names.extend(name.iter().map(ast::Identifier::as_str));
-        }
+        self.names.extend(pattern_capture(pattern).map(ast::Identifier::as_str));
         visitor::walk_pattern(self, pattern);
     }
 
@@ -91,9 +86,4 @@ impl<'a> Visitor<'a> for BoundNames<'a> {
         self.names.extend(name.iter().map(ast::Identifier::as_str));
         visitor::walk_except_handler(self, handler);
     }
-}
-
-// The annotations in a `def`'s signature: its parameters and its return type.
-pub(super) fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
-    function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
 }

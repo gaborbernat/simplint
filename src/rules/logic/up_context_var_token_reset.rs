@@ -4,10 +4,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::scoped_block::{
-    finally_call, identifier_uses, is_exported_module_name, scope_of, sole_argument, wrap_edits,
-};
-use crate::syntax::{for_each_body, is_name};
+use crate::rules::logic::scoped_block::{finally_call, identifier_uses, is_exported_module_name, scope_of, wrap_edits};
+use crate::syntax::{for_each_body, is_name, sole_argument};
 
 // Since Python 3.14 the token `ContextVar.set` returns is a context manager that resets the variable on exit.
 pub fn up_context_var_token_reset(checker: &Checker) {

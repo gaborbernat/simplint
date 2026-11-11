@@ -38,6 +38,18 @@ impl Ranged for Scope<'_> {
     }
 }
 
+impl Scope<'_> {
+    // The body of the scope, which its header's decorators, defaults and bases do not belong to.
+    pub fn body_range(&self) -> TextRange {
+        let (body, end) = match self {
+            Self::Function(function) => (&function.body, function.end()),
+            Self::Class(class) => (&class.body, class.end()),
+            Self::Lambda(lambda) => return lambda.body.range(),
+        };
+        TextRange::new(body.first().map_or(end, Ranged::start), end)
+    }
+}
+
 impl<'c, 'a> Walker<'c, 'a> {
     pub fn run(checker: &'c Checker<'a>, rules: RuleSet) {
         let mut walker = Self {

@@ -9,6 +9,7 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::edits::statement_deletion;
 use crate::rules::{indentation, is_alone_on_lines};
+use crate::syntax::argument;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let checker = walker.checker;
@@ -82,15 +83,4 @@ fn fix(
         Edit::range_deletion(statement_deletion(checker, warning.range(), None, true)?)
     };
     Some(Fix::unsafe_edits(Edit::insertion(decorator, source.line_start(name.start())), [removal]))
-}
-
-// The argument the call passes at `position` or under `keyword`.
-fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
-    call.arguments.args.get(position).or_else(|| {
-        call.arguments
-            .keywords
-            .iter()
-            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
-            .map(|item| &item.value)
-    })
 }

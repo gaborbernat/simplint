@@ -4,9 +4,8 @@ use ruff_text_size::{Ranged, TextRange};
 use super::Kind;
 use super::tables::{CONTAINERS, PATH_CLASSES, items, shared};
 use crate::lint::checker::Checker;
-use crate::lint::walker::Scope;
 use crate::semantic::BindingKind;
-use crate::syntax::{is_classmethod, receiver};
+use crate::syntax::{is_classmethod, is_name, receiver, target_leaves};
 
 // A class around the spot, with its index among the scopes.
 #[derive(Clone, Copy)]
@@ -15,24 +14,8 @@ pub(super) struct Class<'a> {
     pub(super) depth: usize,
 }
 
-pub(super) fn body_range(scope: Scope) -> TextRange {
-    let (body, end) = match scope {
-        Scope::Function(function) => (&function.body, function.end()),
-        Scope::Class(class) => (&class.body, class.end()),
-        Scope::Lambda(lambda) => return lambda.body.range(),
-    };
-    TextRange::new(body.first().map_or(end, Ranged::start), end)
-}
-
 pub(super) fn target_binds(target: &Expr, name: &str) -> bool {
-    match target {
-        Expr::Name(target) => target.id == name,
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().any(|elt| target_binds(elt, name))
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_binds(value, name),
-        _ => false,
-    }
+    target_leaves(target).into_iter().any(|leaf| is_name(leaf, name))
 }
 
 // The name a method calls its instance, unless it is a static or class method.

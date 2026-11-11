@@ -7,6 +7,7 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::edits::is_bound_around;
 use crate::rules::needs_parentheses;
+use crate::syntax::argument;
 
 // `codecs.open(filename, mode, encoding, errors, buffering)`, in the order of its parameters.
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];
@@ -44,19 +45,11 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     {
         return None;
     }
-    let argument = |index: usize| {
-        arguments.args.get(index).or_else(|| {
-            arguments
-                .keywords
-                .iter()
-                .find(|keyword| keyword.arg.as_ref().is_some_and(|name| name.as_str() == PARAMETERS[index]))
-                .map(|keyword| &keyword.value)
-        })
-    };
-    let filename = argument(0)?;
+    let parameter = |index: usize| argument(call, index, PARAMETERS[index]);
+    let filename = parameter(0)?;
     // Without an encoding `codecs.open` returns the builtin text file and ignores `errors`.
-    let encoding = argument(2).filter(|encoding| !encoding.is_none_literal_expr())?;
-    let mode = argument(1);
+    let encoding = parameter(2).filter(|encoding| !encoding.is_none_literal_expr())?;
+    let mode = parameter(1);
     // A binary mode with an encoding is a `codecs` stream, and `open()` rejects the encoding for it.
     if let Some(mode) = mode {
         let Expr::StringLiteral(literal) = mode else {
@@ -68,9 +61,9 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     }
     let mut parameters = vec![checker.text(filename.range()).to_owned()];
     parameters.extend(mode.map(|mode| checker.text(mode.range()).to_owned()));
-    parameters.extend(argument(4).map(|buffering| keyword_argument(checker, call, "buffering", buffering)));
+    parameters.extend(parameter(4).map(|buffering| keyword_argument(checker, call, "buffering", buffering)));
     parameters.push(keyword_argument(checker, call, "encoding", encoding));
-    parameters.extend(argument(3).map(|errors| keyword_argument(checker, call, "errors", errors)));
+    parameters.extend(parameter(3).map(|errors| keyword_argument(checker, call, "errors", errors)));
     parameters.push("newline=\"\"".to_owned());
     let replacement = format!("open({})", parameters.join(", "));
     Some(Fix::unsafe_edit(Edit::range_replacement(replacement, call.range())))

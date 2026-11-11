@@ -21,7 +21,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::rules::edits::escape_braces;
-use crate::syntax::{for_each_body, for_each_child_body, last_segment};
+use crate::syntax::{alias_root_binding, for_each_body, for_each_child_body, last_segment, pattern_capture};
 
 // Calls `visit` with each statement list under `body`, the scope it sits in and how many indented blocks enclose it.
 // `enter` gives the scope of the statements inside a compound statement.
@@ -416,7 +416,7 @@ impl<'a> Visitor<'a> for Names<'a> {
                 self.rebound.insert(class.name.as_str());
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                self.rebound.extend(names.iter().map(root_binding));
+                self.rebound.extend(names.iter().map(alias_root_binding));
             }
             _ => {}
         }
@@ -430,13 +430,7 @@ impl<'a> Visitor<'a> for Names<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
-        let captured = match pattern {
-            Pattern::MatchAs(ast::PatternMatchAs { name, .. })
-            | Pattern::MatchStar(ast::PatternMatchStar { name, .. }) => name.as_ref().map(ast::Identifier::as_str),
-            Pattern::MatchMapping(ast::PatternMatchMapping { rest, .. }) => rest.as_ref().map(ast::Identifier::as_str),
-            _ => None,
-        };
-        self.rebound.extend(captured);
+        self.rebound.extend(pattern_capture(pattern).map(ast::Identifier::as_str));
         visitor::walk_pattern(self, pattern);
     }
 
@@ -491,15 +485,6 @@ impl Visitor<'_> for NameCollector {
         }
         visitor::walk_expr(self, expr);
     }
-}
-
-// The name an `import` binds in the scope: its `as` name, or the first part of a dotted module name, which `import a.b`
-// binds as `a`.
-fn root_binding(alias: &ast::Alias) -> &str {
-    alias
-        .asname
-        .as_ref()
-        .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
 }
 
 // `function` is the innermost `def` around a body; only statements inside a function are checked.

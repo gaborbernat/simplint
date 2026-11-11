@@ -21,14 +21,6 @@ pub fn finally_call(try_stmt: &ast::StmtTry) -> Option<&ast::ExprCall> {
     (try_stmt.handlers.is_empty() && try_stmt.orelse.is_empty() && !try_stmt.is_star).then_some(call)
 }
 
-// The one positional argument of a call, when it has no keyword arguments.
-pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
-    match call.arguments.args.as_ref() {
-        [argument] if call.arguments.keywords.is_empty() => Some(argument),
-        _ => None,
-    }
-}
-
 // The range of the innermost function or class that holds `range`, or the whole file at module level.
 pub fn scope_of(checker: &Checker, range: TextRange) -> TextRange {
     let scopes = checker.state().scope_nesting(checker);

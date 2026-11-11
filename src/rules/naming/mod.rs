@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::last_segment;
+use crate::syntax::{last_segment, pattern_capture};
 
 pub(crate) use catch_all_module::catch_all_module;
 pub(crate) use entrypoint_module_name::entrypoint_module_name;
@@ -98,10 +98,7 @@ fn except_name<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler,
 }
 
 fn pattern_name<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern, check: NameCheck<'a>) {
-    if let Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-    | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-    | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) = pattern
-    {
+    if let Some(name) = pattern_capture(pattern) {
         check(walker, current(walker), name.as_str(), name.range);
     }
 }

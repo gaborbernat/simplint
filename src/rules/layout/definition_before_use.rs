@@ -7,11 +7,12 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::class_order::Arrangement;
-use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs, signature_annotations};
+use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
+use crate::syntax::signature_annotations;
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();

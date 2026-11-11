@@ -10,7 +10,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::rules::edits::keep_debug_text;
-use crate::syntax::Visibility;
+use crate::syntax::{Visibility, identifier_words};
 
 // The report for a name a public module keeps: its users import it, so the author lists it or renames it by hand, or,
 // when `__all__` lists it already, renames it by hand.
@@ -88,7 +88,7 @@ impl StringWords {
         let mut words = Self::default();
         for (range, text) in values {
             let outside = !exports.iter().any(|export| export.range().contains_range(*range));
-            for word in text.split(|char| !is_word_char(char)).filter(|word| !word.is_empty()) {
+            for word in identifier_words(text).filter(|word| !word.is_empty()) {
                 if outside && !words.outside_exports.contains(word) {
                     words.outside_exports.insert(word.to_owned());
                 }

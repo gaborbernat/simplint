@@ -34,7 +34,7 @@ use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
-use crate::syntax::{Nesting, all_literal, code_string_values, is_name, last_segment};
+use crate::syntax::{Nesting, all_literal, code_string_values, identifier_words, is_name, last_segment};
 
 // What the rules memoize for a file, each part built by the first rule that reads it.
 #[derive(Default)]
@@ -132,7 +132,7 @@ impl<'a> FileState<'a> {
                 .iter()
                 .filter(|(_, text)| text.contains(">>>"))
                 .flat_map(|(_, text)| doctest_code(text))
-                .flat_map(|code| code.split(|char: char| !(char.is_alphanumeric() || char == '_')))
+                .flat_map(identifier_words)
                 .map(str::to_owned)
                 .collect()
         })

@@ -16,7 +16,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         return;
     };
     let member = part.attr.as_str();
-    if !matches!(member, "date" | "time") || !outer.arguments.args.is_empty() || !outer.arguments.keywords.is_empty() {
+    if !matches!(member, "date" | "time") || !outer.arguments.is_empty() {
         return;
     }
     let Expr::Call(parse) = part.value.as_ref() else {

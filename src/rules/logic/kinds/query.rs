@@ -6,8 +6,7 @@ use ruff_text_size::TextRange;
 
 use super::bindings::{Bindings, Value, bindings_in};
 use super::declared::{
-    Class, annotation, body_range, class_at, instance_of, is_class_name, is_property, keeps_return, self_parameter,
-    target_binds,
+    Class, annotation, class_at, instance_of, is_class_name, is_property, keeps_return, self_parameter, target_binds,
 };
 use super::members::{Members, members_of, written_outside};
 use super::tables::{
@@ -21,7 +20,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     pub fn new(walker: &'w Walker<'w, 'a>, range: TextRange) -> Self {
         // A default value or decorator sits in the scope around its def.
         let scopes =
-            walker.scopes().iter().take_while(|scope| body_range(**scope).contains_range(range)).copied().collect();
+            walker.scopes().iter().take_while(|scope| scope.body_range().contains_range(range)).copied().collect();
         Self { walker, scopes, at_spot: true, resolving: Vec::new(), reading: Vec::new(), relies_on: usize::MAX }
     }
 
@@ -397,7 +396,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // The scope the innermost `depth` scopes end in, the module's as an empty range.
     pub(super) fn scope_key(&self, depth: usize) -> TextRange {
-        depth.checked_sub(1).map_or_else(TextRange::default, |index| body_range(self.scopes[index]))
+        depth.checked_sub(1).map_or_else(TextRange::default, |index| self.scopes[index].body_range())
     }
 
     // The innermost generator of a comprehension around the spot that binds `name`.

@@ -76,8 +76,7 @@ fn is_assigned_again(checker: &Checker, name: &str, enclosing: &Enclosing) -> bo
 
 fn is_bare_object(checker: &Checker, value: &Expr) -> bool {
     matches!(value, Expr::Call(ast::ExprCall { func, arguments, .. })
-        if arguments.args.is_empty()
-            && arguments.keywords.is_empty()
+        if arguments.is_empty()
             && checker.semantic().is_builtin(func, "object"))
 }
 

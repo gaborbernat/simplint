@@ -4,6 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
+use crate::syntax::signature_annotations;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
@@ -47,10 +48,5 @@ fn in_coroutine(walker: &Walker, expr: &Expr) -> bool {
 }
 
 fn in_annotation(function: &ast::StmtFunctionDef, expr: &Expr) -> bool {
-    function
-        .parameters
-        .iter()
-        .filter_map(ast::AnyParameterRef::annotation)
-        .chain(function.returns.as_deref())
-        .any(|annotation| annotation.range().contains_range(expr.range()))
+    signature_annotations(function).any(|annotation| annotation.range().contains_range(expr.range()))
 }

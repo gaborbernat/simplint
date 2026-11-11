@@ -1,7 +1,7 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Operator, Stmt};
+use ruff_python_ast::{self as ast, Expr, Operator, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 use rustc_hash::FxHashSet;
@@ -11,7 +11,7 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::delete_statement;
 use crate::rules::is_alone_on_lines;
 use crate::semantic::future_import;
-use crate::syntax::{alias_binding, module_statements, target_names};
+use crate::syntax::{alias_binding, module_statements, signature_annotations, target_names};
 
 pub fn future_annotations(checker: &Checker) {
     let body = checker.body();
@@ -138,9 +138,7 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
 // The annotations of a method's parameters and return type, and of an annotated class field.
 fn annotations(stmt: &Stmt) -> Vec<&Expr> {
     match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { parameters, returns, .. }) => {
-            parameters.iter().filter_map(AnyParameterRef::annotation).chain(returns.as_deref()).collect()
-        }
+        Stmt::FunctionDef(function) => signature_annotations(function).collect(),
         Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => vec![annotation],
         _ => Vec::new(),
     }

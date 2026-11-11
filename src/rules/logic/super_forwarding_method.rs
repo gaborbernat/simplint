@@ -10,7 +10,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{delete_statement, lines_with_trailing_blanks};
 use crate::rules::logic::kinds::class_named;
-use crate::syntax::{alias_binding, is_name};
+use crate::syntax::{alias_binding, is_name, pattern_capture};
 
 pub fn super_forwarding_method(checker: &Checker) {
     let bindings = class_bindings(checker);
@@ -192,8 +192,7 @@ fn forwards_to_parent(function: &ast::StmtFunctionDef) -> bool {
     };
     attr.as_str() == function.name.as_str()
         && is_name(&super_call.func, "super")
-        && super_call.arguments.args.is_empty()
-        && super_call.arguments.keywords.is_empty()
+        && super_call.arguments.is_empty()
         && forwards_own_arguments(&function.parameters, call)
 }
 
@@ -306,13 +305,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        let captured = match pattern {
-            ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
-            | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
-            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
-            _ => None,
-        };
-        if let Some(bound) = captured {
+        if let Some(bound) = pattern_capture(pattern) {
             self.add(bound.as_str());
         }
         visitor::walk_pattern(self, pattern);

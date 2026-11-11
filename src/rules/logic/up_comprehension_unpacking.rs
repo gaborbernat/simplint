@@ -111,8 +111,7 @@ fn unpacking(element: Element, inner: &Comprehension, source: &str) -> Option<Un
                 return None;
             };
             let items = inner.iter.as_call_expr().is_some_and(|call| {
-                call.arguments.args.is_empty()
-                    && call.arguments.keywords.is_empty()
+                call.arguments.is_empty()
                     && call.func.as_attribute_expr().is_some_and(|attribute| {
                         attribute.attr.as_str() == "items" && is_name(&attribute.value, source)
                     })

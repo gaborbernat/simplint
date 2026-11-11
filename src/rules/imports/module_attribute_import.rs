@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{Visibility, for_each_body};
+use crate::syntax::{Visibility, for_each_body, import_aliases};
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
@@ -51,7 +51,7 @@ pub fn module_attribute_import(checker: &Checker) {
         // import without a comment, no stores, no computed write the import would miss, each name importable from the
         // module, and no other module that imports or reads the bound name, which the replaced import would no longer
         // bind.
-        let mut convertible = aliases(statement).len() == 1
+        let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
             && !checker.project().is_referenced(&module.bound)
@@ -122,20 +122,12 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {
-            if let Some(alias) = aliases(stmt).iter().find(|alias| alias.range.contains_range(binding)) {
+            if let Some(alias) = import_aliases(stmt).iter().find(|alias| alias.range.contains_range(binding)) {
                 found = Some((stmt, alias));
             }
         }
     });
     found
-}
-
-// The aliases an import statement binds, and none for any other statement.
-fn aliases(stmt: &Stmt) -> &[ast::Alias] {
-    match stmt {
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
-        _ => &[],
-    }
 }
 
 // The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.

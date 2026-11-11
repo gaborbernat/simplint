@@ -14,7 +14,7 @@ use crate::rules::api::references_outside;
 use crate::rules::docstrings::Need;
 use crate::rules::is_named_by_doctest;
 use crate::semantic::Evaluation;
-use crate::syntax::{Visibility, module_statements};
+use crate::syntax::{Visibility, identifier_words, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
     let project = checker.project();
@@ -204,7 +204,7 @@ type StringWords<'a> = FxHashMap<&'a str, Vec<TextRange>>;
 fn string_words<'c>(checker: &'c Checker) -> StringWords<'c> {
     let mut words: StringWords = FxHashMap::default();
     for (range, text) in checker.string_values() {
-        for word in text.split(|char: char| !(char.is_alphanumeric() || char == '_')).filter(|word| !word.is_empty()) {
+        for word in identifier_words(text).filter(|word| !word.is_empty()) {
             words.entry(word).or_default().push(*range);
         }
     }

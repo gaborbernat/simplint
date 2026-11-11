@@ -5,10 +5,8 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::ensure_import;
-use crate::rules::logic::scoped_block::{
-    finally_call, identifier_uses, is_exported_module_name, scope_of, sole_argument, wrap_edits,
-};
-use crate::syntax::for_each_body;
+use crate::rules::logic::scoped_block::{finally_call, identifier_uses, is_exported_module_name, scope_of, wrap_edits};
+use crate::syntax::{for_each_body, sole_argument};
 
 // Since Python 3.11 `contextlib.chdir` enters a directory and returns to the one it left on exit.
 pub fn up_chdir_restore(checker: &Checker) {
@@ -40,8 +38,7 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
     };
     let restores_old =
         sole_argument(reset).is_some_and(|argument| matches!(argument, Expr::Name(name) if name.id == old.id));
-    if !get.arguments.args.is_empty()
-        || !get.arguments.keywords.is_empty()
+    if !get.arguments.is_empty()
         || !semantic.resolves_to(&get.func, &["os", "getcwd"])
         || !semantic.resolves_to(&chdir.func, &["os", "chdir"])
         || !semantic.resolves_to(&reset.func, &["os", "chdir"])

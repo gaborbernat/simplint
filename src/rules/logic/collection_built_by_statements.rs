@@ -48,9 +48,7 @@ fn empty_collection<'a>(checker: &Checker, stmt: &'a Stmt) -> Option<(&'a str, K
         Expr::Dict(ast::ExprDict { items, .. }) if items.is_empty() => Kind::Dict,
         Expr::List(ast::ExprList { elts, .. }) if elts.is_empty() => Kind::List,
         Expr::Call(ast::ExprCall { func, arguments, .. })
-            if arguments.args.is_empty()
-                && arguments.keywords.is_empty()
-                && checker.semantic().is_builtin(func, "set") =>
+            if arguments.is_empty() && checker.semantic().is_builtin(func, "set") =>
         {
             Kind::Set
         }

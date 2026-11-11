@@ -12,7 +12,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::imports::stdlib_submodules::STDLIB_SUBMODULES;
 use crate::rules::{indentation, is_alone_on_lines};
-use crate::syntax::for_each_child_body;
+use crate::syntax::{alias_root_binding, for_each_child_body};
 
 pub fn dependency_import_guard(checker: &Checker) {
     report_guards(checker, checker.body(), None);
@@ -225,10 +225,7 @@ fn shares_line_with_unused_import(checker: &Checker, body: &[Stmt], function: Op
 fn has_unreferenced_import(checker: &Checker, stmt: &Stmt, function: Option<&[Stmt]>) -> bool {
     stmt.as_import_stmt().is_some_and(|import| {
         import.names.iter().any(|alias| {
-            let bound = alias
-                .asname
-                .as_ref()
-                .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str());
+            let bound = alias_root_binding(alias);
             match function {
                 Some(body) => !any_over_body(
                     body,

@@ -8,9 +8,9 @@ use ruff_python_ast::{self as ast, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::constructors::alternative_constructors;
-use super::definition_time::{bound_names, definition_name, definition_time_exprs, signature_annotations};
+use super::definition_time::{bound_names, definition_name, definition_time_exprs};
 use crate::lint::checker::Checker;
-use crate::syntax::{ExprCollector, decorator_names};
+use crate::syntax::{ExprCollector, decorator_names, signature_annotations};
 
 // The sections of a definition. A method that is in none of them sorts after all of them.
 #[derive(Clone, Copy, PartialEq, Eq)]

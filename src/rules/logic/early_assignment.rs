@@ -14,7 +14,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::is_alone_on_lines;
 use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, is_constant};
-use crate::syntax::Nesting;
+use crate::syntax::{Nesting, identifier_words};
 
 pub fn early_assignment(checker: &Checker) {
     // A function's scope is walked once, and only when one of its blocks assigns a constant to a name.
@@ -105,7 +105,7 @@ fn reads_by_name(name: &str) -> bool {
 
 // Whether the text holds the name as a whole identifier, so `out` is in `"out.append(1)"` but not in `"output"`.
 fn spells(text: &str, name: &str) -> bool {
-    text.split(|c: char| !(c.is_alphanumeric() || c == '_')).any(|word| word == name)
+    identifier_words(text).any(|word| word == name)
 }
 
 // A constant assigned to a local whose first use is at least two statements down the same block. Nothing reads or

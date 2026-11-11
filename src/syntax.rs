@@ -2,6 +2,7 @@
 // name's underscores say, what a module's `__all__` and strings hold, and where the line above a statement starts.
 use std::borrow::Cow;
 
+use ruff_python_ast::AnyParameterRef;
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -171,6 +172,57 @@ pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr
 // The name an `import` alias binds: its `as` name, or the name it imports.
 pub fn alias_binding(alias: &ast::Alias) -> &str {
     alias.asname.as_ref().unwrap_or(&alias.name).as_str()
+}
+
+// The name an `import` binds in its scope: its `as` name, or the first part of a dotted module name, which `import a.b`
+// binds as `a`.
+pub fn alias_root_binding(alias: &ast::Alias) -> &str {
+    alias
+        .asname
+        .as_ref()
+        .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
+}
+
+// The aliases an import statement binds, and none for any other statement.
+pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
+    match stmt {
+        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
+        _ => &[],
+    }
+}
+
+// The name a match pattern captures, as in `case [*rest]` or `case {**rest}`.
+pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
+    match pattern {
+        ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
+        | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
+        | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
+        _ => None,
+    }
+}
+
+// The annotations in a `def`'s signature: its parameters and its return type.
+pub fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
+    function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
+}
+
+// The one positional argument of a call, when it has no keyword arguments.
+pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
+    match call.arguments.args.as_ref() {
+        [argument] if call.arguments.keywords.is_empty() => Some(argument),
+        _ => None,
+    }
+}
+
+// The argument a call passes at `position`, or under `keyword` when it is not passed by position.
+pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
+    call.arguments.args.get(position).or_else(|| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
+            .map(|item| &item.value)
+    })
 }
 
 // Whether `expr` runs its body once per pass of the iteration around it: a lambda or a comprehension.
@@ -495,16 +547,25 @@ pub fn is_all_target(target: &Expr) -> bool {
     is_name(target, "__all__")
 }
 
+// The expressions an assignment target stores into, with tuples, lists and starred targets taken apart.
+pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
+    match target {
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+            elts.iter().flat_map(target_leaves).collect()
+        }
+        Expr::Starred(ast::ExprStarred { value, .. }) => target_leaves(value),
+        _ => vec![target],
+    }
+}
+
 // The names an assignment target binds, through tuple and list unpacking and starred targets.
 pub fn target_names(target: &Expr) -> Vec<&str> {
-    match target {
-        Expr::Name(ast::ExprName { id, .. }) => vec![id.as_str()],
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().flat_map(target_names).collect()
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_names(value),
-        _ => Vec::new(),
-    }
+    target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
+}
+
+// The words of a text, each a run of letters, digits and underscores, as identifiers are spelled.
+pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }
 
 // The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
