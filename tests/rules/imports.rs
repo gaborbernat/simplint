@@ -224,6 +224,8 @@ fn private_module_object_import_reports_both_import_and_attribute() {
 #[test_case("consumer.py", "\"\"\"Uses API.\"\"\"\nfrom pkg._api import API\n\nVALUE = 1\n", false ; "docstring_mention")]
 #[test_case("consumer.py", "from pkg._api import API\n\n\nclass Consumer:\n    attr: \"API | None\" = None\n", true ; "string_class_annotation")]
 #[test_case("consumer.py", "from typing import TypeAlias\n\nfrom pkg._api import API\n\nAlias: TypeAlias = \"API\"\n", true ; "string_type_alias")]
+#[test_case("consumer.py", "from __future__ import annotations\n\nfrom pkg._api import API\n\n__all__ = []\n__all__.append(\"API\")\n\n\ndef run(value: API) -> None:\n    return None\n", true ; "appended_to_all_typing_only")]
+#[test_case("consumer.py", "from pkg._api import API\n\nNAME = \"API\"\n\n\ndef run(value: object) -> None:\n    return None\n", false ; "plain_string_not_a_read")]
 fn private_import_path_follows_ruff_import_private_name(file: &str, source: &str, reported: bool) {
     let root = common::project(&[
         ("pkg/__init__.py", ""),
