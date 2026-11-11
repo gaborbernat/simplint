@@ -2,11 +2,8 @@
 
 use std::fmt::Write as _;
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::{MAIN_SEPARATOR_STR, Path, PathBuf};
 use std::process;
-use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
 use serde::de::DeserializeOwned;
@@ -42,117 +39,8 @@ pub fn check(root: &Path, args: &[&str]) -> (i32, String, String) {
     check_with_stdin(root, args, "")
 }
 
-// The concise lines that report `code`, matched as a whole code so that a message naming it is not counted.
-pub fn reports<'a>(stdout: &'a str, code: &str) -> Vec<&'a str> {
-    let token = format!(" {code} ");
-    stdout.lines().filter(|line| line.contains(&token)).collect()
-}
-
-pub fn assert_report_count(root: &Path, code: &str, expected: usize) {
-    let stdout = check(root, &["--no-cache", "--select", code]).1;
-    assert_eq!(reports(&stdout, code).len(), expected, "{stdout}");
-}
-
-// Fixes the file under `root` with every unsafe fix of `select` applied, the way most fix tests run it.
-pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
-    check(root, &["--fix", "--unsafe-fixes", "--select", select])
-}
-
-pub fn fix_safe(root: &Path, select: &str) -> (i32, String, String) {
-    check(root, &["--no-cache", "--fix", "--select", select])
-}
-
-// The fix run keeps the report of `select` on `file` and leaves the file as it is.
-pub fn assert_fix_keeps_report(root: &Path, select: &str, fix: &[&str], file: &str, report: &str) {
-    let source = read(root, file);
-    let (code, stdout, _) = check(root, &[&["--no-cache", "--select", select], fix].concat());
-    assert_eq!((code, stdout.as_str(), read(root, file)), (1, report, source));
-}
-
-// Fixes the single file `name` of a project with `pyproject`, and returns the exit code, the report and the new source.
-pub fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i32, String, String) {
-    let root = project(&[("pyproject.toml", pyproject), (name, source)]);
-    let (code, stdout, _) = fix_unsafe(root.path(), select);
-    (code, stdout, read(root.path(), name))
-}
-
-pub struct RuffOverlap<'a> {
-    pub settings: &'a str,
-    pub select: &'a str,
-    pub ruff_code: &'a str,
-    pub files: &'a [(&'a str, &'a str)],
-}
-
-// Whether `fragment` is reported without Ruff's rule and with it selected, which hands the case over to Ruff.
-pub fn reported_without_and_with_ruff(case: &RuffOverlap, fragment: &str) -> [bool; 2] {
-    [false, true].map(|selected| {
-        let ruff_select = if selected { format!("\"{}\"", case.ruff_code) } else { String::new() };
-        let pyproject = format!("[tool.ruff.lint]\nselect = [{ruff_select}]\n{}", case.settings);
-        let mut files = vec![("pyproject.toml", pyproject.as_str())];
-        files.extend_from_slice(case.files);
-        let root = project(&files);
-        check(root.path(), &["--select", case.select]).1.contains(fragment)
-    })
-}
-
-// Runs `check` with `args` from `cwd`, a directory of the project at `root`.
-pub fn check_in(root: &Path, cwd: &Path, args: &[&str]) -> (i32, String, String) {
-    let output = command(root).current_dir(cwd).arg("check").args(args).output().expect("runs");
-    (
-        output.status.code().expect("exit code"),
-        String::from_utf8(output.stdout).expect("utf-8 stdout"),
-        String::from_utf8(output.stderr).expect("utf-8 stderr"),
-    )
-}
-
 pub fn check_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
     simplint_with_stdin(root, &[&["check", "--output-format", "concise"], args].concat(), stdin)
-}
-
-// A file the run can read but not write, marked the way each platform marks one.
-pub fn make_read_only(path: &Path) {
-    let mut permissions = fs::metadata(path).expect("metadata").permissions();
-    permissions.set_readonly(true);
-    fs::set_permissions(path, permissions).expect("make read-only");
-}
-
-// Windows denies reading only through access control lists, so the tests of unreadable files run on Unix.
-#[cfg(unix)]
-pub fn set_mode(path: &Path, mode: u32) {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(mode)).expect("chmod");
-}
-
-// A relative path written with `/`, as reports name it on this platform.
-pub fn native(path: &str) -> String {
-    path.replace('/', MAIN_SEPARATOR_STR)
-}
-
-// Windows canonicalizes to a verbatim `\\?\` path, which simplint shows without the prefix, as Ruff does.
-pub fn canonical(path: &Path) -> PathBuf {
-    let canonical = fs::canonicalize(path).expect("canonical path");
-    canonical.to_str().and_then(|text| text.strip_prefix(r"\\?\")).map_or_else(|| canonical.clone(), PathBuf::from)
-}
-
-// A path as `--show-settings` prints it: quoted, with backslashes escaped.
-pub fn quoted(path: &Path) -> String {
-    format!("{:?}", path.display().to_string())
-}
-
-pub fn read(root: &Path, name: &str) -> String {
-    fs::read_to_string(root.join(name)).expect("read file")
-}
-
-pub fn simplint(root: &Path, args: &[&str]) -> (i32, String, String) {
-    simplint_with_stdin(root, args, "")
-}
-
-pub fn json<T: DeserializeOwned>(root: &Path, args: &[&str]) -> T {
-    serde_json::from_str(&simplint(root, args).1).expect("json output")
-}
-
-pub fn fixture_source(path: &str) -> String {
-    fs::read_to_string(fixtures().join(path)).expect("fixture")
 }
 
 pub fn simplint_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
@@ -190,10 +78,110 @@ pub fn command(root: &Path) -> process::Command {
     command
 }
 
-// A rule's reports on one fixture as `line:col CODE message`, with the fix's safety and title, then, when any report has
-// a fix, the fixture after `--fix --unsafe-fixes`. The snapshot is named after the rule, then the fixture, of which a
-// fixture named after the rule adds only its suffix, then any target version other than Python 3.14. It sits in the
-// rule's folder, `tests/fixtures/<family>/<rule_name>/`, which mirrors `src/rules/<family>/<rule_name>.rs`.
+pub fn simplint(root: &Path, args: &[&str]) -> (i32, String, String) {
+    simplint_with_stdin(root, args, "")
+}
+
+pub fn json<T: DeserializeOwned>(root: &Path, args: &[&str]) -> T {
+    serde_json::from_str(&simplint(root, args).1).expect("json output")
+}
+
+pub fn check_in(root: &Path, cwd: &Path, args: &[&str]) -> (i32, String, String) {
+    let output = command(root).current_dir(cwd).arg("check").args(args).output().expect("runs");
+    (
+        output.status.code().expect("exit code"),
+        String::from_utf8(output.stdout).expect("utf-8 stdout"),
+        String::from_utf8(output.stderr).expect("utf-8 stderr"),
+    )
+}
+
+pub fn assert_report_count(root: &Path, code: &str, expected: usize) {
+    let stdout = check(root, &["--no-cache", "--select", code]).1;
+    assert_eq!(reports(&stdout, code).len(), expected, "{stdout}");
+}
+
+// The concise lines that report `code`, matched as a whole code so that a message naming it is not counted.
+pub fn reports<'a>(stdout: &'a str, code: &str) -> Vec<&'a str> {
+    let token = format!(" {code} ");
+    stdout.lines().filter(|line| line.contains(&token)).collect()
+}
+
+pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
+    check(root, &["--fix", "--unsafe-fixes", "--select", select])
+}
+
+pub fn fix_safe(root: &Path, select: &str) -> (i32, String, String) {
+    check(root, &["--no-cache", "--fix", "--select", select])
+}
+
+pub fn assert_fix_keeps_report(root: &Path, select: &str, fix: &[&str], file: &str, report: &str) {
+    let source = read(root, file);
+    let (code, stdout, _) = check(root, &[&["--no-cache", "--select", select], fix].concat());
+    assert_eq!((code, stdout.as_str(), read(root, file)), (1, report, source));
+}
+
+pub fn read(root: &Path, name: &str) -> String {
+    fs::read_to_string(root.join(name)).expect("read file")
+}
+
+// Ruff takes over the case once its rule is selected, so the case is checked both ways.
+pub fn reported_without_and_with_ruff(case: &RuffOverlap, fragment: &str) -> [bool; 2] {
+    [false, true].map(|selected| {
+        let ruff_select = if selected { format!("\"{}\"", case.ruff_code) } else { String::new() };
+        let pyproject = format!("[tool.ruff.lint]\nselect = [{ruff_select}]\n{}", case.settings);
+        let mut files = vec![("pyproject.toml", pyproject.as_str())];
+        files.extend_from_slice(case.files);
+        let root = project(&files);
+        check(root.path(), &["--select", case.select]).1.contains(fragment)
+    })
+}
+
+pub struct RuffOverlap<'a> {
+    pub settings: &'a str,
+    pub select: &'a str,
+    pub ruff_code: &'a str,
+    pub files: &'a [(&'a str, &'a str)],
+}
+
+pub fn make_read_only(path: &Path) {
+    let mut permissions = fs::metadata(path).expect("metadata").permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(path, permissions).expect("make read-only");
+}
+
+// Windows denies reading only through access control lists, so the tests of unreadable files run on Unix.
+#[cfg(unix)]
+pub fn set_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).expect("chmod");
+}
+
+// A relative path written with `/`, as reports name it on this platform.
+pub fn native(path: &str) -> String {
+    path.replace('/', MAIN_SEPARATOR_STR)
+}
+
+// Windows canonicalizes to a verbatim `\\?\` path, which simplint shows without the prefix, as Ruff does.
+pub fn canonical(path: &Path) -> PathBuf {
+    let canonical = fs::canonicalize(path).expect("canonical path");
+    canonical.to_str().and_then(|text| text.strip_prefix(r"\\?\")).map_or_else(|| canonical.clone(), PathBuf::from)
+}
+
+// Matches how `--show-settings` prints a path.
+pub fn quoted(path: &Path) -> String {
+    format!("{:?}", path.display().to_string())
+}
+
+pub fn fixture_source(path: &str) -> String {
+    fs::read_to_string(fixtures().join(path)).expect("fixture")
+}
+
+fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+// The snapshot is named after the rule, then the fixture's suffix, then the target version unless it is Python 3.14. It
+// sits in the rule's fixture folder, which mirrors `src/rules`.
 pub fn assert_rule_snapshot(rule: &str, fixture: &str, target_version: &str) {
     let rule_name = rule.replace('-', "_");
     let stem = fixture.trim_end_matches(".py");
@@ -207,6 +195,15 @@ pub fn assert_rule_snapshot(rule: &str, fixture: &str, target_version: &str) {
     settings.set_snapshot_path(rule_folder(&rule_name));
     settings.set_prepend_module_to_snapshot(false);
     settings.bind(|| insta::assert_snapshot!(name, lint_fixture(rule, fixture, target_version)));
+}
+
+fn rule_folder(rule_name: &str) -> PathBuf {
+    let family = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/rules"))
+        .expect("read the rule families")
+        .map(|entry| entry.expect("rule family entry").path())
+        .find(|family| family.join(format!("{rule_name}.rs")).is_file())
+        .expect("a rule family holds the rule");
+    fixtures().join(family.file_name().expect("a family name")).join(rule_name)
 }
 
 fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
@@ -240,29 +237,13 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
     output
 }
 
-fn fixtures() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
-}
-
-fn rule_folder(rule_name: &str) -> PathBuf {
-    let family = fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/rules"))
-        .expect("read the rule families")
-        .map(|entry| entry.expect("rule family entry").path())
-        .find(|family| family.join(format!("{rule_name}.rs")).is_file())
-        .expect("a rule family holds the rule");
-    fixtures().join(family.file_name().expect("a family name")).join(rule_name)
-}
-
-// Every fixture, so rules that look across modules see the same project each time, with the configuration the rule
-// fixtures assume: a library whose docstrings are reStructuredText, `requests` and `pytest-mock` as dependencies, an
-// entry point, and the Ruff rules whose overlap fixtures need to run selected, so their cases are left to Ruff. No
-// other Ruff rule runs, so the fixes show simplint's own work.
+// Every fixture is copied so rules that look across modules see the same project. Its configuration matches what the
+// rule fixtures assume. Only the Ruff rules that overlap fixtures select run, so the fixes show simplint's own work.
 // The rule folders merge into one project root, so each fixture keeps its module name and can import the fixtures of
 // other rules, as `consumer/use.py` does.
 pub fn fixture_project() -> TempDir {
     let root = TempDir::new().expect("temporary directory");
     let fixtures = fixtures();
-    // The first two levels are `<family>/<rule_name>`.
     for entry in walkdir::WalkDir::new(&fixtures).min_depth(3) {
         let entry = entry.expect("fixture entry");
         let below_rule: PathBuf =
@@ -282,7 +263,8 @@ pub fn fixture_project() -> TempDir {
         root.path().join("pyproject.toml"),
         "[project]\ndependencies = [\"pytest-mock\", \"requests\"]\n\
          scripts = { run = \"missing_from_all_scripts:run\" }\n\n\
-         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = [\"ANN401\", \"COM812\", \"G003\", \"ISC003\", \"N816\", \"PLW0129\"]\n",
+         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n\
+         [tool.ruff.lint]\nselect = [\"ANN401\", \"COM812\", \"G003\", \"ISC003\", \"N816\", \"PLW0129\"]\n",
     )
     .expect("write pyproject.toml");
     root
@@ -302,69 +284,4 @@ fn fixed_count(summary: &str, fixture: &str) -> usize {
         .take_while(|line| line.starts_with("    "))
         .map(|line| line.trim_start().split_once(' ').expect("a count").0.parse::<usize>().expect("a number"))
         .sum()
-}
-
-// A `--watch` run, read line by line; a run that misses an expected line within the deadline is killed.
-pub struct Watched {
-    child: process::Child,
-    lines: mpsc::Receiver<String>,
-}
-
-impl Watched {
-    pub fn start(root: &Path, flags: &[&str]) -> Self {
-        let mut child = command(root)
-            .args(["check", "--watch", "--output-format", "concise", "--select", "SMP101"])
-            .args(flags)
-            .stdout(process::Stdio::piped())
-            .stderr(process::Stdio::piped())
-            .spawn()
-            .expect("spawns");
-        let (sender, lines) = mpsc::channel();
-        let stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
-        std::thread::spawn(move || stdout.lines().map_while(Result::ok).try_for_each(|line| sender.send(line)));
-        Self { child, lines }
-    }
-
-    pub fn wait_for(&mut self, needle: &str) -> String {
-        loop {
-            match self.lines.recv_timeout(Duration::from_secs(60)) {
-                Ok(line) if line.contains(needle) => return line,
-                Ok(_) => {}
-                Err(error) => {
-                    self.child.kill().ok();
-                    panic!("no `{needle}` in the watch output: {error}");
-                }
-            }
-        }
-    }
-
-    // Watch mode runs until a check cannot run, so a configuration simplint cannot read ends it.
-    pub fn stop(mut self, root: &Path) -> (Option<i32>, String) {
-        fs::write(root.join("pyproject.toml"), "[tool.simplint\n").expect("write configuration");
-        self.drain();
-        let output = self.child.wait_with_output().expect("exits");
-        (output.status.code(), String::from_utf8(output.stderr).expect("utf-8 stderr"))
-    }
-
-    // The exit code and the output not yet read of a run that ends on its own.
-    pub fn finish(mut self) -> (Option<i32>, Vec<String>) {
-        let rest = self.drain();
-        (self.child.wait_with_output().expect("exits").status.code(), rest)
-    }
-
-    // The output closes when the run ends, so a run still going at the deadline missed the event that should end it.
-    fn drain(&mut self) -> Vec<String> {
-        let deadline = Instant::now() + Duration::from_secs(60);
-        let mut rest = Vec::new();
-        loop {
-            match self.lines.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(line) => rest.push(line),
-                Err(RecvTimeoutError::Disconnected) => return rest,
-                Err(RecvTimeoutError::Timeout) => {
-                    self.child.kill().ok();
-                    panic!("the watch run did not end");
-                }
-            }
-        }
-    }
 }

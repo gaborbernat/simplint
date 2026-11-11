@@ -16,8 +16,8 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
     &format!(
         "SMP301 (future-annotations) and Ruff's I002 (missing-required-import) undo each other's fixes.\n    Why: \
          SMP301 removes `from __future__ import annotations` on Python 3.14+; I002 adds it back because \
-         `lint.isort.required-imports` lists it.\n    Fix: drop the import from `required-imports`, or ignore SMP301 in \
-         `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
+         `lint.isort.required-imports` lists it.\n    Fix: drop the import from `required-imports`, or ignore SMP301 \
+         in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
     ) ; "future_annotations")]
 #[test_case(
     "[project]\nrequires-python = \">=3.15\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"PLW1514\"]\n",
@@ -53,8 +53,8 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
         "SMP901 (function-docstring) and Ruff's D101 (undocumented-public-class), D102 (undocumented-public-method) \
          work against each other.\n    Why: SMP901 removes the docstrings of internal functions, classes and methods; \
          D101, D102 ask for them.\n    Fix: ignore D101, D102 in Ruff's `lint.ignore` and let SMP903 \
-         (undocumented-public-api) ask for documentation of the public API, or ignore SMP901 in `[tool.simplint]`.\n    \
-         {BOTH_IN_PYPROJECT}; first file: module.py"
+         (undocumented-public-api) ask for documentation of the public API, or ignore SMP901 \
+         in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
     ) ; "function_docstring_classes")]
 #[test_case(
     "[tool.ruff]\nlint.select = [\"D100\"]\n",
@@ -66,13 +66,15 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
          file: tests/test_module.py"
     ) ; "test_module_docstring")]
 #[test_case(
-    "[tool.simplint]\ndocstring-style = \"rst\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"DOC201\", \"DOC501\"]\n",
+    "[tool.simplint]\ndocstring-style = \"rst\"\n[tool.ruff]\nlint.preview = true\n\
+     lint.select = [\"DOC201\", \"DOC501\"]\n",
     "module.py",
     &format!(
         "rst-returns (SMP923) and Ruff's docstring-missing-returns (DOC201) work against each other.\n    Why: \
          rst-returns asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings; \
-         docstring-missing-returns reads them as missing sections.\n    Fix: ignore docstring-missing-returns in Ruff's \
-         `lint.ignore`, or ignore rst-returns in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py\n  \
+         docstring-missing-returns reads them as missing sections.\n    Fix: ignore docstring-missing-returns in \
+         Ruff's `lint.ignore`, or ignore rst-returns in `[tool.simplint]`.\n    \
+         {BOTH_IN_PYPROJECT}; first file: module.py\n  \
          - rst-missing-raises (SMP924) and Ruff's docstring-missing-exception (DOC501) work against each other.\n    \
          Why: rst-missing-raises asks for the `:raises:` fields of reStructuredText docstrings; \
          docstring-missing-exception reads them as a missing section.\n    Fix: ignore docstring-missing-exception in \
@@ -84,15 +86,47 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
     assert_eq!(conflicts(root.path(), &[]), (2, header(conflict)));
 }
 
-#[test_case(&format!("[project]\nrequires-python = \">=3.13\"\n[tool.ruff]\nlint.select = [\"I002\"]\n{FUTURE}"), "module.py" ; "target_before_lazy_annotations")]
-#[test_case(&format!("{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\nlint.isort.required-imports = [\"import os\"]\n"), "module.py" ; "other_required_import")]
-#[test_case(&format!("{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\n{FUTURE}[tool.simplint]\nper-file-ignores = {{ \"module.py\" = [\"SMP301\"] }}\n"), "module.py" ; "simplint_rule_ignored_for_the_file")]
-#[test_case("[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"PLW1514\"]\n", "module.py" ; "target_before_utf8_default")]
-#[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\n", "module.py" ; "parent_relative_imports_banned")]
-#[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\nlint.flake8-tidy-imports.ban-relative-imports = \"all\"\n[tool.flake8-lazy]\n", "module.py" ; "flake8_lazy_leaves_relative_imports_alone")]
+#[test_case(
+    &format!("[project]\nrequires-python = \">=3.13\"\n[tool.ruff]\nlint.select = [\"I002\"]\n{FUTURE}"),
+    "module.py" ;
+    "target_before_lazy_annotations"
+)]
+#[test_case(
+    &format!("{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\nlint.isort.required-imports = [\"import os\"]\n"),
+    "module.py" ;
+    "other_required_import"
+)]
+#[test_case(
+    &format!(
+        "{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\n{FUTURE}[tool.simplint]\n\
+         per-file-ignores = {{ \"module.py\" = [\"SMP301\"] }}\n"
+    ),
+    "module.py" ;
+    "simplint_rule_ignored_for_the_file"
+)]
+#[test_case(
+    "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"PLW1514\"]\n",
+    "module.py" ;
+    "target_before_utf8_default"
+)]
+#[test_case(
+    "[tool.ruff]\nlint.select = [\"TID252\"]\n",
+    "module.py" ;
+    "parent_relative_imports_banned"
+)]
+#[test_case(
+    "[tool.ruff]\nlint.select = [\"TID252\"]\nlint.flake8-tidy-imports.ban-relative-imports = \"all\"\n\
+     [tool.flake8-lazy]\n",
+    "module.py" ;
+    "flake8_lazy_leaves_relative_imports_alone"
+)]
 #[test_case("[tool.ruff]\nlint.select = [\"D103\"]\n", "_private.py" ; "private_module")]
 #[test_case("[tool.ruff]\nlint.select = [\"D100\"]\n", "module.py" ; "not_a_test_module")]
-#[test_case("[tool.ruff]\nlint.select = [\"D100\"]\nlint.per-file-ignores = { \"tests/*\" = [\"D100\"] }\n", "tests/test_module.py" ; "ruff_rule_ignored_for_tests")]
+#[test_case(
+    "[tool.ruff]\nlint.select = [\"D100\"]\nlint.per-file-ignores = { \"tests/*\" = [\"D100\"] }\n",
+    "tests/test_module.py" ;
+    "ruff_rule_ignored_for_tests"
+)]
 #[test_case("[tool.ruff]\nlint.preview = true\nlint.select = [\"DOC201\"]\n", "module.py" ; "docstrings_not_rst")]
 fn combination_without_conflict_lints(pyproject: &str, file: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
@@ -143,15 +177,7 @@ fn conflict_fails_standard_input() {
     assert_eq!((code, stdout, stderr.contains("SMP301 (future-annotations) and Ruff's")), (2, String::new(), true));
 }
 
-fn header(conflicts: &str) -> String {
-    format!(
-        "simplint failed\n  Cause: simplint and Ruff rules work against each other, so fixing never leaves the code \
-         clean:\n  - {conflicts}\n"
-    )
-}
-
-// The exit code and the error, with the project directory as `<root>` however the settings spell it, and `/` between
-// path parts on every platform.
+// The error names the project as `<root>` whatever spelling the settings use, with `/` between path parts.
 fn conflicts(root: &Path, args: &[&str]) -> (i32, String) {
     let (code, _, stderr) = check(root, args);
     let mut error = stderr;
@@ -159,4 +185,11 @@ fn conflicts(root: &Path, args: &[&str]) -> (i32, String) {
         error = error.replace(&spelling.display().to_string(), "<root>");
     }
     (code, error.replace('\\', "/"))
+}
+
+fn header(conflicts: &str) -> String {
+    format!(
+        "simplint failed\n  Cause: simplint and Ruff rules work against each other, so fixing never leaves the code \
+         clean:\n  - {conflicts}\n"
+    )
 }

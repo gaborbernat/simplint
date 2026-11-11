@@ -44,10 +44,10 @@ fn link_to_a_file_outside_the_run_is_skipped(flags: &[&str]) {
     assert_eq!(read(outside.path(), "secret.py"), common::SECTIONED);
 }
 
-// A link whose target is in the run is linted as any file is, unless the run also finds the target, which is then linted
-// once, by its own path.
+// A link whose target is in the run is linted as any file is, unless the run also finds the target, which is then
+// linted once, by its own path.
 #[cfg(unix)]
-#[test_case(&[] , (true, false) ; "target_found")]
+#[test_case(&[], (true, false) ; "target_found")]
 #[test_case(&["link.py"], (false, true) ; "link_named")]
 fn link_inside_the_run_is_linted_once(paths: &[&str], reported: (bool, bool)) {
     let root = project(&[("module.py", "x = 1\n")]);
@@ -73,8 +73,8 @@ fn file_reached_through_a_link_is_fixed_once() {
     );
 }
 
-// Hard links share one file, so the run lints it once: under the smallest path in sort order, with symlinks last, rather
-// than under each name in parallel, where a fix would race on the file and each report would show once per name.
+// Hard links share one file, so the run lints it once: under the smallest path in sort order, with symlinks last,
+// rather than under each name in parallel, where a fix would race on the file and each report would show once per name.
 #[cfg(unix)]
 #[test]
 fn hard_links_to_one_file_are_linted_once() {
