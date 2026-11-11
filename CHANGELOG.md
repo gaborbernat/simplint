@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.10.3 (2026-11-11)
+
+<a name="release-0-10-3"></a>
+
+<a name="release-0-10-3-changes"></a>
+
+### Changes
+
+- simplint no longer reports what a Ruff rule reports, preview rules included, whether or not the project's Ruff
+  configuration selects that rule; before, a rule left a case to Ruff only while Ruff ran the rule. Rules that already
+  left cases to Ruff now always do, and these rules leave Ruff's cases for the first time:
+  [`private-import-path`](src/rules/imports/private_import_path.md) (PLC2701),
+  [`init-module-content`](src/rules/api/init_module_content.md) (F401),
+  [`up-backport-import`](src/rules/imports/up_backport_import.md) (A004, when it has no fix),
+  [`stdlib-mock`](src/rules/testing/stdlib_mock.md) (TID251, when `banned-api` bans the import),
+  [`section-comment`](src/rules/comments/section_comment.md) (E265 and E266, for a heading written as prose),
+  [`function-docstring`](src/rules/docstrings/function_docstring.md) and
+  [`test-module-docstring`](src/rules/docstrings/test_module_docstring.md) (D418 and D419, when they have no fix) and
+  [`unused-default`](src/rules/logic/unused_default.md) (PT028, when it has no fix). Select the Ruff rules to have these
+  cases reported. [`undocumented-public-api`](src/rules/docstrings/undocumented_public_api.md) still leaves a case to
+  Ruff's D1 rules only while they run, since the recommended setup turns them off.
+  [`all-format`](src/rules/api/all_format.md) and [`string-concatenation`](src/rules/logic/string_concatenation.md) also
+  still leave a COM812 or ISC003 case to Ruff only while those run, since `ruff format` moves the line breaks the two
+  rules read ([#126](https://github.com/gaborbernat/simplint/pull/126)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`constant-assert`](src/rules/testing/constant_assert.md),
+  [`mock-assertion-typo`](src/rules/testing/mock_assertion_typo.md) and
+  [`module-variable-case`](src/rules/naming/module_variable_case.md) report again the cases they can fix that Ruff's
+  F631, PLW0129, PGH005 and N816 report without a fix, so the fix stays available
+  ([#126](https://github.com/gaborbernat/simplint/pull/126)) by [@gaborbernat](https://github.com/gaborbernat).
+- A file that does not parse is skipped with a warning instead of reporting its syntax errors as `invalid-syntax`, which
+  Ruff already reports. A run whose only problem is such a file exits with 0
+  ([#126](https://github.com/gaborbernat/simplint/pull/126)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-3-fixed"></a>
+
+### Fixed
+
+- [`blanket-ignore`](src/rules/comments/blanket_ignore.md) no longer reports `# type: ignore  [code]`, with spaces
+  before the codes, as blanket; mypy and Ruff read the codes ([#126](https://github.com/gaborbernat/simplint/pull/126))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) reports `x = ...; return x` in a generator again: it
+  left the case to Ruff's RET504, which skips generators, so neither tool reported it
+  ([#126](https://github.com/gaborbernat/simplint/pull/126)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`undocumented-public-api`](src/rules/docstrings/undocumented_public_api.md) reports a function whose decorator
+  pydocstyle's `ignore-decorators` lists: it left the function to Ruff's D103, which skips it
+  ([#126](https://github.com/gaborbernat/simplint/pull/126)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-3-documentation"></a>
+
+### Documentation
+
+- A [design principles](../docs/explanation/design-principles.rst) page explains what simplint reports, when it fixes,
+  and how it splits the work with Ruff ([#126](https://github.com/gaborbernat/simplint/pull/126)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.10.2 (2026-11-11)
 
 <a name="release-0-10-2"></a>
