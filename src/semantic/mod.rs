@@ -24,7 +24,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::registry::Rule;
 use crate::settings::FileSettings;
-use crate::syntax::{first_positional, is_name, receiver};
+use crate::syntax::{first_positional, is_name, receiver, statement_index};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
@@ -470,7 +470,7 @@ impl<'a> Index<'a> {
         self.references.entry(name.id.as_str()).or_default().push(Reference {
             name: name.id.as_str(),
             range: name.range,
-            statement: body.partition_point(|stmt| stmt.end() <= name.start()),
+            statement: statement_index(body, name.start()),
             evaluation: if model.in_annotation() {
                 Evaluation::Annotation
             } else if function.is_some() || lazy {

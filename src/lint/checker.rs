@@ -50,8 +50,7 @@ pub struct Checker<'a> {
     suppressions: &'a Suppressions<'a>,
     semantic: OnceCell<Semantic<'a>>,
     dunder_all: OnceCell<Exports<'a>>,
-    function_defs: OnceCell<Vec<&'a ast::StmtFunctionDef>>,
-    class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
+    defs: OnceCell<(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>)>,
     module_classes: OnceCell<FxHashMap<&'a str, &'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
@@ -87,8 +86,7 @@ impl<'a> Checker<'a> {
             suppressions,
             semantic: OnceCell::new(),
             dunder_all: OnceCell::new(),
-            function_defs: OnceCell::new(),
-            class_defs: OnceCell::new(),
+            defs: OnceCell::new(),
             module_classes: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
@@ -326,23 +324,23 @@ impl<'a> Checker<'a> {
 
     // Every `def` of the module, nested ones included.
     pub fn function_defs(&self) -> &[&'a ast::StmtFunctionDef] {
-        self.function_defs.get_or_init(|| {
-            let mut functions = Vec::new();
-            for_each_body(self.body(), &mut |statements, _| {
-                functions.extend(statements.iter().filter_map(Stmt::as_function_def_stmt));
-            });
-            functions
-        })
+        &self.defs().0
     }
 
     // Every `class` of the module, nested ones included.
     pub fn class_defs(&self) -> &[&'a ast::StmtClassDef] {
-        self.class_defs.get_or_init(|| {
+        &self.defs().1
+    }
+
+    fn defs(&self) -> &(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>) {
+        self.defs.get_or_init(|| {
+            let mut functions = Vec::new();
             let mut classes = Vec::new();
             for_each_body(self.body(), &mut |statements, _| {
+                functions.extend(statements.iter().filter_map(Stmt::as_function_def_stmt));
                 classes.extend(statements.iter().filter_map(Stmt::as_class_def_stmt));
             });
-            classes
+            (functions, classes)
         })
     }
 

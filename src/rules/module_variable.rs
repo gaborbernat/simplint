@@ -3,7 +3,7 @@
 
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{Expr, Stmt};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
@@ -11,7 +11,7 @@ use crate::rules::frameworks::framework_names;
 use crate::rules::typing::type_parameter_assignment;
 use crate::rules::{is_class_like, is_sphinx_conf};
 use crate::semantic::{Binding, BindingKind};
-use crate::syntax::{Exports, Visibility, single_assignment};
+use crate::syntax::{Exports, Visibility, single_assignment, statement_index};
 
 pub struct ModuleVariable<'a> {
     pub name: &'a str,
@@ -88,7 +88,7 @@ fn is_block_local(checker: &Checker, name: &str, bindings: &[Binding]) -> bool {
     };
     matches!(body.get(block), Some(Stmt::If(_) | Stmt::Try(_) | Stmt::With(_)))
         && references.iter().all(|reference| reference.statement == block)
-        && bindings.iter().all(|binding| body.partition_point(|stmt| stmt.end() <= binding.range.start()) == block)
+        && bindings.iter().all(|binding| statement_index(body, binding.range.start()) == block)
         && !checker.project().is_used_elsewhere(name)
 }
 

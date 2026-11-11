@@ -416,6 +416,10 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
     })
 }
 
+pub fn statement_index(body: &[Stmt], offset: TextSize) -> usize {
+    body.partition_point(|stmt| stmt.end() <= offset)
+}
+
 pub enum Exports<'a> {
     Absent,
     Listed(Listing<'a>),

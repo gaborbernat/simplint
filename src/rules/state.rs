@@ -132,6 +132,10 @@ impl<'a> FileState<'a> {
         })
     }
 
+    pub(crate) fn in_source_text(&self, checker: &Checker<'a>, range: TextRange) -> bool {
+        self.source_text_spans(checker).iter().any(|span| span.contains_range(range))
+    }
+
     pub(crate) fn comments(&self, checker: &Checker) -> &[(TextRange, Comment)] {
         self.comments.get_or_init(|| {
             checker.comment_ranges().into_iter().map(|range| (range, Comment::at(checker.source, range))).collect()

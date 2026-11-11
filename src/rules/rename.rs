@@ -49,8 +49,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
         return None;
     }
     // A name in a t-string keeps its source text, which a new spelling would change.
-    let source_spans = checker.state().source_text_spans(checker);
-    if ranges.iter().any(|range| source_spans.iter().any(|span| span.contains_range(*range))) {
+    if ranges.iter().any(|range| checker.state().in_source_text(checker, *range)) {
         return None;
     }
     let renamed_exports = exports
