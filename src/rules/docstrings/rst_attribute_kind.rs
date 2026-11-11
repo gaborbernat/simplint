@@ -12,8 +12,8 @@ pub fn rst_attribute_kind(checker: &Checker) {
                 continue;
             };
             // `:var:` suits either, and a class-level default that methods set on `self` is both.
-            let (word, name) = (field.words[0].as_str(), attribute.name);
-            let (expected, what) = match word {
+            let name = attribute.name;
+            let (expected, what) = match field.words[0].as_str() {
                 "ivar" if !attribute.on_instance => ("cvar", "a class variable"),
                 "cvar" if !attribute.class_var => ("ivar", "an instance attribute"),
                 _ => continue,
