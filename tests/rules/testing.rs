@@ -27,8 +27,12 @@ use crate::common;
 #[test_case("mock-assertion-typo", "mock_assertion_typo_parenthesized.py", None ; "mock_assertion_typo_parenthesized")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo_comment.py", None ; "mock_assertion_typo_comment")]
 #[test_case("mock-attribute-assignment", "tests/test_mock_attribute_assignment.py", None ; "mock_attribute_assignment")]
-#[test_case("mock-attribute-assignment", "tests/test_mock_attribute_comment.py", None ; "mock_attribute_assignment_comment")]
-#[test_case("mock-attribute-assignment", "tests/test_mock_reserved_attribute.py", None ; "mock_attribute_assignment_reserved")]
+#[test_case(
+    "mock-attribute-assignment", "tests/test_mock_attribute_comment.py", None ; "mock_attribute_assignment_comment"
+)]
+#[test_case(
+    "mock-attribute-assignment", "tests/test_mock_reserved_attribute.py", None ; "mock_attribute_assignment_reserved"
+)]
 #[test_case("mock-without-spec", "tests/test_mock_without_spec.py", None ; "mock_without_spec")]
 #[test_case("split-composite-assert", "tests/test_split_composite_assert.py", None ; "split_composite_assert")]
 #[test_case("sleep-in-test", "tests/test_sleep_in_test.py", None ; "sleep_in_test")]
@@ -37,12 +41,28 @@ use crate::common;
 #[test_case("stdlib-mock", "tests/test_stdlib_mock_mocker.py", None ; "stdlib_mock_mocker")]
 #[test_case("stdlib-mock", "stdlib_mock_helper.py", None ; "stdlib_mock_helper")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", Some("py311") ; "unittest_enter_context")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", Some("py310") ; "unittest_enter_context_py310")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", Some("py311") ; "unittest_enter_context_used")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_comment.py", Some("py311") ; "unittest_enter_context_comment")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_inline.py", Some("py311") ; "unittest_enter_context_inline")]
+#[test_case(
+    "up-unittest-enter-context", "up_unittest_enter_context.py", Some("py310") ; "unittest_enter_context_py310"
+)]
+#[test_case(
+    "up-unittest-enter-context", "up_unittest_enter_context_used.py", Some("py311") ; "unittest_enter_context_used"
+)]
+#[test_case(
+    "up-unittest-enter-context",
+    "up_unittest_enter_context_comment.py",
+    Some("py311") ;
+    "unittest_enter_context_comment"
+)]
+#[test_case(
+    "up-unittest-enter-context", "up_unittest_enter_context_inline.py", Some("py311") ; "unittest_enter_context_inline"
+)]
 #[test_case("test-class", "tests/test_class_generic.py", Some("py312") ; "test_class_generic_before_3_13")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_not_testcase.py", Some("py311") ; "unittest_enter_context_not_testcase")]
+#[test_case(
+    "up-unittest-enter-context",
+    "up_unittest_enter_context_not_testcase.py",
+    Some("py311") ;
+    "unittest_enter_context_not_testcase"
+)]
 #[test_case("unused-fixture", "tests/test_ufix_requests.py", None ; "unused_fixture")]
 #[test_case("unused-fixture", "tests/conftest.py", None ; "unused_fixture_conftest")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
@@ -152,7 +172,8 @@ fn constant_assert_leaves_ruff_cases_without_a_fix(source: &str, reported: bool)
 }
 
 // Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, so SMP808 leaves that sleep to Ruff
-// whether or not the project selects it. A body with another statement is not one ASYNC110 reports, so the rule keeps it.
+// whether or not the project selects it. A body with another statement is not one ASYNC110 reports, so the rule keeps
+// it.
 #[test_case("while not done():\n        await asyncio.sleep(1)", 0 ; "sole_await_left_to_ruff")]
 #[test_case("while not done():\n        await asyncio.sleep(1)\n        done()", 1 ; "await_with_another_statement")]
 fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
