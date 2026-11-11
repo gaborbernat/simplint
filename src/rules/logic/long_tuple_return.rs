@@ -22,10 +22,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Some(Scope::Function(function)) = walker.scopes().last() else { return };
     let name = function.name.as_str();
     let length = tuple.elts.len();
-    let limit = walker.checker.settings.project.knobs.max_tuple_elements;
     // A starred element stands for any number of values, so the tuple's length is unknown. A key function's tuple is
     // compared or hashed as a whole, and one declared `tuple[T, ...]` is a sequence: neither is unpacked by position.
-    if length <= limit
+    if length <= walker.checker.settings.project.knobs.max_tuple_elements
         || PROTOCOL_METHODS.contains(&name)
         || name == "key"
         || name.ends_with("_key")

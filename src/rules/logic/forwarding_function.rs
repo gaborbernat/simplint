@@ -41,13 +41,12 @@ fn check_forwarding(
     references: &[TextRange],
     receiver: Option<&str>,
 ) {
-    if let Some(target) = forward_target(checker, function, references, receiver) {
-        let name = function.name.as_str();
-        let target = checker.text(target.range());
+    if let Some(callee) = forward_target(checker, function, references, receiver) {
+        let target = checker.text(callee.range());
         checker.report(
             Rule::ForwardingFunction,
             function.name.range(),
-            format!("`{name}` only forwards to `{target}`; call `{target}` at its call sites instead"),
+            format!("`{}` only forwards to `{target}`; call `{target}` at its call sites instead", function.name),
         );
     }
 }
@@ -89,12 +88,11 @@ pub(super) fn forward_target<'a>(
         let expr = expr.as_starred_expr().map_or(expr, |starred| &starred.value);
         expr.as_name_expr().is_some_and(|name| parameters.contains(&name.id.as_str()))
     };
-    // `make(x).strip()` is a call on a computed value, not a forward to a named function.
-    let target = UnqualifiedName::from_expr(&call.func);
-    // `fn(x)` calls whatever the caller passed in, so there is no fixed target to call instead. A method's receiver is
-    // the object it is called on, so a target through its attributes, such as `self.client.get`, is a fixed one, while
-    // the receiver itself is the method's own object and is not a target to call instead.
-    if target.as_ref().is_none_or(|target| {
+    // `make(x).strip()` is a call on a computed value, not a forward to a named function. `fn(x)` calls whatever the
+    // caller passed in, so there is no fixed target to call instead. A method's receiver is the object it is called on,
+    // so a target through its attributes, such as `self.client.get`, is a fixed one, while the receiver itself is the
+    // method's own object and is not a target to call instead.
+    if UnqualifiedName::from_expr(&call.func).as_ref().is_none_or(|target| {
         let segments = target.segments();
         segments
             .first()
