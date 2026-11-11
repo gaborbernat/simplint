@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import shutil
 import subprocess
 import sys
-import tarfile
+import tomllib
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
@@ -53,17 +52,10 @@ class _Run(Protocol):
 
 
 @pytest.fixture
-def archive(tmp_path: Path) -> Path:
-    return _sdist(tmp_path)
-
-
-def _sdist(at: Path, content: bytes = b"VALUE = 1\n") -> Path:
-    archive = at / "demo-1.0.tar.gz"
-    with tarfile.open(archive, "w:gz") as tar:
-        member = tarfile.TarInfo("demo-1.0/mod.py")
-        member.size = len(content)
-        tar.addfile(member, io.BytesIO(content))
-    return archive
+def archive(tmp_path: Path, tar_gz: Callable[..., bytes]) -> Path:
+    path = tmp_path / "demo-1.0.tar.gz"
+    path.write_bytes(tar_gz({"demo-1.0/mod.py": b"VALUE = 1\n"}))
+    return path
 
 
 @pytest.fixture
@@ -103,6 +95,12 @@ def test_packages_are_pinned_to_pypi_source_archives() -> None:
         124,
         "https://files.pythonhosted.org/packages/source/b/boto3/boto3-1.43.124.tar.gz",
     )
+
+
+def test_tox_pins_the_ecosystem_ruff_to_the_crates_version(root: Path) -> None:
+    crates = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]["ruff"]
+    tox = tomllib.loads((root / "tox.toml").read_text(encoding="utf-8"))
+    assert tox["env"]["ecosystem"]["deps"] == [f"ruff=={crates.removeprefix('=')}"]
 
 
 def test_main_rejects_unpinned_names(tmp_path: Path) -> None:
@@ -356,10 +354,11 @@ def test_check_keeps_ruff_cache_in_the_workspace(
 
 
 def test_check_does_not_warn_about_invalid_escapes(
-    package: Package, tmp_path: Path, run_tools: Callable[[_Behavior], MockType]
+    package: Package, tmp_path: Path, run_tools: Callable[[_Behavior], MockType], tar_gz: Callable[..., bytes]
 ) -> None:
     run_tools(_clean)
-    archive = _sdist(tmp_path, b'VALUE = "\\d"\n')
+    archive = tmp_path / "demo-1.0.tar.gz"
+    archive.write_bytes(tar_gz({"demo-1.0/mod.py": b'VALUE = "\\d"\n'}))
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
