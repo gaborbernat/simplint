@@ -28,7 +28,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::fix::Withdrawn;
 use crate::project::cache::{FileKey, MAX_LAST_SEEN, build_directory, read_aligned, tempfile_in, write_atomically};
 use crate::project::{Ending, FileFacts};
-use crate::run::{Diagnostics, Linting};
+use crate::run::{Diagnostics, Linting, warn_unparsed};
 
 use self::fingerprint::Fingerprint;
 use self::rendered::{Rendered, RenderedPackage, read_rendered, text};
@@ -168,7 +168,7 @@ impl<'a> Cache<'a> {
             && file.clean.as_ref().is_some_and(|clean| clean.to_native() == fingerprint.clean)
         {
             relabel(file);
-            return Diagnostics::default();
+            return clean_result(file, path);
         }
         if fingerprint.settled.is_none()
             && let Some(file) = file
@@ -184,7 +184,7 @@ impl<'a> Cache<'a> {
             .filter(|settled| fingerprint.settled == Some(settled.fingerprint.to_native()))
             .map(withdrawn);
         let fresh = known.is_none();
-        let Linting { mut diagnostics, settled, noqa_rows, cacheable } = lint(known);
+        let Linting { mut diagnostics, settled, noqa_rows, cacheable, unparsed } = lint(known);
         if !cacheable {
             return diagnostics;
         }
@@ -195,7 +195,7 @@ impl<'a> Cache<'a> {
             .filter(|_| held && !diagnostics.inner.is_empty())
             .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.hash, fingerprint.clean));
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
-            self.update(path, key, ChangeData::Clean(fingerprint.clean, index));
+            self.update(path, key, ChangeData::Clean(fingerprint.clean, index, unparsed));
         } else if let (true, Some(fingerprint), Some(withdrawn)) = (fresh, fingerprint.settled, settled) {
             self.update(path, key, ChangeData::Settled(fingerprint, withdrawn));
         } else if fingerprint.settled.is_none()
@@ -224,7 +224,7 @@ impl<'a> Cache<'a> {
             return None;
         }
         if file.clean.is_some() {
-            return Some(Diagnostics::default());
+            return Some(clean_result(file, path));
         }
         self.stored_findings(path, key, file.findings.as_ref()?, full)
     }
@@ -341,8 +341,9 @@ impl<'a> Cache<'a> {
                 .or_insert_with(|| FileCache::new(key, now));
             match data {
                 ChangeData::Facts(facts) => file.facts = Some(facts),
-                ChangeData::Clean(fingerprint, index) => {
+                ChangeData::Clean(fingerprint, index, unparsed) => {
                     file.clean = Some(fingerprint);
+                    file.unparsed = unparsed;
                     file.findings = None;
                     file.index = Some(index);
                 }
@@ -387,6 +388,15 @@ impl<'a> Cache<'a> {
     }
 }
 
+// The result of a file whose clean fingerprint matches: nothing to report, and for a file that does not parse, its
+// warning again.
+fn clean_result(file: &ArchivedFileCache, path: &Path) -> Diagnostics {
+    if file.unparsed {
+        warn_unparsed(path);
+    }
+    Diagnostics::default()
+}
+
 fn recorded<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().expect("no worker panics while recording")
 }
@@ -424,8 +434,10 @@ struct FileCache {
     // The file's `FileFacts`, archived on their own: writing the cache reads back every file it keeps, and bytes copy
     // where the facts' strings and lists would each be rebuilt.
     facts: Option<Vec<u8>>,
-    // The fingerprint the file last linted clean under.
+    // The fingerprint the file last linted clean under. A file that does not parse also lints clean, and `unparsed`
+    // marks it, since its warning shows on every run.
     clean: Option<u64>,
+    unparsed: bool,
     settled: Option<Settled>,
     // The reports the file last had without fixes, under their fingerprint.
     findings: Option<Findings>,
@@ -440,6 +452,7 @@ impl FileCache {
             last_seen: AtomicU64::new(now),
             facts: None,
             clean: None,
+            unparsed: false,
             settled: None,
             findings: None,
             index: None,
@@ -468,7 +481,7 @@ struct Change {
 
 enum ChangeData {
     Facts(Vec<u8>),
-    Clean(u64, IndexKey),
+    Clean(u64, IndexKey, bool),
     Findings(u64, Vec<Report>, IndexKey),
     Settled(u64, Withdrawn),
     Index(IndexKey),

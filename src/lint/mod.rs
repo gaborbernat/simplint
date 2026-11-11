@@ -57,7 +57,8 @@ impl<'a> Linter<'a> {
         Self { settings, project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
     }
 
-    // Like Ruff, a file that does not parse reports its syntax errors; the rules, which need a valid tree, skip it.
+    // The syntax errors of a file that does not parse come back for the fix loop, which reads them to catch a fix that
+    // breaks the syntax; a run leaves them out, as Ruff reports them.
     pub fn lint(&self, path: &Path, source: &str, noqa: flags::Noqa) -> Lint {
         self.lint_inner(path, source, noqa, noqa.is_enabled())
     }

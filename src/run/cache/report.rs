@@ -65,8 +65,6 @@ pub(super) struct Report {
 enum ReportKind {
     // The rule's code, and the line of its suppression comment, as `Suppressions::locate` sets it.
     Rule { code: String, noqa_offset: u32 },
-    // A file that does not parse, whose syntax error `Linter::check` builds from its message and range alone.
-    InvalidSyntax,
     // A file that cannot be read, which `Diagnostics::from_error` builds from its message alone.
     IoError,
 }
@@ -98,7 +96,7 @@ impl StoredRelated {
 
 impl Report {
     // All of the reports, or `None` when a diagnostic is one `of` cannot store. Only a rule's diagnostic has a
-    // suppression line, so a file's syntax error or unreadable file takes none.
+    // suppression line, so an unreadable file takes none.
     pub(super) fn all(diagnostics: &[Diagnostic], noqa_rows: &[TextSize]) -> Option<Vec<Self>> {
         let mut rows = noqa_rows.iter().copied();
         diagnostics.iter().map(|diagnostic| Self::of(diagnostic, rows.next())).collect()
@@ -120,9 +118,6 @@ impl Report {
                 related: Vec::new(),
             })
         };
-        if diagnostic.is_invalid_syntax() {
-            return unruled(ReportKind::InvalidSyntax);
-        }
         if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
             return unruled(ReportKind::IoError);
         }
@@ -165,9 +160,6 @@ impl Report {
         let length = file.source_text().len();
         let range = stored_range(self.start, self.end, length)?;
         let (rule, noqa_offset) = match &self.kind {
-            ReportKind::InvalidSyntax => {
-                return Some(Diagnostic::invalid_syntax(Span::from(file.clone()), self.message.as_str(), range));
-            }
             ReportKind::IoError => {
                 return Some(IOError { message: self.message.clone() }.into_diagnostic(range, file));
             }

@@ -196,12 +196,14 @@ pub(crate) struct Mode {
 // diagnostic's suppression comment belongs on, which the cache stores with the reports. A file whose fixes cannot be
 // written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
 // it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
-// the same key, so its report is stored, unless the error is only logged and so leaves no report.
+// the same key, so its report is stored, unless the error is only logged and so leaves no report. `unparsed` marks a
+// file that does not parse, which has no diagnostics but its warning.
 pub(crate) struct Linting {
     pub(crate) diagnostics: Diagnostics,
     pub(crate) settled: Option<Withdrawn>,
     pub(crate) noqa_rows: Vec<TextSize>,
     pub(crate) cacheable: bool,
+    pub(crate) unparsed: bool,
 }
 
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
@@ -221,7 +223,13 @@ pub(crate) fn lint_path(
     fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| {
         let diagnostics = Diagnostics::from_error(path, format!("{error:#}"), linter);
         // A cached clean result would leave out the warning of a read error that was only logged.
-        Linting { cacheable: !diagnostics.inner.is_empty(), diagnostics, settled: None, noqa_rows: Vec::new() }
+        Linting {
+            cacheable: !diagnostics.inner.is_empty(),
+            diagnostics,
+            settled: None,
+            noqa_rows: Vec::new(),
+            unparsed: false,
+        }
     })
 }
 
@@ -233,8 +241,9 @@ fn fix_path(
     overlay: &Overlay,
 ) -> Result<Linting> {
     let source = overlay.source(path)?;
-    let Linted { diagnostics, transformed, fixed, settled, noqa_rows } =
+    let Linted { mut diagnostics, transformed, fixed, settled, noqa_rows } =
         lint_source(path, &source, linter, mode, settled);
+    let unparsed = skip_unparsed(path, &mut diagnostics);
     let mut diffs = Vec::new();
     if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         if mode.fix.is_apply() {
@@ -252,7 +261,23 @@ fn fix_path(
         settled,
         noqa_rows,
         cacheable: true,
+        unparsed,
     })
+}
+
+// A file that does not parse has no reports, since Ruff reports its syntax errors and the rules need a valid tree. Its
+// warning comes from here and from a cached result alike, so each run shows it.
+fn skip_unparsed(path: &Path, diagnostics: &mut Vec<Diagnostic>) -> bool {
+    let unparsed = diagnostics.iter().any(Diagnostic::is_invalid_syntax);
+    if unparsed {
+        diagnostics.clear();
+        warn_unparsed(path);
+    }
+    unparsed
+}
+
+pub(crate) fn warn_unparsed(path: &Path) {
+    warn_user!("Skipped {}: it does not parse, so Ruff reports its syntax errors.", relativize_path(path));
 }
 
 // A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
@@ -261,7 +286,7 @@ fn unwritten(path: &Path, source: &str, linter: &Linter, mode: &Mode, error: &an
     let lint = linter.lint(path, source, mode.noqa);
     let mut diagnostics = Diagnostics::from_error(path, format!("writing {}: {error:#}", path.display()), linter);
     diagnostics.inner.extend(lint.diagnostics);
-    Linting { diagnostics, settled: None, noqa_rows: Vec::new(), cacheable: false }
+    Linting { diagnostics, settled: None, noqa_rows: Vec::new(), cacheable: false, unparsed: false }
 }
 
 // Replaces a file read as `original` with `fixed`, in place as Ruff writes it, so the file keeps its owner, hard
@@ -291,7 +316,8 @@ pub(crate) struct StdinLint {
 // Ruff's `lint_stdin`: the source comes from standard input, and with `--fix` the source, fixed or not, goes to
 // standard output.
 pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> StdinLint {
-    let Linted { diagnostics, transformed, fixed, .. } = lint_source(path, source, linter, mode, None);
+    let Linted { mut diagnostics, transformed, fixed, .. } = lint_source(path, source, linter, mode, None);
+    skip_unparsed(path, &mut diagnostics);
     let output = if mode.fix.is_apply() {
         Some(transformed.unwrap_or_else(|| source.to_owned()))
     } else {

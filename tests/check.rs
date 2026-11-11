@@ -4,7 +4,10 @@ use std::fs;
 
 use test_case::test_case;
 
-use common::{SECTION, SINGLE_X, check, check_with_stdin, empty_project, project, simplint_with_stdin};
+use common::{
+    PASSED, SECTION, SINGLE_X, UNPARSED, check, check_with_stdin, empty_project, project, read, simplint,
+    simplint_with_stdin,
+};
 
 #[test]
 fn check_clean_project_passes() {
@@ -212,15 +215,41 @@ fn check_accepts_every_target_version(version: &str) {
     assert_eq!(check(root.path(), &["--target-version", version, "--select", "SMP101"]).0, 0);
 }
 
+// Ruff reports the syntax errors of a file that does not parse, so simplint only warns about it and the run goes on.
+#[test_case(&["--output-format", "concise"], PASSED ; "concise")]
+#[test_case(&["--output-format", "full"], PASSED ; "full")]
+#[test_case(&["--output-format", "json"], "[]" ; "json")]
+fn unparsed_file_is_skipped_with_a_warning(flags: &[&str], stdout: &str) {
+    let root = project(&[("broken.py", "def broken(:\n")]);
+    assert_eq!(
+        simplint(root.path(), &[&["check", "--select", "SMP101"], flags].concat()),
+        (0, stdout.to_owned(), UNPARSED.to_owned())
+    );
+}
+
 #[test]
-fn check_syntax_error_is_reported() {
+fn unparsed_file_beside_a_report_leaves_that_report_and_status_1() {
     let root = project(&[("broken.py", "def broken(:\n"), ("module.py", "x = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP101"]).1,
-        format!(
-            "broken.py:1:12: invalid-syntax: Expected a parameter or the end of the parameter list\nbroken.py:2:1: \
-             invalid-syntax: unexpected EOF while parsing\nmodule.py:1:1: {SINGLE_X}\nFound 3 errors.\n"
-        )
+        check(root.path(), &["--select", "SMP101"]),
+        (1, format!("module.py:1:1: {SINGLE_X}\nFound 1 error.\n"), UNPARSED.to_owned())
+    );
+}
+
+#[test]
+fn fix_leaves_an_unparsed_file_as_it_is() {
+    let root = project(&[("broken.py", "def broken(:\n")]);
+    let (code, stdout, stderr) = check(root.path(), &["--fix", "--select", "SMP101"]);
+    assert_eq!((code, stdout, stderr), (0, PASSED.to_owned(), UNPARSED.to_owned()));
+    assert_eq!(read(root.path(), "broken.py"), "def broken(:\n");
+}
+
+#[test]
+fn check_stdin_skips_source_that_does_not_parse() {
+    let root = empty_project();
+    assert_eq!(
+        check_with_stdin(root.path(), &["--select", "SMP101", "--stdin-filename", "broken.py", "-"], "def broken(:\n"),
+        (0, PASSED.to_owned(), UNPARSED.to_owned())
     );
 }
 
