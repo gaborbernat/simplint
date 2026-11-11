@@ -1,10 +1,14 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use ruff_linter::registry::{Rule as RuffRule, RuleSet as RuffRuleSet};
+use ruff_linter::rules::flake8_tidy_imports::settings::ApiBan;
 use ruff_linter::rules::pep8_naming::settings::IgnoreNames;
 use ruff_macros::CacheKey;
 use ruff_python_ast::PythonVersion;
+use ruff_python_semantic::NameImport;
 use ruff_workspace::resolver::match_exclusion;
+use rustc_hash::FxHashMap;
 
 use crate::lint::registry::RuleSet;
 use crate::settings::Settings;
@@ -65,6 +69,15 @@ pub struct FromRuff<'a> {
     pub max_locals: usize,
     pub max_nested_blocks: usize,
     pub max_statements_in_try: usize,
+    // The modules and members Ruff's TID251 bans, by qualified name.
+    pub banned_api: &'a FxHashMap<String, ApiBan>,
+    // The builtin names Ruff's flake8-builtins rules, as its A004, let a binding shadow.
+    pub builtins_ignorelist: &'a [String],
+    // The imports Ruff's F401 never reports: those isort requires and those pyflakes allows unused.
+    pub required_imports: &'a BTreeSet<NameImport>,
+    pub allowed_unused_imports: &'a [String],
+    // The decorators whose functions Ruff's pydocstyle rules skip.
+    pub ignore_decorators: &'a BTreeSet<String>,
     // The rules Ruff's settings enable, which decide whether a rule that Ruff covers is left to it. Per-file ignores
     // are not applied: a file that silences a Ruff rule is the project's choice, as a `noqa` for it is.
     ruff_rules: RuffRuleSet,
@@ -99,6 +112,11 @@ impl<'a> FromRuff<'a> {
             max_locals: settings.linter.pylint.max_locals,
             max_nested_blocks: settings.linter.pylint.max_nested_blocks,
             max_statements_in_try: settings.linter.pylint.max_statements_in_try,
+            banned_api: &settings.linter.flake8_tidy_imports.banned_api,
+            builtins_ignorelist: &settings.linter.flake8_builtins.ignorelist,
+            required_imports: &settings.linter.isort.required_imports,
+            allowed_unused_imports: &settings.linter.pyflakes.allowed_unused_imports,
+            ignore_decorators: &settings.linter.pydocstyle.ignore_decorators,
             ruff_rules: settings.linter.rules.iter_enabled().collect(),
         }
     }
