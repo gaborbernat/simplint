@@ -199,6 +199,26 @@ No fix is offered when:
           assert parse("2") == 3
   ```
 
+- two methods of the class get the same name, as `test_a` and `testa` do in `TestSame`;
+
+  ```python report file=tests/test_same.py
+  class TestSame:
+      def test_a(self) -> None:
+          assert parse("1") == 1
+
+      def testa(self) -> None:
+          assert parse("2") == 2
+  ```
+
+  ```python fixed file=tests/test_same.py
+  class TestSame:
+      def test_a(self) -> None:
+          assert parse("1") == 1
+
+      def testa(self) -> None:
+          assert parse("2") == 2
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

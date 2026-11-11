@@ -1,3 +1,3 @@
-[`test-class`](../src/rules/testing/test_class.md) (SMP801) no longer flattens two classes of one file onto the same
-function name. The first class keeps its fix and a later class with that name is reported without one; before, the
-second function shadowed the first and one test was lost.
+[`test-class`](../src/rules/testing/test_class.md) (SMP801) no longer flattens onto a function name that another class
+or another method of the same class already takes, which shadowed a test. The first class keeps its fix; a later class,
+or a class with two methods of one name, is reported without one.

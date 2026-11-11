@@ -65,14 +65,17 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut H
         return None;
     }
     let mut functions = Vec::new();
-    let mut names = Vec::new();
+    let mut names = HashSet::new();
     for (stmt, block) in class.body.iter().zip(blocks) {
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
         let (text, name) = flatten_method(checker, (function, type_params, &prefix), block, new_names)?;
+        // Methods of one class can share a name too: `test_a` and `testa` in `TestSame` both become `test_same_a`.
+        if !names.insert(name) {
+            return None;
+        }
         functions.push(text);
-        names.push(name);
     }
     new_names.extend(names);
     (!functions.is_empty()).then(|| functions.join(&checker.stylist.line_ending().as_str().repeat(2)))
