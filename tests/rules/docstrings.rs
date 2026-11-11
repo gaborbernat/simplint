@@ -247,6 +247,39 @@ fn attrs_private_field_is_a_documented_parameter() {
     );
 }
 
+// A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not asked
+// for the fields of a value it has not written. A body with code is held to the same rules.
+#[test_case(
+    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    ...\n",
+    "All checks passed!\n" ;
+    "placeholder_yields"
+)]
+#[test_case(
+    "def rows():\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    raise NotImplementedError\n",
+    "All checks passed!\n" ;
+    "placeholder_raises"
+)]
+#[test_case(
+    "def total() -> int:\n    \"\"\"Add the values.\n    \"\"\"\n    return 1\n",
+    "model.py:2:5: SMP923 `total` returns a value, yet its docstring has no `:returns:` field\nFound 1 error.\n" ;
+    "computed_value"
+)]
+#[test_case(
+    "def rows() -> list[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    return []\n",
+    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 `rows` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "computed_yields"
+)]
+fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        ("model.py", source),
+    ]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP923"]).1, stdout);
+}
+
 // Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
 fn rst_rules_need_the_docstring_style() {

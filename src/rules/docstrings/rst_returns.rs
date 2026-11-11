@@ -59,7 +59,8 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
     let docstring = &target.docstring;
     let name = def.name.as_str();
     let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
-    if has_yields {
+    let placeholder = is_placeholder(&def.body);
+    if has_yields && !placeholder {
         let fields: Vec<_> = docstring.fields(&[FieldKind::Yields, FieldKind::YieldType]).collect();
         checker.report_fix(
             Rule::RstReturns,
@@ -76,7 +77,7 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
             visitor.returns.iter().any(|stmt| stmt.value.as_deref().is_some_and(|value| !value.is_none_literal_expr()))
         }
     };
-    if target.public(checker) && returns_value && !has_returns {
+    if target.public(checker) && returns_value && !has_returns && !placeholder {
         checker.report(
             Rule::RstReturns,
             docstring.range(),
@@ -84,7 +85,7 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
         );
     }
     // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
-    if has_returns && !returns_value && (returns_nothing || !is_placeholder(&def.body)) {
+    if has_returns && !returns_value && (returns_nothing || !placeholder) {
         let fields: Vec<_> = docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType]).collect();
         checker.report_fix(
             Rule::RstReturns,
