@@ -47,7 +47,8 @@ description = "build documentation"
 # installed one instead.
 pass_env = [ "PUPPETEER_*", "SSL_CERT_FILE" ]
 base_python = [ "3.15" ]
-# The pages read the binary's rules and options from docs/_data, so Read the Docs builds them without compiling Rust.
+# The pages read the rule list from the rule sources and the options from docs/_data, so Read the Docs builds them
+# without compiling Rust.
 skip_install = true
 dependency_groups = [ "docs" ]
 commands = [
@@ -199,6 +200,8 @@ commands = [
     { replace = "posargs", default = [
       "--cov",
       "{tox_root}{/}tasks",
+      "--cov",
+      "{tox_root}{/}docs",
       "--cov",
       "{tox_root}{/}tests{/}tasks",
       "--cov-config",

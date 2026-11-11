@@ -37,12 +37,11 @@ if TYPE_CHECKING:
         pytest.param("[documentation](https://github.com/gaborbernat/simplint)", 0, id="external_link"),
     ],
 )
+@pytest.mark.usefixtures("registry")
 def test_changelog_rule_links(tmp_path: Path, capsys: pytest.CaptureFixture[str], line: str, expected: int) -> None:
     (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
     (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
     (tmp_path / "src" / "rules" / "api" / "missing_from_all.md").touch()
-    (tmp_path / "docs" / "_data").mkdir(parents=True)
-    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
     path = tmp_path / "CHANGELOG.md"
     path.write_text(f"# Changelog\n{line}\n", encoding="utf-8")
 
@@ -57,23 +56,21 @@ def test_changelog_rule_links(tmp_path: Path, capsys: pytest.CaptureFixture[str]
         pytest.param("[all-format](../src/rules/api/all_format.md)", 1, id="unquoted"),
     ],
 )
+@pytest.mark.usefixtures("registry")
 def test_fragment_rule_link(tmp_path: Path, line: str, expected: int) -> None:
     (tmp_path / "changelog.d").mkdir()
     (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
     (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
-    (tmp_path / "docs" / "_data").mkdir(parents=True)
-    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
     fragment = tmp_path / "changelog.d" / "+rule.bugfix.md"
     fragment.write_text(f"{line}\n", encoding="utf-8")
 
     assert main([str(fragment)]) == expected
 
 
+@pytest.mark.usefixtures("registry")
 def test_multiple_rule_links_read_the_registry_once(tmp_path: Path) -> None:
     (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
     (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
-    (tmp_path / "docs" / "_data").mkdir(parents=True)
-    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
     path = tmp_path / "CHANGELOG.md"
     path.write_text("[`all-format`](src/rules/api/all_format.md) twice: [`all-format`](src/rules/api/all_format.md)\n")
 

@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 # sphinx-argparse-cli imports the parser builder that sits next to this file
 sys.path.insert(0, str(Path(__file__).parent))
 
+from rules_data import Block, Example, Fence, RuleEntry, rule_entries
+
 company, name = "gaborbernat", "simplint"
 # the manifest rather than the installed package, so the docs build needs no compiled binary
 with (Path(__file__).parents[1] / "Cargo.toml").open("rb") as manifest:
@@ -173,48 +175,9 @@ markdown_http_base: Final[str] = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 llms_txt_suppress_unknown_node_warnings: Final[list[str]] = ["label", "PassthroughTextElement", "mermaid"]
 
 
-class _Fence(TypedDict):
-    line: int
-    end_line: int
-    source: str
-
-
-class _Block(_Fence):
-    role: str
-    language: str
-    file: str
-    named: bool
-
-
-class _Example(TypedDict):
-    section: str | None
-    line: int
-    end_line: int
-    config: _Fence | None
-    blocks: list[_Block]
-
-
-class _Examples(TypedDict, total=False):
-    parsed: list[_Example]
-    error: str
-
-
-class _RuleEntry(TypedDict):
-    code: str
-    name: str
-    summary: str
-    fix: str
-    explanation: str
-    examples: _Examples
-    family: str
-    group: str
-    short_group: str
-    cross_file: bool
-
-
 def _generate(docs: Path) -> dict[str, str]:
-    # `simplint rules --output-format json`, committed and kept equal to the binary's by `tests/docs_data.rs`, so the
-    # pages and `simplint rule` cannot drift
+    # the rule list is derived from the sources the binary is built from, and `tests/docs_data.rs` holds it to the
+    # binary's own listing, so the pages and `simplint rule` cannot drift
     _DIAGRAMS.mkdir(parents=True, exist_ok=True)
     _write(Path(mermaid_sequence_config), _DIAGRAM_CONFIG)
     # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
@@ -222,7 +185,7 @@ def _generate(docs: Path) -> dict[str, str]:
     # outlast puppeteer's default 30 s wait.
     puppeteer = {"args": ["--no-sandbox", "--disable-dev-shm-usage"], "timeout": 180_000}
     _write(_DIAGRAMS / "puppeteer.json", json.dumps(puppeteer))
-    rules: list[_RuleEntry] = json.loads((docs / "_data" / "rules.json").read_text(encoding="utf-8"))
+    rules = rule_entries()
     # each group's title and short title by its family, the directory its rules live in, which names its pages since
     # titles have spaces; the binary lists rules by code, so each group appears where its first rule does
     groups = {rule["family"]: (rule["group"], rule["short_group"]) for rule in rules}
@@ -262,7 +225,7 @@ _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
 }
 
 
-def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) -> str:
+def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> str:
     options = "".join(
         f'<option value="{family}">{html.escape(group)}</option>' for family, (group, _) in groups.items()
     )
@@ -298,7 +261,7 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
 
-def _rule_row(rule: _RuleEntry) -> str:
+def _rule_row(rule: RuleEntry) -> str:
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
     fix = (
         ""
@@ -321,14 +284,14 @@ def _rule_row(rule: _RuleEntry) -> str:
     )
 
 
-def _group_page(group: str, rules: list[_RuleEntry]) -> str:
+def _group_page(group: str, rules: list[RuleEntry]) -> str:
     entries = "\n".join(
         f"   {rule['code']} · {rule['name']} <../rules/{rule['code']}>" for rule in rules if rule["group"] == group
     )
     return f"{group}\n{'=' * len(group)}\n\n.. toctree::\n   :titlesonly:\n\n{entries}\n"
 
 
-def _rule_page(rule: _RuleEntry) -> str:
+def _rule_page(rule: RuleEntry) -> str:
     # rule pages stay Markdown, rendered by MyST, so links on inline code and fenced diagrams survive as written
     if "error" in (examples := rule["examples"]):
         msg = f"{rule['code']}: {examples['error']}"
@@ -369,7 +332,7 @@ def _rule_page(rule: _RuleEntry) -> str:
     return "\n".join([*targets, f"# {title}", "", "```{raw} html", badges, "```", "", *body])
 
 
-def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line: dict[int, _Example]) -> list[str]:
+def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> list[str]:
     marker = next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)
     if heading != "Example" or marker is None:
         return [_examples(lines, start, stop, by_line, settings=heading == "Configuration").strip(), ""]
@@ -389,28 +352,28 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
     return [*body, "::::", ""]
 
 
-def _body(lines: list[str], fence: _Fence) -> list[str]:
+def _body(lines: list[str], fence: Fence) -> list[str]:
     # the lines between a fence's opening and closing lines, which the page keeps as written
     return lines[fence["line"] : fence["end_line"] - 1]
 
 
-def _indent(lines: list[str], example: _Example) -> str:
+def _indent(lines: list[str], example: Example) -> str:
     # the fence indentation, which the dropdown keeps so it sits inside the list item
     line = lines[example["line"] - 1]
     return line[: len(line) - len(line.lstrip())]
 
 
-def _own_config(example: _Example) -> _Fence | None:
+def _own_config(example: Example) -> Fence | None:
     # an Example section config holds for the examples after it, but only the example it opens shows it
     config = example["config"]
     return config if config is not None and config["line"] == example["line"] else None
 
 
-def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, _Example], *, settings: bool) -> str:
+def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, settings: bool) -> str:
     # Examples with no prose between them form a run, rendered together so a reported one can sit beside its accepted
     # one. Only the Active on cases pair a reported example with its accepted one.
     out: list[str] = []
-    run: list[_Example] = []
+    run: list[Example] = []
     index = start
     active = False
     while index < stop:
@@ -434,7 +397,7 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, _Examp
     return "\n".join(out)
 
 
-def _gap_lines(lines: list[str], example: _Example) -> list[str]:
+def _gap_lines(lines: list[str], example: Example) -> list[str]:
     # the blank lines between an example's fences, which the page keeps where they are
     fences = [*([config] if (config := _own_config(example)) is not None else []), *example["blocks"]]
     gaps: list[str] = []
@@ -445,7 +408,7 @@ def _gap_lines(lines: list[str], example: _Example) -> list[str]:
     return gaps
 
 
-def _render(run: list[_Example], lines: list[str], *, settings: bool, pair: bool) -> list[str]:
+def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool) -> list[str]:
     out: list[str] = []
     index = 0
     while index < len(run):
@@ -459,16 +422,16 @@ def _render(run: list[_Example], lines: list[str], *, settings: bool, pair: bool
 
 
 # a reported example followed by an accepted one under the same configuration reads best side by side
-def _pairs(reported: _Example, accepted: _Example) -> bool:
+def _pairs(reported: Example, accepted: Example) -> bool:
     shown = ({block["role"] for block in example["blocks"]} - {"context"} for example in (reported, accepted))
     return list(shown) == [{"report"}, {"ok"}] and _config_source(reported) == _config_source(accepted)
 
 
-def _config_source(example: _Example) -> str | None:
+def _config_source(example: Example) -> str | None:
     return None if (config := example["config"]) is None else config["source"]
 
 
-def _pair(reported: _Example, accepted: _Example, lines: list[str]) -> list[str]:
+def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
     indent = _indent(lines, reported)
     out = [
         f"{indent}::::{{dropdown}} Example: reported and not",
@@ -487,11 +450,11 @@ def _pair(reported: _Example, accepted: _Example, lines: list[str]) -> list[str]
     return [*out, f"{indent}::::", ""]
 
 
-def _caption(block: _Block, side: str) -> str:
+def _caption(block: Block, side: str) -> str:
     return f"`{block['file']}` {side}" if block["named"] else side.capitalize()
 
 
-def _dropdown(example: _Example, lines: list[str], *, settings: bool) -> list[str]:
+def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str]:
     roles = {block["role"] for block in example["blocks"]}
     config = example["config"]
     # an example elsewhere may need a setting to run, as the rst rules do, yet it shows a case, not the setting
@@ -524,7 +487,7 @@ def _dropdown(example: _Example, lines: list[str], *, settings: bool) -> list[st
 
 
 # an Example section shows each example as a card: its config is not numbered, and context files are left out
-def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, _Example]) -> str:
+def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> str:
     out: list[str] = []
     skip_blank = False
     index = start
@@ -544,7 +507,7 @@ def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, _Examp
 
 # A context file only sets up its example for the test, so the card leaves it out with the blank lines after it. The
 # returned flag says whether the blank lines after the example still belong to such a file.
-def _cards(lines: list[str], example: _Example, *, skip_blank: bool) -> tuple[list[str], bool]:
+def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[list[str], bool]:
     out: list[str] = []
     previous = example["line"] - 1
     if (config := _own_config(example)) is not None:

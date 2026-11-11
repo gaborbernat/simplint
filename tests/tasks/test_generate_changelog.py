@@ -120,8 +120,9 @@ def test_link_rules_rejects_unknown_source_link() -> None:
         link_rules("[`missing-from-all`](src/rules/api/missing_from_all.md)", {"SMP405": "all-format"}, codes=True)
 
 
-def test_rule_names_reads_the_docs_rule_list(tmp_path: Path) -> None:
-    (tmp_path / "docs" / "_data").mkdir(parents=True)
-    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"code": "SMP405", "name": "all-format"}]')
+@pytest.mark.usefixtures("registry")
+def test_rule_names_reads_the_rule_sources(tmp_path: Path) -> None:
+    (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
+    (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
 
     assert rule_names(tmp_path) == {"SMP405": "all-format"}
