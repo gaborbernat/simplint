@@ -148,24 +148,21 @@ jobs:
         run: echo "version=$(python tasks/cargo_version.py Cargo.toml)" >>"$GITHUB_OUTPUT"
       - name: ⚙️ Read Rust toolchain channel
         id: toolchain
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         shell: bash
         run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >>"$GITHUB_OUTPUT"
       - name: 📦 Restore PGO profile
         id: profile
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         uses: actions/cache/restore@v6.1.0
         with:
           path: pgo/simplint.profdata
           key: pgo-profile-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🦀 Install Rust toolchain
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           components: llvm-tools-preview
           cache: false
       - name: 🏗️ Build instrumented binary
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
         uses: PyO3/maturin-action@v1.51.0
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
@@ -178,37 +175,36 @@ jobs:
           RUSTFLAGS: -Cprofile-generate
       - name: 📦 Restore PGO corpus
         id: corpus
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
         uses: actions/cache/restore@v6.1.0
         with:
           path: pgo-corpus
           key: pgo-corpus-${{ runner.os }}-${{ hashFiles('tasks/pgo_corpus.toml') }}
       - name: 🏋️ Collect PGO profile
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
         shell: bash
         # The profile lives outside target, which the Linux build container creates as root.
         run: python -m tasks.pgo train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
       - name: 💾 Save PGO corpus
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6.1.0
         with:
           path: pgo-corpus
           key: ${{ steps.corpus.outputs.cache-primary-key }}
       - name: 💾 Save PGO profile
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6.1.0
         with:
           path: pgo/simplint.profdata
           key: ${{ steps.profile.outputs.cache-primary-key }}
       - name: ⚙️ Use PGO profile
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         shell: bash
         run: |
           flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
           echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
           echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
       - name: 🏗️ Build wheels
-        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') || !((startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo) }}
+        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') }}
         uses: PyO3/maturin-action@v1.51.0
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
@@ -216,13 +212,13 @@ jobs:
           args: --locked --release --out dist --target-dir target
           manylinux: ${{ matrix.platform.manylinux || 'auto' }}
           docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
-          sccache: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.pgo) && !startsWith(matrix.platform.runner, 'windows') }}
+          sccache: false
           before-script-linux: |
             if [[ -n "${PGO_BUILD_LOG:-}" ]]; then
               maturin() { command maturin "$@" 2>&1 | tee "$PGO_BUILD_LOG"; }
             fi
       - name: 🏗️ Build wheels with PGO
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && !startsWith(matrix.platform.runner, 'ubuntu') }}
+        if: ${{ !startsWith(matrix.platform.runner, 'ubuntu') }}
         shell: bash
         run: |
           uvx --from "maturin==${MATURIN_VERSION#v}" maturin build --locked --release --out dist --target-dir target \
@@ -230,7 +226,6 @@ jobs:
         env:
           MATURIN_VERSION: ${{ needs.maturin.outputs.version }}
       - name: 🔍 Check the PGO profile matched
-        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         shell: bash
         run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
       - name: 📤 Upload wheels
