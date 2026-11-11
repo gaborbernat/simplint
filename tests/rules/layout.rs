@@ -1,3 +1,7 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use test_case::test_case;
 
 use crate::common;
@@ -179,12 +183,12 @@ fn class_layout_rules_settle_every_fixture_in_one_fix_run() {
     assert_eq!(python_sources(root.path()), settled);
 }
 
-fn python_sources(root: &std::path::Path) -> std::collections::BTreeMap<std::path::PathBuf, String> {
+fn python_sources(root: &Path) -> BTreeMap<PathBuf, String> {
     walkdir::WalkDir::new(root)
         .into_iter()
         .map(|entry| entry.expect("project entry"))
         .filter(|entry| entry.path().extension().is_some_and(|extension| extension == "py"))
-        .map(|entry| (entry.path().to_path_buf(), std::fs::read_to_string(entry.path()).expect("source")))
+        .map(|entry| (entry.path().to_path_buf(), fs::read_to_string(entry.path()).expect("source")))
         .collect()
 }
 

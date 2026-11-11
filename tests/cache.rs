@@ -91,7 +91,7 @@ fn cache_is_not_written_when_nothing_changed() {
     check(root.path(), &["--select", "SMP101"]);
     let cache =
         fs::read_dir(cache_dir(root.path())).expect("read").next().expect("a cache file").expect("entry").path();
-    let old = std::time::SystemTime::UNIX_EPOCH + Duration::from_hours(24);
+    let old = SystemTime::UNIX_EPOCH + Duration::from_hours(24);
     fs::File::options().write(true).open(&cache).expect("open").set_modified(old).expect("set modified time");
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!(fs::metadata(&cache).expect("metadata").modified().expect("modified time"), old);
@@ -461,7 +461,7 @@ fn caches_of_other_builds_expire_after_thirty_days() {
         (".ruff_cache/simplint/0.0.2-00000000000000b2/1", "new"),
     ]);
     let stale = root.path().join(".ruff_cache/simplint/0.0.1-00000000000000a1/1");
-    let old = std::time::SystemTime::now() - Duration::from_hours(24 * 31);
+    let old = SystemTime::now() - Duration::from_hours(24 * 31);
     fs::File::options().write(true).open(&stale).expect("open").set_modified(old).expect("set modified time");
     check(root.path(), &["--select", "SMP101"]);
     let simplint = root.path().join(".ruff_cache/simplint");
@@ -479,7 +479,7 @@ fn empty_caches_of_other_builds_expire_by_their_own_age() {
     let (stale, fresh) = (simplint.join("0.0.1-00000000000000a1"), simplint.join("0.0.2-00000000000000b2"));
     fs::create_dir_all(&stale).expect("create");
     fs::create_dir_all(&fresh).expect("create");
-    let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
+    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
     filetime::set_file_mtime(&stale, old).expect("set modified time");
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!((stale.exists(), fresh.exists()), (false, true));
@@ -557,7 +557,7 @@ fn cache_dir_flag_may_point_outside_the_project() {
 fn stale_directories_that_are_not_caches_of_other_builds_stay(name: &str, file: &str) {
     let path = format!(".ruff_cache/simplint/{name}/{file}");
     let root = project(&[("module.py", common::CLEAN_MODULE), (path.as_str(), "kept")]);
-    let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
+    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
     filetime::set_file_mtime(root.path().join(&path), old).expect("set modified time");
     check(root.path(), &["--select", "SMP101"]);
     assert!(root.path().join(&path).exists());
@@ -570,7 +570,7 @@ fn link_in_the_cache_directory_is_kept_with_its_target() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     let target = outside.path().join("1");
     fs::write(&target, "kept").expect("write");
-    let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
+    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
     filetime::set_file_mtime(&target, old).expect("set modified time");
     let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let simplint = root.path().join(".ruff_cache/simplint");
