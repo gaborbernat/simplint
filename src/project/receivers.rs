@@ -523,7 +523,7 @@ fn assigned(value: &Expr) -> Receiver {
     if MOCK_CLASSES.contains(&last) || segments.starts_with(&["mocker", "patch"]) {
         Receiver::Mock
     } else {
-        instance(last)
+        instance(&segments.join("."))
     }
 }
 
@@ -540,9 +540,15 @@ fn annotated(annotation: &Expr) -> Receiver {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) if last_segment(value) == Some("Optional") => {
             annotated(slice)
         }
-        _ => match last_segment(annotation) {
-            Some(last) if MOCK_CLASSES.contains(&last) || last == "MockType" => Receiver::Mock,
-            Some(last) => instance(last),
+        _ => match UnqualifiedName::from_expr(annotation) {
+            Some(name) => {
+                let last = name.segments().last().copied().unwrap_or_default();
+                if MOCK_CLASSES.contains(&last) || last == "MockType" {
+                    Receiver::Mock
+                } else {
+                    instance(&name.segments().join("."))
+                }
+            }
             None => Receiver::Unknown,
         },
     }
@@ -550,12 +556,14 @@ fn annotated(annotation: &Expr) -> Receiver {
 
 // Only a capitalized name is taken for a class; calling a lowercase factory says nothing about what it returns. A
 // private class is taken without its leading underscores, and an all-caps name such as `URL` is a class too, while a
-// one- or two-letter capital is more likely a type variable such as `T` or `KT`.
-fn instance(name: &str) -> Receiver {
-    let bare = name.trim_start_matches('_');
+// one- or two-letter capital is more likely a type variable such as `T` or `KT`. The name keeps its module, as
+// `models.Release`, so the import that binds the module qualifies it.
+fn instance(written: &str) -> Receiver {
+    let last = written.rsplit('.').next().unwrap_or_default();
+    let bare = last.trim_start_matches('_');
     let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())
         && (bare.chars().any(|character| character.is_ascii_lowercase()) || bare.len() >= 3);
-    if is_class { Receiver::Instance(name.to_owned()) } else { Receiver::Unknown }
+    if is_class { Receiver::Instance(written.to_owned()) } else { Receiver::Unknown }
 }
 
 // A patch helper writes an attribute of its first argument: `monkeypatch.setattr(obj, "name", value)`, or

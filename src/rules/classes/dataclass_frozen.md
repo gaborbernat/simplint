@@ -352,6 +352,24 @@ class Release:
       result.status = "done"
   ```
 
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Result:
+      status: str
+  ```
+
+  ```python context file=app/run.py
+  import app.models
+
+
+  def run() -> None:
+      result = app.models.Result("ok")
+      result.status = "done"
+  ```
+
 - other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time,
   such as the `setattr(self, key, value)` of a method that updates its fields from a dict, or
   `setattr(release, key, value)` on an annotated parameter
@@ -479,7 +497,7 @@ class Release:
 An object is **known to be of the class** when it is:
 
 - `self` in a method of the class
-- a name bound to a call of the class
+- a name bound to a call of the class, through its module as `models.Release(...)` too
 - a name annotated with the class, `Optional[...]` and `... | None` included
 - an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
 

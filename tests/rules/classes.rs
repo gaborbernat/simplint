@@ -502,3 +502,17 @@ fn subclass_through_an_import_keeps_frozen_unset(base: &str, import: &str, fixed
     common::fix_unsafe(root.path(), "dataclass-frozen");
     assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
 }
+
+// An instance reached through the module that defines its class, as `models.Release(...)` or an annotation
+// `models.Release`, is an instance of that class, so a write to it withholds the fix.
+#[test_case("release = models.Release(\"1\")\nrelease.version = \"2\"\n", false ; "dotted_constructor")]
+#[test_case("def bump(release: models.Release) -> None:\n    release.version = \"2\"\n", false ; "dotted_annotation")]
+#[test_case("release = models.Release(\"1\")\nprint(release)\n", true ; "dotted_constructor_without_write")]
+fn module_qualified_instance_keeps_frozen_unset(caller: &str, fixed: bool) {
+    let root = common::project(&[
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n"),
+        ("main.py", &format!("import models\n\n\n{caller}")),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+}
