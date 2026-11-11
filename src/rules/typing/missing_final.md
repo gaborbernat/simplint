@@ -258,7 +258,9 @@ LIMIT: Final[int] = 10
 
 - **Names a module writes through `globals()`**, such as `globals()["LIMIT"] = 2` in a function: that write sets the
   name. A write under a computed key, or through `globals().update`, `setdefault` or `pop`, may set any name, so none of
-  the module's names is reported.
+  the module's names is reported. At module level, `vars()` and `locals()` with no argument return the same dict, so
+  their writes count too, including in the default, decorator or base of a `def` or `class`, which run at module level.
+  Inside the body of a function, class or lambda they do not, and neither does a call with an argument.
 
   ```python ok
   LIMIT = 1
@@ -285,6 +287,19 @@ LIMIT: Final[int] = 10
       globals().update({"LIMIT": 2})
       globals().setdefault("LIMIT", 3)
       globals().pop("LIMIT")
+  ```
+
+  ```python ok
+  LIMIT = 1
+  vars()["LIMIT"] = 2
+  ```
+
+  ```python ok
+  LIMIT = 1
+
+
+  def write(value: object = vars().update(LIMIT=3)) -> None:
+      print(value)
   ```
 
 - **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.

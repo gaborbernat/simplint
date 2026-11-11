@@ -55,6 +55,27 @@ fn missing_final_ignores_a_globals_the_module_defines() {
     assert_eq!(stdout.matches("SMP601").count(), 1, "{stdout}");
 }
 
+// At module level `vars()` and `locals()` with no argument are the module's dict, so their writes count as `globals()`
+// writes, while a call with an argument or a write in a function, class or lambda does not.
+#[test_case("vars()[\"LIMIT\"] = 3", 0 ; "module_vars_store")]
+#[test_case("locals()[\"LIMIT\"] = 3", 0 ; "module_locals_store")]
+#[test_case("del vars()[\"LIMIT\"]", 0 ; "module_vars_delete")]
+#[test_case("vars().update(LIMIT=3)", 0 ; "module_vars_update")]
+#[test_case("vars(config)[\"LIMIT\"] = 3", 1 ; "vars_of_an_object")]
+#[test_case("class Config:\n    vars()[\"LIMIT\"] = 3", 1 ; "class_body_vars")]
+#[test_case("def write():\n    locals()[\"LIMIT\"] = 3", 1 ; "function_locals")]
+#[test_case("(lambda: locals().update(LIMIT=3))()", 1 ; "lambda_locals")]
+#[test_case("def write(value=vars().update(LIMIT=3)):\n    return value", 0 ; "default_of_a_parameter")]
+#[test_case("@vars().update(LIMIT=3)\ndef write():\n    return None", 0 ; "decorator")]
+#[test_case("class Config(vars().update(LIMIT=3) or object):\n    pass", 0 ; "class_base")]
+#[test_case("(lambda value=vars().update(LIMIT=3): value)()", 0 ; "lambda_default")]
+#[test_case("def write():\n    value = vars().update(LIMIT=3)", 1 ; "function_body_local")]
+fn missing_final_counts_module_vars_and_locals_writes_only(body: &str, reports: usize) {
+    let root = common::project(&[("module.py", &format!("LIMIT = 1\n\n\n{body}\n"))]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
+    assert_eq!(stdout.matches("SMP601").count(), reports, "{stdout}");
+}
+
 // The parenthesized name `(LIMIT)` takes no annotation of its own, as `(LIMIT: Final[int]) = 3` is not valid Python,
 // but the other names of the file still get theirs.
 #[test_case("(LIMIT) = 3\n", false ; "parenthesized_without_annotation")]
