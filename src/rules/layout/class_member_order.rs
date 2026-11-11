@@ -58,12 +58,11 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef, order: &ClassOrder<
                 inversion.anchor_name
             ),
         };
-        let fix = if carries_fix { pending.take() } else { None };
         checker.report_fix(
             Rule::ClassMemberOrder,
             inversion.range,
             message,
-            fix,
+            if carries_fix { pending.take() } else { None },
             format!("Move `{}` above `{}`", inversion.name, inversion.anchor_name),
         );
     }

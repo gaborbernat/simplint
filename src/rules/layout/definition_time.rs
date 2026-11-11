@@ -5,7 +5,6 @@ use rustc_hash::FxHashSet;
 
 use crate::syntax::{ExprCollector, alias_binding, import_aliases, pattern_capture};
 
-// The names a class body reads as it runs: outside its methods, or in their decorators and default values.
 pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
     let mut runtime_names = ExprCollector::new(|expr| expr.as_name_expr().map(|name| name.id.as_str()));
     for stmt in &class.body {
@@ -21,7 +20,6 @@ pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> 
     runtime_names.found.into_iter().collect()
 }
 
-// The parts of a `def` that run when it is defined rather than called: its decorators and default values.
 pub(super) fn definition_time_exprs(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
     let defaults = function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref());
     function.decorator_list.iter().map(|decorator| &decorator.expression).chain(defaults)
@@ -33,7 +31,6 @@ pub(super) fn calls_at_definition(function: &ast::StmtFunctionDef) -> bool {
     definition_time_exprs(function).any(|expr| any_over_expr(expr, &Expr::is_call_expr))
 }
 
-// The name a `def` or `class` statement binds.
 pub(super) fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
     match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
@@ -43,8 +40,6 @@ pub(super) fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
     }
 }
 
-// The names a statement binds in the scope it sits in: the names it stores or deletes, and the functions, classes and
-// imports it defines, but not the bodies of those functions and classes.
 pub(super) fn bound_names(stmt: &Stmt) -> Vec<&str> {
     let mut bound = BoundNames::default();
     bound.visit_stmt(stmt);

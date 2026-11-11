@@ -18,7 +18,7 @@ pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
     let runtime_names: FxHashMap<TextRange, FxHashSet<&str>> =
         checker.class_defs().iter().map(|class| (class.range, class_runtime_names(class))).collect();
-    let uses = module_uses(checker, body, &runtime_names);
+    let uses = definition_uses(checker, body, &runtime_names);
     let owners = owners(body.len(), &uses);
     let expected = expected_order(body.len(), &owners, &uses);
     report_misplaced(checker, &Suite { body, blank_lines: 2 }, &expected, &owners);
@@ -31,12 +31,16 @@ pub fn definition_before_use(checker: &Checker) {
 }
 
 #[derive(Default)]
-struct Uses {
+struct DefinitionUses {
     deferred: FxHashMap<usize, Vec<Read>>,
     runtime: FxHashSet<usize>,
 }
 
-fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
+fn definition_uses(
+    checker: &Checker,
+    body: &[Stmt],
+    runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>,
+) -> DefinitionUses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
     let mut eager = eager_annotations(checker);
@@ -73,7 +77,7 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
         })
         .map(|reference| reference.statement)
         .collect();
-    let mut uses = Uses::default();
+    let mut uses = DefinitionUses::default();
     for (index, stmt) in body.iter().enumerate() {
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
             continue;
@@ -103,8 +107,6 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
     uses
 }
 
-// The annotations a decorator sees: the signature of a decorated function and the class-level annotations of a
-// decorated class.
 fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
     let signatures = checker
         .function_defs()
@@ -116,13 +118,6 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
             class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
         });
     signatures.chain(fields).collect()
-}
-
-// Whether a range lies in one of the annotations, sorted by start. Annotations never overlap, so the last one that
-// starts at or before the range is the only one that can hold it.
-fn in_ranges(ranges: &[TextRange], range: TextRange) -> bool {
-    let next = ranges.partition_point(|candidate| candidate.start() <= range.start());
-    next > 0 && ranges[next - 1].contains_range(range)
 }
 
 // The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in
@@ -189,66 +184,14 @@ impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
     }
 }
 
-// Reports each helper that sits away from its place in `expected`. The first report carries the fix that moves every
-// misplaced statement of the body.
-fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners: &[Option<usize>]) {
-    let length = suite.body.len();
-    let Some(span) = moved_span(expected) else {
-        return;
-    };
-    let mut reports = Vec::new();
-    let describe = |index: usize| {
-        definition_name(&suite.body[index]).map_or_else(
-            || format!("the statement on line {}", checker.line_number(suite.body[index].start())),
-            |name| format!("`{}`", name.as_str()),
-        )
-    };
-    for position in 1..length {
-        let index = expected[position];
-        let (Some(owner), Some(identifier)) = (owners[index], definition_name(&suite.body[index])) else {
-            continue;
-        };
-        let predecessor = expected[position - 1];
-        if index.checked_sub(1) == Some(predecessor) {
-            continue;
-        }
-        let name = identifier.as_str();
-        let owner_name = describe(owner);
-        let (message, title) = if index < owner {
-            (
-                format!("`{name}` is defined before its first use in {owner_name}; move it below {owner_name}"),
-                format!("Move `{name}` below {owner_name}"),
-            )
-        } else if predecessor == owner {
-            (
-                format!("`{name}` should directly follow {owner_name}, its first user"),
-                format!("Move `{name}` right after {owner_name}"),
-            )
-        } else {
-            // The predecessor may be a nested helper `owner` never calls; `owner` is named only to contrast.
-            let predecessor_name = describe(predecessor);
-            (
-                format!("`{name}` should directly follow {predecessor_name}, not {owner_name}, its first user"),
-                format!("Move `{name}` right after {predecessor_name}"),
-            )
-        };
-        reports.push((identifier.range(), message, title));
-    }
-    // One fix reorders the whole block, so only the block's first visible report carries it: Ruff renders a report's
-    // fix in full, and repeating a block-sized edit on every report made output slow on files with many misplaced
-    // definitions.
-    checker.report_shared_fix(Rule::DefinitionBeforeUse, reports, || {
-        reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely)
-    });
+// Whether a range lies in one of the annotations, sorted by start. Annotations never overlap, so the last one that
+// starts at or before the range is the only one that can hold it.
+fn in_ranges(ranges: &[TextRange], range: TextRange) -> bool {
+    let next = ranges.partition_point(|candidate| candidate.start() <= range.start());
+    next > 0 && ranges[next - 1].contains_range(range)
 }
 
-// A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is
-// unsafe makes the fix unsafe; the statements it moves past run in the order they had.
-fn shifts_unsafely(stmt: &Stmt) -> bool {
-    moves_definition_unsafely(stmt).unwrap_or(false)
-}
-
-fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
+fn owners(length: usize, uses: &DefinitionUses) -> Vec<Option<usize>> {
     let mut owners: Vec<Option<usize>> = (0..length)
         .map(|index| uses.deferred.get(&index).and_then(|users| users.iter().map(|read| read.reader).min()))
         .collect();
@@ -308,12 +251,12 @@ fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
     owners
 }
 
-fn expected_order(length: usize, owners: &[Option<usize>], uses: &Uses) -> Vec<usize> {
+fn expected_order(length: usize, owners: &[Option<usize>], uses: &DefinitionUses) -> Vec<usize> {
     let mut children: Vec<Vec<(TextSize, usize)>> = vec![Vec::new(); length];
     for (index, owner) in owners.iter().enumerate() {
         if let Some(owner) = owner {
             let first = uses.deferred[&index].iter().filter(|read| read.reader == *owner).map(|read| read.at).min();
-            children[*owner].push((first.unwrap_or_default(), index));
+            children[*owner].push((first.expect("the owner reads the helper"), index));
         }
     }
     let children: Vec<Vec<usize>> = children
@@ -326,4 +269,61 @@ fn expected_order(length: usize, owners: &[Option<usize>], uses: &Uses) -> Vec<u
     let mut order = Vec::with_capacity(length);
     depth_first((0..length).filter(|index| owners[*index].is_none()), &children, |index| order.push(index));
     order
+}
+
+// The first report carries the fix that moves every misplaced statement of the body.
+fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners: &[Option<usize>]) {
+    let Some(span) = moved_span(expected) else {
+        return;
+    };
+    let mut reports = Vec::new();
+    let describe = |index: usize| {
+        definition_name(&suite.body[index]).map_or_else(
+            || format!("the statement on line {}", checker.line_number(suite.body[index].start())),
+            |name| format!("`{}`", name.as_str()),
+        )
+    };
+    for position in 1..suite.body.len() {
+        let index = expected[position];
+        let (Some(owner), Some(identifier)) = (owners[index], definition_name(&suite.body[index])) else {
+            continue;
+        };
+        let predecessor = expected[position - 1];
+        if index.checked_sub(1) == Some(predecessor) {
+            continue;
+        }
+        let name = identifier.as_str();
+        let owner_name = describe(owner);
+        let (message, title) = if index < owner {
+            (
+                format!("`{name}` is defined before its first use in {owner_name}; move it below {owner_name}"),
+                format!("Move `{name}` below {owner_name}"),
+            )
+        } else if predecessor == owner {
+            (
+                format!("`{name}` should directly follow {owner_name}, its first user"),
+                format!("Move `{name}` right after {owner_name}"),
+            )
+        } else {
+            // The predecessor may be a nested helper `owner` never calls; `owner` is named only to contrast.
+            let predecessor_name = describe(predecessor);
+            (
+                format!("`{name}` should directly follow {predecessor_name}, not {owner_name}, its first user"),
+                format!("Move `{name}` right after {predecessor_name}"),
+            )
+        };
+        reports.push((identifier.range(), message, title));
+    }
+    // One fix reorders the whole block, so only the block's first visible report carries it: Ruff renders a report's
+    // fix in full, and repeating a block-sized edit on every report made output slow on files with many misplaced
+    // definitions.
+    checker.report_shared_fix(Rule::DefinitionBeforeUse, reports, || {
+        reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely)
+    });
+}
+
+// A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is
+// unsafe makes the fix unsafe; the statements it moves past run in the order they had.
+fn shifts_unsafely(stmt: &Stmt) -> bool {
+    moves_definition_unsafely(stmt).unwrap_or(false)
 }
