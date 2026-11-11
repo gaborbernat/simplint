@@ -243,28 +243,38 @@ fn unresolved_candidates(
     files.filter(|file| last_name(paths.path(*file)).is_some_and(|name| unresolved.contains(name))).collect()
 }
 
-// A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
-// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. The names
-// count as the path was written: imported when an import reads them, referenced when a string or a store does.
-pub(super) fn reach_by_last_name(
-    referenced: &mut FxHashMap<FileId, FxHashSet<String>>,
-    unreached: &[Unreached],
-    paths: &FileIds,
-    files: impl Iterator<Item = FileId>,
-) {
-    if unreached.is_empty() {
-        return;
-    }
-    let mut by_name: FxHashMap<&str, Vec<FileId>> = FxHashMap::default();
-    for file in files {
-        if let Some(name) = last_name(paths.path(file)) {
-            by_name.entry(name).or_default().push(file);
+// The files of the run by the last name of their module, for the dotted paths that reach a package's modules by name.
+pub(super) struct LastNames<'p> {
+    by_name: FxHashMap<&'p str, Vec<FileId>>,
+    paths: &'p FileIds,
+}
+
+impl<'p> LastNames<'p> {
+    pub(super) fn new(paths: &'p FileIds, files: impl Iterator<Item = FileId>) -> Self {
+        let mut by_name: FxHashMap<&str, Vec<FileId>> = FxHashMap::default();
+        for file in files {
+            if let Some(name) = last_name(paths.path(file)) {
+                by_name.entry(name).or_default().push(file);
+            }
         }
+        Self { by_name, paths }
     }
-    for (package, name, names) in unreached {
-        for file in by_name.get(name).into_iter().flatten().filter(|file| paths.path(**file).starts_with(package)) {
-            referenced.entry(*file).or_default().extend(names.iter().cloned());
-        }
+
+    // A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
+    // `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Each
+    // file it reaches comes with the names the path was written with.
+    pub(super) fn reached<'s>(
+        &'s self,
+        unreached: &'s [Unreached],
+    ) -> impl Iterator<Item = (FileId, &'s [String])> + 's {
+        unreached.iter().flat_map(move |(package, name, names)| {
+            self.by_name
+                .get(name)
+                .into_iter()
+                .flatten()
+                .filter(move |file| self.paths.path(**file).starts_with(package))
+                .map(move |file| (*file, *names))
+        })
     }
 }
 

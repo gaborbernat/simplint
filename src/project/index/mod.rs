@@ -42,7 +42,7 @@ use self::cycles::{Cycle, RuntimeGraph};
 use self::duplicates::DuplicateRun;
 use self::exceptions::exception_classes;
 use self::hatch::hatch_hook_classes;
-use self::reach::{StarTargets, library_api, reach_by_last_name, reexport, signature_reached, unqualified};
+use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached, unqualified};
 use self::resolve::{Unreached, normalized, resolve};
 use self::run_imports::{Members, RunImports, run_import_kinds};
 
@@ -395,11 +395,7 @@ impl Project {
             .collect();
         let test_support = test_support(&importers(&indexed, resolver), &test_modules, &entries);
         let Gathered {
-            mut imported,
-            mut referenced,
-            mut stored_references,
-            mut from_tests,
-            mut from_others,
+            mut uses,
             stars,
             unresolved_stars,
             unreached_imports,
@@ -416,8 +412,7 @@ impl Project {
             read_whole,
         } = Gathered::of(&indexed, resolver, &test_modules, &test_support);
         for (file, name) in plugin_names {
-            referenced.entry(file).or_default().insert(name.clone());
-            from_others.entry(file).or_default().insert(name);
+            uses.read(file, &[name], Origin::Other);
         }
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
@@ -434,16 +429,17 @@ impl Project {
             || {
                 // A dotted path that may reach any module of a package could come from any file, so it counts as used
                 // outside the tests as well.
-                reach_by_last_name(&mut imported, &unreached_imports, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut from_others, &unreached_imports, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut referenced, &unreached_references, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut stored_references, &unreached_references, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut from_others, &unreached_references, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut referenced, &unreached_doctests, ids_of, sources.keys().copied());
-                reach_by_last_name(&mut from_others, &unreached_doctests, ids_of, sources.keys().copied());
-                for names in [&mut imported, &mut referenced, &mut from_tests, &mut from_others] {
-                    reexport(names, &stars, &sources);
+                let last_names = LastNames::new(ids_of, sources.keys().copied());
+                for (file, names) in last_names.reached(&unreached_imports) {
+                    uses.import(file, names, Origin::Other);
                 }
+                for (file, names) in last_names.reached(&unreached_references) {
+                    uses.reference(file, names, Origin::Other);
+                }
+                for (file, names) in last_names.reached(&unreached_doctests) {
+                    uses.read(file, names, Origin::Other);
+                }
+                uses.reexport(&stars, &sources);
             },
         );
         let (cycle_reports, duplicate_reports, reads) = aside;
@@ -465,8 +461,9 @@ impl Project {
         } = run_names(&indexed, &test_modules, (&reads, docs), (&opaque_names, &external.assigned));
         let mut computed_reads = computed_reads;
         computed_reads.extend(&external.computed);
-        external_uses(&indexed, external, &mut imported, &mut referenced, &mut stored_references, &mut from_others);
-        let entry_only = entry_uses(&entry_names, &bare_names, &mut imported, &mut from_others);
+        external_uses(&indexed, external, &mut uses);
+        let entry_only = entry_uses(&entry_names, &bare_names, &mut uses);
+        let Uses { imported, referenced, stored_references, from_tests, from_others } = uses;
         opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
@@ -632,17 +629,62 @@ impl Project {
     }
 }
 
-// What the modules of the run contribute to the index, gathered in one pass over them.
+// Whether a use comes from a test module or from any other module, so a name only tests use is found.
+#[derive(Clone, Copy)]
+enum Origin {
+    Test,
+    Other,
+}
+
+// The names each file uses, by the way it uses them: an import binds a name, a reference reads or stores it, and a
+// read reaches it without patching anything, as a doctest or a coverage plugin does.
 #[derive(Default)]
-struct Gathered<'r> {
+struct Uses {
     imported: FxHashMap<FileId, FxHashSet<String>>,
     referenced: FxHashMap<FileId, FxHashSet<String>>,
     // The references that patch a module, such as stores, dotted strings and `setattr` names. Doctests' reads are in
     // `referenced` but not here, as reading a name patches nothing.
     stored_references: FxHashMap<FileId, FxHashSet<String>>,
-    // The names the test modules use and the names the other modules use, so a name only tests use is found.
     from_tests: FxHashMap<FileId, FxHashSet<String>>,
     from_others: FxHashMap<FileId, FxHashSet<String>>,
+}
+
+impl Uses {
+    fn import(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.imported.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn reference(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.stored_references.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn read(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn bucket(&mut self, file: FileId, names: &[String], origin: Origin) {
+        let bucket = match origin {
+            Origin::Test => &mut self.from_tests,
+            Origin::Other => &mut self.from_others,
+        };
+        bucket.entry(file).or_default().extend(names.iter().cloned());
+    }
+
+    fn reexport(&mut self, stars: &[(FileId, FileId)], sources: &FxHashMap<FileId, &FileFacts>) {
+        for names in [&mut self.imported, &mut self.referenced, &mut self.from_tests, &mut self.from_others] {
+            reexport(names, stars, sources);
+        }
+    }
+}
+
+// What the modules of the run contribute to the index, gathered in one pass over them.
+#[derive(Default)]
+struct Gathered<'r> {
+    uses: Uses,
     stars: Vec<(FileId, FileId)>,
     opaque_names: FxHashSet<String>,
     unresolved_stars: FxHashSet<&'r str>,
@@ -690,19 +732,15 @@ impl<'r> Gathered<'r> {
                 modules: uses,
             });
             gathered.bindings.extend(module.bindings.iter().map(|(source, binding)| (id, *source, binding)));
-            let bucket = if test_modules.contains(&id) { &mut gathered.from_tests } else { &mut gathered.from_others };
+            let origin = if test_modules.contains(&id) { Origin::Test } else { Origin::Other };
             for (file, names) in &module.imports {
-                gathered.imported.entry(*file).or_default().extend(names.iter().cloned());
-                bucket.entry(*file).or_default().extend(names.iter().cloned());
+                gathered.uses.import(*file, names, origin);
             }
             for (file, names) in &module.references {
-                gathered.referenced.entry(*file).or_default().extend(names.iter().cloned());
-                gathered.stored_references.entry(*file).or_default().extend(names.iter().cloned());
-                bucket.entry(*file).or_default().extend(names.iter().cloned());
+                gathered.uses.reference(*file, names, origin);
             }
             for (file, names) in &module.doctest_references {
-                gathered.referenced.entry(*file).or_default().extend(names.iter().cloned());
-                bucket.entry(*file).or_default().extend(names.iter().cloned());
+                gathered.uses.read(*file, names, origin);
             }
             gathered.stars.extend(module.stars.iter().map(|source| (id, *source)));
             gathered.opaque_names.extend(module.unresolved_names.iter().cloned());
@@ -945,14 +983,7 @@ fn is_rendered(name: &str, module: &Module) -> bool {
 
 // The names another project reads that a file of this one defines, which count as used in it as an entry point's names
 // do. A name the file only imports is no definition of its own, so another project reading it is no use of the file.
-fn external_uses(
-    indexed: &[(FileId, &FileFacts)],
-    external: &External,
-    imported: &mut FxHashMap<FileId, FxHashSet<String>>,
-    referenced: &mut FxHashMap<FileId, FxHashSet<String>>,
-    stored_references: &mut FxHashMap<FileId, FxHashSet<String>>,
-    from_others: &mut FxHashMap<FileId, FxHashSet<String>>,
-) {
+fn external_uses(indexed: &[(FileId, &FileFacts)], external: &External, uses: &mut Uses) {
     for (file, facts) in indexed {
         let constructors = &facts.constructors;
         let defined = facts
@@ -963,12 +994,10 @@ fn external_uses(
             .chain(facts.classes.iter().map(|class| &class.name));
         for name in defined {
             if external.imported.contains(name.as_str()) {
-                imported.entry(*file).or_default().insert(name.clone());
+                uses.imported.entry(*file).or_default().insert(name.clone());
             }
             if external.read.contains(name.as_str()) {
-                referenced.entry(*file).or_default().insert(name.clone());
-                stored_references.entry(*file).or_default().insert(name.clone());
-                from_others.entry(*file).or_default().insert(name.clone());
+                uses.reference(*file, std::slice::from_ref(name), Origin::Other);
             }
         }
     }
@@ -979,18 +1008,16 @@ fn external_uses(
 fn entry_uses(
     entry_names: &[(FileId, String)],
     bare_names: &[(FileId, String)],
-    imported: &mut FxHashMap<FileId, FxHashSet<String>>,
-    from_others: &mut FxHashMap<FileId, FxHashSet<String>>,
+    uses: &mut Uses,
 ) -> FxHashMap<FileId, FxHashSet<String>> {
     let mut entry_only: FxHashMap<FileId, FxHashSet<String>> = FxHashMap::default();
     for (file, name) in bare_names {
-        if !imported.get(file).is_some_and(|names| names.contains(name)) {
+        if !uses.imported.get(file).is_some_and(|names| names.contains(name)) {
             entry_only.entry(*file).or_default().insert(name.clone());
         }
     }
     for (file, name) in entry_names {
-        imported.entry(*file).or_default().insert(name.clone());
-        from_others.entry(*file).or_default().insert(name.clone());
+        uses.import(*file, std::slice::from_ref(name), Origin::Other);
     }
     entry_only
 }
