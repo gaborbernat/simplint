@@ -31,14 +31,11 @@ pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
 
 // The range of the innermost function or class that holds `range`, or the whole file at module level.
 pub fn scope_of(checker: &Checker, range: TextRange) -> TextRange {
-    checker
-        .function_defs()
-        .iter()
-        .map(Ranged::range)
-        .chain(checker.class_defs().iter().map(Ranged::range))
-        .filter(|scope| scope.contains_range(range))
-        .min_by_key(|scope| scope.len())
-        .unwrap_or_else(|| TextRange::up_to(checker.source.text_len()))
+    let scopes = checker.state().scope_nesting(checker);
+    scopes
+        .holders(range)
+        .next()
+        .map_or_else(|| TextRange::up_to(checker.source.text_len()), |index| scopes.range(index))
 }
 
 // How many identifiers in `scope` spell `name`. An attribute such as `obj.name` reads another binding, so it does not

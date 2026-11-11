@@ -34,7 +34,7 @@ use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
-use crate::syntax::{all_literal, code_string_values, is_name, last_segment};
+use crate::syntax::{Nesting, all_literal, code_string_values, is_name, last_segment};
 
 // What the rules memoize for a file, each part built by the first rule that reads it.
 #[derive(Default)]
@@ -61,6 +61,8 @@ pub(crate) struct FileState<'a> {
     comprehensions: OnceCell<Vec<(TextRange, TextRange)>>,
     unqualified_names: OnceCell<FxHashMap<&'a str, usize>>,
     attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
+    scope_nesting: OnceCell<Nesting>,
+    top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
 }
 
 impl<'a> FileState<'a> {
@@ -193,6 +195,44 @@ impl<'a> FileState<'a> {
             let mut reads = AttributeReads::default();
             reads.visit_body(checker.body());
             reads.attributes
+        })
+    }
+
+    // The functions and classes of the file, searched for the ones that hold a range.
+    pub(crate) fn scope_nesting(&self, checker: &Checker<'a>) -> &Nesting {
+        self.scope_nesting.get_or_init(|| {
+            let scopes = checker
+                .function_defs()
+                .iter()
+                .map(Ranged::range)
+                .chain(checker.class_defs().iter().map(Ranged::range))
+                .collect();
+            Nesting::new(scopes)
+        })
+    }
+
+    // The modules and the members that the top-level imports bring in under their own names, as `import x` and
+    // `from x import y` do.
+    pub(crate) fn top_level_imports(&self, checker: &Checker<'a>) -> &FxHashSet<(&'a str, Option<&'a str>)> {
+        self.top_level_imports.get_or_init(|| {
+            let mut imports = FxHashSet::default();
+            for stmt in checker.body() {
+                match stmt {
+                    Stmt::Import(ast::StmtImport { names, .. }) => imports.extend(
+                        names.iter().filter(|alias| alias.asname.is_none()).map(|alias| (alias.name.as_str(), None)),
+                    ),
+                    Stmt::ImportFrom(ast::StmtImportFrom { module: Some(from), names, level: 0, .. }) => {
+                        imports.extend(
+                            names
+                                .iter()
+                                .filter(|alias| alias.asname.is_none())
+                                .map(|alias| (from.as_str(), Some(alias.name.as_str()))),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            imports
         })
     }
 

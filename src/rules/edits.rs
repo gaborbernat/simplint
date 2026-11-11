@@ -221,7 +221,7 @@ pub fn ensure_import(
     if is_bound_around(checker, binding, at) {
         return None;
     }
-    if has_import(checker.body(), module, member) {
+    if checker.state().top_level_imports(checker).contains(&(module, member)) {
         return Some((binding.to_owned(), None));
     }
     if checker.semantic().is_bound(binding) {
@@ -233,19 +233,6 @@ pub fn ensure_import(
 // Whether a scope around `at` binds the name, which hides the module-level binding or the builtin a fix writes there.
 pub fn is_bound_around(checker: &Checker, name: &str, at: TextRange) -> bool {
     checker.semantic().is_bound_around(name, at, checker.state().comprehensions(checker))
-}
-
-// Whether a top-level import already brings the module, or the member, in under its own name.
-fn has_import(body: &[Stmt], module: &str, member: Option<&str>) -> bool {
-    body.iter().any(|stmt| match (stmt, member) {
-        (Stmt::Import(ast::StmtImport { names, .. }), None) => {
-            names.iter().any(|alias| alias.name.as_str() == module && alias.asname.is_none())
-        }
-        (Stmt::ImportFrom(ast::StmtImportFrom { module: Some(from), names, level: 0, .. }), Some(member)) => {
-            from.as_str() == module && names.iter().any(|alias| alias.name.as_str() == member && alias.asname.is_none())
-        }
-        _ => false,
-    })
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain

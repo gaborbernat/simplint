@@ -11,6 +11,49 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
 
+// Ranges that nest or are disjoint, such as the scopes of a file, so that the ranges holding another range are found
+// by a search instead of a scan.
+#[derive(Default)]
+pub struct Nesting {
+    ranges: Vec<TextRange>,
+    // The indices of `ranges` by where they start, outer ranges first, each with the position in this order of the
+    // range it is nested in.
+    order: Vec<(usize, Option<usize>)>,
+}
+
+impl Nesting {
+    pub fn new(ranges: Vec<TextRange>) -> Self {
+        let mut sorted: Vec<usize> = (0..ranges.len()).collect();
+        sorted.sort_by(|&left, &right| {
+            ranges[left].start().cmp(&ranges[right].start()).then(ranges[right].end().cmp(&ranges[left].end()))
+        });
+        let mut open: Vec<usize> = Vec::new();
+        let mut order = Vec::with_capacity(sorted.len());
+        for (position, &index) in sorted.iter().enumerate() {
+            while open.last().is_some_and(|&top| ranges[sorted[top]].end() <= ranges[index].start()) {
+                open.pop();
+            }
+            order.push((index, open.last().copied()));
+            open.push(position);
+        }
+        Self { ranges, order }
+    }
+
+    pub fn range(&self, index: usize) -> TextRange {
+        self.ranges[index]
+    }
+
+    // The indices of the ranges that hold `range`, the innermost first. A range that holds `range` starts no later
+    // than it, and each such range encloses the last one that starts before it, so the holders are that one and the
+    // ranges it is nested in.
+    pub fn holders(&self, range: TextRange) -> impl Iterator<Item = usize> + '_ {
+        let last = self.order.partition_point(|&(index, _)| self.ranges[index].start() <= range.start()).checked_sub(1);
+        std::iter::successors(last, |&position| self.order[position].1)
+            .map(|position| self.order[position].0)
+            .filter(move |&index| self.ranges[index].contains_range(range))
+    }
+}
+
 pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
     walk_bodies(body, None, visit);
 }
