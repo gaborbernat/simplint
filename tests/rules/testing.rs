@@ -80,39 +80,28 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
-// Ruff's PGH005 reports a non-existent mock method in an assert, and on a line of its own only with preview on. SMP814
-// leaves those to Ruff while PGH005 runs, and reports them otherwise.
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called()", true ; "selected_call")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called", true ; "selected_attribute")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert mock.not_called()", false ; "selected_assert")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert not mock.not_called()", true ; "selected_assert_not")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert check(mock.not_called)", true ; "selected_assert_call_argument")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called()", false ; "selected_preview_call")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called", false ; "selected_preview_attribute")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert mock.not_called()", false ; "selected_preview_assert")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert not mock.not_called()", true ; "selected_preview_assert_not")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", "mock.not_called()", true ; "unselected_call")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", "assert mock.not_called()", true ; "unselected_assert")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = []\n", "mock.not_called()", true ; "unselected_preview_call")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = []\n", "assert mock.not_called()", true ; "unselected_preview_assert")]
-#[test_case(
-    "[tool.ruff.lint]\nselect = [\"PGH005\"]\nper-file-ignores = { \"test_save.py\" = [\"PGH005\"] }\n",
-    "assert mock.not_called()",
-    false
-    ; "selected_but_ignored_for_the_file"
-)]
-fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, reported: bool) {
-    let root = common::project(&[
-        ("pyproject.toml", pyproject),
-        (
-            "test_save.py",
-            &format!(
-                "from unittest.mock import MagicMock\n\n\ndef test_save(mock: MagicMock) -> None:\n    {statement}\n"
-            ),
-        ),
-    ]);
+// Ruff's PGH005 reports a non-existent mock method in the test of an assert and in a statement of its own, and PGH005
+// offers no fix. SMP814 leaves a name it has no fix for to Ruff, and reports the names it can fix, whether or not the
+// project selects PGH005.
+#[test_case("mock.not_called()", true ; "call_statement")]
+#[test_case("mock.not_called", false ; "attribute_statement")]
+#[test_case("assert mock.not_called()", true ; "assert_call")]
+#[test_case("assert mock.not_called", false ; "assert_attribute")]
+#[test_case("assert not mock.not_called()", true ; "assert_not")]
+#[test_case("assert check(mock.not_called)", true ; "assert_call_argument")]
+#[test_case("assert not mock.called_once", true ; "assert_not_attribute")]
+#[test_case("assert (mock.not_called()  # the writer\n    )", false ; "comment_in_the_fix")]
+#[test_case("assert mock.called_once_with()", true ; "assert_call_fixed")]
+#[test_case("mock.called_once_with()", true ; "call_statement_fixed")]
+#[test_case("assert mock.called_once", false ; "assert_attribute_without_fix")]
+#[test_case("mock.called_once", false ; "attribute_statement_without_fix")]
+fn mock_assertion_typo_leaves_ruff_names_without_a_fix(statement: &str, reported: bool) {
+    let root = common::project(&[(
+        "test_save.py",
+        &format!("from unittest.mock import MagicMock\n\n\ndef test_save(mock: MagicMock) -> None:\n    {statement}\n"),
+    )]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP814"]);
-    assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
+    assert_eq!(stdout.contains("is not a mock assertion"), reported, "{stdout}");
 }
 
 // Ruff's F631 and PLW0129 report a non-empty tuple and a string, bytes or f-string literal, so SMP804 leaves a case
