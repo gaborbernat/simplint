@@ -226,15 +226,13 @@ impl Projects {
     }
 }
 
-// Whether a directory is a nested project of the run's project `main`: a test directory below it that holds one of
-// `NESTED_MARKERS`. Documentation reads the same test directories, so a page under one belongs to its project.
+// Whether a directory is a nested project of the run's project `main`: a test directory below it that holds a
+// `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`. Documentation reads the same test directories, so a page under
+// one belongs to its project.
 pub(crate) fn is_nested_root(main: &Path, dir: &Path) -> bool {
     dir.strip_prefix(main).is_ok_and(in_nested_test_directory)
-        && NESTED_MARKERS.iter().any(|marker| dir.join(marker).is_file())
+        && ["conf.py", "pyproject.toml", "setup.py", "setup.cfg"].iter().any(|marker| dir.join(marker).is_file())
 }
-
-// The files that mark a directory as a project of its own.
-const NESTED_MARKERS: [&str; 4] = ["conf.py", "pyproject.toml", "setup.py", "setup.cfg"];
 
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.

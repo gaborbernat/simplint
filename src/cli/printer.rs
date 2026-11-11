@@ -53,9 +53,6 @@ impl ExpandedStatistics<'_> {
     }
 }
 
-const FULL_CHUNK: usize = 64;
-const FULL_WINDOW: usize = FULL_CHUNK * 256;
-
 pub(super) struct Printer<'a> {
     pub(crate) format: OutputFormat,
     pub(crate) log_level: LogLevel,
@@ -410,7 +407,8 @@ fn render_chunks<'a>(
     context: &'a RenderContext<'a>,
     diagnostics: &'a [Diagnostic],
 ) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
-    diagnostics.chunks(FULL_WINDOW).flat_map(move |window| {
+    const FULL_CHUNK: usize = 64;
+    diagnostics.chunks(FULL_CHUNK * 256).flat_map(move |window| {
         window
             .par_chunks(FULL_CHUNK)
             .map(|chunk| {
