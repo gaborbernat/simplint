@@ -119,15 +119,10 @@ fn callable_ellipsis_in_test_module_outside_function_reports() {
 #[test_case("def f(value: Any) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "whole_parameter")]
 #[test_case("def f() -> Any:\n    return 1\n", "ANN401", "`Any` accepts any value" ; "whole_return")]
 fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", &format!("from typing import Any\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let module = format!("from typing import Any\n\n{source}");
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: code, files: &[("module.py", &module)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // Ruff's ANN401 reports an `Any` that is, or sits in an `Optional`, a `Union`, a `|` or the first argument of
@@ -142,15 +137,13 @@ fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment
 #[test_case("def f(value: Annotated[int, Any]) -> None:\n    print(value)\n", true ; "annotated_metadata")]
 #[test_case("def f(value: Foo[Any]) -> None:\n    print(value)\n", true ; "unknown_generic")]
 fn imprecise_annotation_follows_ruff_optional_any(source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"ANN401\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", &format!("from typing import Annotated, Any, Optional, Union\n\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains("`Any` accepts any value"), !selected || reported_when_selected, "{stdout}");
-    }
+    let module = format!("from typing import Annotated, Any, Optional, Union\n\n\n{source}");
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: "ANN401", files: &[("module.py", &module)] };
+    assert_eq!(
+        common::reported_without_and_with_ruff(&case, "`Any` accepts any value"),
+        [true, reported_when_selected]
+    );
 }
 
 // ANN401 skips `*args` and `**kwargs` under `allow-star-arg-any`, the `self` or `cls` of a method, and `@override`
@@ -177,13 +170,12 @@ fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, repor
 #[test_case("", "def f(*args: list[object]) -> None:\n    print(args)\n", true ; "nested_in_variadic")]
 #[test_case("", "def f(value: object) -> None:\n    print(value)\n", true ; "parameter")]
 fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, reported: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"ANN401\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
-            ("module.py", &format!("import builtins\n\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains("`object` annotation"), reported, "{stdout}");
-    }
+    let module = format!("import builtins\n\n\n{source}");
+    let case = common::RuffOverlap {
+        settings: extra,
+        select: "SMP602",
+        ruff_code: "ANN401",
+        files: &[("module.py", &module)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "`object` annotation"), [reported, reported]);
 }

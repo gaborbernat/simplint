@@ -616,15 +616,9 @@ fn unexported_public_name_checks_strings_of_other_files() {
 #[test_case("__all__ = [\"a\", \"b\"]\n", true ; "single_line")]
 #[test_case("__all__ = [\n    \"a\" \\\n]\n", true ; "line_continuation")]
 fn all_format_follows_ruff_com812(source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"COM812\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
-        assert_eq!(stdout.contains("has no trailing comma"), !selected || reported_when_selected, "{stdout}");
-    }
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP405", ruff_code: "COM812", files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "has no trailing comma"), [true, reported_when_selected]);
 }
 
 // A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.

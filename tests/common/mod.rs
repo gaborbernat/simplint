@@ -53,6 +53,25 @@ pub fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i
     (code, stdout, read(root.path(), name))
 }
 
+pub struct RuffOverlap<'a> {
+    pub settings: &'a str,
+    pub select: &'a str,
+    pub ruff_code: &'a str,
+    pub files: &'a [(&'a str, &'a str)],
+}
+
+// Whether `fragment` is reported without Ruff's rule and with it selected, which hands the case over to Ruff.
+pub fn reported_without_and_with_ruff(case: &RuffOverlap, fragment: &str) -> [bool; 2] {
+    [false, true].map(|selected| {
+        let ruff_select = if selected { format!("\"{}\"", case.ruff_code) } else { String::new() };
+        let pyproject = format!("[tool.ruff.lint]\nselect = [{ruff_select}]\n{}", case.settings);
+        let mut files = vec![("pyproject.toml", pyproject.as_str())];
+        files.extend_from_slice(case.files);
+        let root = project(&files);
+        check(root.path(), &["--select", case.select]).1.contains(fragment)
+    })
+}
+
 pub fn check_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
     simplint_with_stdin(root, &[&["check", "--output-format", "concise"], args].concat(), stdin)
 }

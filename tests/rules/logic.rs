@@ -829,16 +829,13 @@ fn cognitive_complexity_scores() {
 #[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", "RET504", false, "`total` is used once" ; "return")]
 #[test_case("def f():\n    values = make()\n    yield from values\n", "RUF070", true, "`values` is used once" ; "yield_from")]
 fn single_use_variable_follows_ruff_returns_and_yield_froms(source: &str, code: &str, preview: bool, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let preview = if preview { "[tool.ruff]\npreview = true\n" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("{preview}[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP504"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap {
+        settings: if preview { "[tool.ruff]\npreview = true\n" } else { "" },
+        select: "SMP504",
+        ruff_code: code,
+        files: &[("module.py", source)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // Ruff's B006 and B008 report a value that becomes a parameter's default, so SMP504 keeps a variable whose value would
@@ -903,15 +900,12 @@ fn single_use_variable_follows_ruff_defaults(
 #[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
 #[test_case("ISC003", "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
 fn string_concatenation_follows_ruff(code: &str, extra: &str, source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
-        assert_eq!(stdout.contains("Build text with an f-string"), !selected || reported_when_selected, "{stdout}");
-    }
+    let case =
+        common::RuffOverlap { settings: extra, select: "SMP503", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(
+        common::reported_without_and_with_ruff(&case, "Build text with an f-string"),
+        [true, reported_when_selected]
+    );
 }
 
 // A class of the project is skipped under any name, and a function of the project is reported even when its name is

@@ -130,15 +130,8 @@ fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, rep
 #[test_case("def check() -> None:\n    assert (True, 1, 2)\n", "F631", "Assertion on a constant always passes" ; "assert_tuple")]
 #[test_case("def check() -> None:\n    assert (True, \"message\")\n", "F631", "Assertion on a constant always passes" ; "assert_tuple_with_fix")]
 fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP804"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // Ruff's PLW0129 reports an assert on a string, bytes or f-string literal, which SMP804 leaves to it. A concatenation
@@ -152,19 +145,13 @@ fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment:
 #[test_case("PLW0129", "assert \"a\" + \"b\"", true ; "concatenation")]
 #[test_case("PLW0129", "assert True", true ; "boolean")]
 fn constant_assert_follows_ruff_assert_on_string_literal(code: &str, statement: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", &format!("def check() -> None:\n    {statement}\n")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP804"]).1;
-        assert_eq!(
-            stdout.contains("Assertion on a constant always passes"),
-            !selected || reported_when_selected,
-            "{stdout}"
-        );
-    }
+    let module = format!("def check() -> None:\n    {statement}\n");
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", &module)] };
+    assert_eq!(
+        common::reported_without_and_with_ruff(&case, "Assertion on a constant always passes"),
+        [true, reported_when_selected]
+    );
 }
 
 // Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, which SMP808 leaves to it while the

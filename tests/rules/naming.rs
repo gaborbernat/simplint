@@ -270,15 +270,8 @@ fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
 #[test_case("class I:\n    pass\n", "E742", "Single-letter name `I`" ; "class")]
 #[test_case("def l() -> None:\n    pass\n", "E743", "Single-letter name `l`" ; "function")]
 fn single_letter_name_follows_ruff_ambiguous_names(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP101"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap { settings: "", select: "SMP101", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 #[test_case("from typing import TypeVar\n\nT = TypeVar(\"T\")\n", 0, 0 ; "type_var")]

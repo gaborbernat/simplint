@@ -43,13 +43,6 @@ fn named_ignore_needs_no_migration() {
 #[test_case("# ruff: file-ignore\nimport os\n", "RUF103", "`# ruff: file-ignore` suppresses every error in the file" ; "ruff_file_ignore")]
 #[test_case("VALUE = 1  # ruff: ignore [ ]\n", "RUF103", "`# ruff: ignore` suppresses every error" ; "ruff_ignore_spaced_empty")]
 fn blanket_ignore_follows_ruff_blanket_rules(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP004"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap { settings: "", select: "SMP004", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }

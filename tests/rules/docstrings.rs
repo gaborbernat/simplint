@@ -476,18 +476,13 @@ fn alias_fix_composes(source: &str, fixed: &str) {
 #[test_case("class C:\n    class N:\n        pass\n", "D106", "Public class `C.N`" ; "nested_class")]
 #[test_case("class C:\n    def m(self) -> None:\n        pass\n", "D102", "Public method `C.m`" ; "method")]
 fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            (
-                "pyproject.toml",
-                &format!("[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint]\nselect = [{select}]\n"),
-            ),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP903"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap {
+        settings: "[tool.simplint]\nproject-kind = \"library\"\n",
+        select: "SMP903",
+        ruff_code: code,
+        files: &[("module.py", source)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // A public class of a library inherits the members of its private base without overriding them, so users reach them
