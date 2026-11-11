@@ -407,6 +407,8 @@ const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 #[test_case("", "type Alias = JSONDecoder\nfrom json import JSONDecoder\n", &[2] ; "type_alias_forward_read_kept")]
 #[test_case("", "def load[T: JSONDecoder]() -> None:\n    pass\n\n\nfrom json import JSONDecoder\n", &[5] ; "type_param_bound_forward_read_kept")]
 #[test_case("", "class Box[T = JSONDecoder]:\n    pass\n\n\nfrom json import JSONDecoder\n", &[5] ; "type_param_default_forward_read_kept")]
+#[test_case("", "import os\nif os.sep:\n    del os\nimport os\n", &[1, 4] ; "conditional_del_reimport_kept")]
+#[test_case("", "import os\ndel os\nimport os\n", &[1] ; "top_level_del_reimport_left_to_f401")]
 #[test_case("", "from json import *\n", &[1] ; "star_import_kept")]
 #[test_case("", "from json import dumps\nfrom typing import cast\n\nvalue = cast(\"dumps\", 1)\n", &[1, 2] ; "cast_string_keeps_import")]
 #[test_case("", "from json import dumps\nfrom typing import TypeVar\n\nT = TypeVar(\"T\", bound=\"dumps\")\n", &[1, 2] ; "type_var_bound_keeps_import")]

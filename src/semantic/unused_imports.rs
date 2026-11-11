@@ -54,9 +54,14 @@ fn is_import(binding: &Binding) -> bool {
     matches!(binding.kind, BindingKind::Import(_) | BindingKind::FromImport(_) | BindingKind::SubmoduleImport(_))
 }
 
-// The bindings a `del` or builtin ends the copying of references at, as a rebinding does not copy from them.
-fn ends_copies(binding: &Binding) -> bool {
-    matches!(binding.kind, BindingKind::Builtin | BindingKind::Deletion | BindingKind::UnboundException(_))
+// The bindings a `del` or builtin ends the copying of references at, as a rebinding does not copy from them. Ruff
+// records no `del` in a branch, so a `del` that is not at the top level does not end it.
+fn ends_copies(model: &SemanticModel, binding: &Binding) -> bool {
+    match binding.kind {
+        BindingKind::Builtin | BindingKind::UnboundException(_) => true,
+        BindingKind::Deletion => binding.source.is_some_and(|node| is_top_level(model, node)),
+        _ => false,
+    }
 }
 
 // The references a name's live binding has, which a rebinding copies from the bindings it shadows.
@@ -67,7 +72,7 @@ fn copied_references<'m>(
 ) -> impl Iterator<Item = ResolvedReferenceId> + 'm {
     scope
         .shadowed_bindings(live)
-        .take_while(move |prior| !ends_copies(model.binding(*prior)))
+        .take_while(move |prior| !ends_copies(model, model.binding(*prior)))
         .flat_map(move |prior| model.binding(prior).references())
 }
 
