@@ -30,7 +30,7 @@ use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
 use crate::project::docs::{Module, Stat, stat};
 use crate::project::facts::ImportBinding;
-use crate::project::receivers::module_parts;
+use crate::project::receivers::{ANY_ATTRIBUTE, module_parts};
 use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
@@ -1219,13 +1219,27 @@ fn string_words_key(words: &FxHashMap<String, u32>) -> (usize, u64) {
 impl Writes {
     fn collect(files: &[(FileId, &FileFacts)]) -> Self {
         let mut writes = Self::default();
+        let classes: FxHashSet<&str> =
+            files.iter().flat_map(|(_, facts)| facts.attribute_writes.classes.iter().map(String::as_str)).collect();
         for (_, facts) in files {
             let facts = &facts.attribute_writes;
             for (class, attribute) in &facts.typed {
                 writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
             }
+            // An annotation naming a class the run does not define, such as `Any`, a protocol or a type alias, gives an
+            // object of unknown class, whose writes the field checks read by name.
+            for (class, attribute) in &facts.declared {
+                if classes.contains(class.as_str()) {
+                    writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
+                } else if attribute != ANY_ATTRIBUTE {
+                    writes.untyped.insert(attribute.clone());
+                }
+            }
             writes.untyped.extend(facts.untyped.iter().cloned());
             writes.dict_stores.extend(facts.dict_stores.iter().cloned());
+            writes
+                .dict_stores
+                .extend(facts.declared_dict_stores.iter().filter(|class| classes.contains(class.as_str())).cloned());
             writes.unslottable_bases.extend(facts.unslottable_bases.iter().cloned());
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;

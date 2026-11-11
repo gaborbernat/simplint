@@ -468,7 +468,7 @@ An object is **known to be of the class** when it is:
 
 - `self` in a method of the class
 - a name bound to a call of the class, through its module as `models.Release(...)` too
-- a name annotated with the class, `Optional[...]` and `... | None` included
+- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
 - an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
 
 An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,

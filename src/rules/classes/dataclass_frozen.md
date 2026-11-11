@@ -498,7 +498,7 @@ An object is **known to be of the class** when it is:
 
 - `self` in a method of the class
 - a name bound to a call of the class, through its module as `models.Release(...)` too
-- a name annotated with the class, `Optional[...]` and `... | None` included
+- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
 - an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
 
 An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,
@@ -535,6 +535,38 @@ def record(result) -> None:
 
 
 record(Result("ok"))
+```
+
+An annotation that names no class the run defines, such as `Any`, `object`, a protocol, a type alias or a type variable,
+leaves the name unknown. A write through it to a field withholds `frozen=True`, as the object may be an instance of the
+class with that field:
+
+```python report
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Release:
+    version: str
+
+
+def bump(item: Any) -> None:
+    item.version = "2"
+```
+
+```python fixed
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Release:
+    version: str
+
+
+def bump(item: Any) -> None:
+    item.version = "2"
 ```
 
 A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such

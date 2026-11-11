@@ -516,3 +516,37 @@ fn module_qualified_instance_keeps_frozen_unset(caller: &str, fixed: bool) {
     common::fix_unsafe(root.path(), "dataclass-frozen");
     assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
 }
+
+// An annotation names a class the run defines, or else an object of unknown class: `Any`, a protocol, a type alias and a
+// type variable name no such class, so a write through them keeps `frozen` a candidate. A class of the run, even one
+// that is no dataclass, types the write.
+#[test_case("from typing import Any", "Any", false ; "any")]
+#[test_case("from models import Versioned", "Versioned", false ; "protocol_of_the_run")]
+#[test_case("from models import Other, Release\n\nItem = Release | Other", "Item", false ; "type_alias")]
+#[test_case("from typing import TypeVar\n\nfrom models import Release\n\nModelT = TypeVar(\"ModelT\", bound=Release)", "ModelT", false ; "type_variable")]
+#[test_case("from models import Release", "Release", false ; "dataclass_of_the_run")]
+#[test_case("from models import Other", "Other", true ; "other_class_of_the_run")]
+fn annotation_naming_no_class_of_the_run_writes_untyped(header: &str, annotation: &str, fixed: bool) {
+    let root = common::project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\nfrom typing import Protocol\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    version: str\n\n\nclass Versioned(Protocol):\n    version: str\n",
+        ),
+        ("main.py", &format!("{header}\n\n\ndef bump(item: {annotation}) -> None:\n    item.version = \"2\"\n")),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+}
+
+// A field a class body annotates with a class of the run is an instance of that class in the methods, though no method
+// assigns it, so a write through `self.config` keeps the class's options.
+#[test_case("self.config.loaded = True", false ; "written_through_field")]
+#[test_case("print(self.config.name)", true ; "read_through_field")]
+fn annotated_field_is_an_instance_of_its_class(body: &str, fixed: bool) {
+    let source = format!(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n\n\n@dataclass\nclass App:\n    config: Config\n\n    def load(self) -> None:\n        {body}\n"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Config:"), fixed);
+}
