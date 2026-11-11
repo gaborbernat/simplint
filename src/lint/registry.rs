@@ -71,8 +71,7 @@ macro_rules! rules {
                 url.to_owned()
             }
 
-            // The directory under `src/rules` the rule lives in, which names its group.
-            pub fn family(self) -> &'static str {
+                    pub fn family(self) -> &'static str {
                 match self {
                     $(Rule::$variant => stringify!($family),)*
                 }
@@ -85,7 +84,7 @@ macro_rules! rules {
             }
 
             // The Python version a rule needs, which a file's target below it leaves the rule out for.
-            pub fn minimum_version(self) -> Option<PythonVersion> {
+            fn minimum_version(self) -> Option<PythonVersion> {
                 match self {
                     $(Rule::$variant => Option::<PythonVersion>::None $(.or(Some(PythonVersion::$min)))?,)*
                 }
@@ -104,7 +103,6 @@ macro_rules! rules {
                 }
             }
 
-            // The conditions under which the rule does not run at all.
             pub(crate) const fn skips(self) -> &'static [Skip] {
                 match self {
                     $(Rule::$variant => &[$($(skip!($skip)),*)?],)*
@@ -132,34 +130,45 @@ macro_rules! rules {
         }
 
         pub(crate) fn statement<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
-            $($(if rules.contains(Rule::$variant) { hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt))
+            })*)*
         }
 
         pub(crate) fn expression<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-            $($(if rules.contains(Rule::$variant) { hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr))
+            })*)*
         }
 
         pub(crate) fn scope<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-            $($(if rules.contains(Rule::$variant) { hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope))
+            })*)*
         }
 
         pub(crate) fn except_handler<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-            $($(if rules.contains(Rule::$variant) { hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler))
+            })*)*
         }
 
         pub(crate) fn pattern<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
-            $($(if rules.contains(Rule::$variant) { hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern))
+            })*)*
         }
 
         pub(crate) fn type_param<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
-            $($(if rules.contains(Rule::$variant) { hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param)) })*)*
+            $($(if rules.contains(Rule::$variant) {
+                hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param))
+            })*)*
         }
 
     };
 }
 
-// A fact a rule reads beyond its own file's syntax: an index part, what the other files contribute to the index, the
-// documentation the run names, whether the file's directory holds an `__init__.py`, or the working directory.
+// A fact a rule reads beyond its own file's syntax.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Read {
     CrossFile,
@@ -169,7 +178,6 @@ pub(crate) enum Read {
     Part(Parts),
 }
 
-// A condition that turns a rule off for a file, which the rule's tag names.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Skip {
     Nested,
@@ -199,8 +207,6 @@ macro_rules! read {
     };
 }
 
-// A rule's code for one hook: its call when the hook is the one asked for, nothing otherwise. `walks` asks whether the
-// hook needs the walker.
 macro_rules! hook {
     (module, module, $family:ident::$check:ident($($argument:expr),*)) => {
         rules::$family::$check($($argument),*)
@@ -370,21 +376,12 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
     diagnostic.secondary_code().and_then(|code| Rule::from_code(code.as_str()))
 }
 
-// One bit per rule.
 #[derive(Clone, Copy, Default, CacheKey)]
 pub struct RuleSet(u128);
 
 const _: () = assert!(Rule::ALL.len() <= 128, "RuleSet holds one bit per rule in a u128");
 
 impl RuleSet {
-    pub fn all() -> Self {
-        Self::from_rules(Rule::ALL.iter().copied())
-    }
-
-    pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
-        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u128))
-    }
-
     // A selector's rules and how specific it is, ordered as Ruff's `Specificity`: `ALL`, then code prefixes by length,
     // then a single rule by code or name. `None` when it selects nothing.
     pub fn from_selector(selector: &str) -> Option<(Self, usize)> {
@@ -398,19 +395,30 @@ impl RuleSet {
         (!selector.is_empty() && set.0 != 0).then_some((set, selector.len()))
     }
 
+    pub fn all() -> Self {
+        Self::from_rules(Rule::ALL.iter().copied())
+    }
+
+    pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
+        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u128))
+    }
+
     pub fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)
+    }
+
+    pub fn for_target(self, target: PythonVersion) -> Self {
+        let newer =
+            Rule::ALL.iter().copied().filter(|rule| rule.minimum_version().is_some_and(|minimum| minimum > target));
+        self.subtract(Self::from_rules(newer))
     }
 
     pub fn subtract(self, other: Self) -> Self {
         Self(self.0 & !other.0)
     }
 
-    // The rules left on for a target Python version: the ones whose minimum version the target reaches.
-    pub fn for_target(self, target: PythonVersion) -> Self {
-        let newer =
-            Rule::ALL.iter().copied().filter(|rule| rule.minimum_version().is_some_and(|minimum| minimum > target));
-        self.subtract(Self::from_rules(newer))
+    pub fn iter(self) -> impl Iterator<Item = Rule> {
+        Rule::ALL.iter().copied().filter(move |rule| self.contains(*rule))
     }
 
     pub fn contains(self, rule: Rule) -> bool {
@@ -421,10 +429,6 @@ impl RuleSet {
         self.0 & other.0 != 0
     }
 
-    fn reading(read: Read) -> Self {
-        Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.reads().contains(&read)))
-    }
-
     // The rules that read the project index, directly or through the public API, the rst targets' publicness, string
     // kinds or the rename fix, so another file of the run can change what they report or fix.
     pub fn cross_file() -> Self {
@@ -432,13 +436,16 @@ impl RuleSet {
         *CROSS_FILE
     }
 
-    // The rules that read whether the file's directory holds an `__init__.py`.
+    fn reading(read: Read) -> Self {
+        Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.reads().contains(&read)))
+    }
+
     pub fn sibling_init() -> Self {
         static SIBLING_INIT: LazyLock<RuleSet> = LazyLock::new(|| RuleSet::reading(Read::SiblingInit));
         *SIBLING_INIT
     }
 
-    // The rules a nested project leaves out: its files are test input, whose docstrings and name visibility are not judged.
+    // The rules a nested project leaves out, as its files are test input whose docstrings and names are not judged.
     pub fn skipped_in_nested() -> Self {
         static SKIPPED_IN_NESTED: LazyLock<RuleSet> = LazyLock::new(|| {
             RuleSet::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.skips().contains(&Skip::Nested)))
@@ -446,25 +453,19 @@ impl RuleSet {
         *SKIPPED_IN_NESTED
     }
 
-    // The rules whose messages name paths relative to the working directory.
     pub fn working_directory() -> Self {
         static WORKING_DIRECTORY: LazyLock<RuleSet> = LazyLock::new(|| RuleSet::reading(Read::WorkingDirectory));
         *WORKING_DIRECTORY
     }
 
-    // The rules that read the documentation the run names.
     pub fn documentation() -> Self {
         static DOCUMENTATION: LazyLock<RuleSet> = LazyLock::new(|| RuleSet::reading(Read::Documentation));
         *DOCUMENTATION
     }
-
-    pub fn iter(self) -> impl Iterator<Item = Rule> {
-        Rule::ALL.iter().copied().filter(move |rule| self.contains(*rule))
-    }
 }
 
-// The rule groups `simplint linter` lists, as `ruff linter` lists the linters Ruff ports. Each group owns the code
-// digit in this order: `SMP0` is the first group, `SMP9` the last. The short title fits the documentation's sidebar.
+// Each group owns the code digit in this order: `SMP0` is the first group, `SMP9` the last. The short title fits the
+// documentation's sidebar.
 pub const GROUPS: [(&str, &str, &str); 10] = [
     ("comments", "Comments", "Comments"),
     ("naming", "Naming", "Naming"),
@@ -479,13 +480,13 @@ pub const GROUPS: [(&str, &str, &str); 10] = [
 ];
 
 impl Rule {
+    pub fn group(self) -> &'static str {
+        self.group_entry().1
+    }
+
     // `--select SMP6` picks rules by this digit, so the listing groups them by it too.
     fn group_entry(self) -> (&'static str, &'static str, &'static str) {
         GROUPS[usize::from(self.code().as_bytes()["SMP".len()] - b'0')]
-    }
-
-    pub fn group(self) -> &'static str {
-        self.group_entry().1
     }
 
     pub fn short_group(self) -> &'static str {
