@@ -99,6 +99,25 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for attribute 
       limit: "ClassVar[int]" = 3
   ```
 
+- **A loop variable of the class body**: the target of a `for` statement there is a class variable, so `:ivar:` for it
+  is reported.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  class Engine:
+      """Run jobs.
+
+      :ivar step: The step.
+      """
+
+      for step in (1, 2):
+          pass
+  ```
+
 - **`:cvar name:` fields**: reported when `name` is an instance attribute.
 
   ```toml config
@@ -163,6 +182,7 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for attribute 
 | a `ClassVar`                                                                       | class variable     | `:cvar:`             |
 | a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |
 | a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |
+| the target of a `for` statement in the class body                                  | class variable     | `:cvar:`             |
 | an annotated field                                                                 | instance attribute | `:ivar:`             |
 | a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |
 | a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |

@@ -31664,7 +31664,7 @@
     "name": "rst-missing-attribute",
     "summary": "Public classes whose docstring leaves an attribute undocumented",
     "fix": "None",
-    "explanation": "Flags attributes of a library's public classes that the reStructuredText class docstring leaves without an `:ivar:`,\n`:cvar:` or `:var:` field. autodoc lists only documented attributes, so an undocumented one is invisible or unexplained\nin the reference.\n\n## Why is this bad?\n\nUsers read a class's attributes in the rendered reference, where autodoc lists only those with documentation. An\nundocumented attribute is either invisible there or shown without saying what it holds.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    \"\"\"\n\n    limit = 3\n\n    def __init__(self, speed: int) -> None:\n        self.speed = speed\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    :cvar limit: The most jobs it runs at once.\n    :ivar state: What it is doing.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n          self.state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public classes (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The attributes\nare those [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) documents.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Names the class body assigns**: a `ClassVar` or a name assigned without an annotation is a class variable; an\n  annotated name, such as a dataclass field, is an instance attribute; a class variable a method also sets on `self` is\n  an instance attribute with a default.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      limit = 3\n      state: str\n  ```\n\n- **Attributes a regular method sets on its first parameter**: these are instance attributes. A method sets them at any\n  depth of its body, directly or through `object.__setattr__(self, \"name\", value)` as a frozen dataclass does. A class\n  defined inside a method has its own `self`, so its attributes belong to that class instead.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n          self.state = \"idle\"\n  ```\n\n- **Attributes a class method sets on its first parameter**: these are class variables, found the same way.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      @classmethod\n      def configure(cls) -> None:\n          cls.limit = 3\n  ```\n\n### Exceptions\n\n- **Names starting with `_`**: a leading underscore marks the name as internal, and [rst-private-field](SMP915.html)\n  reports documentation of internal names in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      _cache = {}\n  ```\n\n- **Attributes documented in place**: a `#:` comment above the attribute, or a string right after it, documents it in\n  the forms autodoc reads.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      #: The most jobs it runs at once.\n      limit = 3\n\n      rate = 2\n      \"\"\"Jobs started per second.\"\"\"\n  ```\n\n- **Attributes the constructor takes as a parameter of the same name**: the `:param:` field documents it, which\n  [rst-missing-param](SMP916.html) asks for.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists fewer attributes than the class\n  has as [DOC601](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
+    "explanation": "Flags attributes of a library's public classes that the reStructuredText class docstring leaves without an `:ivar:`,\n`:cvar:` or `:var:` field. autodoc lists only documented attributes, so an undocumented one is invisible or unexplained\nin the reference.\n\n## Why is this bad?\n\nUsers read a class's attributes in the rendered reference, where autodoc lists only those with documentation. An\nundocumented attribute is either invisible there or shown without saying what it holds.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    \"\"\"\n\n    limit = 3\n\n    def __init__(self, speed: int) -> None:\n        self.speed = speed\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    :cvar limit: The most jobs it runs at once.\n    :ivar state: What it is doing.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n          self.state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public classes (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The attributes\nare those [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) documents.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Names the class body assigns**: a `ClassVar` or a name assigned without an annotation is a class variable; an\n  annotated name, such as a dataclass field, is an instance attribute; a class variable a method also sets on `self` is\n  an instance attribute with a default.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      limit = 3\n      state: str\n  ```\n\n- **Loop variables of the class body**: the target of a `for` statement in the class body is a class variable, as a name\n  the body assigns without an annotation is, so the class documents it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      for step in (1, 2):\n          pass\n  ```\n\n- **Attributes a regular method sets on its first parameter**: these are instance attributes. A method sets them at any\n  depth of its body, directly or through `object.__setattr__(self, \"name\", value)` as a frozen dataclass does. A class\n  defined inside a method has its own `self`, so its attributes belong to that class instead.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n          self.state = \"idle\"\n  ```\n\n- **Attributes a class method sets on its first parameter**: these are class variables, found the same way.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      @classmethod\n      def configure(cls) -> None:\n          cls.limit = 3\n  ```\n\n### Exceptions\n\n- **Names starting with `_`**: a leading underscore marks the name as internal, and [rst-private-field](SMP915.html)\n  reports documentation of internal names in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      _cache = {}\n  ```\n\n- **Attributes documented in place**: a `#:` comment above the attribute, or a string right after it, documents it in\n  the forms autodoc reads.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      #: The most jobs it runs at once.\n      limit = 3\n\n      rate = 2\n      \"\"\"Jobs started per second.\"\"\"\n  ```\n\n- **Attributes the constructor takes as a parameter of the same name**: the `:param:` field documents it, which\n  [rst-missing-param](SMP916.html) asks for.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :param speed: How fast it runs.\n      \"\"\"\n\n      def __init__(self, speed: int) -> None:\n          self.speed = speed\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists fewer attributes than the class\n  has as [DOC601](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -31753,11 +31753,11 @@
         },
         {
           "section": "What it does",
-          "line": 110,
-          "end_line": 131,
+          "line": 109,
+          "end_line": 126,
           "config": {
-            "line": 110,
-            "end_line": 119,
+            "line": 109,
+            "end_line": 118,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31766,19 +31766,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 121,
-              "end_line": 131,
+              "line": 120,
+              "end_line": 126,
+              "source": "class Engine:\n    \"\"\"Run jobs.\"\"\"\n\n    for step in (1, 2):\n        pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 132,
+          "end_line": 153,
+          "config": {
+            "line": 132,
+            "end_line": 141,
+            "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 143,
+              "end_line": 153,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    \"\"\"\n\n    def __init__(self, speed: int) -> None:\n        self.speed = speed\n        self.state = \"idle\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 135,
-          "end_line": 153,
+          "line": 157,
+          "end_line": 175,
           "config": {
-            "line": 135,
-            "end_line": 144,
+            "line": 157,
+            "end_line": 166,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31787,19 +31808,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 146,
-              "end_line": 153,
+              "line": 168,
+              "end_line": 175,
               "source": "class Engine:\n    \"\"\"Run jobs.\"\"\"\n\n    @classmethod\n    def configure(cls) -> None:\n        cls.limit = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 160,
-          "end_line": 176,
+          "line": 182,
+          "end_line": 198,
           "config": {
-            "line": 160,
-            "end_line": 169,
+            "line": 182,
+            "end_line": 191,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31808,19 +31829,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 171,
-              "end_line": 176,
+              "line": 193,
+              "end_line": 198,
               "source": "class Engine:\n    \"\"\"Run jobs.\"\"\"\n\n    _cache = {}\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 181,
-          "end_line": 201,
+          "line": 203,
+          "end_line": 223,
           "config": {
-            "line": 181,
-            "end_line": 190,
+            "line": 203,
+            "end_line": 212,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31829,19 +31850,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 192,
-              "end_line": 201,
+              "line": 214,
+              "end_line": 223,
               "source": "class Engine:\n    \"\"\"Run jobs.\"\"\"\n\n    #: The most jobs it runs at once.\n    limit = 3\n\n    rate = 2\n    \"\"\"Jobs started per second.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 206,
-          "end_line": 226,
+          "line": 228,
+          "end_line": 248,
           "config": {
-            "line": 206,
-            "end_line": 215,
+            "line": 228,
+            "end_line": 237,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31850,8 +31871,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 217,
-              "end_line": 226,
+              "line": 239,
+              "end_line": 248,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :param speed: How fast it runs.\n    \"\"\"\n\n    def __init__(self, speed: int) -> None:\n        self.speed = speed\n"
             }
           ]
@@ -32123,7 +32144,7 @@
     "name": "rst-attribute-kind",
     "summary": "`:ivar:` on class variables and `:cvar:` on instance attributes",
     "fix": "Sometimes",
-    "explanation": "Flags an `:ivar:` field documenting a class variable, or a `:cvar:` field documenting an instance attribute, in\nreStructuredText class docstrings. Sphinx renders the two under different headings, so the wrong field sends readers to\nthe wrong place.\n\n## Why is this bad?\n\nSphinx renders the two as \"Instance Variables\" and \"Class Variables\", so the wrong one tells readers to look for the\nvalue in the wrong place.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for attribute fields of the wrong kind.\n\n### Active on\n\n- **`:ivar name:` fields**: reported when `name` is a class variable.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n  A `ClassVar` annotation counts the same when quoted, as `\"ClassVar[int]\"`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  from typing import ClassVar\n\n\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit: \"ClassVar[int]\" = 3\n  ```\n\n- **`:cvar name:` fields**: reported when `name` is an instance attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar state: What it is doing.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n### Exceptions\n\n- **`:var name:` fields**: `:var:` suits both kinds.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :var limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n- **A class default that methods also set on `self`**: the attribute is both kinds, so `:ivar:` and `:cvar:` both fit.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n\n      def reset(self) -> None:\n          self.limit = 3\n  ```\n\n### Attribute kinds\n\n| Attribute                                                                          | Kind               | Field                |\n| ---------------------------------------------------------------------------------- | ------------------ | -------------------- |\n| a `ClassVar`                                                                       | class variable     | `:cvar:`             |\n| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |\n| a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |\n| an annotated field                                                                 | instance attribute | `:ivar:`             |\n| a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |\n| a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |\n\n### Fix\n\nThe fix renames the field, keeping its description.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags an `:ivar:` field documenting a class variable, or a `:cvar:` field documenting an instance attribute, in\nreStructuredText class docstrings. Sphinx renders the two under different headings, so the wrong field sends readers to\nthe wrong place.\n\n## Why is this bad?\n\nSphinx renders the two as \"Instance Variables\" and \"Class Variables\", so the wrong one tells readers to look for the\nvalue in the wrong place.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for attribute fields of the wrong kind.\n\n### Active on\n\n- **`:ivar name:` fields**: reported when `name` is a class variable.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n  A `ClassVar` annotation counts the same when quoted, as `\"ClassVar[int]\"`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  from typing import ClassVar\n\n\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit: \"ClassVar[int]\" = 3\n  ```\n\n- **A loop variable of the class body**: the target of a `for` statement there is a class variable, so `:ivar:` for it\n  is reported.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar step: The step.\n      \"\"\"\n\n      for step in (1, 2):\n          pass\n  ```\n\n- **`:cvar name:` fields**: reported when `name` is an instance attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar state: What it is doing.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n### Exceptions\n\n- **`:var name:` fields**: `:var:` suits both kinds.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :var limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n- **A class default that methods also set on `self`**: the attribute is both kinds, so `:ivar:` and `:cvar:` both fit.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n\n      def reset(self) -> None:\n          self.limit = 3\n  ```\n\n### Attribute kinds\n\n| Attribute                                                                          | Kind               | Field                |\n| ---------------------------------------------------------------------------------- | ------------------ | -------------------- |\n| a `ClassVar`                                                                       | class variable     | `:cvar:`             |\n| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |\n| a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |\n| the target of a `for` statement in the class body                                  | class variable     | `:cvar:`             |\n| an annotated field                                                                 | instance attribute | `:ivar:`             |\n| a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |\n| a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |\n\n### Fix\n\nThe fix renames the field, keeping its description.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -32233,11 +32254,11 @@
         },
         {
           "section": "What it does",
-          "line": 104,
-          "end_line": 118,
+          "line": 105,
+          "end_line": 119,
           "config": {
-            "line": 104,
-            "end_line": 107,
+            "line": 105,
+            "end_line": 108,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -32246,19 +32267,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 109,
-              "end_line": 118,
+              "line": 110,
+              "end_line": 119,
+              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar step: The step.\n    \"\"\"\n\n    for step in (1, 2):\n        pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 123,
+          "end_line": 137,
+          "config": {
+            "line": 123,
+            "end_line": 126,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 128,
+              "end_line": 137,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 124,
-          "end_line": 137,
+          "line": 143,
+          "end_line": 156,
           "config": {
-            "line": 124,
-            "end_line": 127,
+            "line": 143,
+            "end_line": 146,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -32267,19 +32309,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 129,
-              "end_line": 137,
+              "line": 148,
+              "end_line": 156,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :var limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 141,
-          "end_line": 157,
+          "line": 160,
+          "end_line": 176,
           "config": {
-            "line": 141,
-            "end_line": 144,
+            "line": 160,
+            "end_line": 163,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -32288,19 +32330,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 146,
-              "end_line": 157,
+              "line": 165,
+              "end_line": 176,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n\n    def reset(self) -> None:\n        self.limit = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 176,
-          "end_line": 199,
+          "line": 196,
+          "end_line": 219,
           "config": {
-            "line": 176,
-            "end_line": 179,
+            "line": 196,
+            "end_line": 199,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -32309,8 +32351,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 181,
-              "end_line": 189,
+              "line": 201,
+              "end_line": 209,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
             },
             {
@@ -32318,8 +32360,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 191,
-              "end_line": 199,
+              "line": 211,
+              "end_line": 219,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
             }
           ]
