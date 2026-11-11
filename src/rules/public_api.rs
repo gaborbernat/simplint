@@ -212,33 +212,33 @@ impl<'a> PublicApi<'a> {
     }
 }
 
-// Which items count: the docstring rules require docs only for the names the library offers, while the other rules
-// count every item, the names a signature reaches too.
-#[derive(Clone, Copy)]
-pub(crate) enum Need {
-    Docs,
-    Any,
+// The module's functions, classes and class members that the documentation names by their dotted name under the
+// module's package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
+fn documented_definitions(checker: &Checker) -> FxHashSet<TextRange> {
+    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
+    let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {
+        Some(path) => (path.iter().map(String::as_str).collect(), true),
+        None => (vec![stem], false),
+    };
+    let prefix =
+        module.into_iter().filter(|part| *part != "__init__").fold(String::new(), |prefix, part| prefix + part + ".");
+    let mut found = FxHashSet::default();
+    documented_in(checker.body(), &prefix, anchored, &checker.project(), &mut found);
+    found
 }
 
-// How a method of a public class is offered: dunders and overrides need no docstring, public methods and properties
-// are documented, and the rest are private.
-enum Offer {
-    Optional,
-    Public(ApiKind),
-    Private,
-}
-
-fn offer(method: &ast::StmtFunctionDef) -> Offer {
-    let decorators = decorator_names(&method.decorator_list);
-    let visibility = Visibility::of(method.name.as_str());
-    if visibility == Visibility::Dunder
-        || decorators.iter().any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
-    {
-        Offer::Optional
-    } else if visibility == Visibility::Public {
-        Offer::Public(if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method })
-    } else {
-        Offer::Private
+fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileIndex, found: &mut FxHashSet<TextRange>) {
+    for stmt in module_statements(body) {
+        let (name, members) = match stmt {
+            Stmt::FunctionDef(function) => (function.name.as_str(), &[][..]),
+            Stmt::ClassDef(class) => (class.name.as_str(), class.body.as_slice()),
+            _ => continue,
+        };
+        let qualified = format!("{prefix}{name}");
+        if project.is_documented(&qualified, anchored) {
+            found.insert(stmt.range());
+        }
+        documented_in(members, &format!("{qualified}."), anchored, project, found);
     }
 }
 
@@ -274,32 +274,32 @@ pub(super) fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&
     found
 }
 
-// The module's functions, classes and class members that the documentation names by their dotted name under the
-// module's package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
-fn documented_definitions(checker: &Checker) -> FxHashSet<TextRange> {
-    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
-    let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {
-        Some(path) => (path.iter().map(String::as_str).collect(), true),
-        None => (vec![stem], false),
-    };
-    let prefix =
-        module.into_iter().filter(|part| *part != "__init__").fold(String::new(), |prefix, part| prefix + part + ".");
-    let mut found = FxHashSet::default();
-    documented_in(checker.body(), &prefix, anchored, &checker.project(), &mut found);
-    found
+fn offer(method: &ast::StmtFunctionDef) -> Offer {
+    let decorators = decorator_names(&method.decorator_list);
+    let visibility = Visibility::of(method.name.as_str());
+    if visibility == Visibility::Dunder
+        || decorators.iter().any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
+    {
+        Offer::Optional
+    } else if visibility == Visibility::Public {
+        Offer::Public(if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method })
+    } else {
+        Offer::Private
+    }
 }
 
-fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileIndex, found: &mut FxHashSet<TextRange>) {
-    for stmt in module_statements(body) {
-        let (name, members) = match stmt {
-            Stmt::FunctionDef(function) => (function.name.as_str(), &[][..]),
-            Stmt::ClassDef(class) => (class.name.as_str(), class.body.as_slice()),
-            _ => continue,
-        };
-        let qualified = format!("{prefix}{name}");
-        if project.is_documented(&qualified, anchored) {
-            found.insert(stmt.range());
-        }
-        documented_in(members, &format!("{qualified}."), anchored, project, found);
-    }
+// Which items count: the docstring rules require docs only for the names the library offers, while the other rules
+// count every item, the names a signature reaches too.
+#[derive(Clone, Copy)]
+pub(crate) enum Need {
+    Docs,
+    Any,
+}
+
+// How a method of a public class is offered: dunders and overrides need no docstring, public methods and properties
+// are documented, and the rest are private.
+enum Offer {
+    Optional,
+    Public(ApiKind),
+    Private,
 }
