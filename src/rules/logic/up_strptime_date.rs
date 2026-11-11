@@ -5,6 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::syntax::from_imports;
 
 // Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -77,16 +78,8 @@ fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(S
 
 // The alias that imports `datetime.datetime` under the name `local` at module level.
 fn class_alias<'b>(body: &'b [Stmt], local: &str) -> Option<&'b ast::Alias> {
-    body.iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
-                if module.as_str() == "datetime" =>
-            {
-                Some(names)
-            }
-            _ => None,
-        })
-        .flatten()
+    from_imports(body, "datetime")
+        .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "datetime" && alias.asname.as_ref().unwrap_or(&alias.name) == local)
 }
 

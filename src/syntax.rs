@@ -191,6 +191,18 @@ pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
     }
 }
 
+// The `from` imports of `module` among the statements of a body, which for a module body are its top-level imports.
+pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item = &'a ast::StmtImportFrom> {
+    body.iter().filter_map(move |stmt| match stmt {
+        Stmt::ImportFrom(import)
+            if import.level == 0 && import.module.as_ref().is_some_and(|name| name.as_str() == module) =>
+        {
+            Some(import)
+        }
+        _ => None,
+    })
+}
+
 // The name a match pattern captures, as in `case [*rest]` or `case {**rest}`.
 pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
     match pattern {

@@ -1,10 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Fix;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::ensure_import;
+use crate::rules::edits::{Import, ensure_import};
 use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, wrap_edits};
 use crate::syntax::{for_each_body, sole_argument};
 
@@ -51,14 +51,16 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
         return;
     }
     let header = format!("with contextlib.chdir({}):", checker.text(target));
-    let fix = contextlib_import(checker, assign.range()).filter(|_| !is_exported_module_name(checker, old)).and_then(
-        |imports| {
+    let fix = ensure_import(checker, "contextlib", None, assign.range())
+        .filter(|_| !is_exported_module_name(checker, old))
+        .and_then(|import| {
             let [head, tail] = wrap_edits(checker, assign.range(), try_stmt, &header)?;
             let mut edits = vec![tail];
-            edits.extend(imports);
+            if let Import::Add(edit) = import {
+                edits.push(edit);
+            }
             Some(Fix::safe_edits(head, edits))
-        },
-    );
+        });
     checker.report_fix(
         Rule::ChdirRestore,
         assign.range(),
@@ -66,11 +68,4 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
         fix,
         "Enter the directory with `contextlib.chdir`",
     );
-}
-
-// The edits that make `contextlib` available: none when the module imports it, one inserting the import when the name
-// is free, and nothing, which leaves the fix off, when another binding holds the name.
-fn contextlib_import(checker: &Checker, at: TextRange) -> Option<Vec<Edit>> {
-    let (_, edit) = ensure_import(checker, "contextlib", None, at)?;
-    Some(edit.into_iter().collect())
 }

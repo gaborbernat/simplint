@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_docstring_stmt;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Stmt, StringFlags};
@@ -216,25 +216,36 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
     Some(text)
 }
 
-// The name a fix uses for `member` of `module`, or for `module` itself, and the edit that adds the import when the file
-// lacks it. `None` when another binding holds the name at `at`, the place the fix writes it, which leaves the fix off.
-pub fn ensure_import(
-    checker: &Checker,
-    module: &str,
-    member: Option<&str>,
-    at: TextRange,
-) -> Option<(String, Option<Edit>)> {
+// What a fix needs to use a name: the import is there already, or the edit adds it.
+#[derive(Clone)]
+pub enum Import {
+    Present,
+    Add(Edit),
+}
+
+// The import a fix that writes `member` of `module`, or `module` itself, needs. `None` when another binding holds the
+// name at `at`, the place the fix writes it, which leaves the fix off.
+pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>, at: TextRange) -> Option<Import> {
     let binding = member.unwrap_or(module);
     if checker.semantic().is_bound_around(binding, at) {
         return None;
     }
     if checker.state().top_level_imports(checker).contains(&(module, member)) {
-        return Some((binding.to_owned(), None));
+        return Some(Import::Present);
     }
     if checker.semantic().is_bound(binding) {
         return None;
     }
-    Some((binding.to_owned(), Some(import_insertion(checker, module, member)?)))
+    Some(Import::Add(import_insertion(checker, module, member)?))
+}
+
+// The fix of an edit that uses an import. An edit that adds the import is isolated, so the next pass sees the import
+// instead of adding it twice.
+pub fn with_import(edit: Edit, import: Import, applicability: Applicability) -> Fix {
+    match import {
+        Import::Present => Fix::applicable_edit(edit, applicability),
+        Import::Add(import) => Fix::applicable_edits(edit, [import], applicability).isolate(IsolationLevel::Group(1)),
+    }
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
