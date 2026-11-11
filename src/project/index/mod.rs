@@ -36,7 +36,7 @@ use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
-use self::api::module_uses;
+use self::api::{FileAnswers, RunModules, module_uses};
 use self::classes::{ClassGraph, Reexports};
 use self::cycles::{Cycle, RuntimeGraph};
 use self::duplicates::DuplicateRun;
@@ -281,17 +281,7 @@ pub struct Project {
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     // The members of each file's private classes that a public class of the run inherits unoverridden, by class.
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
-    pub(super) assigned_attributes: FxHashSet<String>,
-    pub(super) module_reads: FxHashSet<String>,
-    pub(super) base_classes: FxHashSet<String>,
-    // The fixtures test modules request by parameter, `usefixtures` or `getfixturevalue`, so pytest may use them.
-    pub(super) fixture_requests: FxHashSet<String>,
-    // The attributes the files read under computed names, which may reach any attribute or those with a prefix.
-    pub(super) computed_reads: ComputedReads,
     pub(super) docs: DocReferences,
-    // The names code the index cannot follow reads: those a file imports or reads from a module that resolves to no file
-    // of the run, and those its doctest examples use.
-    pub(super) opaque_names: FxHashSet<String>,
     // The statement each file's runtime imports close a cycle with, keyed by the file that reports it.
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     // The statements each file shares with another file, which `duplicate-code` reports.
@@ -304,10 +294,9 @@ pub struct Project {
     pub(super) computed_writes: FxHashSet<FileId>,
     // The names a `setattr` call of each file sets on that file's module, which only the file's own names count.
     pub(super) written: FxHashMap<FileId, FxHashSet<String>>,
-    pub(super) writes: Writes,
     pub(super) calls: RunCalls,
-    // What the files of the run read in common, which every file's answers depend on.
-    pub(super) reads: RunReads,
+    // The names of the run that every file's answers depend on, and their digest.
+    pub(super) wide: RunWide,
     pub(super) digest: u64,
     // The layout `private-import-path` probes beside the run's projects, when a file of the run checks for it.
     pub(super) probed: Option<u64>,
@@ -403,7 +392,7 @@ impl Project {
             bindings,
             module_names,
             runtime,
-            mut opaque_names,
+            opaque_names,
             computed_writes,
             written,
             module_values,
@@ -448,21 +437,13 @@ impl Project {
             .collect();
         let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files, &production);
-        let RunNames {
-            assigned_attributes,
-            module_reads,
-            base_classes,
-            fixture_requests,
-            computed_reads,
-            writes,
-            digest,
-        } = run_names(&indexed, &test_modules, (&reads, docs), (&opaque_names, &external.assigned));
-        let mut computed_reads = computed_reads;
-        computed_reads.extend(&external.computed);
+        let mut wide = run_names(&indexed, &test_modules, reads, opaque_names, &external.assigned);
+        let digest = wide.digest(docs);
+        wide.computed_reads.extend(&external.computed);
         external_uses(&indexed, external, &mut uses);
         let entry_only = entry_uses(&entry_names, &bare_names, &mut uses);
         let Uses { imported, referenced, stored_references, from_tests, from_others } = uses;
-        opaque_names.extend(external.opaque.iter().cloned());
+        wide.opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
         let hook_classes = hatch_hook_classes(&graph);
@@ -498,7 +479,7 @@ impl Project {
                             &sources,
                             &constructor_uses,
                             &imported,
-                            &module_reads,
+                            &wide.module_reads,
                             entry_names,
                             &referenced,
                             &library_api,
@@ -532,12 +513,7 @@ impl Project {
             api_reached,
             library_reached,
             inherited,
-            assigned_attributes,
-            module_reads,
-            base_classes,
-            fixture_requests,
-            computed_reads,
-            opaque_names,
+            wide,
             docs: docs.clone(),
             cycles: cycle_reports,
             duplicates: duplicate_reports,
@@ -545,53 +521,15 @@ impl Project {
             module_uses,
             computed_writes,
             written,
-            writes,
             calls,
-            reads,
             digest,
             probed,
             files: Arc::clone(&resolver.files),
         }
     }
 
-    // The words whose count of files differs between the two indexes, or that only one holds.
-    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
-        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
-        let counts =
-            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
-        let only_other = others.keys().filter(|word| !own.contains_key(*word));
-        counts.chain(only_other.map(String::as_str))
-    }
-
-    // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
-    // the two, and the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ,
-    // which a dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its
-    // change names `dataclass`.
     pub fn changed_names<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
-        let (writes, others) = (&self.writes, &other.writes);
-        let classes = writes
-            .on_class
-            .iter()
-            .filter(|(class, attributes)| others.on_class.get(*class) != Some(*attributes))
-            .chain(others.on_class.iter().filter(|(class, _)| !writes.on_class.contains_key(*class)))
-            .map(|(class, _)| class)
-            .chain(writes.dict_stores.symmetric_difference(&others.dict_stores))
-            .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
-            .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
-            .map(|class| unqualified(class));
-        let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
-        self.assigned_attributes
-            .symmetric_difference(&other.assigned_attributes)
-            .chain(self.module_reads.symmetric_difference(&other.module_reads))
-            .chain(self.base_classes.symmetric_difference(&other.base_classes))
-            .chain(self.fixture_requests.symmetric_difference(&other.fixture_requests))
-            .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
-            .chain(writes.untyped.symmetric_difference(&others.untyped))
-            .map(String::as_str)
-            .chain(classes)
-            .chain(pickling)
-            .chain(self.string_word_changes(other))
-            .collect()
+        self.wide.changed(&other.wide)
     }
 
     // A file's entry is looked up once, so rules asking about many names do not normalize and hash its path each time.
@@ -600,29 +538,36 @@ impl Project {
         let id = self.files.get(path);
         FileIndex {
             project: self,
-            imported: entry(&self.imported, id),
-            entry_only: entry(&self.entry_only, id),
-            referenced: entry(&self.referenced, id),
-            star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-            package_star_imported: id.is_some_and(|id| self.package_star_imported.contains(&id)),
-            star_source: id.is_some_and(|id| self.star_sources.contains(&id)),
-            id,
-            role: entry(&self.roles, id).copied().unwrap_or_default(),
-            library_api: entry(&self.library_api, id),
-            modules: entry(&self.module_uses, id).map_or(&[], Vec::as_slice),
-            test_only: entry(&self.test_only, id),
-            uncaught_exceptions: entry(&self.uncaught_exceptions, id),
-            exception_types: entry(&self.exception_types, id),
-            hook_classes: entry(&self.hook_classes, id),
-            run_imports: entry(&self.run_imports, id),
-            run_modules: entry(&self.run_modules, id),
-            api_reached: entry(&self.api_reached, id),
-            library_reached: entry(&self.library_reached, id),
-            inherited: entry(&self.inherited, id),
-            cycle: entry(&self.cycles, id),
-            duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
             source: entry(&self.sources, id).copied(),
-            calls: self.calls.file(id),
+            answers: FileAnswers {
+                imported: entry(&self.imported, id),
+                entry_only: entry(&self.entry_only, id),
+                referenced: entry(&self.referenced, id),
+                star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
+                package_star_imported: id.is_some_and(|id| self.package_star_imported.contains(&id)),
+                star_source: id.is_some_and(|id| self.star_sources.contains(&id)),
+                computed_written: id.is_some_and(|id| self.computed_writes.contains(&id)),
+                written: id.and_then(|id| self.written.get(&id)),
+                role: entry(&self.roles, id).copied().unwrap_or_default(),
+                library_api: entry(&self.library_api, id),
+                modules: entry(&self.module_uses, id).map_or(&[], Vec::as_slice),
+                test_only: entry(&self.test_only, id),
+                loaded_as_value: id.is_some_and(|id| self.loaded_as_value.contains(&id)),
+                read_whole: id.is_some_and(|id| self.read_whole.contains(&id)),
+                uncaught_exceptions: entry(&self.uncaught_exceptions, id),
+                exception_types: entry(&self.exception_types, id),
+                hook_classes: entry(&self.hook_classes, id),
+                run_imports: entry(&self.run_imports, id),
+                run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },
+                api_reached: entry(&self.api_reached, id),
+                library_reached: entry(&self.library_reached, id),
+                inherited: entry(&self.inherited, id),
+                cycle: entry(&self.cycles, id),
+                duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
+                calls: self.calls.file(id),
+                reads: &self.wide.reads,
+                computed_reads: &self.wide.computed_reads,
+            },
         }
     }
 }
@@ -796,24 +741,30 @@ fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
     map.get(&id?)
 }
 
-// The names the files of the run list, and the writes they make, each gathered in parallel as the files are read in
-// common by every one.
-struct RunNames {
-    assigned_attributes: FxHashSet<String>,
-    module_reads: FxHashSet<String>,
-    base_classes: FxHashSet<String>,
-    fixture_requests: FxHashSet<String>,
-    computed_reads: ComputedReads,
-    writes: Writes,
-    digest: u64,
+// The names the files of the run list, the writes they make and what they read in common, which every file's answers
+// depend on. `digest` hashes them for the cache, and `changed` names the ones that differ between two indexes.
+pub(super) struct RunWide {
+    pub(super) reads: RunReads,
+    pub(super) assigned_attributes: FxHashSet<String>,
+    pub(super) module_reads: FxHashSet<String>,
+    pub(super) base_classes: FxHashSet<String>,
+    // The fixtures test modules request by parameter, `usefixtures` or `getfixturevalue`, so pytest may use them.
+    pub(super) fixture_requests: FxHashSet<String>,
+    // The names code the index cannot follow reads: those a file imports or reads from a module that resolves to no file
+    // of the run, and those its doctest examples use.
+    pub(super) opaque_names: FxHashSet<String>,
+    // The attributes the files read under computed names, which may reach any attribute or those with a prefix.
+    pub(super) computed_reads: ComputedReads,
+    pub(super) writes: Writes,
 }
 
 fn run_names(
     indexed: &[(FileId, &FileFacts)],
     test_modules: &FxHashSet<FileId>,
-    reads: (&RunReads, &DocReferences),
-    (opaque_names, outer_assigned): (&FxHashSet<String>, &FxHashSet<String>),
-) -> RunNames {
+    reads: RunReads,
+    opaque_names: FxHashSet<String>,
+    outer_assigned: &FxHashSet<String>,
+) -> RunWide {
     let ((assigned_attributes, module_reads, base_classes), (fixture_requests, (computed_reads, writes))) = rayon::join(
         || {
             (
@@ -832,9 +783,16 @@ fn run_names(
     // A store to the name in another project still makes it assigned here, as a store in this one does.
     let assigned_attributes: FxHashSet<String> =
         assigned_attributes.into_iter().chain(outer_assigned.iter().cloned()).collect();
-    let names = [&assigned_attributes, &module_reads, &base_classes, &fixture_requests, opaque_names];
-    let digest = digest(reads, &computed_reads, names, &writes);
-    RunNames { assigned_attributes, module_reads, base_classes, fixture_requests, computed_reads, writes, digest }
+    RunWide {
+        reads,
+        assigned_attributes,
+        module_reads,
+        base_classes,
+        fixture_requests,
+        opaque_names,
+        computed_reads,
+        writes,
+    }
 }
 
 // The names any file of the run lists in one of its facts.
@@ -1244,39 +1202,76 @@ fn string_word_counts(indexed: &[(FileId, &FileFacts)]) -> FxHashMap<String, u32
     counts.into_iter().map(|(word, count)| (word.to_owned(), count)).collect()
 }
 
-// The names of the whole run that every file's answers depend on: what the run's attribute writes, module reads and base
-// classes are, and whether it reads docstrings.
-fn digest(
-    (reads, docs): (&RunReads, &DocReferences),
-    computed_reads: &ComputedReads,
-    [assigned, module_reads, base_classes, fixtures, opaque]: [&FxHashSet<String>; 5],
-    writes: &Writes,
-) -> u64 {
-    let mut hasher = CacheKeyHasher::new();
-    reads.docstrings.cache_key(&mut hasher);
-    reads.class_names.cache_key(&mut hasher);
-    reads.reflected.cache_key(&mut hasher);
-    docs.cache_key(&mut hasher);
-    computed_reads.cache_key(&mut hasher);
-    string_words_key(&reads.string_words).cache_key(&mut hasher);
-    // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
-    for names in [
-        assigned,
-        module_reads,
-        base_classes,
-        fixtures,
-        opaque,
-        &writes.untyped,
-        &writes.dict_stores,
-        &writes.unslottable_bases,
-        &writes.stateful_bases,
-    ] {
-        names.cache_key(&mut hasher);
+impl RunWide {
+    // What the run's attribute writes, module reads and base classes are, and whether it reads docstrings: the names
+    // of the whole run that every file's answers depend on. It is taken before the external sets are merged in.
+    pub(super) fn digest(&self, docs: &DocReferences) -> u64 {
+        let mut hasher = CacheKeyHasher::new();
+        self.reads.docstrings.cache_key(&mut hasher);
+        self.reads.class_names.cache_key(&mut hasher);
+        self.reads.reflected.cache_key(&mut hasher);
+        docs.cache_key(&mut hasher);
+        self.computed_reads.cache_key(&mut hasher);
+        string_words_key(&self.reads.string_words).cache_key(&mut hasher);
+        // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
+        for names in [
+            &self.assigned_attributes,
+            &self.module_reads,
+            &self.base_classes,
+            &self.fixture_requests,
+            &self.opaque_names,
+            &self.writes.untyped,
+            &self.writes.dict_stores,
+            &self.writes.unslottable_bases,
+            &self.writes.stateful_bases,
+        ] {
+            names.cache_key(&mut hasher);
+        }
+        self.writes.on_class.cache_key(&mut hasher);
+        self.writes.class_attributes.cache_key(&mut hasher);
+        self.writes.pickles_low_protocol.cache_key(&mut hasher);
+        hasher.finish()
     }
-    writes.on_class.cache_key(&mut hasher);
-    writes.class_attributes.cache_key(&mut hasher);
-    writes.pickles_low_protocol.cache_key(&mut hasher);
-    hasher.finish()
+
+    // The words whose count of files differs between the two indexes, or that only one holds.
+    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
+        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
+        let counts =
+            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
+        let only_other = others.keys().filter(|word| !own.contains_key(*word));
+        counts.chain(only_other.map(String::as_str))
+    }
+
+    // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
+    // the two, and the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ,
+    // which a dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its
+    // change names `dataclass`.
+    pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
+        let (writes, others) = (&self.writes, &other.writes);
+        let classes = writes
+            .on_class
+            .iter()
+            .filter(|(class, attributes)| others.on_class.get(*class) != Some(*attributes))
+            .chain(others.on_class.iter().filter(|(class, _)| !writes.on_class.contains_key(*class)))
+            .map(|(class, _)| class)
+            .chain(writes.dict_stores.symmetric_difference(&others.dict_stores))
+            .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
+            .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
+            .map(|class| unqualified(class));
+        let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
+        self.assigned_attributes
+            .symmetric_difference(&other.assigned_attributes)
+            .chain(self.module_reads.symmetric_difference(&other.module_reads))
+            .chain(self.base_classes.symmetric_difference(&other.base_classes))
+            .chain(self.fixture_requests.symmetric_difference(&other.fixture_requests))
+            .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
+            .chain(writes.untyped.symmetric_difference(&others.untyped))
+            .map(String::as_str)
+            .chain(classes)
+            .chain(pickling)
+            .chain(self.string_word_changes(other))
+            .collect()
+    }
 }
 
 // A digest of the word counts that does not depend on the map's order, so the many words need no sorting: each word
