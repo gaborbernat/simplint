@@ -244,7 +244,34 @@ Some members stay where they are, and some reports come without a fix:
 
 - **Statements that are not definitions.** Such a statement sits in section 2, so it moves up with the other class
   attributes. It stays in place when it conflicts with a definition: it binds a name that a definition reads while the
-  class is created, or it reads a name that a definition binds. A definition does not move past such a statement.
+  class is created, or it reads a name that a definition binds. A definition does not move past such a statement. A
+  `match` capture or an `except ... as` name binds its name too.
+
+  ```python report
+  class Shape:
+      def area(self) -> int:
+          return 1
+
+      match 1:
+          case area:
+              pass
+
+      def __init__(self) -> None:
+          self.size = 1
+  ```
+
+  ```python fixed
+  class Shape:
+      def area(self) -> int:
+          return 1
+
+      match 1:
+          case area:
+              pass
+
+      def __init__(self) -> None:
+          self.size = 1
+  ```
 
 - **Django model statements Ruff reports**: when the file imports Django and the project selects
   [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), Ruff reports a statement of a

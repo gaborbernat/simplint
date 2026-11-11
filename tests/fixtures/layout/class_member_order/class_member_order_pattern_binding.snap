@@ -1,0 +1,70 @@
+---
+source: tests/common/mod.rs
+assertion_line: 137
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:9 SMP203 `__init__` belongs with the constructors, above `run`
+22:9 SMP203 `__init__` belongs with the constructors, above `run`
+34:9 SMP203 `__init__` belongs with the constructors, above `run` [fix: Move `__init__` above `run`]
+46:9 SMP203 `__init__` belongs with the constructors, above `run`
+58:9 SMP203 `__init__` belongs with the constructors, above `run`
+--- fixed (1 applied, 4 remaining) ---
+class A:
+    def run(self):
+        return 1
+
+    match 1:
+        case run:
+            pass
+
+    def __init__(self):
+        self.x = 1
+
+
+class B:
+    def run(self):
+        return 1
+
+    try:
+        raise KeyError
+    except KeyError as run:
+        pass
+
+    def __init__(self):
+        self.x = 1
+
+
+class C:
+    match 1:
+        case other:
+            pass
+
+    def __init__(self):
+        self.x = 1
+
+    def run(self):
+        return 1
+
+
+class D:
+    def run(self):
+        return 1
+
+    match [1]:
+        case [*run]:
+            pass
+
+    def __init__(self):
+        self.x = 1
+
+
+class E:
+    def run(self):
+        return 1
+
+    match {}:
+        case {**run}:
+            pass
+
+    def __init__(self):
+        self.x = 1
