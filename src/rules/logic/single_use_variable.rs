@@ -33,7 +33,7 @@ pub fn single_use_variable(checker: &Checker) {
                 && let Some(target) = sole_name_target(assign)
             {
                 let names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
-                check_pair(checker, (names, &rebindable), (assign, target), next, depth);
+                check_pair(checker, (names, &rebindable), (assign, target), next, &function.body, depth);
             }
         }
     });
@@ -45,16 +45,17 @@ fn check_pair<'a>(
     (names, rebindable): (&Names<'a>, &FxHashSet<&str>),
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
+    body: &'a [Stmt],
     depth: usize,
 ) {
     let name = target.id.as_str();
-    let Some((use_range, reading)) = single_read(checker, names, (assign, target), next) else {
+    let Some((use_range, reading)) = single_read(checker, names, (assign, target), next, body) else {
         return;
     };
     let Some((range, replacement)) = inlined_replacement(checker, assign, next, (use_range, &reading)) else {
         return;
     };
-    if ruff_reports_yield_from(checker, target, next) {
+    if ruff_reports_yield_from(target, next) {
         return;
     }
     let deletion = statement_deletion(checker, assign.range, Some(next.range()), Blanks::Shared)
@@ -95,6 +96,7 @@ fn single_read<'a>(
     names: &Names<'a>,
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
+    body: &'a [Stmt],
 ) -> Option<(TextRange, ReadSite<'a>)> {
     let name = target.id.as_str();
     let value = assign.value.as_ref();
@@ -106,7 +108,7 @@ fn single_read<'a>(
         || checker.has_comment_in(TextRange::new(assign.start(), next.start()))
         || names.declared_outer.contains(name)
         || leads_if_test(next, name)
-        || returns_or_yields(checker, next, name)
+        || returns_or_yields(body, next, name)
         || raises_with_name(next, name)
         || names.rebound.contains(name)
         || names.string_reads.contains(name)

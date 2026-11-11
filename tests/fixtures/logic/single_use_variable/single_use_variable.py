@@ -312,12 +312,12 @@ def kept_yield_tuple(first: int, second: int):
     yield pair
 
 
-def inlined_yield_from_tuple(first: int, second: int):
+def yield_from_tuple_left_to_ruff(first: int, second: int):
     pair = first, second
     yield from pair
 
 
-def inlined_yield_from(items: list[str]):
+def yield_from_left_to_ruff(items: list[str]):
     names = sorted(items)
     yield from names
 
