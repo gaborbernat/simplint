@@ -1,11 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Applicability;
 use ruff_python_ast::Expr;
-use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::keyword_removal;
+use crate::rules::logic::modernize::report_redundant_keyword;
 
 // Text reads and writes that take an `encoding` argument, and the `pathlib` methods named like them. A method's
 // receiver is not typed, so an unrelated class with the same method name is reported too.
@@ -25,12 +24,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !is_text_opener(checker, &call.func) {
         return;
     }
-    let fix = keyword_removal(checker, call, keyword).map(|range| Fix::unsafe_edit(Edit::range_deletion(range)));
-    checker.report_fix(
+    report_redundant_keyword(
+        checker,
+        call,
+        keyword,
         Rule::Utf8EncodingDefault,
-        keyword.range(),
+        Applicability::Unsafe,
         "UTF-8 is the default text encoding from Python 3.15, so `encoding=\"utf-8\"` can go",
-        fix,
         "Drop `encoding=\"utf-8\"`",
     );
 }

@@ -1,9 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Fix;
 use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
+use crate::rules::logic::modernize::rename_attribute;
 use crate::syntax::signature_annotations;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -17,9 +18,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     {
         return;
     }
-    let fix = func.as_attribute_expr().map(|attribute| {
-        Fix::safe_edit(Edit::range_replacement("get_running_loop".to_owned(), attribute.attr.range()))
-    });
+    let fix = func.as_attribute_expr().map(|attribute| Fix::safe_edit(rename_attribute(attribute, "get_running_loop")));
     checker.report_fix(
         Rule::EventLoopInCoroutine,
         expr.range(),

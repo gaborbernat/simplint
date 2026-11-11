@@ -7,6 +7,7 @@ mod forwarding_function;
 mod inline;
 pub(crate) mod kinds;
 pub(crate) mod long_tuple_return;
+mod modernize;
 mod regex_pattern;
 mod scoped_block;
 mod single_caller_helper;

@@ -1,10 +1,11 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Fix;
 use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::modernize::replacement_unless_commented;
 use crate::syntax::is_name;
 
 // Since Python 3.10 the `traceback` functions read the exception's type and traceback from the exception itself.
@@ -41,7 +42,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         checker.parenthesized_range(exc_type, (&call.arguments).into()).start(),
         checker.parenthesized_range(last, (&call.arguments).into()).end(),
     );
-    let fix = (!checker.has_comment_in(range)).then(|| Fix::safe_edit(Edit::range_replacement(name.to_owned(), range)));
+    let fix = replacement_unless_commented(checker, name.to_owned(), range).map(Fix::safe_edit);
     checker.report_fix(
         Rule::TracebackExceptionArguments,
         expr.range(),
