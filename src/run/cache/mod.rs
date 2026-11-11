@@ -35,7 +35,7 @@ use self::rendered::{Rendered, RenderedPackage, read_rendered, text};
 use self::report::{ArchivedFindings, Findings, Report, Settled, withdrawn};
 
 pub(super) use fingerprint::{FileIdentity, Fingerprints};
-pub(crate) use rendered::FullDisplay;
+pub(crate) use rendered::{DisplayKey, FullDisplay};
 
 // The caches of a run, one per package root, or per directory for files outside a package, as Ruff keeps them. Their
 // bytes are read up front and checked once by `views`, a package per thread, and read in place.

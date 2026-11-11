@@ -58,17 +58,33 @@ pub(crate) fn add_suppressions(
     Ok(counts.into_iter().flatten().flatten().sum())
 }
 
-// Lints the files of a run, reusing their cached reports when `use_cache` is set. With `full` set, each file's cached
-// reports also keep the text the `full` output shows them as.
+// Whether a run reads and writes the cache, and the `full` text its reports keep with them.
+pub(crate) struct CacheUse {
+    enabled: bool,
+    full: Option<FullDisplay>,
+}
+
+impl CacheUse {
+    // As in Ruff, the cache is only read and written while `noqa` comments apply.
+    pub(crate) fn new(no_cache: bool, mode: &Mode, full: Option<FullDisplay>) -> Self {
+        let enabled = !no_cache && mode.noqa.is_enabled();
+        // Only generated fixes keep their reports in the cache, so only then can the `full` text be kept with them.
+        let full = full.filter(|_| enabled && mode.fix.is_generate());
+        Self { enabled, full }
+    }
+}
+
+// Lints the files of a run, reusing their cached reports when the run uses the cache. With `full` text kept, each file's
+// cached reports also keep the text the `full` output shows them as.
 pub(crate) fn check_files(
     files: &[PathBuf],
     resolved: &Resolved,
     mode: &Mode,
-    use_cache: bool,
-    full: Option<&FullDisplay>,
+    usage: &CacheUse,
     ending: Ending,
 ) -> Result<Diagnostics> {
-    let cache_dir = resolved.cache_dir.as_deref().filter(|_| use_cache);
+    let cache_dir = resolved.cache_dir.as_deref().filter(|_| usage.enabled);
+    let full = usage.full.as_ref();
     let fingerprints = Fingerprints::default();
     let overlay = Overlay::default();
     // Applied fixes reach the disk, and a diff run keeps its fixes in the overlay; either way other files' facts come

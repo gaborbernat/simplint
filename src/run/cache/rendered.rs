@@ -3,12 +3,24 @@ use std::path::Path;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::{Diagnostic, DisplayDiagnosticConfig};
+use ruff_diagnostics::Applicability;
 use ruff_linter::message::{RenderContext, render_diagnostics};
 use ruff_linter::settings::types::OutputFormat;
 use rustc_hash::FxHashMap;
 
 use crate::project::cache::read_aligned;
 use crate::run::Diagnostics;
+
+// The display settings a file's `full` text depends on, as the output chooses them.
+#[derive(Clone, Copy)]
+#[expect(clippy::struct_excessive_bools, reason = "each flag is one display setting the text depends on")]
+pub(crate) struct DisplayKey {
+    pub(crate) preview: bool,
+    pub(crate) prefer_rule_codes: bool,
+    pub(crate) color: bool,
+    pub(crate) hyperlinks: bool,
+    pub(crate) required: Applicability,
+}
 
 // The `full` settings a file's text is valid under: the display config and a digest of what else the text depends on.
 // A file's text needs no run-wide state: the fix marker shows only on a diagnostic whose fix applies, and the run has
@@ -19,8 +31,16 @@ pub(crate) struct FullDisplay {
 }
 
 impl FullDisplay {
-    pub(crate) fn new(config: DisplayDiagnosticConfig, base: u64) -> Self {
-        Self { config, base }
+    pub(crate) fn new(config: DisplayDiagnosticConfig, key: DisplayKey) -> Option<Self> {
+        let cwd = std::env::current_dir().ok()?;
+        let mut hasher = CacheKeyHasher::new();
+        key.preview.cache_key(&mut hasher);
+        key.prefer_rule_codes.cache_key(&mut hasher);
+        key.color.cache_key(&mut hasher);
+        key.hyperlinks.cache_key(&mut hasher);
+        format!("{:?}", key.required).cache_key(&mut hasher);
+        cwd.to_string_lossy().cache_key(&mut hasher);
+        Some(Self { config, base: hasher.finish() })
     }
 
     // The key a file's text is stored under, given the name the output shows the file by.

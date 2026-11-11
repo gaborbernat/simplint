@@ -9,6 +9,7 @@ mod files;
 mod overlay;
 mod rounds;
 
+use std::env;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Add, AddAssign};
@@ -26,7 +27,7 @@ use ruff_linter::settings::LinterSettings;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
 use ruff_linter::source_kind::SourceKindDiff;
-use ruff_linter::{IOError, Violation};
+use ruff_linter::{IOError, Violation, warn_user};
 use ruff_source_file::SourceFileBuilder;
 use ruff_text_size::{TextRange, TextSize};
 use ruff_workspace::resolver::PyprojectConfig;
@@ -36,9 +37,10 @@ use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
 use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
-pub(crate) use cache::FullDisplay;
-pub(crate) use check::{add_suppressions, check_files, check_stdin};
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing, within};
+pub(crate) use cache::{DisplayKey, FullDisplay};
+pub(crate) use check::{CacheUse, add_suppressions, check_files, check_stdin};
+use discover::within;
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing};
 pub(crate) use overlay::Overlay;
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
@@ -55,6 +57,30 @@ impl Resolved {
         self.pyproject_config.settings.linter.preview.is_enabled()
             && !self.pyproject_config.settings.output_prefer_rule_codes
     }
+}
+
+// Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the user's
+// choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a link
+// committed in place of the default, so it must stay inside the project root: the directory of the configuration file,
+// or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and a
+// default that leaves it too turns the cache off.
+pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<PathBuf> {
+    let configured = &config.settings.cache_dir;
+    if named {
+        return Some(configured.clone());
+    }
+    let root = match config.path.as_deref().and_then(Path::parent) {
+        Some(parent) => parent.to_path_buf(),
+        None => env::current_dir().ok()?,
+    };
+    let chosen = if within(configured, &root) { configured.clone() } else { ruff_cache::cache_dir(&root) };
+    // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
+    let build = crate::project::cache::documentation_file(&chosen, &root);
+    if build.parent().is_some_and(|build| within(build, &root)) {
+        return Some(chosen);
+    }
+    warn_user!("Not caching: the cache directory `{}` leads outside the project", chosen.display());
+    None
 }
 
 // What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
