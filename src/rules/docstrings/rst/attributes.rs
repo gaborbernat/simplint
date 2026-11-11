@@ -65,6 +65,12 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                     add(name.id.as_str(), true, documented);
                 }
             }
+            // A loop variable of the class body is a class variable, as an assignment to it is.
+            Stmt::For(ast::StmtFor { target, .. }) => {
+                for name in target_names(target) {
+                    add(name, true, documented);
+                }
+            }
             _ => {}
         }
     }

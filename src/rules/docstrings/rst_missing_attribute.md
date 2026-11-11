@@ -103,6 +103,28 @@ field until they do.
       state: str
   ```
 
+- **Loop variables of the class body**: the target of a `for` statement in the class body is a class variable, as a name
+  the body assigns without an annotation is, so the class documents it.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  class Engine:
+      """Run jobs."""
+
+      for step in (1, 2):
+          pass
+  ```
+
 - **Attributes a regular method sets on its first parameter**: these are instance attributes. A method sets them at any
   depth of its body, directly or through `object.__setattr__(self, "name", value)` as a frozen dataclass does. A class
   defined inside a method has its own `self`, so its attributes belong to that class instead.

@@ -337,8 +337,9 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
       return len(values) + bool(probe)
   ```
 
-- **A body that is only a placeholder, without a return annotation**: a body such as `...`, `pass` or
-  `raise NotImplementedError`, as in an abstract method, says nothing of the return, so its `:returns:` is not reported.
+- **A body that is only a placeholder**: a body such as `...`, `pass` or `raise NotImplementedError`, as in an abstract
+  method, says nothing of the return or the yields, so neither a missing `:returns:` nor a `:yields:` is reported for
+  it.
 
   ```toml config
   [project]
@@ -351,11 +352,23 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
   docstring-style = "rst"
   ```
 
-  ```python ok
+  ```python ok file=total.py
   def total(values: list[int]):
       """Add the values.
 
       :param values: The values.
+      """
+      ...
+  ```
+
+  ```python ok file=rows.py
+  from collections.abc import Iterator
+
+
+  def rows() -> Iterator[str]:
+      """Read the rows.
+
+      :yields: Each row.
       """
       ...
   ```

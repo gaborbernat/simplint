@@ -164,35 +164,49 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
         return Some(parameters(init, true));
     }
     // A generator called with `init=False` writes no constructor, so the class keeps `object`'s.
-    let generated = class.decorator_list.iter().any(|decorator| {
+    let generator = class.decorator_list.iter().find_map(|decorator| {
         let call = decorator.expression.as_call_expr();
-        let name = last_segment(call.map_or(&decorator.expression, |call| &call.func));
-        !call.is_some_and(skips_init)
-            && matches!(name, Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
-    }) || class.bases().iter().any(|base| last_segment(base) == Some("NamedTuple"));
-    if !generated || has_attribute_bases(class) {
+        let name = last_segment(call.map_or(&decorator.expression, |call| &call.func))?;
+        let generates = matches!(name, "dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s");
+        (generates && !call.is_some_and(skips_init)).then_some(name)
+    });
+    let namedtuple = class.bases().iter().any(|base| last_segment(base) == Some("NamedTuple"));
+    if (generator.is_none() && !namedtuple) || has_attribute_bases(class) {
         return None;
     }
+    let attrs = generator.is_some_and(|name| name != "dataclass");
     let fields = module_statements(&class.body).filter_map(|stmt| match stmt {
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
             let marker = matches!(annotation_name(annotation), Some("ClassVar" | "KW_ONLY"));
             let skipped = value.as_deref().and_then(Expr::as_call_expr).is_some_and(skips_init);
-            target.as_name_expr().filter(|_| !marker && !skipped).map(|name| (name, true))
+            target.as_name_expr().filter(|_| !marker && !skipped).map(|name| (name, value.as_deref(), true))
         }
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
             [Expr::Name(name)] if is_field_call(value) && !value.as_call_expr().is_some_and(skips_init) => {
-                Some((name, false))
+                Some((name, Some(value.as_ref()), false))
             }
             _ => None,
         },
         _ => None,
     });
-    Some(
-        fields
-            .filter(|(name, _)| !name.id.as_str().chars().all(|char| char == '_'))
-            .map(|(name, annotated)| Parameter { name: name.id.as_str(), annotated })
-            .collect(),
-    )
+    fields
+        .filter(|(name, _, _)| !name.id.as_str().chars().all(|char| char == '_'))
+        .map(|(name, value, annotated)| Some(Parameter { name: init_name(name, value, attrs)?, annotated }))
+        .collect()
+}
+
+// The name of a field's constructor parameter: attrs takes it from the field's `alias`, or from the field's name
+// without its leading underscores; a dataclass keeps the field's name. An alias that is not a string literal names the
+// parameter in a way the class does not show, so the class's parameters are unknown.
+fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) -> Option<&'a str> {
+    if !attrs {
+        return Some(name.id.as_str());
+    }
+    let alias = value.and_then(Expr::as_call_expr).and_then(|call| call.arguments.find_keyword("alias"));
+    match alias {
+        None => Some(name.id.trim_start_matches('_')),
+        Some(keyword) => keyword.value.as_string_literal_expr().map(|literal| literal.value.to_str()),
+    }
 }
 
 // Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder, as `__wrapped__`,

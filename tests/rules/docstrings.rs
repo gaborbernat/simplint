@@ -73,6 +73,120 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
     assert_eq!(common::read(root.path(), "tests/__init__.py"), "# Licensed under the license.\n#\n");
 }
 
+// A comment after a docstring that other code follows stays on a line of its own, unless it is a pragma, which goes
+// with the docstring's line.
+#[test_case(
+    "module.py",
+    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    return 1\n",
+    "SMP901",
+    "def _acquire() -> int:\n    # callers must already hold the registry mutex\n    return 1\n" ;
+    "function"
+)]
+#[test_case(
+    "tests/test_net.py",
+    "\"\"\"Network tests.\"\"\"  # these need the staging VPN\nimport os\n",
+    "SMP902",
+    "# these need the staging VPN\nimport os\n" ;
+    "test_module"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # noqa: E501\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "pragma"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # fmt: off\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "fmt_directive"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # first # noqa: E501\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "comment_ending_in_pragma"
+)]
+#[test_case(
+    "tests/test_net.py",
+    "\"\"\"Network tests.\"\"\"  # fmt: skip\nimport os\n",
+    "SMP902",
+    "import os\n" ;
+    "test_module_directive"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # type: ignore\n",
+    "SMP901",
+    "def _run() -> None:\n    ...\n" ;
+    "single_statement_directive"
+)]
+fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str, fixed: &str) {
+    let root = common::project(&[("pyproject.toml", ""), (file, source)]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", select]);
+    assert_eq!(common::read(root.path(), file), fixed);
+}
+
+// A class body that reads `__doc__` reads its own docstring, which a method does not: the method's `__doc__` is the
+// module's.
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    help = __doc__\n",
+    "All checks passed!\n" ;
+    "class_body_reads_it"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def help(self) -> str:\n        return __doc__\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "method_reads_module_doc"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: 1\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "lambda_reads_nothing"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def run(self, text=__doc__):\n        return text\n",
+    "All checks passed!\n" ;
+    "method_default_reads_it"
+)]
+#[test_case(
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
+    "All checks passed!\n" ;
+    "decorator_reads_it"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    run = staticmethod(lambda text=__doc__: text)\n",
+    "All checks passed!\n" ;
+    "lambda_default_reads_it"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner(dict, doc=__doc__):\n        pass\n",
+    "All checks passed!\n" ;
+    "nested_class_header_reads_it"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: __doc__\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "lambda_body_reads_module_doc"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner:\n        help = __doc__\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "nested_class_body_reads_module_doc"
+)]
+#[test_case(
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
+    "All checks passed!\n" ;
+    "nested_class_decorator_reads_it"
+)]
+fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
+    let root = common::project(&[("pyproject.toml", ""), ("module.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP901"]).1, stdout);
+}
+
 // The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
 // so a body indented by two spaces wraps the same.
 #[test_case("    " ; "formatted")]
@@ -148,6 +262,109 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
     );
 }
 
+// attrs names a field's constructor parameter by its `alias`, or by its name without the leading underscores, where a
+// dataclass keeps the name.
+#[test_case(
+    "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "All checks passed!\n" ;
+    "attrs_without_underscores"
+)]
+#[test_case(
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "All checks passed!\n" ;
+    "attrs_alias"
+)]
+#[test_case(
+    "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "All checks passed!\n" ;
+    "dataclass_keeps_name"
+)]
+#[test_case(
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "attrs_alias_replaces_name"
+)]
+#[test_case(
+    "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
+    "All checks passed!\n" ;
+    "attrs_alias_not_a_literal_is_unknown"
+)]
+fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP916,SMP917"]).1, stdout);
+}
+
+// attrs gives the `__init__` parameter of a private field the name without its underscore, so a public class documents
+// that name.
+#[test]
+fn attrs_private_field_is_a_documented_parameter() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        (
+            "model.py",
+            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\"\"\"\n\n    _x: int\n",
+        ),
+    ]);
+    assert_eq!(
+        common::check(root.path(), &["--select", "SMP916"]).1,
+        "model.py:8:5: SMP916 Docstring of `Point` does not document parameter `x`; add `:param x:`\nFound 1 error.\n"
+    );
+}
+
+// A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not asked
+// for the fields of a value it has not written. A body with code is held to the same rules.
+#[test_case(
+    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    ...\n",
+    "All checks passed!\n" ;
+    "placeholder_yields"
+)]
+#[test_case(
+    "def rows():\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    raise NotImplementedError\n",
+    "All checks passed!\n" ;
+    "placeholder_raises"
+)]
+#[test_case(
+    "def total() -> int:\n    \"\"\"Add the values.\n    \"\"\"\n    return 1\n",
+    "model.py:2:5: SMP923 `total` returns a value, yet its docstring has no `:returns:` field\nFound 1 error.\n" ;
+    "computed_value"
+)]
+#[test_case(
+    "def rows() -> list[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    return []\n",
+    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 `rows` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "computed_yields"
+)]
+fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        ("model.py", source),
+    ]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP923"]).1, stdout);
+}
+
+// The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents them.
+#[test_case(
+    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\n            pass\n\n    for size in (1, 2):\n        pass\n",
+    "All checks passed!\n" ;
+    "members_in_blocks_and_loops"
+)]
+#[test_case(
+    "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar missing: Not a member.\n    \"\"\"\n\n    if True:\n        speed = 1\n\n    for size in (1, 2):\n        pass\n",
+    "model.py:4:6: SMP921 `:ivar missing:` documents `missing`, which `Engine` does not have\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "unknown_member_still_reported"
+)]
+fn class_members_in_blocks_are_documented(source: &str, stdout: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP921"]).1, stdout);
+}
+
 // Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
 fn rst_rules_need_the_docstring_style() {
@@ -159,6 +376,74 @@ fn rst_rules_need_the_docstring_style() {
         ),
     ]);
     assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
+}
+
+// Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
+// their parameter and are not reported as unknown.
+#[test_case(
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\"\"\n    print(path, mode)\n",
+    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "kwarg"
+)]
+#[test_case(
+    "def load(mode: str) -> None:\n    \"\"\"Load.\n\n    :param mode: How.\n    :paramtype mode: str\n    \"\"\"\n    print(mode)\n",
+    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "paramtype"
+)]
+#[test_case(
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwargs mode: How.\n    \"\"\"\n    print(path, mode)\n",
+    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: SMP910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype` and their aliases\nFound 2 errors.\n" ;
+    "misspelled"
+)]
+fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        ("model.py", source),
+    ]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP910,SMP916"]).1, stdout);
+}
+
+// Dropping the type of a parameter keeps the stars that mark `*args` and `**kwargs`, which the name is written with.
+#[test_case(
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :param str \\*\\*kwargs: The options.\n    \"\"\"\n",
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    :param \\*\\*kwargs: The options.\n    \"\"\"\n" ;
+    "star_parameters"
+)]
+#[test_case(
+    "def call(count: int) -> None:\n    \"\"\"Call it.\n\n    :param int count: The number.\n    \"\"\"\n",
+    "def call(count: int) -> None:\n    \"\"\"Call it.\n\n    :param count: The number.\n    \"\"\"\n" ;
+    "plain_parameter"
+)]
+fn type_field_fix_keeps_the_star_markers(source: &str, fixed: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("demo.py", source)]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP912"]);
+    assert_eq!(common::read(root.path(), "demo.py"), fixed);
+}
+
+// Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the rule's
+// others.
+#[test]
+fn alias_rename_is_an_unsafe_fix() {
+    let source = "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :arg path: Where.\n    \"\"\"\n    print(path)\n";
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n[build-system]\nrequires = []\n[tool.simplint]\ndocstring-style = \"rst\"\n",
+        ),
+        ("demo.py", source),
+    ]);
+    let stdout = common::check(root.path(), &["--fix", "--select", "SMP910"]).1;
+    assert_eq!(
+        (stdout, common::read(root.path(), "demo.py")),
+        (
+            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n".to_owned(),
+            source.to_owned()
+        )
+    );
 }
 
 // Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.

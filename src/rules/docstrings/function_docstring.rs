@@ -2,19 +2,18 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_trivia::textwrap::dedent;
-use ruff_python_trivia::{
-    SuppressionKind as FormatSuppression, has_leading_content, has_trailing_content, is_pragma_comment,
-};
+use ruff_python_trivia::{SuppressionKind as FormatSuppression, has_leading_content, has_trailing_content};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
-use crate::rules::docstrings::Need;
 use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
-use crate::rules::edits::{lines_with_trailing_blanks, statement_deletion};
+use crate::rules::docstrings::{Need, docstring_deletion, is_directive_comment};
+use crate::rules::edits::lines_with_trailing_blanks;
 use crate::rules::{docstring, indentation};
 
 pub fn function_docstring(checker: &Checker) {
@@ -34,7 +33,7 @@ pub fn function_docstring(checker: &Checker) {
             checker
                 .class_defs()
                 .iter()
-                .filter(|class| !api.covers(class.range, Need::Any))
+                .filter(|class| !api.covers(class.range, Need::Any) && !reads_own_docstring(class))
                 .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
     let levels = OnceCell::new();
@@ -102,6 +101,57 @@ fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
     levels
 }
 
+// A class body that names `__doc__` reads its own docstring, which the compiler binds in the class namespace before the
+// body runs. The headers of methods, lambdas and nested classes run in that body, as their decorators, defaults and
+// bases do, while their bodies have a namespace of their own.
+fn reads_own_docstring(class: &ast::StmtClassDef) -> bool {
+    if docstring(&class.body).is_none() {
+        return false;
+    }
+    let mut reads = ClassDocstringReads(false);
+    reads.visit_body(&class.body);
+    reads.0
+}
+
+struct ClassDocstringReads(bool);
+
+impl<'a> Visitor<'a> for ClassDocstringReads {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, parameters, returns, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                self.visit_parameters(parameters);
+                if let Some(returns) = returns {
+                    self.visit_annotation(returns);
+                }
+            }
+            Stmt::ClassDef(ast::StmtClassDef { decorator_list, arguments, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(arguments) = arguments {
+                    self.visit_arguments(arguments);
+                }
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, .. }) => self.0 |= id.as_str() == "__doc__",
+            Expr::Lambda(ast::ExprLambda { parameters, .. }) => {
+                if let Some(parameters) = parameters {
+                    self.visit_parameters(parameters);
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
 // Decorators that wrap or register the object without reading its docstring; copying it, as `functools.wraps` or
 // `property` do, only hands it to `help()`. pytest shows a fixture's docstring in `pytest --fixtures`, a listing of the
 // suite's own helpers like `help()`.
@@ -137,12 +187,12 @@ fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
 }
 
 fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> {
-    // `ruff format` puts a body on lines of its own, so the fix must not depend on whether it already is. A pragma
-    // after the docstring, such as `# noqa: E501`, covers its line only and goes with it.
+    // `ruff format` puts a body on lines of its own, so the fix must not depend on whether it already is. A pragma or
+    // tool directive after the docstring, such as `# noqa: E501`, covers its line only and goes with it.
     if owner_body.len() == 1 {
-        return Some(Edit::range_replacement("...".to_owned(), with_pragma(checker, stmt)));
+        return Some(Edit::range_replacement("...".to_owned(), with_directive(checker, stmt)));
     }
-    statement_deletion(checker, stmt.range(), owner_body.get(1).map(Ranged::range), true).map(Edit::range_deletion)
+    docstring_deletion(checker, owner_body)
 }
 
 // The comment goes where the docstring was, on lines of its own as `ruff format` would leave the body, wrapped to the
@@ -188,7 +238,7 @@ fn comment_replacement(
     let start = if on_header { TextSize::of(source[..stmt.start().to_usize()].trim_end()) } else { stmt.start() };
     let prefix = if on_header { newline.as_str() } else { "" };
     let (end, suffix) = match owner_body.get(1) {
-        None => (with_pragma(checker, stmt).end(), format!("{newline}...")),
+        None => (with_directive(checker, stmt).end(), format!("{newline}...")),
         // A statement after a `;` moves to a line of its own, unless a comment between them would go with it.
         Some(next) if has_trailing_content(stmt.end(), source) => {
             if checker.has_comment_in(TextRange::new(stmt.end(), next.start())) {
@@ -201,7 +251,7 @@ fn comment_replacement(
         Some(_) => {
             let comment = checker
                 .trailing_comment(stmt)
-                .filter(|comment| !is_pragma_comment(checker.text(*comment)))
+                .filter(|comment| !is_directive_comment(checker, *comment))
                 .map_or_else(String::new, |comment| format!("  {}", checker.text(comment)));
             (
                 lines_with_trailing_blanks(source, stmt.range()).end(),
@@ -232,9 +282,9 @@ fn is_left_alone(checker: &Checker, stmt: &Stmt) -> bool {
         || checker.trailing_comment(stmt).and_then(|comment| suppression(&comment)) == Some(FormatSuppression::Skip)
 }
 
-fn with_pragma(checker: &Checker, stmt: &Stmt) -> TextRange {
-    let pragma = checker.trailing_comment(stmt).filter(|comment| is_pragma_comment(checker.text(*comment)));
-    stmt.range().cover(pragma.unwrap_or(stmt.range()))
+fn with_directive(checker: &Checker, stmt: &Stmt) -> TextRange {
+    let directive = checker.trailing_comment(stmt).filter(|comment| is_directive_comment(checker, *comment));
+    stmt.range().cover(directive.unwrap_or(stmt.range()))
 }
 
 // The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of rst

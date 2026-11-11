@@ -123,6 +123,42 @@ parameter the signature does not take.
           self.source = source
   ```
 
+- **Fields of an attrs class**: attrs names the parameter of a private field without its leading underscore, or by its
+  `alias`, so `_x` takes `x`.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok file=point.py
+  from attrs import define
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param x: Where it sits.
+      """
+
+      _x: int
+  ```
+
+  ```python report file=alias.py
+  from attrs import define, field
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param x: Where it sits.
+      """
+
+      _x: int = field(alias="pos")
+  ```
+
 ### Exceptions
 
 - **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters
@@ -139,6 +175,30 @@ parameter the signature does not take.
 
       :param mode: How to open it.
       """
+  ```
+
+- **An attrs class with a field whose `alias` is not a string literal**: the alias names the parameter, and simplint
+  does not evaluate it, so the class's parameters are not known.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  from attrs import define, field
+
+  POS = "pos"
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param pos: Where it sits.
+      """
+
+      _x: int = field(alias=POS)
   ```
 
 - **A function with `**kwargs`**: it takes any keyword, which such fields may document.

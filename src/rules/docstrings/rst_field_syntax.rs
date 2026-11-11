@@ -47,7 +47,7 @@ pub fn rst_field_syntax(checker: &Checker) {
             if let Some(primary) = primary_name(word) {
                 let fix = field.marker.map(|marker| {
                     let name = TextRange::at(marker.start(), TextSize::of(word.as_str()));
-                    Fix::safe_edit(Edit::range_replacement(primary.to_owned(), name))
+                    Fix::unsafe_edit(Edit::range_replacement(primary.to_owned(), name))
                 });
                 checker.report_fix(
                     Rule::RstFieldSyntax,
@@ -82,7 +82,8 @@ pub fn rst_field_syntax(checker: &Checker) {
 // alike, yet `rst-attribute-kind` tells instance attributes from class variables by them.
 fn primary_name(name: &str) -> Option<&'static str> {
     match name {
-        "parameter" | "arg" | "argument" | "key" | "keyword" => Some("param"),
+        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => Some("param"),
+        "paramtype" => Some("type"),
         "raise" | "except" | "exception" => Some("raises"),
         "return" => Some("returns"),
         "yield" => Some("yields"),

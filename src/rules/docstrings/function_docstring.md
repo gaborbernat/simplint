@@ -245,6 +245,25 @@ classes, at any nesting depth. What counts as internal depends on the project.
       print(__doc__)
   ```
 
+- **A class whose body reads `__doc__`**: in a class body the bare name is the class's own docstring, so the class keeps
+  it. A method's `__doc__` is the module's, so a method reading it does not count. The decorators, defaults and bases in
+  the header of a method, lambda or nested class run in the class body, so reading `__doc__` there counts too.
+
+  ```python ok
+  class Sync:
+      """Synchronize the mirror."""
+
+      help = __doc__
+  ```
+
+  ```python ok file=header.py
+  class Sync:
+      """Synchronize the mirror."""
+
+      def run(self, text=__doc__):
+          return text
+  ```
+
 Decorators known to leave the docstring unread still let the rule report:
 
 | Module        | Decorators                                                                         |
@@ -404,8 +423,9 @@ Around the docstring, both fixes do the following:
       ...
   ```
 
-- A pragma comment after the docstring, such as `# noqa: E501`, covered the docstring's line only and goes with it.
-  Another comment stays, after the `...` or at the end of the last comment line.
+- A pragma or tool directive after the docstring, such as `# noqa: E501` or `# fmt: off`, covers the docstring's line
+  only and goes with it, as does a comment holding one anywhere in its text, such as `# first # noqa: E501`. Another
+  comment stays, after the `...` or at the end of the last comment line.
 
   ```python report
   def _run() -> None:
@@ -416,6 +436,32 @@ Around the docstring, both fixes do the following:
   ```python fixed
   def _run() -> None:
       print()
+  ```
+
+  ```python report file=directive.py
+  def _run() -> None:
+      """Run the job."""  # first # noqa: E501
+      print()
+  ```
+
+  ```python fixed file=directive.py
+  def _run() -> None:
+      print()
+  ```
+
+- When other code follows the docstring, a comment after it stays on a line of its own, unless it is a pragma or tool
+  directive, as the deletion keeps it.
+
+  ```python report
+  def _acquire() -> int:
+      """Take the lock."""  # callers must already hold the registry mutex
+      return 1
+  ```
+
+  ```python fixed
+  def _acquire() -> int:
+      # callers must already hold the registry mutex
+      return 1
   ```
 
 - Like the deletion, the comment takes the blank lines after the docstring.

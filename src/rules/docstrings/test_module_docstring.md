@@ -103,6 +103,20 @@ import os
 import os
 ```
 
+A comment after the docstring stays on a line of its own, unless it is a pragma or tool directive, such as `# fmt: off`
+or `# noqa: E501`, which goes with the docstring.
+
+```python report file=test_net.py
+"""Network tests."""  # these need the staging VPN
+
+import os
+```
+
+```python fixed file=test_net.py
+# these need the staging VPN
+import os
+```
+
 No fix is offered when a comment sits between the docstring and a statement sharing its line, or when nothing follows it
 but a semicolon.
 

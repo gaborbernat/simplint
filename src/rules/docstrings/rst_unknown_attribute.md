@@ -204,7 +204,7 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
   ```
 
 - **Names unpacked into the class body**: each name a tuple or starred target binds, such as `low` and `high` in
-  `low, high = 0, 10`, or `tail` in `head, *tail = values`.
+  `low, high = 0, 10`, or `tail` in `head, *tail = values`, and the target of a `for` statement in the class body.
 
   ```toml config
   [tool.simplint]
@@ -218,10 +218,42 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
       :cvar low: The lower limit.
       :cvar high: The upper limit.
       :cvar tail: The rest.
+      :cvar step: The distance between them.
       """
 
       low, high = 0, 10
       head, *tail = 1, 2, 3
+      for step in (1, 2):
+          pass
+  ```
+
+- **Members under `if` or `try` in the class body**: a method or assignment there is a member of the class, as one that
+  a version check picks.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  import sys
+
+
+  class Engine:
+      """Run jobs.
+
+      :ivar run: The entry point.
+      """
+
+      if sys.version_info >= (3, 12):
+
+          def run(self) -> None:
+              print()
+
+      else:
+
+          def run(self) -> None:
+              print()
   ```
 
 ### Fix
