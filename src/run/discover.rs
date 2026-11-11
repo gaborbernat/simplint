@@ -70,6 +70,24 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
 }
 
+// Whether standard input, named by `--stdin-filename`, is linted as a file of that name on disk would be, except for a
+// stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file is
+// not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the walk
+// reports it as missing rather than as a file.
+pub(crate) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    if matches!(extension, Some("ipynb" | "toml" | "md")) {
+        return Ok(false);
+    }
+    let (found, resolver) =
+        project_files_in_path(&[path.to_path_buf()], &configuration.pyproject_config, &configuration.config_arguments)
+            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let settings = resolver.resolve(path);
+    let excluded = settings.file_resolver.force_exclude
+        && match_exclusion(path, path.file_name().unwrap_or_default(), &settings.linter.exclude);
+    Ok(!found.is_empty() && !excluded)
+}
+
 // The path and message of a walk error for a path the run names that does not exist, which Ruff reports as `io-error`.
 fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
     let WalkError::WithPath { path, err } = error else {

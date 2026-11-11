@@ -73,6 +73,11 @@ so the rules that depend on the file's path apply to it. It ignores the paths be
     src/app.py:1:1: SMP101 Single-letter name `x`; use a descriptive name
     Found 1 error.
 
+Standard input follows the file filters of a file of its name on disk: a notebook, TOML or Markdown name, or a name
+``--force-exclude`` leaves out, reports nothing and exits 0, and with ``--fix`` its source goes out unchanged, as Ruff
+writes it. The exception is a stub: a ``.pyi`` name is linted from standard input, though discovery only indexes stubs
+on disk and never lints them.
+
 Errors
 ------
 

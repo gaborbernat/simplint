@@ -17,7 +17,7 @@ use ruff_python_ast::helpers::to_module_path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::conflicts::{self, Scope};
-use super::discover::{Discovered, discover, linted_roots};
+use super::discover::{Discovered, discover, linted_roots, lints_stdin};
 use super::{
     Diagnostics, Mode, Overlay, Resolved, StdinLint, io_error, lint_path, lint_stdin, warn_missing, write_source,
 };
@@ -136,10 +136,15 @@ fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> 
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
-// the file it stands for would be, so its settings, package and search roots come from that file's absolute path.
+// the file it stands for would be, so its settings, package and search roots come from that file's absolute path. A name
+// the file filters leave out reports nothing, and with `--fix` its source goes out unchanged, as Ruff writes it.
 pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: &Mode) -> Result<StdinLint> {
     let ruff = &resolved.pyproject_config.settings;
     let absolute = std::path::absolute(path)?;
+    if !lints_stdin(&absolute, resolved)? {
+        let output = mode.fix.is_apply().then(|| source.to_owned());
+        return Ok(StdinLint { diagnostics: Diagnostics::default(), output });
+    }
     let settings = resolved.settings_resolver.for_file(&absolute)?;
     let package = absolute
         .parent()
