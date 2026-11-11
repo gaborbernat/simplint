@@ -1,5 +1,4 @@
-Flags functions, classes, methods and variables of a library's public API that have no documentation. Users read the API
-through hover help and the generated reference, where the docstring is all they see.
+Flags functions, classes, methods and variables of a library's public API that have no documentation.
 
 ## Why is this bad?
 
