@@ -91,6 +91,23 @@ pairs = [{"a": 1}, {"b": 2}]
 merged = {**entry for entry in pairs}
 ```
 
+Parentheses around the key and the value go with them:
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+pairs = [{"a": 1}, {"b": 2}]
+merged = {(key): (value) for entry in pairs for key, value in entry.items()}
+```
+
+```python fixed
+pairs = [{"a": 1}, {"b": 2}]
+merged = {**entry for entry in pairs}
+```
+
 ### Exceptions
 
 - **A comprehension with an `if` clause or `async`**: the clauses no longer read as one unpacking.

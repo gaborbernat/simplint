@@ -39,3 +39,30 @@ class Holder:
 
 async def other_object(client):
     return client.get_event_loop()
+
+
+async def nested_header_default():
+    def later(loop=asyncio.get_event_loop()):
+        return loop
+
+    return later
+
+
+async def with_lambda_default():
+    return lambda loop=asyncio.get_event_loop(): loop
+
+
+@register(asyncio.get_event_loop())
+async def decorated():
+    return 1
+
+
+async def header_default(loop=asyncio.get_event_loop()):
+    return loop
+
+
+async def nested_annotation():
+    def later(loop: asyncio.get_event_loop()):
+        return loop
+
+    return later

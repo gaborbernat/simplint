@@ -64,7 +64,7 @@ fn fix(
     let text = checker.text(message.range());
     if !message.is_string_literal_expr()
         || text.contains('\n')
-        || checker.has_comment_in(warning.range())
+        || checker.has_comment_in(source.full_lines_range(warning.range()))
         || !is_alone_on_lines(source, warning.range())
     {
         return None;

@@ -16,7 +16,7 @@ use ruff_python_semantic::analyze::typing::{
     is_mutable_func,
 };
 use ruff_python_semantic::{
-    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel,
+    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, Scope, ScopeKind, SemanticModel,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -102,6 +102,57 @@ impl<'a> Semantic<'a> {
             return false;
         }
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
+    }
+
+    // How many bindings of `name` the class body at `class` makes in the body's own scope; a method's locals and nested
+    // classes or comprehensions have scopes of their own.
+    pub fn class_body_bindings(&self, class: TextRange, name: &str) -> usize {
+        self.model
+            .scopes
+            .iter()
+            .find(|scope| matches!(scope.kind, ScopeKind::Class(definition) if definition.range() == class))
+            .map_or(0, |scope| scope.get_all(name).count())
+    }
+
+    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or lambda
+    // body, a class body that no function inside it encloses, or a comprehension past its first iterable, which the
+    // enclosing scope evaluates. `comprehensions` holds each comprehension with the range of its first iterable.
+    pub fn is_bound_around(&self, name: &str, at: TextRange, comprehensions: &[(TextRange, TextRange)]) -> bool {
+        let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
+        let nested_in_class = |class: TextRange| {
+            scopes().any(|(scope, (node, body))| {
+                (scope.kind.is_function() || scope.kind.is_lambda())
+                    && body.contains_range(at)
+                    && class.contains_range(node)
+            })
+        };
+        let bound_directly = |scope: &Scope| scope.get_all(name).any(|id| !self.model.binding(id).kind.is_global());
+        scopes().any(|(scope, (node, body))| {
+            body.contains_range(at) && bound_directly(scope) && (!scope.kind.is_class() || !nested_in_class(node))
+        }) || self.model.scopes.iter().filter(|scope| scope.kind.is_generator()).any(|scope| {
+            scope.get_all(name).any(|id| {
+                let range = self.model.binding(id).range;
+                comprehensions
+                    .iter()
+                    .filter(|(comprehension, _)| comprehension.contains_range(range))
+                    .min_by_key(|(comprehension, _)| comprehension.len())
+                    .is_some_and(|(comprehension, first)| comprehension.contains_range(at) && !first.contains_range(at))
+            })
+        })
+    }
+
+    // Whether every binding of the name `value` reads in its scope imports `module`, so a name also bound to another
+    // module, as in `try: import regex as re` beside `import re`, does not read as the module. A `del` or a bare
+    // annotation binds nothing, so it does not count.
+    pub fn is_only_import_of(&self, value: &Expr, module: &[&str]) -> bool {
+        value.as_name_expr().is_some_and(|name| {
+            self.resolved_bindings(name)
+                .iter()
+                .filter(|binding| !matches!(binding.kind, RuffBindingKind::Deletion | RuffBindingKind::Annotation))
+                .all(|binding| {
+                    matches!(&binding.kind, RuffBindingKind::Import(import) if import.qualified_name.segments() == module)
+                })
+        })
     }
 
     // Whether `expr` is the builtin `name`, not something the file binds the name to in the scope it is read in.
@@ -277,7 +328,22 @@ impl<'a> Semantic<'a> {
     }
 }
 
-// A `from __future__ import` statement; a relative import of a `__future__` module of the package is not one.
+// The range of a function, lambda or class scope's node, and of the part of it that is its body: a header's defaults,
+// decorators and bases run in the enclosing scope.
+fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
+    match kind {
+        ScopeKind::Function(function) => {
+            Some((function.range(), TextRange::new(function.body.first()?.start(), function.range().end())))
+        }
+        ScopeKind::Lambda(lambda) => Some((lambda.range(), TextRange::new(lambda.body.start(), lambda.range().end()))),
+        ScopeKind::Class(class) => {
+            Some((class.range(), TextRange::new(class.body.first()?.start(), class.range().end())))
+        }
+        _ => None,
+    }
+}
+
+// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
     stmt.as_import_from_stmt()
         .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))

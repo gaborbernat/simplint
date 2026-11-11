@@ -8,10 +8,17 @@ expression: "lint_fixture(rule, fixture, target_version)"
 18:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
 22:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
 26:13 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
-54:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+54:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [unsafe fix: Call `date.strptime`]
 62:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
 66:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()`
---- fixed (8 applied, 1 remaining) ---
+71:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
+75:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [fix: Call `time.strptime`]
+79:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
+83:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [unsafe fix: Call `date.strptime`]
+87:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [unsafe fix: Call `date.strptime`]
+91:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+95:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [unsafe fix: Call `date.strptime`]
+--- fixed (15 applied, 1 remaining) ---
 import datetime
 from datetime import time, date, datetime as moment
 
@@ -79,3 +86,31 @@ def inherited(text):
 def commented_time(text):
     return moment.strptime(text, "%H:%M").time(  # keep the call
     )
+
+
+def leap_day_time(text):
+    return time.strptime(text, "%m-%d %H:%M")
+
+
+def time_of_day_format(text):
+    return time.strptime(text, "%H:%M.%f %p %%")
+
+
+def time_with_seconds(text):
+    return time.strptime(text, "%H:%M:%S")
+
+
+def date_with_seconds(text):
+    return date.strptime(text, "%Y-%m-%d %H:%M:%S")
+
+
+def date_with_composite_seconds(text):
+    return date.strptime(text, "%Y-%m-%d %X")
+
+
+def date_with_literal_percent(text):
+    return date.strptime(text, "%Y-%m-%d %%S")
+
+
+def date_variable_format(text, fmt):
+    return date.strptime(text, fmt)

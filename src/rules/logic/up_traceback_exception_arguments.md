@@ -180,6 +180,29 @@ def report(error):
     )
 ```
 
+Parentheses around the replaced arguments go with them, so the rewrite leaves valid code:
+
+```toml config
+[project]
+requires-python = ">=3.10"
+```
+
+```python report
+import traceback
+
+
+def report(error):
+    return traceback.format_exception_only((type(error)), (error))
+```
+
+```python fixed
+import traceback
+
+
+def report(error):
+    return traceback.format_exception_only(error)
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

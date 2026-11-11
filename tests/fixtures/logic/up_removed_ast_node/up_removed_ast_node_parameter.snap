@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:29 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+9:29 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+--- fixed (1 applied, 1 remaining) ---
+import ast
+
+
+def is_text(node, isinstance=None):
+    return isinstance(node, ast.Str)
+
+
+def is_text_plain(node):
+    return isinstance(node, ast.Constant) and isinstance(node.value, str)

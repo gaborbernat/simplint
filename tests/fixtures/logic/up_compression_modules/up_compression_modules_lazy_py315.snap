@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:13 SMP523 `gzip` is available as `compression.gzip` from Python 3.14 [unsafe fix: Import `compression.gzip`]
+2:11 SMP523 `bz2` is available as `compression.bz2` from Python 3.14 [unsafe fix: Import `compression.bz2`]
+--- fixed (2 applied, 0 remaining) ---
+lazy from compression import gzip
+lazy from compression.bz2 import decompress
+
+
+def unpack(data):
+    return decompress(gzip.decompress(data))

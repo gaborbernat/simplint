@@ -81,10 +81,41 @@ target.
 
 ### Fix
 
-The import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. No fix
-is offered when:
+The import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. When a
+comment sits directly above that import, the new import goes above the comment, so the comment stays with its import:
 
-- `inspect` is already bound to something else in the module, which the import would shadow;
+```toml config
+[project]
+requires-python = ">=3.10"
+```
+
+```python report
+import asyncio
+
+# os: the loop runs in the target directory
+import os
+
+
+def check(task):
+    return asyncio.iscoroutinefunction(task), asyncio.run, os.sep
+```
+
+```python fixed
+import asyncio
+import inspect
+
+# os: the loop runs in the target directory
+import os
+
+
+def check(task):
+    return inspect.iscoroutinefunction(task), asyncio.run, os.sep
+```
+
+No fix is offered when:
+
+- `inspect` is already bound to something else in the module, or by a parameter, local or loop variable of a function,
+  lambda, class body or comprehension that encloses the call, which the import or the call would pick up;
 
   ```toml config
   [project]
@@ -97,6 +128,27 @@ is offered when:
 
 
   def check(task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  import asyncio
+
+
+  def check(inspect, task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
+  ```python fixed
+  import asyncio
+
+
+  def check(inspect, task):
       return asyncio.iscoroutinefunction(task)
   ```
 
@@ -130,6 +182,25 @@ is offered when:
   ```
 
 - a `from __future__` import shares its line with code, since an import above it is a syntax error.
+
+- the last import shares its line with code, since the new import would land below that code, which would run first.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  # fmt: off
+  import asyncio; print(asyncio.iscoroutinefunction(print))
+  # fmt: on
+  ```
+
+  ```python fixed
+  # fmt: off
+  import asyncio; print(asyncio.iscoroutinefunction(print))
+  # fmt: on
+  ```
 
 ## Other tools
 

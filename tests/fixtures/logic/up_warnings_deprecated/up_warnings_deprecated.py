@@ -101,3 +101,8 @@ class Settings:
 def aliased_module(host):
     w.warn("aliased_module() is deprecated", DeprecationWarning)
     return host
+
+
+def trailing_comment(host):
+    warnings.warn("trailing_comment() is deprecated", DeprecationWarning)  # remove in 3.0
+    return host

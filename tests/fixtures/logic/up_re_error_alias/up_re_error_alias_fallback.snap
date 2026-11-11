@@ -1,0 +1,26 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+19:12 SMP518 `re.error` is an alias of `re.PatternError` from Python 3.13 [fix: Use `re.PatternError`]
+--- fixed (1 applied, 0 remaining) ---
+try:
+    import regex as re
+except ImportError:
+    import re
+
+
+def compile_pattern(text):
+    try:
+        return re.compile(text)
+    except re.error:
+        return None
+
+
+def standard(text):
+    import re as stdlib
+
+    try:
+        return stdlib.compile(text)
+    except stdlib.PatternError:
+        return None

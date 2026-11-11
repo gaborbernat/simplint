@@ -42,3 +42,6 @@ commented_element = [(x  # keep the element
 ) for group in groups for x in group]
 commented_entries = {key:  # keep the value
     value for entry in pairs for key, value in entry.items()}
+
+
+parenthesized_key = {(key): (value) for entry in pairs for key, value in entry.items()}

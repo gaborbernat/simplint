@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+10:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+--- fixed (2 applied, 0 remaining) ---
+import codecs
+
+
+def read_yield(path):
+    with open(path, "r", encoding="utf-8", errors=(yield), newline="") as handle:
+        return handle.read()
+
+
+def read_parenthesized_walrus(path):
+    with open(path, "r", buffering=(size := 1), encoding="utf-8", errors="strict", newline="") as handle:
+        return size, handle.read()

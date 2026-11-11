@@ -53,3 +53,12 @@ def commented(run):
     except Exception as error:
         traceback.print_exception(type(error),  # keep the type
                                   error, error.__traceback__)
+
+
+def parenthesized(run):
+    try:
+        run()
+    except Exception as error:
+        traceback.print_exception((type(error)), error, error.__traceback__)
+        traceback.format_exception((type(error)), error, (error.__traceback__))
+        return traceback.format_exception_only(type(error), (error))

@@ -12,7 +12,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     };
     if !arguments.is_empty()
         || !checker.semantic().resolves_to(func, &["asyncio", "get_event_loop"])
-        || !in_coroutine(walker)
+        || !in_coroutine(walker, expr)
     {
         return;
     }
@@ -28,16 +28,29 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// The innermost function decides. A class body runs as part of the function it sits in, so it is skipped.
-fn in_coroutine(walker: &Walker) -> bool {
+// The innermost scope whose body holds the call decides. A class body runs as part of the function it sits in, and a
+// header (decorators, defaults, annotations) runs where its `def` statement runs, so those are skipped. Lazy annotations
+// are never evaluated there, so a call in one is left alone.
+fn in_coroutine(walker: &Walker, expr: &Expr) -> bool {
+    let lazy = walker.checker.semantic().annotations_are_lazy();
     walker
         .scopes()
         .iter()
         .rev()
         .find_map(|scope| match scope {
-            Scope::Function(function) => Some(function.is_async),
-            Scope::Lambda(_) => Some(false),
-            Scope::Class(_) => None,
+            Scope::Function(function) if expr.start() >= function.body[0].start() => Some(function.is_async),
+            Scope::Function(function) if lazy && in_annotation(function, expr) => Some(false),
+            Scope::Lambda(lambda) if expr.start() >= lambda.body.start() => Some(false),
+            Scope::Function(_) | Scope::Lambda(_) | Scope::Class(_) => None,
         })
         .unwrap_or(false)
+}
+
+fn in_annotation(function: &ast::StmtFunctionDef, expr: &Expr) -> bool {
+    function
+        .parameters
+        .iter()
+        .filter_map(ast::AnyParameterRef::annotation)
+        .chain(function.returns.as_deref())
+        .any(|annotation| annotation.range().contains_range(expr.range()))
 }

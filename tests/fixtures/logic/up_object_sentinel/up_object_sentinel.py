@@ -37,3 +37,36 @@ def make_local():
         MARK = object()
 
     return Local
+
+
+class Reassigned:
+    MISSING = object()
+    MISSING = None
+
+
+class Shadowed:
+    LIMIT = object()
+
+
+LIMIT = 1
+LIMIT = 2
+
+
+class Method:
+    MISSING = object()
+
+    def get(self, key):
+        MISSING = self.lookup(key)
+        return MISSING
+
+
+class Nested:
+    LIMIT = object()
+
+    class Inner:
+        LIMIT = 3
+
+
+class Comprehension:
+    DEFAULT = object()
+    names = [DEFAULT for DEFAULT in range(3)]

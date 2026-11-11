@@ -57,6 +57,7 @@ pub(crate) struct FileState<'a> {
     overload_implementations: OnceCell<FxHashSet<TextSize>>,
     // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
     call_ends: OnceCell<FxHashSet<TextSize>>,
+    comprehensions: OnceCell<Vec<(TextRange, TextRange)>>,
 }
 
 impl<'a> FileState<'a> {
@@ -90,6 +91,15 @@ impl<'a> FileState<'a> {
     // The names the single-letter and meaningless name rules reported so far.
     pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
         &self.reported_names
+    }
+
+    // Each comprehension of the file with the range of its first iterable, which the enclosing scope evaluates.
+    pub(crate) fn comprehensions(&self, checker: &Checker<'a>) -> &[(TextRange, TextRange)] {
+        self.comprehensions.get_or_init(|| {
+            let mut collector = Comprehensions::default();
+            collector.visit_body(checker.body());
+            collector.found
+        })
     }
 
     pub(crate) fn export_strings(&self, checker: &Checker<'a>) -> &[&'a ast::ExprStringLiteral] {
@@ -243,6 +253,32 @@ impl<'a> Visitor<'a> for SourceTextSpans {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if matches!(expr, Expr::TString(_)) {
             self.spans.push(expr.range());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+#[derive(Default)]
+struct Comprehensions {
+    found: Vec<(TextRange, TextRange)>,
+}
+
+impl Comprehensions {
+    fn push(&mut self, expr: &Expr, generators: &[ast::Comprehension]) {
+        if let Some(first) = generators.first() {
+            self.found.push((expr.range(), first.iter.range()));
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for Comprehensions {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::ListComp(ast::ExprListComp { generators, .. })
+            | Expr::SetComp(ast::ExprSetComp { generators, .. })
+            | Expr::Generator(ast::ExprGenerator { generators, .. }) => self.push(expr, generators.as_slice()),
+            Expr::DictComp(ast::ExprDictComp { generators, .. }) => self.push(expr, generators),
+            _ => {}
         }
         visitor::walk_expr(self, expr);
     }

@@ -95,6 +95,27 @@ def compile_pattern(text):
           return None
   ```
 
+  A `del` of the name does not bind it to another module, so the reference before it is still reported:
+
+  ```toml config
+  [project]
+  requires-python = ">=3.13"
+  ```
+
+  ```python report
+  import re
+
+  ERROR = re.error
+  del re
+  ```
+
+  ```python fixed
+  import re
+
+  ERROR = re.PatternError
+  del re
+  ```
+
 ### Exceptions
 
 - **An assignment or `del`**: it patches the module, and renamed it would patch `re.PatternError` while code that reads
@@ -125,6 +146,28 @@ def compile_pattern(text):
 
   ```python ok
   import re
+
+
+  def compile_pattern(text):
+      try:
+          return re.compile(text)
+      except re.error:
+          return None
+  ```
+
+- **A name also bound to another module**: `re` may be the `regex` module in that file, which has no `PatternError`, so
+  the `re.error` of a `try` import fallback is left alone.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py314"
+  ```
+
+  ```python ok
+  try:
+      import regex as re
+  except ImportError:
+      import re
 
 
   def compile_pattern(text):

@@ -210,9 +210,17 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
 }
 
 // The name a fix uses for `member` of `module`, or for `module` itself, and the edit that adds the import when the file
-// lacks it. `None` when another binding holds the name, which leaves the fix off.
-pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> Option<(String, Option<Edit>)> {
+// lacks it. `None` when another binding holds the name at `at`, the place the fix writes it, which leaves the fix off.
+pub fn ensure_import(
+    checker: &Checker,
+    module: &str,
+    member: Option<&str>,
+    at: TextRange,
+) -> Option<(String, Option<Edit>)> {
     let binding = member.unwrap_or(module);
+    if is_bound_around(checker, binding, at) {
+        return None;
+    }
     if has_import(checker.body(), module, member) {
         return Some((binding.to_owned(), None));
     }
@@ -220,6 +228,11 @@ pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> O
         return None;
     }
     Some((binding.to_owned(), Some(import_insertion(checker, module, member)?)))
+}
+
+// Whether a scope around `at` binds the name, which hides the module-level binding or the builtin a fix writes there.
+pub fn is_bound_around(checker: &Checker, name: &str, at: TextRange) -> bool {
+    checker.semantic().is_bound_around(name, at, checker.state().comprehensions(checker))
 }
 
 // Whether a top-level import already brings the module, or the member, in under its own name.
@@ -263,12 +276,18 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         })
         .collect();
     let (line, insertion) = if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
-        (source.line_start(next.start()), text)
+        (above_comments(checker, next), text)
     } else if let Some((last, _)) = stdlib.last() {
-        (source.full_line_end(last.end()), text)
+        let line_end = source.full_line_end(last.end());
+        let rest = source[TextRange::new(last.end(), line_end)].trim();
+        // Code after the import on its line would run before the new import lands below it.
+        if !rest.is_empty() && !rest.starts_with('#') {
+            return None;
+        }
+        (line_end, text)
     } else {
         // The statement the import goes before follows the preamble, so the body has one there.
-        (source.line_start(body[preamble].start()), format!("{text}{eol}"))
+        (above_comments(checker, &body[preamble]), format!("{text}{eol}"))
     };
     // A line that starts inside the preamble's last statement would put the import above a docstring sharing its line,
     // which then stops being `__doc__`, or above a `from __future__` import, which is a syntax error.
@@ -276,6 +295,17 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         return None;
     }
     Some(Edit::insertion(insertion, line))
+}
+
+// The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file, where a
+// shebang, encoding or license header stays put.
+fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
+    let source = checker.source;
+    let mut line_start = source.line_start(stmt.start());
+    while checker.comment_above(TextRange::empty(line_start)).is_some() {
+        line_start = previous_line_start(source, line_start);
+    }
+    if line_start > source.bom_start_offset() { line_start } else { source.line_start(stmt.start()) }
 }
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.

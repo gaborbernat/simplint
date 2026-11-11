@@ -43,7 +43,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
     let element_range = match element {
         Element::Single(elt) => checker.parenthesized_range(elt, expr.into()),
-        Element::Pair(key, value) => key.range().cover(value.range()),
+        Element::Pair(key, value) => {
+            checker.parenthesized_range(key, expr.into()).cover(checker.parenthesized_range(value, expr.into()))
+        }
     };
     let fix = (!checker.has_comment_in(element_range) && !checker.has_comment_in(clause)).then(|| {
         let rewrite = Edit::range_replacement(unpacking.replacement(source), element_range);

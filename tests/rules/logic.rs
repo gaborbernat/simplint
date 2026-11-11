@@ -84,6 +84,7 @@ use crate::common::{self, check, read};
 #[test_case("up-chdir-restore", "up_chdir_restore_name.py", "py311" ; "chdir_restore_contextlib_name_taken")]
 #[test_case("up-chdir-restore", "up_chdir_restore.py", "py310" ; "chdir_restore_before_python311")]
 #[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", "py311" ; "chdir_restore_shared_line")]
+#[test_case("up-chdir-restore", "up_chdir_restore_shadow.py", "py311" ; "chdir_restore_shadow")]
 #[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", "py314" ; "context_var_token_reset_shared_line")]
 #[test_case("up-strptime-date", "up_strptime_date.py", "py314" ; "strptime_date")]
 #[test_case("up-strptime-date", "up_strptime_date_name.py", "py314" ; "strptime_date_class_name")]
@@ -93,22 +94,33 @@ use crate::common::{self, check, read};
 #[test_case("up-strptime-date", "up_strptime_date_no_class_import.py", "py314" ; "strptime_date_without_class_import")]
 #[test_case("up-strptime-date", "up_strptime_date.py", "py313" ; "strptime_date_before_python314")]
 #[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py314" ; "event_loop_in_coroutine")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py313" ; "event_loop_in_coroutine_before_python314")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine_future.py", "py313" ; "event_loop_in_coroutine_future_import")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", "py314" ; "asyncio_iscoroutinefunction")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_inspect.py", "py314" ; "asyncio_iscoroutinefunction_imported")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_bound.py", "py314" ; "asyncio_iscoroutinefunction_bound")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_sorted.py", "py314" ; "asyncio_iscoroutinefunction_sorted")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_guarded.py", "py314" ; "asyncio_iscoroutinefunction_guarded")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_name.py", "py314" ; "asyncio_iscoroutinefunction_name")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_parameter.py", "py314" ; "asyncio_iscoroutinefunction_parameter")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_shadow.py", "py314" ; "asyncio_iscoroutinefunction_shadow")]
+#[test_case("up-codecs-open", "up_codecs_open_comprehension.py", "py314" ; "codecs_open_comprehension")]
 #[test_case("up-codecs-open", "up_codecs_open.py", "py314" ; "codecs_open")]
 #[test_case("up-codecs-open", "up_codecs_open_shadowed.py", "py314" ; "codecs_open_renamed")]
 #[test_case("up-codecs-open", "up_codecs_open_builtin.py", "py314" ; "codecs_open_builtin")]
+#[test_case("up-codecs-open", "up_codecs_open_parameter.py", "py314" ; "codecs_open_parameter")]
+#[test_case("up-codecs-open", "up_codecs_open_walrus.py", "py314" ; "codecs_open_walrus")]
+#[test_case("up-codecs-open", "up_codecs_open_parenthesized.py", "py314" ; "codecs_open_parenthesized")]
 #[test_case("up-re-error-alias", "up_re_error_alias.py", "py314" ; "re_error_alias")]
+#[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", "py314" ; "re_error_alias_fallback_import")]
+#[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", "py314" ; "re_error_alias_deleted_name")]
 #[test_case("up-re-error-alias", "up_re_error_alias.py", "py312" ; "re_error_alias_before_python313")]
 #[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", "py315" ; "argparse_suggest_on_error")]
 #[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", "py310" ; "argparse_suggest_on_error_before_python315")]
 #[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", "py315" ; "argparse_suggest_on_error_commented")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node.py", "py314" ; "removed_ast_node")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", "py314" ; "removed_ast_node_shadowed")]
+#[test_case("up-removed-ast-node", "up_removed_ast_node_parameter.py", "py314" ; "removed_ast_node_parameter")]
 #[test_case("early-assignment", "early_assignment.py", "py314" ; "early_assignment")]
 #[test_case("early-assignment", "early_assignment_blocked.py", "py314" ; "early_assignment_blocked")]
 #[test_case("early-assignment", "early_assignment_comment.py", "py314" ; "early_assignment_comment")]
@@ -132,10 +144,12 @@ use crate::common::{self, check, read};
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py314" ; "utf8_encoding_default_before_python315")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", "py315" ; "utf8_encoding_default_shadowed_open")]
 #[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py315" ; "re_prefixmatch")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch_fallback.py", "py315" ; "re_prefixmatch_fallback_import")]
 #[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py314" ; "re_prefixmatch_before_python315")]
 #[test_case("up-compression-modules", "up_compression_modules.py", "py314" ; "compression_modules")]
 #[test_case("up-compression-modules", "up_compression_modules.py", "py313" ; "compression_modules_before_python314")]
 #[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", "py314" ; "compression_modules_in_compression_package")]
+#[test_case("up-compression-modules", "up_compression_modules_lazy.py", "py315" ; "compression_modules_lazy")]
 #[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py313" ; "warnings_deprecated")]
 #[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py312" ; "warnings_deprecated_before_python313")]
 #[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py312" ; "deprecated_stdlib_alias")]
@@ -1127,6 +1141,222 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
             1,
             "core.py:3:19: SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not \
              count parentheses\nFound 1 error.\n"
+        )
+    );
+}
+
+// A module-level name another module imports, or `__all__` lists, keeps its report, and the fix that removes it is
+// withheld.
+#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import token\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_imported")]
+#[test_case("SMP512", "py314", "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "", "state.py:5:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_listed_in_all")]
+#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import old\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_imported")]
+#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import *\nprint(token)\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_star_imported")]
+#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import *\nprint(old)\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_star_imported")]
+fn module_name_another_module_uses_keeps_report_without_fix(
+    select: &str,
+    target: &str,
+    state: &str,
+    user: &str,
+    report: &str,
+) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff]\ntarget-version = \"{target}\"\n")),
+        ("state.py", state),
+        ("user.py", user),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
+    assert_eq!((code, stdout.as_str()), (1, report));
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix"]);
+    assert_eq!((code, stdout.as_str(), read(root.path(), "state.py")), (1, report, state.to_owned()));
+}
+
+// A name in a function is not the module's, so another module importing the same name does not withhold its fix.
+#[test]
+fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        (
+            "state.py",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
+        ),
+        ("user.py", "from state import token\n"),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP512", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "state.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        run()\n".to_owned()
+        )
+    );
+}
+
+// A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before it.
+#[test]
+fn chdir_restore_keeps_report_without_fix_after_a_line_joined_by_backslash() {
+    let source = "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n";
+    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            1,
+            "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
+            source.to_owned()
+        )
+    );
+}
+
+// A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
+#[test]
+fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "mod.py",
+            "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (0, "Found 1 error (1 fixed, 0 remaining).\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
+    );
+}
+
+// The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
+#[test]
+fn chdir_restore_import_goes_above_the_comment_of_the_import_it_precedes() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "block.py",
+            "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "block.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the docstring
+// and not into the docstring.
+#[test]
+fn chdir_restore_import_skips_a_docstring_line_starting_with_hash() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "h.py",
+            "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "h.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A comment on the first line is a header of the file, which the import stays below.
+#[test]
+fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "first.py",
+            "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "first.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A parameter named like the module hides it in the function, even when the module imports it too.
+#[test]
+fn chdir_restore_keeps_report_without_fix_when_a_parameter_takes_the_module_name() {
+    let source = "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n";
+    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            1,
+            "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
+            source.to_owned()
+        )
+    );
+}
+
+// A class attribute named like the module is not seen by the methods of the class, so their fix stays.
+#[test]
+fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "mod.py",
+            "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
+// stays off. A comment after the import is no code, so the import takes the fix.
+#[test_case("SMP516", "py314", "import asyncio; print(asyncio.iscoroutinefunction(print))\n", "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy coroutine marker\nFound 1 error.\n" ; "asyncio_shared_line")]
+#[test_case("SMP601", "py314", "import os; LIMIT = 3\n", "mod.py:1:12: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n" ; "final_shared_line")]
+fn import_after_a_shared_line_is_not_inserted(select: &str, target: &str, source: &str, report: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff]\ntarget-version = \"{target}\"\n")),
+        ("mod.py", source),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
+    assert_eq!((code, stdout.as_str()), (1, report));
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix", "--unsafe-fixes"]);
+    assert_eq!((code, stdout.as_str(), read(root.path(), "mod.py")), (1, report, source.to_owned()));
+}
+
+#[test]
+fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        (
+            "mod.py",
+            "import asyncio  # loop\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return asyncio.iscoroutinefunction(task)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP516", "--fix", "--unsafe-fixes"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.iscoroutinefunction(task)\n".to_owned()
         )
     );
 }

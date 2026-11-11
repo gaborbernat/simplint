@@ -4,7 +4,9 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::scoped_block::{finally_call, identifier_uses, scope_of, sole_argument, wrap_edits};
+use crate::rules::logic::scoped_block::{
+    finally_call, identifier_uses, is_exported_module_name, scope_of, sole_argument, wrap_edits,
+};
 use crate::syntax::{for_each_body, is_name};
 
 // Since Python 3.14 the token `ContextVar.set` returns is a context manager that resets the variable on exit.
@@ -53,7 +55,9 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
         return;
     }
     let header = format!("with {}:", checker.text(set));
-    let fix = wrap_edits(checker, assign.range(), try_stmt, &header).map(|[head, tail]| Fix::safe_edits(head, [tail]));
+    let fix = wrap_edits(checker, assign.range(), try_stmt, &header)
+        .filter(|_| !is_exported_module_name(checker, token))
+        .map(|[head, tail]| Fix::safe_edits(head, [tail]));
     checker.report_fix(
         Rule::ContextVarTokenReset,
         assign.range(),

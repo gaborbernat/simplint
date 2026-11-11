@@ -498,7 +498,25 @@ To make `Final` available, the fix picks the first of these that applies:
 
 A statement that shares the docstring's line keeps the report without a fix, since an import above the docstring would
 leave `__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import
-above it is a syntax error.
+above it is a syntax error. So does a last import that shares its line with code, since the new import would land below
+that code.
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+# fmt: off
+import os; LIMIT = 3
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+import os; LIMIT = 3
+# fmt: on
+```
 
 ```python report
 # fmt: off
@@ -510,6 +528,30 @@ above it is a syntax error.
 # fmt: off
 """Settings."""; TIMEOUT = 30
 # fmt: on
+```
+
+When a comment sits directly above the statement the import goes before, the import goes above the comment, unless the
+comment starts the file, where a shebang or a license header stays put:
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+"""Settings."""
+
+# Settings are read at start-up.
+LIMIT = 3
+```
+
+```python fixed
+"""Settings."""
+
+from typing import Final
+
+# Settings are read at start-up.
+LIMIT: Final[int] = 3
 ```
 
 A `Final` imported only under [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)

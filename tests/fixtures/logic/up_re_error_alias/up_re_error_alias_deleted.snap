@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:7 SMP518 `re.error` is an alias of `re.PatternError` from Python 3.13 [fix: Use `re.PatternError`]
+--- fixed (1 applied, 0 remaining) ---
+import re
+
+ERR = re.PatternError
+del re
