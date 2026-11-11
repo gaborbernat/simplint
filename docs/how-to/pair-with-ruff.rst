@@ -1,8 +1,8 @@
 Pair simplint with Ruff
 #######################
 
-simplint leaves cases Ruff reports to Ruff when the corresponding rule runs. Each simplint rule page names any Ruff
-overlap. To cover those cases:
+simplint leaves the cases a Ruff rule reports to Ruff, even when your configuration does not select that rule (see
+:doc:`/explanation/design-principles`). Each simplint rule page names any Ruff overlap. To have those cases reported:
 
 - Run Ruff with every rule selected (``select = ["ALL"]``) and preview enabled, but the undocumented-* rules
   (``D1``), which ask for

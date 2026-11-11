@@ -52,7 +52,7 @@ simplint is written in `Rust <https://rust-lang.org/>`__ on top of Ruff's parser
     .. grid-item-card:: 🤝 Built to pair with Ruff
         :class-card: feature
 
-        Few rules overlap with Ruff's, and both tools read the same ``noqa`` comments and ``pyproject.toml``.
+        simplint does not report what Ruff reports, and both tools read the same ``noqa`` comments and ``pyproject.toml``.
 
 A run over two tox modules, limited to two rules:
 
@@ -117,5 +117,6 @@ Documentation
    :hidden:
    :caption: Explanation
 
+   explanation/design-principles
    explanation/how-it-works
    explanation/simplint-and-ruff
