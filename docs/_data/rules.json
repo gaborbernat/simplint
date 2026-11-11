@@ -18673,7 +18673,7 @@
     "name": "up-strptime-date",
     "summary": "`datetime.strptime()` results narrowed to a `date` or `time`",
     "fix": "Sometimes",
-    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace. No fix is offered when a comment lies in the class or in the `.date()` or `.time()` call it drops, since the\nrewrite would drop it. A comment inside the `.date()` call keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n```python fixed\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
+    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n- **`.time()` with a format that has a date directive**: the fix is unsafe, since `time.strptime` does not check the\n  date that `datetime.strptime` checks, so a day that does not exist is accepted. **Unsafe fix:** the call becomes\n  `time.strptime`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%m-%d %H:%M\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%m-%d %H:%M\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal whose directives are all\ntime-of-day ones, `%H`, `%I`, `%M`, `%S`, `%f` and `%p`, with `%%`, and unsafe otherwise: `time.strptime` keeps the zone\nthat `.time()` drops, and it does not check the date that `datetime.strptime` checks, so `%z`, `%:z` and a date\ndirective change the result. When the class is imported by name, the fix adds `date` or `time` to that\n`from datetime import` line. It reports without a fix when the file already spells `date` or `time` outside an\nattribute, since the new name would take that binding's place. No fix is offered when a comment lies in the class or in\nthe `.date()` or `.time()` call it drops, since the rewrite would drop it. A comment inside the `.date()` call keeps the\nreport without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n```python fixed\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
     "examples": {
       "parsed": [
         {
@@ -18802,31 +18802,10 @@
         {
           "section": "What it does",
           "line": 110,
-          "end_line": 121,
+          "end_line": 129,
           "config": {
             "line": 110,
             "end_line": 113,
-            "source": "[project]\nrequires-python = \">=3.13\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 115,
-              "end_line": 121,
-              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 132,
-          "end_line": 155,
-          "config": {
-            "line": 132,
-            "end_line": 135,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -18835,8 +18814,59 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 137,
-              "end_line": 145,
+              "line": 115,
+              "end_line": 121,
+              "source": "import datetime\n\n\ndef parse_time(text):\n    return datetime.datetime.strptime(text, \"%m-%d %H:%M\").time()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 123,
+              "end_line": 129,
+              "source": "import datetime\n\n\ndef parse_time(text):\n    return datetime.time.strptime(text, \"%m-%d %H:%M\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 135,
+          "end_line": 146,
+          "config": {
+            "line": 135,
+            "end_line": 138,
+            "source": "[project]\nrequires-python = \">=3.13\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 140,
+              "end_line": 146,
+              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 159,
+          "end_line": 182,
+          "config": {
+            "line": 159,
+            "end_line": 162,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 164,
+              "end_line": 172,
               "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
             },
             {
@@ -18844,8 +18874,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 155,
+              "line": 174,
+              "end_line": 182,
               "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
             }
           ]

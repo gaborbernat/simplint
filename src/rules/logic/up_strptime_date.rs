@@ -29,12 +29,18 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(class) = parse.func.as_attribute_expr().map(|attribute| attribute.value.as_ref()) else {
         return;
     };
-    // `time.strptime` keeps the zone that `.time()` drops, so a format with `%z` or `%:z` may give another value.
-    let plain_format = parse
+    let format = parse
         .arguments
         .find_argument_value("format", 1)
         .and_then(Expr::as_string_literal_expr)
-        .is_some_and(|format| !["%z", "%:z"].iter().any(|zone| format.value.to_str().contains(zone)));
+        .map(|format| format.value.to_str());
+    // `time.strptime` keeps the zone that `.time()` drops and does not check the date that `datetime.strptime` checks,
+    // so only a format of time-of-day directives gives the same value. `date.strptime` and `time.strptime` accept the
+    // second 60 that `datetime.strptime` rejects, so a seconds directive changes the value of `.date()` too.
+    let safe = match member {
+        "date" => format.is_some_and(|format| !has_seconds(format)),
+        _ => format.is_some_and(time_of_day),
+    };
     // Drops `.date()` or `.time()`, keeping the parentheses around the call when it has them.
     let unwrap = TextRange::new(checker.parenthesized_range(part.value.as_ref(), expr.into()).end(), expr.end());
     let fix = class_replacement(checker, class, member)
@@ -43,11 +49,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             let class_edit = Edit::range_replacement(replacement, class.range());
             let mut rest = vec![Edit::range_deletion(unwrap)];
             rest.extend(import);
-            if member == "date" || plain_format {
-                Fix::safe_edits(class_edit, rest)
-            } else {
-                Fix::unsafe_edits(class_edit, rest)
-            }
+            if safe { Fix::safe_edits(class_edit, rest) } else { Fix::unsafe_edits(class_edit, rest) }
         });
     checker.report_fix(
         Rule::StrptimeDate,
@@ -87,4 +89,26 @@ fn class_alias<'b>(body: &'b [Stmt], local: &str) -> Option<&'b ast::Alias> {
         })
         .flatten()
         .find(|alias| alias.name.as_str() == "datetime" && alias.asname.as_ref().unwrap_or(&alias.name) == local)
+}
+
+// The directives of a format, where `%%` is a literal percent sign; `None` when the format ends in a `%`.
+fn directives(format: &str) -> Option<Vec<char>> {
+    let mut chars = format.chars();
+    let mut found = Vec::new();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            found.push(chars.next()?);
+        }
+    }
+    Some(found)
+}
+
+// Whether a format has only the directives of the time of day, `%H`, `%I`, `%M`, `%f` and `%p`, and `%%`.
+fn time_of_day(format: &str) -> bool {
+    directives(format).is_some_and(|found| found.iter().all(|d| matches!(d, 'H' | 'I' | 'M' | 'f' | 'p' | '%')))
+}
+
+// Whether a format has a seconds directive, or a composite that includes seconds, or is malformed.
+fn has_seconds(format: &str) -> bool {
+    directives(format).is_none_or(|found| found.iter().any(|d| matches!(d, 'S' | 'X' | 'c' | 'T' | 'r')))
 }

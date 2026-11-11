@@ -65,3 +65,31 @@ def inherited(text):
 def commented_time(text):
     return moment.strptime(text, "%H:%M").time(  # keep the call
     )
+
+
+def leap_day_time(text):
+    return moment.strptime(text, "%m-%d %H:%M").time()
+
+
+def time_of_day_format(text):
+    return moment.strptime(text, "%H:%M.%f %p %%").time()
+
+
+def time_with_seconds(text):
+    return moment.strptime(text, "%H:%M:%S").time()
+
+
+def date_with_seconds(text):
+    return moment.strptime(text, "%Y-%m-%d %H:%M:%S").date()
+
+
+def date_with_composite_seconds(text):
+    return moment.strptime(text, "%Y-%m-%d %X").date()
+
+
+def date_with_literal_percent(text):
+    return moment.strptime(text, "%Y-%m-%d %%S").date()
+
+
+def date_variable_format(text, fmt):
+    return moment.strptime(text, fmt).date()
