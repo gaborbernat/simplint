@@ -174,14 +174,23 @@ fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
     // The collector visits a subscript before its elements, so the return of a `Callable` is known before `object` is
     // picked. `Callable[..., object]` says the return value is ignored, which is the point of `object` there.
     let mut callable_returns = FxHashSet::default();
+    // The arguments of `Annotated` after the first are metadata, where `object` is a value rather than a type.
+    let mut metadata = Vec::new();
     let mut finder = ExprCollector::new(|expr: &Expr| {
-        if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr
-            && is_callable(walker, value)
-            && let Some(returns) = slice_elements(slice).last()
-        {
-            callable_returns.insert(returns.range());
+        if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
+            if is_callable(walker, value)
+                && let Some(returns) = slice_elements(slice).last()
+            {
+                callable_returns.insert(returns.range());
+            }
+            if semantic.match_typing_expr(value, "Annotated") {
+                metadata.extend(slice_elements(slice).iter().skip(1).map(Ranged::range));
+            }
         }
         if is_object(walker, expr) {
+            if metadata.iter().any(|range| range.contains_range(expr.range())) {
+                return None;
+            }
             return (!callable_returns.contains(&expr.range())).then_some((expr.range(), OBJECT_MESSAGE));
         }
         (semantic.match_typing_expr(expr, "Any") && !left_to_ann401.contains(&expr.range()))

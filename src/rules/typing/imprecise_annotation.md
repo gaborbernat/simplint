@@ -199,6 +199,34 @@ def run(value: Any) -> None:
       callback(1)
   ```
 
+- **`object` values in the metadata of `Annotated`**, such as `object()` in `Annotated[int, object()]`: only the first
+  argument of `Annotated` is an annotation, so an `object` after it is a value and is not checked. `object` as the first
+  argument is still reported, and so is an `Any` in the metadata, which ANN401 does not check.
+
+  ```python ok
+  from typing import Annotated
+
+
+  def pick(value: Annotated[int, object()]) -> int:
+      return value
+  ```
+
+  ```python report
+  from typing import Annotated
+
+
+  def first(value: Annotated[object, "meta"]) -> int:
+      return 1
+  ```
+
+  ```python report
+  from typing import Annotated, Any
+
+
+  def meta(value: Annotated[int, {"type": Any}]) -> int:
+      return value
+  ```
+
 - **String annotations**: these are not checked.
 
   ```python ok

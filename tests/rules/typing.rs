@@ -24,6 +24,7 @@ use crate::common;
 #[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", "py314" ; "imprecise_annotation_type_params")]
 #[test_case("imprecise-annotation", "imprecise_annotation_ruff_overlap.py", "py314" ; "imprecise_annotation_ruff_overlap")]
 #[test_case("imprecise-annotation", "imprecise_annotation_callable.py", "py314" ; "imprecise_annotation_callable")]
+#[test_case("imprecise-annotation", "imprecise_annotation_annotated.py", "py314" ; "imprecise_annotation_annotated")]
 #[test_case("callable-ellipsis", "callable_ellipsis.py", "py314" ; "callable_ellipsis")]
 #[test_case("vars-call", "vars_call.py", "py314" ; "vars_call")]
 #[test_case("vars-call", "vars_call_bound.py", "py314" ; "vars_call_shadowed")]
