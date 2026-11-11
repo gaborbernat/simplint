@@ -41,7 +41,8 @@ _MISSING = sentinel("_MISSING")
 ## What it does
 
 Reports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class
-body and the name is assigned only once in the file.
+body and the name is assigned only once in that body. Assignments in a method, a nested class or a comprehension of the
+class do not count, nor does a name of the same spelling in another class or the module.
 
 ### Active on
 
@@ -72,6 +73,19 @@ class Config:
   ```python ok
   _MISSING = object()
   _MISSING = 2
+  ```
+
+- **A class attribute assigned again in its class**: the class body holds two objects under the name.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.15"
+  ```
+
+  ```python ok
+  class Config:
+      MISSING = object()
+      MISSING = None
   ```
 
 - **A placeholder in a function**: a local is not visible by name outside the function.

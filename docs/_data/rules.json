@@ -17671,7 +17671,7 @@
     "name": "up-object-sentinel",
     "summary": "`object()` placeholders `sentinel` would name",
     "fix": "Always",
-    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in the file.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only from the attribute it is stored under, so a class attribute is named with its classes, as\n`sentinel(\"Config.SENTINEL\")`. A placeholder in a class inside a function is reported without a fix, since no qualified\nname reaches it.\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n```python fixed\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in that body. A name of the same spelling assigned elsewhere, such as another\nclass or the module, does not count.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A class attribute assigned again in its class**: the class body holds two objects under the name.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  class Config:\n      MISSING = object()\n      MISSING = None\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only from the attribute it is stored under, so a class attribute is named with its classes, as\n`sentinel(\"Config.SENTINEL\")`. A placeholder in a class inside a function is reported without a fix, since no qualified\nname reaches it.\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n```python fixed\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -17739,11 +17739,11 @@
         },
         {
           "section": "What it does",
-          "line": 48,
-          "end_line": 61,
+          "line": 49,
+          "end_line": 62,
           "config": {
-            "line": 48,
-            "end_line": 51,
+            "line": 49,
+            "end_line": 52,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17752,8 +17752,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 53,
-              "end_line": 56,
+              "line": 54,
+              "end_line": 57,
               "source": "class Config:\n    SENTINEL = object()\n"
             },
             {
@@ -17761,19 +17761,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 58,
-              "end_line": 61,
+              "line": 59,
+              "end_line": 62,
               "source": "class Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 67,
-          "end_line": 75,
+          "line": 68,
+          "end_line": 76,
           "config": {
-            "line": 67,
-            "end_line": 70,
+            "line": 68,
+            "end_line": 71,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17782,19 +17782,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 72,
-              "end_line": 75,
+              "line": 73,
+              "end_line": 76,
               "source": "_MISSING = object()\n_MISSING = 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 79,
-          "end_line": 88,
+          "line": 80,
+          "end_line": 89,
           "config": {
-            "line": 79,
-            "end_line": 82,
+            "line": 80,
+            "end_line": 83,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17803,19 +17803,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 84,
-              "end_line": 88,
+              "line": 85,
+              "end_line": 89,
+              "source": "class Config:\n    MISSING = object()\n    MISSING = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 93,
+          "end_line": 102,
+          "config": {
+            "line": 93,
+            "end_line": 96,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 98,
+              "end_line": 102,
               "source": "def run():\n    missing = object()\n    return missing\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 92,
-          "end_line": 100,
+          "line": 106,
+          "end_line": 114,
           "config": {
-            "line": 92,
-            "end_line": 95,
+            "line": 106,
+            "end_line": 109,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17824,19 +17845,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 97,
-              "end_line": 100,
+              "line": 111,
+              "end_line": 114,
               "source": "sentinel = 1\n_MISSING = object()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 104,
-          "end_line": 111,
+          "line": 118,
+          "end_line": 125,
           "config": {
-            "line": 104,
-            "end_line": 107,
+            "line": 118,
+            "end_line": 121,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -17845,19 +17866,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 109,
-              "end_line": 111,
+              "line": 123,
+              "end_line": 125,
               "source": "_MISSING = object()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 120,
-          "end_line": 139,
+          "line": 134,
+          "end_line": 153,
           "config": {
-            "line": 120,
-            "end_line": 123,
+            "line": 134,
+            "end_line": 137,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17866,8 +17887,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 125,
-              "end_line": 131,
+              "line": 139,
+              "end_line": 145,
               "source": "def build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n"
             },
             {
@@ -17875,8 +17896,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 133,
-              "end_line": 139,
+              "line": 147,
+              "end_line": 153,
               "source": "def build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n"
             }
           ]

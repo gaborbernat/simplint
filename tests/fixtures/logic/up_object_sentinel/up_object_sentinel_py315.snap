@@ -7,7 +7,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 15:13 SMP511 `value` is a bare `object()`, whose repr is an address; `sentinel("Config.value")` names it [unsafe fix: Create it with `sentinel`]
 32:17 SMP511 `LIMIT` is a bare `object()`, whose repr is an address; `sentinel("Outer.Inner.LIMIT")` names it [unsafe fix: Create it with `sentinel`]
 37:16 SMP511 `MARK` is a bare `object()`, whose repr is an address; `sentinel("Local.MARK")` names it
---- fixed (4 applied, 0 remaining) ---
+48:13 SMP511 `LIMIT` is a bare `object()`, whose repr is an address; `sentinel("Shadowed.LIMIT")` names it [unsafe fix: Create it with `sentinel`]
+56:15 SMP511 `MISSING` is a bare `object()`, whose repr is an address; `sentinel("Method.MISSING")` names it [unsafe fix: Create it with `sentinel`]
+64:13 SMP511 `LIMIT` is a bare `object()`, whose repr is an address; `sentinel("Nested.LIMIT")` names it [unsafe fix: Create it with `sentinel`]
+71:15 SMP511 `DEFAULT` is a bare `object()`, whose repr is an address; `sentinel("Comprehension.DEFAULT")` names it [unsafe fix: Create it with `sentinel`]
+--- fixed (8 applied, 0 remaining) ---
 _MISSING = sentinel("_MISSING")
 _SHARED = object()
 _SHARED = 2
@@ -47,3 +51,36 @@ def make_local():
         MARK = object()
 
     return Local
+
+
+class Reassigned:
+    MISSING = object()
+    MISSING = None
+
+
+class Shadowed:
+    LIMIT = sentinel("Shadowed.LIMIT")
+
+
+LIMIT = 1
+LIMIT = 2
+
+
+class Method:
+    MISSING = sentinel("Method.MISSING")
+
+    def get(self, key):
+        MISSING = self.lookup(key)
+        return MISSING
+
+
+class Nested:
+    LIMIT = sentinel("Nested.LIMIT")
+
+    class Inner:
+        LIMIT = 3
+
+
+class Comprehension:
+    DEFAULT = sentinel("Comprehension.DEFAULT")
+    names = [DEFAULT for DEFAULT in range(3)]
