@@ -69,11 +69,8 @@ impl Printer<'_> {
             return Ok(());
         }
         if self.flags.intersects(Flags::SHOW_VIOLATIONS) {
-            self.render(
-                diagnostics,
-                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
-                writer,
-            )?;
+            let statistics = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
+            self.render(diagnostics, statistics.as_ref(), writer)?;
         }
         if self.format.is_human_readable() {
             let mut text = String::new();
@@ -257,11 +254,8 @@ impl Printer<'_> {
             if self.log_level >= LogLevel::Default {
                 writeln!(writer)?;
             }
-            self.render(
-                diagnostics,
-                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
-                writer,
-            )?;
+            let statistics = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
+            self.render(diagnostics, statistics.as_ref(), writer)?;
         }
         writer.flush()?;
         Ok(())
