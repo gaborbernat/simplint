@@ -1,5 +1,4 @@
-Flags private functions and methods whose body only forwards their parameters to another call. The wrapper adds a name
-and an extra hop without adding behavior, so a reader has to open it to learn that it calls something else.
+Flags private functions and methods whose body only forwards their parameters to another call.
 
 ## Why is this bad?
 
