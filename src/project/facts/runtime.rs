@@ -10,8 +10,10 @@ use crate::syntax::is_main_test;
 impl FactVisitor<'_> {
     // When the body of an `if` with this test runs, and when the clauses after it can.
     pub(super) fn branches(&self, test: &Expr) -> (Runs, Runs) {
-        let falsy_name = test.as_name_expr().is_some_and(|name| self.falsy_constants.contains(name.id.as_str()));
-        if is_type_checking(test) || is_main_test(test) || falsy_name {
+        let name = test.as_name_expr().map(|name| name.id.as_str());
+        let falsy_name = name.is_some_and(|name| self.constants.falsy.contains(name));
+        let typing_guard = is_type_checking(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
+        if typing_guard || is_main_test(test) || falsy_name {
             return (Runs::Never, Runs::Always);
         }
         if let Some(branches) = version_branches(test) {
@@ -48,7 +50,8 @@ impl Runs {
     }
 }
 
-// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time.
+// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time. A module that
+// binds it to a true constant runs the block, so the name is an ordinary flag there.
 fn is_type_checking(test: &Expr) -> bool {
     match test {
         Expr::Name(name) => name.id.as_str() == "TYPE_CHECKING",
@@ -97,7 +100,16 @@ fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
         _ => return None,
     };
     let gate = Runs::Below(below.0, below.1);
-    Some(if holds_below { (gate, Runs::Always) } else { (Runs::Always, gate) })
+    // A major-only check that holds on Python 3, the only major a supported Python has, leaves its else branch
+    // unreachable.
+    let three_holds = match op {
+        ast::CmpOp::Eq => bound.0 == 3,
+        ast::CmpOp::LtE => 3 <= bound.0,
+        ast::CmpOp::Lt => 3 < bound.0,
+        _ => false,
+    };
+    let other = if inclusive && three_holds { Runs::Never } else { Runs::Always };
+    Some(if holds_below { (gate, other) } else { (Runs::Always, gate) })
 }
 
 // Whether an `except` clause catches `ImportError` or `ModuleNotFoundError`, alone or in a tuple.
@@ -113,34 +125,55 @@ pub(super) fn catches_import_error(type_: &Expr) -> bool {
     }
 }
 
-// The names the module binds exactly once, to a constant that is false, as `_false = 0` does. A binding anywhere in the
-// module's blocks rebinds a name, as does a function's `global` declaration of it, which keeps the name out.
-pub(super) fn falsy_constants(body: &[Stmt]) -> FxHashSet<&str> {
+// The names the module binds exactly once, to a constant, as `_false = 0` or `DEBUG = True` does, sorted by the
+// truth of the constant. A binding anywhere in the module's blocks rebinds a name, as does a function's `global`
+// declaration of it, which keeps the name out. A star import binds the public names of its module, so a public name is
+// not bound once then.
+#[derive(Default)]
+pub(super) struct Constants<'a> {
+    pub(super) falsy: FxHashSet<&'a str>,
+    pub(super) truthy: FxHashSet<&'a str>,
+}
+
+pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     let mut bindings = Bindings::default();
     bindings.visit_body(body);
     let mut globals = Globals::default();
     globals.visit_body(body);
     for name in globals.names {
-        bindings.bind(name, false);
+        bindings.bind(name, None);
     }
-    bindings.bound.into_iter().filter(|(_, falsy)| *falsy).map(|(name, _)| name).collect()
+    let mut constants = Constants::default();
+    let star = bindings.star;
+    for (name, constant) in bindings.bound {
+        if star && !name.starts_with('_') {
+            continue;
+        }
+        match constant {
+            Some(true) => constants.truthy.insert(name),
+            Some(false) => constants.falsy.insert(name),
+            None => false,
+        };
+    }
+    constants
 }
 
-// The names the module binds in its own scope, each with whether its only binding is a false constant. A function or a
-// class binds its own name only, as what its body binds is local to it.
+// The names the module binds in its own scope, each with the constant its only binding is, if it is one. A function
+// or a class binds its own name only, as what its body binds is local to it.
 #[derive(Default)]
 struct Bindings<'a> {
-    bound: FxHashMap<&'a str, bool>,
+    bound: FxHashMap<&'a str, Option<bool>>,
+    star: bool,
 }
 
 impl<'a> Bindings<'a> {
-    fn bind(&mut self, name: &'a str, falsy: bool) {
-        self.bound.entry(name).and_modify(|once| *once = false).or_insert(falsy);
+    fn bind(&mut self, name: &'a str, constant: Option<bool>) {
+        self.bound.entry(name).and_modify(|once| *once = None).or_insert(constant);
     }
 
-    fn bind_target(&mut self, target: &'a Expr, falsy: bool) {
+    fn bind_target(&mut self, target: &'a Expr, constant: Option<bool>) {
         match target.as_name_expr() {
-            Some(name) => self.bind(name.id.as_str(), falsy),
+            Some(name) => self.bind(name.id.as_str(), constant),
             None => self.visit_expr(target),
         }
     }
@@ -150,28 +183,29 @@ impl<'a> Visitor<'a> for Bindings<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
-                let falsy = is_false_constant(value);
+                let constant = literal_constant(value);
                 for target in targets {
-                    self.bind_target(target, falsy);
+                    self.bind_target(target, constant);
                 }
                 self.visit_expr(value);
             }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) => {
-                self.bind_target(target, value.as_deref().is_some_and(is_false_constant));
+                self.bind_target(target, value.as_deref().and_then(literal_constant));
                 if let Some(value) = value {
                     self.visit_expr(value);
                 }
             }
-            Stmt::FunctionDef(function) => self.bind(function.name.as_str(), false),
-            Stmt::ClassDef(class) => self.bind(class.name.as_str(), false),
+            Stmt::FunctionDef(function) => self.bind(function.name.as_str(), None),
+            Stmt::ClassDef(class) => self.bind(class.name.as_str(), None),
             Stmt::Import(ast::StmtImport { names, .. }) => {
                 for alias in names {
-                    self.bind(bound_name(alias), false);
+                    self.bind(bound_name(alias), None);
                 }
             }
             Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+                self.star |= names.iter().any(|alias| alias.name.as_str() == "*");
                 for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                    self.bind(bound_name(alias), false);
+                    self.bind(bound_name(alias), None);
                 }
             }
             _ => visitor::walk_stmt(self, stmt),
@@ -180,7 +214,7 @@ impl<'a> Visitor<'a> for Bindings<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, .. }) = expr {
-            self.bind(id.as_str(), false);
+            self.bind(id.as_str(), None);
         }
         visitor::walk_expr(self, expr);
     }
@@ -188,7 +222,7 @@ impl<'a> Visitor<'a> for Bindings<'a> {
     fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
         let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name, .. }) = handler;
         if let Some(name) = name {
-            self.bind(name.as_str(), false);
+            self.bind(name.as_str(), None);
         }
         visitor::walk_except_handler(self, handler);
     }
@@ -198,7 +232,7 @@ impl<'a> Visitor<'a> for Bindings<'a> {
             ast::Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
             | ast::Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
             | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => {
-                self.bind(name.as_str(), false);
+                self.bind(name.as_str(), None);
             }
             _ => {}
         }
@@ -229,8 +263,9 @@ fn bound_name(alias: &ast::Alias) -> &str {
     }
 }
 
-// Whether a value is a literal that is false, as `0` or `False` is.
-fn is_false_constant(value: &Expr) -> bool {
-    value.is_literal_expr()
-        && matches!(Truthiness::from_expr(value, |_| false), Truthiness::False | Truthiness::Falsey | Truthiness::None)
+// The truth of a literal, as `0` is false and `True` is true. Any other value is no constant.
+fn literal_constant(value: &Expr) -> Option<bool> {
+    value
+        .is_literal_expr()
+        .then(|| matches!(Truthiness::from_expr(value, |_| false), Truthiness::True | Truthiness::Truthy))
 }

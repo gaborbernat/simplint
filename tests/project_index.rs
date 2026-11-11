@@ -2436,6 +2436,23 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
     );
 }
 
+// A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant
+// guards nothing, and a star import rebinds a flag bound false.
+#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = 2\n", false ; "else_of_three_never_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    from a import VALUE\n\nSCALE = 2\n", true ; "body_of_three_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    from a import VALUE\n\nSCALE = 2\n", false ; "body_of_two_never_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = 2\n", true ; "else_of_two_runs")]
+#[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = 2\n", false ; "typing_guard")]
+#[test_case("TYPE_CHECKING = True\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = 2\n", true ; "true_constant_is_no_guard")]
+#[test_case("FLAG = False\n\nif FLAG:\n    from a import VALUE\n\nSCALE = 2\n", false ; "false_constant_guard")]
+#[test_case("FLAG = False\nfrom flags import *\n\nif FLAG:\n    from a import VALUE\n\nSCALE = 2\n", true ; "star_rebinds_flag")]
+#[test_case("_FLAG = False\nfrom flags import *\n\nif _FLAG:\n    from a import VALUE\n\nSCALE = 2\n", false ; "star_keeps_private_flag")]
+fn runtime_guards_follow_versions_and_constants(b: &str, reported: bool) {
+    let root = project(&[("a.py", "import b\n\nVALUE = b.SCALE + 1\n"), ("b.py", b), ("flags.py", "FLAG = True\n")]);
+    let report = check(root.path(), &["--select", "SMP308"]).1;
+    assert_eq!(report.contains("SMP308"), reported, "{report}");
+}
+
 // A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in the
 // module's blocks, or a `global` declaration of it, may make it true. A binding inside a function is local to it.
 #[test_case("", false ; "unrebound")]

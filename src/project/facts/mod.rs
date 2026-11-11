@@ -25,7 +25,7 @@ use self::api_reached::interface;
 pub(crate) use self::api_reached::{Closure, Definition};
 use self::module_reads::module_reads;
 use self::names::string_words;
-use self::runtime::{Runs, falsy_constants};
+use self::runtime::{Runs, constants};
 use self::scan::Scan;
 use self::statements::statements;
 pub(crate) use self::statements::{Statement, statement_texts};
@@ -180,7 +180,7 @@ impl FileFacts {
             module_path.or(importable),
             module_name(module_path.or(importable), path),
             parts,
-            falsy_constants(&parsed.syntax().body),
+            constants(&parsed.syntax().body),
         );
         imports.visit_body(&parsed.syntax().body);
         let functions = module_functions(&parsed.syntax().body);

@@ -11,7 +11,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::runtime::{Runs, catches_import_error};
+use super::runtime::{Constants, Runs, catches_import_error};
 use super::{ImportSite, ModuleNames, Parts};
 use crate::project::receivers::module_parts;
 use crate::syntax::{attribute_call, has_decorator, last_segment};
@@ -170,8 +170,8 @@ pub(super) struct FactVisitor<'a> {
     // spec loads resolve against.
     file: PathBuf,
     root: Option<PathBuf>,
-    // The module-level names bound once to a false constant, as `_false = 0`, whose `if` bodies never run.
-    pub(super) falsy_constants: FxHashSet<&'a str>,
+    // The module-level names bound once to a constant, as `_false = 0` or `DEBUG = True` is.
+    pub(super) constants: Constants<'a>,
     pub(super) runtime_sites: Vec<ImportSite>,
     // The names the file loads other than as the object of an attribute, as `fast` in `codec = fast` is.
     pub(super) value_loads: FxHashSet<&'a str>,
@@ -195,7 +195,7 @@ impl<'a> FactVisitor<'a> {
         module_path: Option<&'a [String]>,
         own_module: String,
         parts: Parts,
-        falsy_constants: FxHashSet<&'a str>,
+        constants: Constants<'a>,
     ) -> Self {
         let file = lexically_normalized(file);
         let root =
@@ -226,7 +226,7 @@ impl<'a> FactVisitor<'a> {
             doctest_names: BTreeSet::new(),
             handler_depth: 0,
             runtime: Runs::Always,
-            falsy_constants,
+            constants,
             loaded_modules: LoadedModules::default(),
             specs: FxHashMap::default(),
             unknown_modules: FxHashSet::default(),
