@@ -601,6 +601,15 @@ fn class_keyword_makes_the_slots_fix_unsafe(class: &str, import: &str, fixed: bo
     assert!(common::read(root.path(), "main.py").contains("slots=True"));
 }
 
+// `frozen=True` does not build the class again, so a class keyword such as `metaclass=` keeps the frozen fix safe.
+#[test]
+fn class_keyword_keeps_the_frozen_fix_safe() {
+    let source = "from abc import ABCMeta\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release(metaclass=ABCMeta):\n    version: str\n";
+    let root = common::project(&[("main.py", source)]);
+    common::check(root.path(), &["--no-cache", "--select", "dataclass-frozen", "--fix", "."]);
+    assert!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Release"));
+}
+
 // A weak container holds its items through `weakref.ref`, which needs a `__weakref__` slot a slotted class lacks.
 #[test_case("import weakref\nLIVE = weakref.WeakSet()\n", false ; "weak_set")]
 #[test_case("import weakref\nNAMES = weakref.WeakKeyDictionary()\n", false ; "weak_key_dictionary")]

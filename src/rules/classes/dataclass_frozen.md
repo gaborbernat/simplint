@@ -686,28 +686,6 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
-- the class has a keyword, such as `metaclass=`, which runs again when `frozen` builds the class a second time
-
-  ```python report
-  from abc import ABCMeta
-  from dataclasses import dataclass
-
-
-  @dataclass
-  class Release(metaclass=ABCMeta):
-      version: str
-  ```
-
-  ```python fixed
-  from abc import ABCMeta
-  from dataclasses import dataclass
-
-
-  @dataclass(frozen=True)
-  class Release(metaclass=ABCMeta):
-      version: str
-  ```
-
 - the class has a `Generic[...]` base class;
 
   ```python report

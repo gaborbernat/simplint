@@ -13,7 +13,7 @@ pub fn dataclass_slots(checker: &Checker) {
         Some(Offer {
             options,
             edits: Vec::new(),
-            applicability: analysis.applicability(),
+            applicability: analysis.slots_applicability(),
             related: Vec::new(),
             note: String::new(),
             left_to_ruff: false,
