@@ -77,6 +77,46 @@ fn find_conflicts<'a>(scopes: &'a [Scope]) -> BTreeMap<Conflict<'a>, &'a Path> {
     found
 }
 
+impl Clash {
+    // Ruff's settings with only this clash's rules on, so the probe runs nothing else; `None` when none is on.
+    fn narrowed(&self, ruff: &LinterSettings) -> Option<LinterSettings> {
+        let enabled = self.ruff.iter().copied().filter(|rule| ruff.rules.enabled(*rule)).collect_vec();
+        if enabled.is_empty() {
+            return None;
+        }
+        let mut narrowed = ruff.clone();
+        narrowed.rules = RuleTable::empty();
+        for rule in enabled {
+            narrowed.rules.enable(rule, false);
+        }
+        Some(narrowed)
+    }
+
+    // The positions in `ruff` of the Ruff rules that work against the simplint rule in the file; `None` when either
+    // side is off there.
+    fn reported(&self, scope: &Scope, narrowed: &LinterSettings) -> Option<Vec<usize>> {
+        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(scope.settings, narrowed) {
+            return None;
+        }
+        let diagnostics = lint_only(
+            scope.path,
+            scope.package,
+            narrowed,
+            flags::Noqa::Disabled,
+            &SourceKind::Python { code: self.probe.to_owned(), is_stub: false },
+            PySourceType::Python,
+            ParseSource::None,
+        )
+        .diagnostics;
+        let rules = self
+            .ruff
+            .iter()
+            .positions(|rule| diagnostics.iter().any(|diagnostic| diagnostic.name() == rule.name().as_str()))
+            .collect_vec();
+        (!rules.is_empty()).then_some(rules)
+    }
+}
+
 fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
     let place = |config: Option<&Path>| {
         config.map_or_else(|| "no configuration file".to_owned(), |path| path.display().to_string())
@@ -86,8 +126,10 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
         .map(|(Conflict { clash: index, simplint_config, ruff_config, rules }, path)| {
             let clash = &CLASHES[index];
             let rules = rules.into_iter().map(|position| clash.ruff[position]).collect_vec();
-            let ruff_codes =
-                rules.iter().map(|rule| rule.noqa_code().map(|code| code.to_string()).unwrap_or_default()).collect_vec();
+            let ruff_codes = rules
+                .iter()
+                .map(|rule| rule.noqa_code().map(|code| code.to_string()).unwrap_or_default())
+                .collect_vec();
             let names = Names {
                 by_name,
                 simplint: shown(by_name, clash.simplint.name(), clash.simplint.code()),
@@ -105,8 +147,8 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
                 many: rules.len() > 1,
             };
             format!(
-                "\n  - {} and Ruff's {} {}.\n    Why: {}.\n    Fix: {}.\n    simplint settings: {}; Ruff settings: {}; first \
-                 file: {}",
+                "\n  - {} and Ruff's {} {}.\n    Why: {}.\n    Fix: {}.\n    simplint settings: {}; Ruff settings: {}; \
+                 first file: {}",
                 names.simplint,
                 names.ruff,
                 if clash.undoes_fixes { "undo each other's fixes" } else { "work against each other" },
@@ -183,8 +225,9 @@ const CLASHES: [Clash; 7] = [
             RuffRule::UndocumentedPublicNestedClass,
             RuffRule::UndocumentedPublicInit,
         ],
-        probe: "class Class:\n    class Nested:\n        pass\n\n    def __init__(self):\n        pass\n\n    def __eq__(self, \
-                other):\n        pass\n\n    def method(self):\n        pass\n\n\ndef function():\n    pass\n",
+        probe: "class Class:\n    class Nested:\n        pass\n\n    \
+                def __init__(self):\n        pass\n\n    def __eq__(\
+                self, other):\n        pass\n\n    def method(self):\n        pass\n\n\ndef function():\n    pass\n",
         acts_on: |_, _| true,
         undoes_fixes: false,
         why: |names| {
@@ -291,7 +334,8 @@ const CLASHES: [Clash; 7] = [
     Clash {
         simplint: Rule::RstReturns,
         ruff: &[RuffRule::DocstringMissingReturns, RuffRule::DocstringMissingYields],
-        probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
+        probe: "def function(value):\n    \
+                \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
                 def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
         acts_on: |settings, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         undoes_fixes: false,
@@ -309,8 +353,8 @@ const CLASHES: [Clash; 7] = [
     Clash {
         simplint: Rule::RstMissingRaises,
         ruff: &[RuffRule::DocstringMissingException],
-        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
-                if not value:\n        raise ValueError\n",
+        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \
+                \"\"\"\n    if not value:\n        raise ValueError\n",
         acts_on: |settings, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         undoes_fixes: false,
         why: |names| {
@@ -329,44 +373,4 @@ fn ignore_in_ruff_or_simplint(names: &Names) -> String {
         "ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
         names.ruff_selectors, names.simplint_selector,
     )
-}
-
-impl Clash {
-    // Ruff's settings with only this clash's rules on, so the probe runs nothing else; `None` when none is on.
-    fn narrowed(&self, ruff: &LinterSettings) -> Option<LinterSettings> {
-        let enabled = self.ruff.iter().copied().filter(|rule| ruff.rules.enabled(*rule)).collect_vec();
-        if enabled.is_empty() {
-            return None;
-        }
-        let mut narrowed = ruff.clone();
-        narrowed.rules = RuleTable::empty();
-        for rule in enabled {
-            narrowed.rules.enable(rule, false);
-        }
-        Some(narrowed)
-    }
-
-    // Where the Ruff rules that work against the simplint rule in the file sit in `ruff`; `None` when either side is off
-    // there.
-    fn reported(&self, scope: &Scope, narrowed: &LinterSettings) -> Option<Vec<usize>> {
-        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(scope.settings, narrowed) {
-            return None;
-        }
-        let diagnostics = lint_only(
-            scope.path,
-            scope.package,
-            narrowed,
-            flags::Noqa::Disabled,
-            &SourceKind::Python { code: self.probe.to_owned(), is_stub: false },
-            PySourceType::Python,
-            ParseSource::None,
-        )
-        .diagnostics;
-        let rules = self
-            .ruff
-            .iter()
-            .positions(|rule| diagnostics.iter().any(|diagnostic| diagnostic.name() == rule.name().as_str()))
-            .collect_vec();
-        (!rules.is_empty()).then_some(rules)
-    }
 }
