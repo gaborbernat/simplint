@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::Stmt;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::definition_time::calls_at_definition;
 use crate::lint::checker::Checker;
@@ -12,6 +12,24 @@ use crate::syntax::last_segment;
 pub(super) struct Suite<'a> {
     pub(super) body: &'a [Stmt],
     pub(super) blank_lines: usize,
+}
+
+// A statement that reads a definition, and where in the statement the read starts.
+#[derive(Clone)]
+pub(super) struct Read {
+    pub(super) reader: usize,
+    pub(super) at: TextSize,
+}
+
+// Each root in turn, followed by the children it owns depth first, each child in the order its list gives.
+pub(super) fn depth_first(roots: impl Iterator<Item = usize>, children: &[Vec<usize>], mut emit: impl FnMut(usize)) {
+    for root in roots {
+        let mut stack = vec![root];
+        while let Some(index) = stack.pop() {
+            emit(index);
+            stack.extend(children[index].iter().rev());
+        }
+    }
 }
 
 // The positions a reordering moves: from the first to the last statement that `expected` puts elsewhere.

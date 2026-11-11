@@ -9,6 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::constructors::alternative_constructors;
 use super::definition_time::{bound_names, definition_name, definition_time_exprs};
+use super::reorder::{Read, depth_first};
 use crate::lint::checker::Checker;
 use crate::syntax::{ExprCollector, decorator_names, signature_annotations};
 
@@ -22,15 +23,27 @@ pub(super) enum Section {
     Property,
 }
 
+// The place of a unit in the layout: the nested classes, then the class attributes, then the definitions by section,
+// with the methods last.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Rank {
+    Nested,
+    Attribute,
+    Constructor(usize),
+    Factory,
+    Dunder,
+    Property,
+    Method,
+}
+
 impl Section {
-    // The place of the section in the layout, as a rank and a rank within it.
-    fn rank(self) -> (usize, usize) {
+    fn rank(self) -> Rank {
         match self {
-            Self::Nested => (0, 0),
-            Self::Constructor(index) => (2, index),
-            Self::Factory => (3, 0),
-            Self::Dunder => (4, 0),
-            Self::Property => (5, 0),
+            Self::Nested => Rank::Nested,
+            Self::Constructor(index) => Rank::Constructor(index),
+            Self::Factory => Rank::Factory,
+            Self::Dunder => Rank::Dunder,
+            Self::Property => Rank::Property,
         }
     }
 
@@ -94,16 +107,14 @@ impl Unit<'_> {
         matches!(self.kind, Kind::Definition { .. })
     }
 
-    // The place of the unit in the layout: the nested classes, then the class attributes, then the definitions by section,
-    // with the methods last.
-    fn rank(&self) -> (usize, usize) {
+    fn rank(&self) -> Rank {
         match self.kind {
-            Kind::Statement => (1, 0),
-            Kind::Definition { section, .. } => section.map_or((6, 0), Section::rank),
+            Kind::Statement => Rank::Attribute,
+            Kind::Definition { section, .. } => section.map_or(Rank::Method, Section::rank),
         }
     }
 
-    fn key(&self) -> ((usize, usize), usize) {
+    fn key(&self) -> (Rank, usize) {
         (self.rank(), self.first())
     }
 }
@@ -138,7 +149,7 @@ pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -
         }
     }
     for (owner, list) in children.iter_mut().enumerate() {
-        list.sort_by_key(|&unit| users[unit].iter().filter(|(user, _)| *user == owner).map(|(_, at)| *at).min());
+        list.sort_by_key(|&unit| users[unit].iter().filter(|read| read.reader == owner).map(|read| read.at).min());
     }
     let ranges = body.iter().map(|stmt| definition_name(stmt).map_or(stmt.range(), Ranged::range)).collect();
     ClassOrder { units, unit_of, ranges, owner, children }
@@ -217,20 +228,15 @@ fn pin(units: &mut [Unit], swaps: &Swaps, by_name: &FxHashMap<&str, usize>, body
 }
 
 // The statements that read each definition of the class body, with the statement and the offset of each read.
-fn users(
-    checker: &Checker,
-    class: &ast::StmtClassDef,
-    units: &[Unit],
-    unit_of: &[usize],
-) -> Vec<Vec<(usize, TextSize)>> {
+fn users(checker: &Checker, class: &ast::StmtClassDef, units: &[Unit], unit_of: &[usize]) -> Vec<Vec<Read>> {
     let body = &class.body;
-    let mut users: Vec<Vec<(usize, TextSize)>> = vec![Vec::new(); units.len()];
+    let mut users: Vec<Vec<Read>> = vec![Vec::new(); units.len()];
     for (unit, info) in units.iter().enumerate() {
         let Kind::Definition { name, .. } = info.kind else { continue };
         for reference in checker.semantic().member_references(class.range, name) {
             let reader = body.partition_point(|stmt| stmt.end() <= reference.start());
             if body.get(reader).is_some_and(|stmt| stmt.range().contains_range(*reference)) && unit_of[reader] != unit {
-                users[unit].push((unit_of[reader], reference.start()));
+                users[unit].push(Read { reader: unit_of[reader], at: reference.start() });
             }
         }
     }
@@ -239,7 +245,7 @@ fn users(
 
 // The owner of each unit, found again after each pinning until no unit needs pinning: pinning a helper or a split
 // definition changes who owns what.
-fn owners_of_pinned(units: &mut [Unit], swaps: &Swaps, users: &[Vec<(usize, TextSize)>]) -> Vec<Option<usize>> {
+fn owners_of_pinned(units: &mut [Unit], swaps: &Swaps, users: &[Vec<Read>]) -> Vec<Option<usize>> {
     loop {
         let mut pinned = false;
         for unit in 0..units.len() {
@@ -267,7 +273,7 @@ fn owners_of_pinned(units: &mut [Unit], swaps: &Swaps, users: &[Vec<(usize, Text
 // helpers, depth first. Both arrangements pick the same caller, and a fix that sorts the sections leaves each helper's owner
 // as it was. A helper that no entry point reaches, as in a pair of methods that only call each other, becomes an entry
 // point itself. Constructors, statements that are not definitions and fixed units never move under a caller.
-fn owners(units: &[Unit<'_>], users: &[Vec<(usize, TextSize)>]) -> Vec<Option<usize>> {
+fn owners(units: &[Unit<'_>], users: &[Vec<Read>]) -> Vec<Option<usize>> {
     let mut helper: Vec<bool> = units
         .iter()
         .zip(users)
@@ -278,8 +284,8 @@ fn owners(units: &[Unit<'_>], users: &[Vec<(usize, TextSize)>]) -> Vec<Option<us
         .collect();
     let mut callees: Vec<Vec<(TextSize, usize)>> = vec![Vec::new(); units.len()];
     for (unit, users) in users.iter().enumerate() {
-        for &(user, at) in users {
-            callees[user].push((at, unit));
+        for read in users {
+            callees[read.reader].push((read.at, unit));
         }
     }
     for list in &mut callees {
@@ -404,9 +410,10 @@ impl<'a> ClassOrder<'a> {
     // The statement order the arrangement asks for, as a permutation of the body's statements.
     pub(super) fn expected(&self, arrangement: Arrangement) -> Vec<usize> {
         let mut order = Vec::with_capacity(self.unit_of.len());
-        for unit in entry_order(&self.units, |unit| self.owner[unit].is_none(), arrangement) {
-            self.emit(unit, &mut order);
-        }
+        let entries = entry_order(&self.units, |unit| self.owner[unit].is_none(), arrangement);
+        depth_first(entries.into_iter(), &self.children, |unit| {
+            order.extend(self.units[unit].members.iter().copied());
+        });
         order
     }
 
@@ -455,15 +462,6 @@ impl<'a> ClassOrder<'a> {
             }
         }
         inversions
-    }
-
-    // A unit, then the helpers that follow it depth first, as each helper follows its first caller.
-    fn emit(&self, unit: usize, order: &mut Vec<usize>) {
-        let mut stack = vec![unit];
-        while let Some(current) = stack.pop() {
-            order.extend(self.units[current].members.iter().copied());
-            stack.extend(self.children[current].iter().rev());
-        }
     }
 }
 
