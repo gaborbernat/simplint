@@ -66,6 +66,10 @@ class _IerrGrouped(Exception):
     pass
 
 
+class _IerrMixed(_IerrBase, ValueError):
+    pass
+
+
 def guard() -> None:
     try:
         raise _IerrOwn()
