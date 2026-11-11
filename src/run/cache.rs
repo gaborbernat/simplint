@@ -888,6 +888,10 @@ impl Fingerprints {
         if rules.overlaps(RuleSet::sibling_init()) {
             sibling_init.cache_key(&mut hasher);
         }
+        // A message naming a path relative to the working directory differs from one run elsewhere.
+        if rules.overlaps(RuleSet::working_directory()) {
+            std::env::current_dir().unwrap_or_default().cache_key(&mut hasher);
+        }
         hasher.finish()
     }
 

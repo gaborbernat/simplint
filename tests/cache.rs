@@ -1000,6 +1000,28 @@ fn private_import_is_checked_again_once_its_linked_source_is_deleted() {
     assert_eq!((cold, kept.0, kept.2.contains("Indexed "), warm.0, warm == fresh), (0, 0, false, 1, true));
 }
 
+// Reports that name a path relative to the working directory are cached with the directory they were made in, so a run
+// from another directory names its paths as a run without the cache does.
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\n"), ("app/__init__.py", ""), ("app/a.py", "from app import b\n\nVALUE = 1\n"), ("app/b.py", "from app import a\n\nOTHER = 2\n")], "SMP308" ; "import_cycle")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\n"), ("app/__init__.py", ""), ("app/a.py", REPEATED), ("app/b.py", REPEATED)], "SMP530" ; "duplicate_code")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\nproject-kind = \"library\"\n"), ("app/__init__.py", "from app._core import fetch\n\n__all__ = [\"fetch\"]\n"), ("app/_core.py", "def fetch() -> None:\n    print()\n")], "SMP903" ; "undocumented_public_api")]
+fn cached_report_names_the_paths_of_the_directory_it_runs_in(files: &[(&str, &str)], select: &str) {
+    let root = project(files);
+    let run = |dir: &Path, extra: &[&str]| {
+        let output = command(root.path())
+            .current_dir(dir)
+            .args(["check", "--output-format", "concise", "--select", select])
+            .args(extra)
+            .output()
+            .expect("runs");
+        String::from_utf8(output.stdout).expect("utf-8 stdout")
+    };
+    let app = root.path().join("app");
+    run(root.path(), &[]);
+    let warm = run(&app, &[]);
+    assert_eq!(warm, run(&app, &["--no-cache"]));
+}
+
 // A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
 // earlier run does not stand once that file is gone.
 #[test]
