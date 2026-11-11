@@ -18673,7 +18673,7 @@
     "name": "up-strptime-date",
     "summary": "`datetime.strptime()` results narrowed to a `date` or `time`",
     "fix": "Sometimes",
-    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n- **`.time()` with a format that has a date directive**: the fix is unsafe, since `time.strptime` does not check the\n  date that `datetime.strptime` checks, so a day that does not exist is accepted. **Unsafe fix:** the call becomes\n  `time.strptime`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%m-%d %H:%M\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%m-%d %H:%M\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal whose directives are all\ntime-of-day ones, `%H`, `%I`, `%M`, `%S`, `%f` and `%p`, with `%%`, and unsafe otherwise: `time.strptime` keeps the zone\nthat `.time()` drops, and it does not check the date that `datetime.strptime` checks, so `%z`, `%:z` and a date\ndirective change the result. When the class is imported by name, the fix adds `date` or `time` to that\n`from datetime import` line. It reports without a fix when the file already spells `date` or `time` outside an\nattribute, since the new name would take that binding's place. No fix is offered when a comment lies in the class or in\nthe `.date()` or `.time()` call it drops, since the rewrite would drop it. A comment inside the `.date()` call keeps the\nreport without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n```python fixed\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
+    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n- **`.time()` with a format that has a date directive**: the fix is unsafe, since `time.strptime` does not check the\n  date that `datetime.strptime` checks, so a day that does not exist is accepted. **Unsafe fix:** the call becomes\n  `time.strptime`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%m-%d %H:%M\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%m-%d %H:%M\")\n  ```\n\n- **`.date()` with a seconds directive**: the fix is unsafe, since `date.strptime` accepts the second 60 that\n  `datetime.strptime` rejects. **Unsafe fix:** the call becomes `date.strptime`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d %H:%M:%S\").date()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.date.strptime(text, \"%Y-%m-%d %H:%M:%S\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nFor `.date()` the fix is safe when the format is a string literal without a seconds directive, `%S`, or a composite that\nincludes seconds, `%X`, `%c`, `%T` or `%r`, and unsafe otherwise: `date.strptime` accepts the second 60 that\n`datetime.strptime` rejects. For `.time()` it is safe when the format is a string literal whose directives are all\ntime-of-day ones, `%H`, `%I`, `%M`, `%f` and `%p`, with `%%`, and unsafe otherwise: `time.strptime` keeps the zone that\n`.time()` drops, does not check the date that `datetime.strptime` checks, and accepts the second 60, so `%z`, `%:z`, a\ndate directive and a seconds directive change the result. When the class is imported by name, the fix adds `date` or\n`time` to that `from datetime import` line. It reports without a fix when the file already spells `date` or `time`\noutside an attribute, since the new name would take that binding's place. No fix is offered when a comment lies in the\nclass or in the `.date()` or `.time()` call it drops, since the rewrite would drop it. A comment inside the `.date()`\ncall keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n```python fixed\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
     "examples": {
       "parsed": [
         {
@@ -18831,32 +18831,11 @@
         },
         {
           "section": "What it does",
-          "line": 135,
-          "end_line": 146,
+          "line": 134,
+          "end_line": 153,
           "config": {
-            "line": 135,
-            "end_line": 138,
-            "source": "[project]\nrequires-python = \">=3.13\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 140,
-              "end_line": 146,
-              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 159,
-          "end_line": 182,
-          "config": {
-            "line": 159,
-            "end_line": 162,
+            "line": 134,
+            "end_line": 137,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -18865,8 +18844,59 @@
               "language": "python",
               "file": "example.py",
               "named": false,
+              "line": 139,
+              "end_line": 145,
+              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d %H:%M:%S\").date()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 147,
+              "end_line": 153,
+              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d %H:%M:%S\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 159,
+          "end_line": 170,
+          "config": {
+            "line": 159,
+            "end_line": 162,
+            "source": "[project]\nrequires-python = \">=3.13\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
               "line": 164,
-              "end_line": 172,
+              "end_line": 170,
+              "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 185,
+          "end_line": 208,
+          "config": {
+            "line": 185,
+            "end_line": 188,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 190,
+              "end_line": 198,
               "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
             },
             {
@@ -18874,8 +18904,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 174,
-              "end_line": 182,
+              "line": 200,
+              "end_line": 208,
               "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
             }
           ]
@@ -19293,7 +19323,7 @@
     "name": "up-codecs-open",
     "summary": "`codecs.open()` calls",
     "fix": "Sometimes",
-    "explanation": "Flags `codecs.open()` calls, which the builtin `open()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,\n`codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the\ncharacters `str.splitlines()` honors, such as form feeds and U+2028, where `open()` splits only at line endings. With\n`newline=\"\"`, `open()` also keeps the line endings as they are, as `codecs.open()` does.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport codecs\n\n\ndef read_config(path):\n    with codecs.open(path, \"r\", \"utf-8\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\nUse instead:\n\n```python ok\nimport codecs\n\n\ndef read_config(path):\n    with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n## Configuration\n\nNo setting changes the report. The rule reports on every target version, since `open()` takes the arguments in each of\nthem.\n\n## What it does\n\n### Active on\n\n- **Calls of `codecs.open`**, by its qualified name or by a name imported from `codecs`. **Unsafe fix:** the call\n  becomes `open(...)` with `encoding=` and `newline=\"\"`. Reading and writing whole files give the same text and bytes,\n  but iterating over lines does not for text with a form feed, U+2028, U+001C or U+0085: `codecs.open()` yields a line\n  at each of them, and `open()` does not.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      with codecs.open(path, \"r\", \"utf-8\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read_config(path):\n      with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n### Fix\n\nNo fix is offered when:\n\n- no encoding is given, or it is `None`: `codecs.open()` then returns the builtin text file and ignores `errors`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_text(path):\n      return codecs.open(path).read()\n  ```\n\n- the mode is not a string literal, or it has a `b`: a binary mode with an encoding returns a stream that `open()`\n  rejects;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_bytes(path):\n      return codecs.open(path, \"rb\", \"utf-8\").read()\n  ```\n\n- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123\n  (`builtin-open`) under the default settings, so simplint withdraws the fix;\n\n- an argument is unpacked with `*` or `**`, or `open` is bound in the module, or by a parameter, local or loop variable\n  of a function, lambda, class body or comprehension that encloses the call, which the new call would pick up;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n- the call has a comment inside it, which the rewrite would drop.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      return codecs.open(\n          path,  # the config file\n          \"r\",\n          \"utf-8\",\n      ).read()\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule\n  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,\n  asking for one rather than for `open()`.\n",
+    "explanation": "Flags `codecs.open()` calls, which the builtin `open()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,\n`codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the\ncharacters `str.splitlines()` honors, such as form feeds and U+2028, where `open()` splits only at line endings. With\n`newline=\"\"`, `open()` also keeps the line endings as they are, as `codecs.open()` does.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport codecs\n\n\ndef read_config(path):\n    with codecs.open(path, \"r\", \"utf-8\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\nUse instead:\n\n```python ok\nimport codecs\n\n\ndef read_config(path):\n    with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n## Configuration\n\nNo setting changes the report. The rule reports on every target version, since `open()` takes the arguments in each of\nthem.\n\n## What it does\n\n### Active on\n\n- **Calls of `codecs.open`**, by its qualified name or by a name imported from `codecs`. **Unsafe fix:** the call\n  becomes `open(...)` with `encoding=` and `newline=\"\"`. Reading and writing whole files give the same text and bytes,\n  but iterating over lines does not for text with a form feed, U+2028, U+001C or U+0085: `codecs.open()` yields a line\n  at each of them, and `open()` does not.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      with codecs.open(path, \"r\", \"utf-8\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read_config(path):\n      with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n### Fix\n\nNo fix is offered when:\n\n- no encoding is given, or it is `None`: `codecs.open()` then returns the builtin text file and ignores `errors`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_text(path):\n      return codecs.open(path).read()\n  ```\n\n- the mode is not a string literal, or it has a `b`: a binary mode with an encoding returns a stream that `open()`\n  rejects;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_bytes(path):\n      return codecs.open(path, \"rb\", \"utf-8\").read()\n  ```\n\n- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123\n  (`builtin-open`) under the default settings, so simplint withdraws the fix;\n\n- an argument is unpacked with `*` or `**`, or `open` is bound in the module, or by a parameter, local or loop variable\n  of a function, lambda, class body or comprehension that encloses the call, which the new call would pick up;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n- the call has a comment inside it, which the rewrite would drop.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      return codecs.open(\n          path,  # the config file\n          \"r\",\n          \"utf-8\",\n      ).read()\n  ```\n\nA value passed as `encoding`, `errors` or `buffering` that needs parentheses, such as a walrus or a `yield`, keeps the\nparentheses it has in the source and gets them when it has none, since `encoding=name := value` is a syntax error:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport codecs\n\n\ndef read(path):\n    with codecs.open(path, \"r\", name := \"utf-8\") as handle:\n        return name, handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n```python fixed\nimport codecs\n\n\ndef read(path):\n    with open(path, \"r\", encoding=(name := \"utf-8\"), newline=\"\") as handle:\n        return name, handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\nA `yield` passed as `errors` is parenthesized in the keyword the same way:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport codecs\n\n\ndef read(path):\n    with codecs.open(path, \"r\", \"utf-8\", (yield)) as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n```python fixed\nimport codecs\n\n\ndef read(path):\n    with open(path, \"r\", encoding=\"utf-8\", errors=(yield), newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule\n  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,\n  asking for one rather than for `open()`.\n",
     "examples": {
       "parsed": [
         {
@@ -19458,6 +19488,66 @@
               "line": 159,
               "end_line": 169,
               "source": "import codecs\n\n\ndef read_config(path):\n    return codecs.open(\n        path,  # the config file\n        \"r\",\n        \"utf-8\",\n    ).read()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 174,
+          "end_line": 203,
+          "config": {
+            "line": 174,
+            "end_line": 177,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 179,
+              "end_line": 190,
+              "source": "import codecs\n\n\ndef read(path):\n    with codecs.open(path, \"r\", name := \"utf-8\") as handle:\n        return name, handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 192,
+              "end_line": 203,
+              "source": "import codecs\n\n\ndef read(path):\n    with open(path, \"r\", encoding=(name := \"utf-8\"), newline=\"\") as handle:\n        return name, handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 207,
+          "end_line": 236,
+          "config": {
+            "line": 207,
+            "end_line": 210,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 212,
+              "end_line": 223,
+              "source": "import codecs\n\n\ndef read(path):\n    with codecs.open(path, \"r\", \"utf-8\", (yield)) as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 225,
+              "end_line": 236,
+              "source": "import codecs\n\n\ndef read(path):\n    with open(path, \"r\", encoding=\"utf-8\", errors=(yield), newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n"
             }
           ]
         }

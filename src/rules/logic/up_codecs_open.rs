@@ -6,6 +6,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::edits::is_bound_around;
+use crate::rules::needs_parentheses;
 
 // `codecs.open(filename, mode, encoding, errors, buffering)`, in the order of its parameters.
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];
@@ -67,10 +68,22 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     }
     let mut parameters = vec![checker.text(filename.range()).to_owned()];
     parameters.extend(mode.map(|mode| checker.text(mode.range()).to_owned()));
-    parameters.extend(argument(4).map(|buffering| format!("buffering={}", checker.text(buffering.range()))));
-    parameters.push(format!("encoding={}", checker.text(encoding.range())));
-    parameters.extend(argument(3).map(|errors| format!("errors={}", checker.text(errors.range()))));
+    parameters.extend(argument(4).map(|buffering| keyword_argument(checker, call, "buffering", buffering)));
+    parameters.push(keyword_argument(checker, call, "encoding", encoding));
+    parameters.extend(argument(3).map(|errors| keyword_argument(checker, call, "errors", errors)));
     parameters.push("newline=\"\"".to_owned());
     let replacement = format!("open({})", parameters.join(", "));
     Some(Fix::unsafe_edit(Edit::range_replacement(replacement, call.range())))
+}
+
+// A value that needs parentheses keeps the ones it has in the source, and gets them when it has none, since a walrus,
+// a `yield` or a lambda cannot be a keyword value bare where its precedence would end.
+fn keyword_argument(checker: &Checker, call: &ast::ExprCall, name: &str, value: &Expr) -> String {
+    let range = checker.parenthesized_range(value, (&call.arguments).into());
+    let text = checker.text(range);
+    if needs_parentheses(value) && range == value.range() {
+        format!("{name}=({text})")
+    } else {
+        format!("{name}={text}")
+    }
 }

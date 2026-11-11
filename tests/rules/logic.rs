@@ -109,6 +109,8 @@ use crate::common::{self, check, read};
 #[test_case("up-codecs-open", "up_codecs_open_shadowed.py", "py314" ; "codecs_open_renamed")]
 #[test_case("up-codecs-open", "up_codecs_open_builtin.py", "py314" ; "codecs_open_builtin")]
 #[test_case("up-codecs-open", "up_codecs_open_parameter.py", "py314" ; "codecs_open_parameter")]
+#[test_case("up-codecs-open", "up_codecs_open_walrus.py", "py314" ; "codecs_open_walrus")]
+#[test_case("up-codecs-open", "up_codecs_open_parenthesized.py", "py314" ; "codecs_open_parenthesized")]
 #[test_case("up-re-error-alias", "up_re_error_alias.py", "py314" ; "re_error_alias")]
 #[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", "py314" ; "re_error_alias_fallback_import")]
 #[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", "py314" ; "re_error_alias_deleted_name")]

@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+10:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+15:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+--- fixed (3 applied, 0 remaining) ---
+import codecs
+
+
+def read_walrus(path):
+    with open(path, "r", encoding=(name := "utf-8"), newline="") as handle:
+        return name, handle.read()
+
+
+def read_keyword(path):
+    with open(path, "r", encoding=(other := "utf-8"), newline="") as handle:
+        return other, handle.read()
+
+
+def read_buffered(path):
+    with open(path, "r", buffering=(size := 1), encoding="utf-8", errors="strict", newline="") as handle:
+        return size, handle.read()

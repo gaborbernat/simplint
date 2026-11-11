@@ -168,6 +168,73 @@ No fix is offered when:
       ).read()
   ```
 
+A value passed as `encoding`, `errors` or `buffering` that needs parentheses, such as a walrus or a `yield`, keeps the
+parentheses it has in the source and gets them when it has none, since `encoding=name := value` is a syntax error:
+
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python report
+import codecs
+
+
+def read(path):
+    with codecs.open(path, "r", name := "utf-8") as handle:
+        return name, handle.read()
+
+
+def encoding_name():
+    return codecs.lookup("utf-8").name
+```
+
+```python fixed
+import codecs
+
+
+def read(path):
+    with open(path, "r", encoding=(name := "utf-8"), newline="") as handle:
+        return name, handle.read()
+
+
+def encoding_name():
+    return codecs.lookup("utf-8").name
+```
+
+A `yield` passed as `errors` is parenthesized in the keyword the same way:
+
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python report
+import codecs
+
+
+def read(path):
+    with codecs.open(path, "r", "utf-8", (yield)) as handle:
+        return handle.read()
+
+
+def encoding_name():
+    return codecs.lookup("utf-8").name
+```
+
+```python fixed
+import codecs
+
+
+def read(path):
+    with open(path, "r", encoding="utf-8", errors=(yield), newline="") as handle:
+        return handle.read()
+
+
+def encoding_name():
+    return codecs.lookup("utf-8").name
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule
