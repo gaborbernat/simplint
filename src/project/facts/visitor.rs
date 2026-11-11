@@ -407,6 +407,23 @@ impl<'a> FactVisitor<'a> {
         }
     }
 
+    // A module-level name a plain assignment sets to a class, as `Base = Release`, names that class from then on, so a
+    // base class written as `Base` is the class `Release`.
+    fn bind_class_alias(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let [Expr::Name(target)] = targets else {
+            return;
+        };
+        if !self.top_level {
+            return;
+        }
+        let Some((module, name)) = self.class_path(value) else {
+            return;
+        };
+        if name.starts_with(|first: char| first.is_ascii_uppercase()) {
+            self.aliases.insert(target.id.as_str(), format!("{module}.{name}"));
+        }
+    }
+
     // Binds each name a plain assignment sets to the globals its value returns, or unbinds it to unknown when another
     // value sets it.
     fn bind_globals(&mut self, targets: &'a [Expr], value: &'a Expr) {
@@ -775,6 +792,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             self.bind_loaded_module(targets, value);
             self.bind_globals(targets, value);
             self.bind_string_rows(targets, value);
+            self.bind_class_alias(targets, value);
         }
         self.bind_class_tuple(stmt);
         let top_level = self.top_level;

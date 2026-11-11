@@ -325,7 +325,8 @@ class Release:
   ```
 
 - any class in the checked files inherits from a class under its name in another module, whatever the import calls it,
-  such as `from app.models import Release as Base`
+  such as `from app.models import Release as Base`, or through a module-level name bound to the class, such as
+  `Base = Release`
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -341,6 +342,17 @@ class Release:
 
 
   class Tagged(Base):
+      pass
+  ```
+
+  ```python context file=app/later.py
+  from app.models import Release
+
+
+  Alias = Release
+
+
+  class Tagged(Alias):
       pass
   ```
 

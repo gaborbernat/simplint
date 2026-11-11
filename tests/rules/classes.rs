@@ -691,3 +691,29 @@ fn nested_class_writes_keep_options_only_for_their_own_instances(body: &str, fix
         fixed
     );
 }
+
+// A module-level name bound to a class, `Base = Release`, names that class, so a subclass through it keeps `frozen`
+// unset; a name bound to another class keeps the fix.
+#[test_case("from models import Release\n\nBase = Release\n\n\nclass Tagged(Base):\n    pass\n", false ; "imported_class")]
+#[test_case("from models import Other\n\nBase = Other\n\n\nclass Tagged(Base):\n    pass\n", true ; "other_class")]
+fn subclass_through_a_name_bound_to_a_class_keeps_frozen_unset(caller: &str, fixed: bool) {
+    let root = common::project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    pass\n",
+        ),
+        ("main.py", caller),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+}
+
+#[test]
+fn subclass_through_a_name_bound_to_a_class_of_the_same_file_keeps_frozen_unset() {
+    let root = common::project(&[(
+        "main.py",
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nBase = Release\n\n\nclass Tagged(Base):\n    pass\n",
+    )]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert!(!common::read(root.path(), "main.py").contains("frozen=True"));
+}
