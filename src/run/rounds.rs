@@ -7,12 +7,11 @@ use log::debug;
 use rayon::prelude::*;
 
 use super::Overlay;
+use super::check::Plumbing;
 use super::files::{ProjectInputs, RunFile};
 use crate::lint::Linter;
 use crate::project::cache::FileKey;
-use crate::project::{
-    DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
-};
+use crate::project::{DocReferences, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
 use crate::run::cache::Cache;
 
 // One discovered Python file, with its linter, and its package's cache with its key when the cache is on.
@@ -34,9 +33,7 @@ pub(super) fn index_and_lint<'f, T: Send>(
     docs: &DocReferences,
     external: &External,
     file_caches: &[Option<(&'f Cache, FileKey)>],
-    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
-    ending: Ending,
-    overlay: &Overlay,
+    plumbing: &Plumbing<'_, T>,
     work: &(dyn Fn(&DiscoveredFile) -> T + Sync),
 ) -> Result<Vec<Vec<T>>> {
     let start = Instant::now();
@@ -64,11 +61,18 @@ pub(super) fn index_and_lint<'f, T: Send>(
     debug!("Indexed {} files in: {:?}", facts.iter().flatten().count(), start.elapsed());
     let start = Instant::now();
     let linted_files = &files[..linted.len()];
-    let index = Index { facts: &mut facts, paths: &paths, resolver: &mut imports, inputs: &inputs, parts, overlay };
-    let passes = lint_rounds(linted_files, index, indexed, file_caches, rewrote, ending, work);
+    let index = Index {
+        facts: &mut facts,
+        paths: &paths,
+        resolver: &mut imports,
+        inputs: &inputs,
+        parts,
+        overlay: plumbing.overlay,
+    };
+    let passes = lint_rounds(linted_files, index, indexed, file_caches, plumbing, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
-    ending.end(facts);
-    ending.end(imports);
+    plumbing.ending.end(facts);
+    plumbing.ending.end(imports);
     Ok(passes)
 }
 
@@ -96,8 +100,7 @@ fn lint_rounds<'f, T: Send>(
     mut index: Index<'_, 'f>,
     mut project: Project,
     file_caches: &[Option<(&'f Cache, FileKey)>],
-    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
-    ending: Ending,
+    plumbing: &Plumbing<'_, T>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Vec<Vec<T>> {
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
@@ -113,17 +116,17 @@ fn lint_rounds<'f, T: Send>(
         Some((file_caches[at]?.0, FileKey::of(files[at].path)?))
     };
     // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
-    if rewrote.is_none() {
-        ending.end(std::mem::take(index.facts));
-        index.resolver.release(ending);
+    if plumbing.rewrote.is_none() {
+        plumbing.ending.end(std::mem::take(index.facts));
+        index.resolver.release(plumbing.ending);
     }
     let lint = |file: &RunFile, project: &Project, cache| {
         work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
     };
     let mut passes: Vec<Vec<T>> =
         files.par_iter().zip(file_caches).map(|(file, cache)| vec![lint(file, &project, *cache)]).collect();
-    let Some(rewrote) = rewrote else {
-        ending.end(project);
+    let Some(rewrote) = plumbing.rewrote else {
+        plumbing.ending.end(project);
         return passes;
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
@@ -147,7 +150,7 @@ fn lint_rounds<'f, T: Send>(
             passes[at].push(pass);
         }
     }
-    ending.end(project);
+    plumbing.ending.end(project);
     passes
 }
 

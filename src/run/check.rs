@@ -35,11 +35,7 @@ pub(crate) fn add_suppressions(
     let (counts, missing) = for_each_file(
         files,
         resolved,
-        None,
-        None,
-        None,
-        Ending::Drop,
-        &Overlay::default(),
+        &Plumbing::plain(Ending::Drop, &Overlay::default()),
         |DiscoveredFile { path, linter, .. }| {
             let source = match std::fs::read_to_string(path) {
                 Ok(source) => source,
@@ -85,22 +81,20 @@ pub(crate) fn check_files(
     };
     let reuse =
         mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
-    let (results, missing) = for_each_file(
-        files,
-        resolved,
+    let plumbing = Plumbing {
         cache_dir,
-        (!mode.fix.is_generate()).then_some(&rewrote),
+        rewrote: (!mode.fix.is_generate()).then_some(&rewrote),
         reuse,
         ending,
-        &overlay,
-        |file| {
-            let lint = |settled| lint_path(file.path, &file.linter, mode, settled, &overlay);
-            let Some((cache, key)) = file.cache else {
-                return lint(None).diagnostics;
-            };
-            cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), full, lint)
-        },
-    )?;
+        overlay: &overlay,
+    };
+    let (results, missing) = for_each_file(files, resolved, &plumbing, |file| {
+        let lint = |settled| lint_path(file.path, &file.linter, mode, settled, &overlay);
+        let Some((cache, key)) = file.cache else {
+            return lint(None).diagnostics;
+        };
+        cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), full, lint)
+    })?;
     // A later pass over a file replaces its reports, while the fixes of every pass count. Each pass's diff is from the
     // source as read, so the last pass that has one holds all of the file's fixes.
     let file_results = results.into_iter().flatten().filter_map(|passes| {
@@ -162,9 +156,7 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         &docs,
         &External::default(),
         &[None],
-        None,
-        Ending::Drop,
-        &Overlay::default(),
+        &Plumbing::plain(Ending::Drop, &Overlay::default()),
         &|file| lint_stdin(path, source, &file.linter, mode),
     )?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
@@ -174,19 +166,29 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
 // do not exist, with the message each reports.
 type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
 
+// The inputs the stages of a run pass on unchanged, so each stage takes them as one argument.
+pub(super) struct Plumbing<'a, T> {
+    pub(super) cache_dir: Option<&'a Path>,
+    pub(super) rewrote: Option<&'a Rewrite<'a, T>>,
+    pub(super) reuse: Option<&'a Reuse<'a, T>>,
+    pub(super) ending: Ending,
+    pub(super) overlay: &'a Overlay,
+}
+
+impl<'a, T> Plumbing<'a, T> {
+    pub(super) fn plain(ending: Ending, overlay: &'a Overlay) -> Self {
+        Self { cache_dir: None, rewrote: None, reuse: None, ending, overlay }
+    }
+}
+
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
-// in `cache_dir` read before and written after. With `rewrote` set, the files a round rewrites are indexed and linted
-// again, as `lint_rounds` tells. The paths the run names that do not exist come back with the passes, for the caller
-// to report.
-#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
+// in `plumbing.cache_dir` read before and written after. With `rewrote` set, the files a round rewrites are indexed and
+// linted again, as `lint_rounds` tells. The paths the run names that do not exist come back with the passes, for the
+// caller to report.
 fn for_each_file<T: Send>(
     files: &[PathBuf],
     resolved: &Resolved,
-    cache_dir: Option<&Path>,
-    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
-    reuse: Option<&Reuse<'_, T>>,
-    ending: Ending,
-    overlay: &Overlay,
+    plumbing: &Plumbing<'_, T>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Walked<T>> {
     let start = Instant::now();
@@ -220,15 +222,16 @@ fn for_each_file<T: Send>(
     indexed.sort_by(|left, right| (&left.nested, left.at).cmp(&(&right.nested, right.at)));
     let linted: Vec<&RunFile> = indexed.iter().filter(|file| file.linted).collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
-    if let Some(cache_dir) = cache_dir {
+    if let Some(cache_dir) = plumbing.cache_dir {
         cache::prepare(cache_dir);
     }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
     let passes = std::thread::scope(|scope| {
-        let docs = scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, cache_dir));
+        let docs =
+            scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, plumbing.cache_dir));
         let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-        index_cached(&indexed, parts, (&roots, &packages), cache_dir, joined, (rewrote, reuse), ending, overlay, work)
+        index_cached(&indexed, parts, (&roots, &packages), joined, plumbing, work)
     })?;
     Ok((passes, missing))
 }
@@ -242,19 +245,15 @@ type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
 // The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts of
 // the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
 // documentation names once the walk that runs alongside is done.
-#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
     parts: Parts,
     (roots, packages): (&SearchRoots, &FxHashMap<&'f Path, Option<PackageRoot<'f>>>),
-    cache_dir: Option<&Path>,
     docs: impl FnOnce() -> Documentation,
-    (rewrote, reuse): (Option<&Rewrite<'_, T>>, Option<&Reuse<'_, T>>),
-    ending: Ending,
-    overlay: &Overlay,
+    plumbing: &Plumbing<'_, T>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
-    let caches = cache_dir.map(|cache_dir| {
+    let caches = plumbing.cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
     let docs = docs();
@@ -283,7 +282,7 @@ fn index_cached<'f, T: Send>(
                 .collect()
         },
     );
-    if let Some(reuse) = reuse {
+    if let Some(reuse) = plumbing.reuse {
         let reused: Option<Vec<(usize, Vec<T>)>> = indexed
             .par_iter()
             .zip(&file_caches)
@@ -294,12 +293,15 @@ fn index_cached<'f, T: Send>(
             })
             .collect();
         if let Some(passes) = reused {
-            persist_views(opened.map(|(views, _)| views), ending)?;
+            persist_views(opened.map(|(views, _)| views), plumbing.ending)?;
             return Ok(Some(in_file_order(passes)));
         }
     }
-    let mut facts: Vec<Option<FileFacts>> =
-        indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts, overlay)).collect();
+    let mut facts: Vec<Option<FileFacts>> = indexed
+        .par_iter()
+        .zip(&file_caches)
+        .map(|(file, cached)| file_facts(file, *cached, parts, plumbing.overlay))
+        .collect();
     let mut passes: Vec<(usize, Vec<T>)> = Vec::new();
     let no_docs = DocReferences::default();
     let no_external = External::default();
@@ -322,14 +324,12 @@ fn index_cached<'f, T: Send>(
             docs.get(&project[0].nested).unwrap_or(&no_docs),
             if project[0].nested.is_some() { &external } else { &no_external },
             project_caches,
-            rewrote,
-            ending,
-            overlay,
+            plumbing,
             &work,
         )?;
         passes.extend(linted_at.zip(project_passes));
     }
-    persist_views(opened.map(|(views, _)| views), ending)?;
+    persist_views(opened.map(|(views, _)| views), plumbing.ending)?;
     Ok(Some(in_file_order(passes)))
 }
 
