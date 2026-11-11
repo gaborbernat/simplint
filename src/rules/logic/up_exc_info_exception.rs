@@ -45,18 +45,21 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
 }
 
-fn report(checker: &Checker, range: TextRange, module: &str, message: &str, title: &str) {
-    let fix = replacement_unless_commented(checker, format!("{module}.exception()"), range).map(Fix::safe_edit);
-    checker.report_fix(Rule::ExcInfoException, range, message, fix, title);
-}
-
-// The module text `X` of a call `X.exc_info()` that resolves to `sys.exc_info`.
 fn exc_info_module<'a>(checker: &Checker<'a>, expr: &Expr) -> Option<&'a str> {
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
         return None;
     };
     let attribute = func.as_attribute_expr()?;
-    let no_arguments = arguments.is_empty();
-    (no_arguments && checker.semantic().resolves_to(func, &["sys", "exc_info"]))
+    (arguments.is_empty() && checker.semantic().resolves_to(func, &["sys", "exc_info"]))
         .then(|| checker.text(attribute.value.as_ref()))
+}
+
+fn report(checker: &Checker, range: TextRange, module: &str, message: &str, title: &str) {
+    checker.report_fix(
+        Rule::ExcInfoException,
+        range,
+        message,
+        replacement_unless_commented(checker, format!("{module}.exception()"), range).map(Fix::safe_edit),
+        title,
+    );
 }
