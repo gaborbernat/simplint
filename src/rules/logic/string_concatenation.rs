@@ -66,9 +66,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 // lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from ISC003,
 // so this rule keeps it.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
-    let settings = &walker.checker.settings.from_ruff;
     is_logging_message(walker, expr)
-        || (settings.allow_multiline && ruff_fixes_literal_pair_at_start(walker.checker, expr))
+        || (walker.checker.settings.from_ruff.allow_multiline && ruff_fixes_literal_pair_at_start(walker.checker, expr))
 }
 
 // Whether `expr` is the message argument of a logging call, as G003 finds it: the `msg` keyword or the argument at

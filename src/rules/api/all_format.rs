@@ -53,13 +53,13 @@ pub fn all_format(checker: &Checker) {
         let magic = checker.settings.from_ruff.magic_trailing_comma;
         if is_list {
             if comma.is_none() && magic {
-                // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.
-                let closes_on_own_line = checker.source[TextRange::new(last.end(), value.end())].contains('\n');
                 // Ruff's COM812 reports a list whose closing bracket follows a line break with no comma before it.
                 if closing_bracket_follows_line_break(checker, last, value) {
                     continue;
                 }
-                let edit = if multiline && closes_on_own_line || has_comment {
+                // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.
+                let closes_on_own_line = checker.source[TextRange::new(last.end(), value.end())].contains('\n');
+                let edit = if closes_on_own_line || has_comment {
                     Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end())
                 } else {
                     Edit::range_replacement(exploded(checker, base, &items), value.range())
