@@ -1,5 +1,5 @@
-Flags docstrings on internal functions, methods and classes. Their readers have the source open, where a docstring
-restates the name and signature and nothing checks that it stays accurate.
+Flags docstrings on internal functions, methods and classes. Their readers have the source open, so a docstring there
+mostly repeats the name and signature.
 
 ## Why is this bad?
 
@@ -346,12 +346,6 @@ The fix depends on the docstring's length:
       # Return the largest item, or the first one on a tie.
       return max(items)
   ```
-
-What the fix does with a reported docstring:
-
-- **One line of at most five words**: the fix deletes it.
-- **Anything longer, when the comment is safe to write**: the fix turns it into a `#` comment.
-- **Anything longer, when it is not**: no fix is offered.
 
 The conditions under which the comment is not safe to write are listed under "No fix is offered" below.
 

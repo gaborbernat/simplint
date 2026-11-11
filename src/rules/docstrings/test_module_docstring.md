@@ -1,5 +1,4 @@
-Flags a module docstring in a test module. The module path and the test names already say what is under test, so the
-docstring repeats them and goes stale.
+Flags a module docstring in a test module.
 
 ## Why is this bad?
 
