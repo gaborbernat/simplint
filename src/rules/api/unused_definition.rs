@@ -16,25 +16,25 @@ use crate::semantic::Evaluation;
 use crate::syntax::{Visibility, identifier_words, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
-    let project = checker.project();
     if !names_are_followed(checker) {
         return;
     }
-    let api = checker.state().public_api(checker);
+    let project = checker.project();
+    // Walks the module once, not once per definition.
     let local_reads = ComputedReads::of(checker.body());
     // Most definitions are ruled out before their name is looked up in the strings, so the words are split only then.
     let strings = LazyCell::new(|| string_words(checker));
     for definition in definitions(module_statements(checker.body())) {
         let stmt = definition.stmt;
         let name = definition.name.as_str();
-        // A decorator may register the definition with something outside the run, so decorated ones are kept, and so are
-        // public names a computed read may fetch.
+        // A decorator may register the definition with something outside the run, so decorated ones are kept, and so
+        // are public names a computed read may fetch.
         // An `obj.name` read may reach the definition through its module, imported under a name the index does not
         // follow, as `module = importlib.import_module(...)` binds one.
         let unused = !definition.decorated
             && !is_protocol_name(name)
             && !computed_read_hides(checker, name, &local_reads)
-            && !api.covers(stmt.range(), Need::Any)
+            && !checker.state().public_api(checker).covers(stmt.range(), Need::Any)
             && !checker.dunder_all().lists(name)
             && !is_framework_hook(name)
             && !project.is_used_elsewhere(name)
@@ -64,25 +64,44 @@ pub fn unused_definition(checker: &Checker) {
     }
 }
 
-// PYI046 and PYI049 report a private protocol or TypedDict class that Ruff finds unused in its file, so a class Ruff
-// reads is kept. Ruff reads a load in a function or a deferred annotation, a string annotation, and the last binding of
-// a name only, so a string outside the class's own docstrings and bare strings keeps the class here.
-fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWords) -> bool {
-    let name = class.name.as_str();
-    let semantic = checker.semantic();
-    let protocol = class.bases().iter().any(|base| semantic.match_typing_expr(map_subscript(base), "Protocol"));
-    let typed_dict = class.bases().iter().any(|base| semantic.match_typing_expr(base, "TypedDict"));
-    let lazy = semantic.annotations_are_lazy();
-    (protocol || typed_dict)
-        && name.starts_with('_')
-        && semantic.bindings(name).last().is_some_and(|binding| binding.range == class.name.range())
-        && strings.get(name).is_none_or(|ranges| {
-            let bare = bare_strings(class);
-            ranges.iter().all(|range| bare.iter().any(|statement| statement.contains_range(*range)))
-        })
-        && !semantic.references_to(name).iter().any(|reference| {
-            reference.evaluation == Evaluation::Deferred || (reference.evaluation == Evaluation::Annotation && lazy)
-        })
+// The identifiers each string of the module spells, with the ranges of the strings. A string annotation such as
+// `cast("list[_Entry]", data)` names a definition the module's references do not show.
+type StringWords<'a> = FxHashMap<&'a str, Vec<TextRange>>;
+
+fn string_words<'c>(checker: &'c Checker) -> StringWords<'c> {
+    let mut words: StringWords = FxHashMap::default();
+    for (range, text) in checker.string_values() {
+        for word in identifier_words(text).filter(|word| !word.is_empty()) {
+            words.entry(word).or_default().push(*range);
+        }
+    }
+    words
+}
+
+// Python calls a dunder such as `__repr__` itself, and a library calls a sunder such as Jupyter's `_repr_html_` or
+// enum's `_missing_` by name, so neither needs a caller in the run.
+fn is_protocol_name(name: &str) -> bool {
+    Visibility::of(name) == Visibility::Dunder
+        || (name.len() > 2 && name.starts_with('_') && name.ends_with('_') && !name.starts_with("__"))
+}
+
+// A computed read may fetch any name of the module it sits in, and any public name of the run, so a private name is
+// judged by its own file, and a public one by the run. A read under a literal prefix reaches only the names that start
+// with it, wherever they are defined.
+fn computed_read_hides(checker: &Checker, name: &str, local_reads: &ComputedReads) -> bool {
+    let run = checker.project().computed_reads();
+    local_reads.reaches(name) || run.reaches_by_prefix(name) || (Visibility::of(name) == Visibility::Public && run.any)
+}
+
+// A framework calls these by name: Sphinx calls an extension's `setup`, and pytest calls its hooks and xunit-style
+// `setup`/`teardown` functions.
+fn is_framework_hook(name: &str) -> bool {
+    matches!(name, "setup" | "teardown" | "setup_module" | "teardown_module") || name.starts_with("pytest_")
+}
+
+// A string outside the definition names it.
+fn is_in_strings(strings: &StringWords, name: &str, definition: TextRange) -> bool {
+    strings.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
 }
 
 // hatchling loads the class that subclasses its hook interface from a configured custom hook file, which no import
@@ -90,6 +109,28 @@ fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWo
 fn is_hatch_hook(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     checker.settings.project.hatch_hooks.iter().any(|hook| hook.as_path() == checker.path)
         && checker.project().is_hatch_hook_class(class.name.as_str())
+}
+
+// PYI046 and PYI049 report a private protocol or TypedDict class that Ruff finds unused in its file, so a class Ruff
+// reads is kept. Ruff reads a load in a function or a deferred annotation, a string annotation, and the last binding of
+// a name only, so a string outside the class's own docstrings and bare strings keeps the class here.
+fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWords) -> bool {
+    let semantic = checker.semantic();
+    let protocol = class.bases().iter().any(|base| semantic.match_typing_expr(map_subscript(base), "Protocol"));
+    let typed_dict = class.bases().iter().any(|base| semantic.match_typing_expr(base, "TypedDict"));
+    let name = class.name.as_str();
+    (protocol || typed_dict)
+        && name.starts_with('_')
+        && semantic.bindings(name).last().is_some_and(|binding| binding.range == class.name.range())
+        && strings.get(name).is_none_or(|ranges| {
+            // Walks the class body once for all the name's ranges.
+            let bare = bare_strings(class);
+            ranges.iter().all(|range| bare.iter().any(|statement| statement.contains_range(*range)))
+        })
+        && !semantic.references_to(name).iter().any(|reference| {
+            reference.evaluation == Evaluation::Deferred
+                || (reference.evaluation == Evaluation::Annotation && semantic.annotations_are_lazy())
+        })
 }
 
 // The strings a class's body and its functions state on their own, such as docstrings, which Ruff does not read.
@@ -112,13 +153,11 @@ fn bare_strings(class: &ast::StmtClassDef) -> Vec<TextRange> {
     bare.0
 }
 
-// The methods and plain attributes of a class with no base or decorator. A base class may supply the method a call
-// reaches, and a decorator may register the class with something outside the run.
+// A base class may supply the method a call reaches, and a decorator may register the class with something
+// outside the run.
 fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedReads, strings: &StringWords) {
     let project = checker.project();
-    let api = checker.state().public_api(checker);
-    let calls = project.calls();
-    let class_name = class.name.as_str();
+    // Walks the class body once, as each member's check reads the loads.
     let loads = class_loads(class);
     for member in module_statements(&class.body) {
         let (name, range, is_method, decorated) = match member {
@@ -134,8 +173,8 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
         // An attribute store may be read through an object the run does not type, so an assigned name is kept.
         let unused = !decorated
             && !is_protocol_name(name)
-            && !api.covers(member.range(), Need::Any)
-            && calls.attribute_loads(name) == 0
+            && !checker.state().public_api(checker).covers(member.range(), Need::Any)
+            && project.calls().attribute_loads(name) == 0
             && !computed_read_hides(checker, name, local_reads)
             && !project.is_attribute_assigned(name)
             && !project.is_referenced(name)
@@ -144,6 +183,7 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
             && !is_in_strings(strings, name, member.range());
         if unused {
             let (verb, caller) = if is_method { ("called or read", "caller") } else { ("read", "reader") };
+            let class_name = class.name.as_str();
             checker.report(
                 Rule::UnusedDefinition,
                 range,
@@ -151,19 +191,6 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
             );
         }
     }
-}
-
-// A computed read may fetch any name of the module it sits in, and any public name of the run, so a private name is
-// judged by its own file, and a public one by the run. A read under a literal prefix reaches only the names that start
-// with it, wherever they are defined.
-fn computed_read_hides(checker: &Checker, name: &str, local_reads: &ComputedReads) -> bool {
-    let run = checker.project().computed_reads();
-    local_reads.reaches(name) || run.reaches_by_prefix(name) || (Visibility::of(name) == Visibility::Public && run.any)
-}
-
-// The class body names the member, as `x = property(_get_x)` or a dispatch table of its methods does.
-fn is_read_in_class(loads: &FxHashMap<&str, Vec<TextRange>>, name: &str, definition: TextRange) -> bool {
-    loads.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
 }
 
 // The names the class body loads, with the ranges of the loads, so each member finds its reads in one walk.
@@ -186,34 +213,7 @@ fn class_loads(class: &ast::StmtClassDef) -> FxHashMap<&str, Vec<TextRange>> {
     loads.0
 }
 
-// The identifiers each string of the module spells, with the ranges of the strings: a string annotation such as
-// `cast("list[_Entry]", data)` names a definition the module's references do not show.
-type StringWords<'a> = FxHashMap<&'a str, Vec<TextRange>>;
-
-fn string_words<'c>(checker: &'c Checker) -> StringWords<'c> {
-    let mut words: StringWords = FxHashMap::default();
-    for (range, text) in checker.string_values() {
-        for word in identifier_words(text).filter(|word| !word.is_empty()) {
-            words.entry(word).or_default().push(*range);
-        }
-    }
-    words
-}
-
-// A string outside the definition names it.
-fn is_in_strings(strings: &StringWords, name: &str, definition: TextRange) -> bool {
-    strings.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
-}
-
-// Python calls a dunder such as `__repr__` itself, and a library calls a sunder such as Jupyter's `_repr_html_` or enum's
-// `_missing_` by name, so neither needs a caller in the run.
-fn is_protocol_name(name: &str) -> bool {
-    Visibility::of(name) == Visibility::Dunder
-        || (name.len() > 2 && name.starts_with('_') && name.ends_with('_') && !name.starts_with("__"))
-}
-
-// A framework calls these by name: Sphinx calls an extension's `setup`, and pytest calls its hooks and xunit-style
-// `setup`/`teardown` functions.
-fn is_framework_hook(name: &str) -> bool {
-    matches!(name, "setup" | "teardown" | "setup_module" | "teardown_module") || name.starts_with("pytest_")
+// The class body names the member, as `x = property(_get_x)` or a dispatch table of its methods does.
+fn is_read_in_class(loads: &FxHashMap<&str, Vec<TextRange>>, name: &str, definition: TextRange) -> bool {
+    loads.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
 }

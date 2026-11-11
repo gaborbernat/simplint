@@ -15,6 +15,7 @@ pub fn unexported_public_name(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
+    // Scans the module's statements once, not once per definition.
     let ply = uses_ply(checker);
     for definition in definitions(checker.body().iter()).filter(|definition| !definition.decorated) {
         let identifier = definition.name;
@@ -38,12 +39,11 @@ pub fn unexported_public_name(checker: &Checker) {
         // name once renamed.
         let class = matches!(definition.stmt, Stmt::ClassDef(_));
         let reflected = checker.project().reads_name_of(name) || class && checker.project().reads_class_names();
-        let fix = (!reflected).then(|| rename_fix(checker, name, &private)).flatten();
         checker.report_fix(
             Rule::UnexportedPublicName,
             identifier.range(),
             format!("`{name}` is not in `__all__`; name it `{private}`"),
-            fix,
+            (!reflected).then(|| rename_fix(checker, name, &private)).flatten(),
             format!("Rename `{name}` to `{private}`"),
         );
     }

@@ -2,9 +2,9 @@ Flags a function whose return value no production call reads: its callers drop t
 
 ## Why is this bad?
 
-A `return` that nothing uses is a promise the function keeps for nobody. Readers take the value to matter, look for the
-caller that consumes it, and find none. Returning nothing says what the function does, and it lets the function stop
-building a value that is thrown away.
+A `return` that no caller reads still tells readers the value matters. They look for the caller that consumes it and
+find none. Returning nothing says what the function does, and it lets the function stop building a value that is thrown
+away.
 
 ## Example
 
