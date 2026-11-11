@@ -707,12 +707,14 @@ pub(crate) enum Use<'a> {
 // might, so they are not uses.
 pub(crate) struct Uses<'a, K, F> {
     matches: F,
+    // Whether the walk is in an annotation, where a name is a type and not a value.
+    annotated: bool,
     pub(crate) found: Vec<(K, Use<'a>)>,
 }
 
 impl<'a, K, F: Fn(&Expr) -> Option<K>> Uses<'a, K, F> {
     pub(crate) fn new(matches: F) -> Self {
-        Self { matches, found: Vec::new() }
+        Self { matches, annotated: false, found: Vec::new() }
     }
 
     fn skip_or_visit(&mut self, expr: &'a Expr) {
@@ -739,11 +741,26 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Visitor<'a> for Uses<'a, K, F> {
         self.visit_body(&class.body);
     }
 
-    fn visit_annotation(&mut self, _: &'a Expr) {}
+    fn visit_annotation(&mut self, annotation: &'a Expr) {
+        self.annotated = true;
+        self.visit_expr(annotation);
+        self.annotated = false;
+    }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Some(key) = (self.matches)(expr) {
-            self.found.push((key, Use::Opaque));
+            if !self.annotated {
+                self.found.push((key, Use::Opaque));
+            }
+            return;
+        }
+        // A call in an annotation, as in `Annotated[str, Doc("...")]`, runs code, so its arguments are values.
+        if self.annotated
+            && let Expr::Call(_) = expr
+        {
+            self.annotated = false;
+            self.visit_expr(expr);
+            self.annotated = true;
             return;
         }
         match expr {

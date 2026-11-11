@@ -614,3 +614,41 @@ fn module_with_a_weak_container_keeps_slots_unset(header: &str, fixed: bool) {
     common::check(root.path(), &["--no-cache", "--select", "dataclass-slots", "--fix", "."]);
     assert_eq!(common::read(root.path(), "main.py").contains("slots=True"), fixed);
 }
+
+// A positional walrus becomes the value of its keyword, which needs its own parentheses to stay valid Python.
+#[test_case("Release(name := raw.strip(), version=raw)", "Release(name=(name := raw.strip()), version=raw)" ; "bare_walrus")]
+#[test_case("Release((name := raw.strip()), version=raw)", "Release(name=(name := raw.strip()), version=raw)" ; "parenthesized_walrus")]
+fn walrus_argument_keeps_valid_keyword_syntax(call: &str, expected: &str) {
+    let source = format!(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n\n\ndef build(raw: str) -> Release:\n    return {call}\n"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    assert!(common::read(root.path(), "main.py").contains(expected));
+}
+
+// A call in an annotation is a call of the class, so its positional arguments are rewritten with the others, and a
+// class named as the type of a parameter is not a use.
+#[test]
+fn positional_call_in_an_annotation_is_rewritten() {
+    let source = "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc(\"where\")]) -> Doc:\n    return Doc(\"x\")\n";
+    let root = common::project(&[("main.py", source)]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    let fixed = common::read(root.path(), "main.py");
+    assert!(fixed.contains("Annotated[str, Doc(text=\"where\")]"), "{fixed}");
+    assert!(fixed.contains("@dataclass(kw_only=True)"), "{fixed}");
+}
+
+// A class passed to a call in an annotation is a value the call may take, so the fix is withheld for it.
+#[test]
+fn class_passed_to_a_call_in_an_annotation_keeps_its_positional_calls() {
+    let root = common::project(&[
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Doc:\n    text: str\n"),
+        (
+            "main.py",
+            "from typing import Annotated\n\nfrom models import Doc\n\n\ndef load(path: Annotated[str, make(Doc)]) -> None:\n    pass\n",
+        ),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
+}

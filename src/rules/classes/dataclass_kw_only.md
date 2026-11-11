@@ -255,6 +255,65 @@ class Release:
         return cls(name)
 ```
 
+A positional call inside an annotation, as `Doc("...")` in `Annotated[str, Doc("...")]`, runs with the others, and a
+positional walrus becomes the value of its keyword in parentheses:
+
+```python report
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass
+class Doc:
+    text: str
+
+
+def load(path: Annotated[str, Doc("where to read from")]) -> None:
+    print(path)
+```
+
+```python fixed
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass(kw_only=True)
+class Doc:
+    text: str
+
+
+def load(path: Annotated[str, Doc(text="where to read from")]) -> None:
+    print(path)
+```
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    name: str
+    version: str
+
+
+def build(raw: str) -> Release:
+    return Release(name := raw.strip(), version=raw)
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(kw_only=True)
+class Release:
+    name: str
+    version: str
+
+
+def build(raw: str) -> Release:
+    return Release(name=(name := raw.strip()), version=raw)
+```
+
 The keywords follow the field order of the generated `__init__`:
 
 - inherited fields come first

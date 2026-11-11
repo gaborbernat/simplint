@@ -173,7 +173,7 @@ fn positional_fields(checker: &Checker, module: &ModuleClasses, class: &ast::Stm
     init_fields(class, decorator, &base_fields)
 }
 
-// Each positional argument gets its field's name; a bare generator, the only argument, needs brackets once it has one.
+// Each positional argument gets its field's name; a bare generator or walrus needs brackets as a keyword's value.
 fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> Option<Vec<Edit>> {
     match CallKind::of(call) {
         CallKind::Unpacked => return None,
@@ -192,7 +192,12 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
     let mut edits = Vec::new();
     for (argument, field) in call.arguments.args.iter().zip(fields) {
         let range = checker.parenthesized_range(argument, (&call.arguments).into());
-        if argument.as_generator_expr().is_some_and(|generator| !generator.parenthesized) {
+        let needs_parentheses = match argument {
+            Expr::Generator(generator) => !generator.parenthesized,
+            Expr::Named(_) => range == argument.range(),
+            _ => false,
+        };
+        if needs_parentheses {
             edits.push(Edit::insertion(format!("{field}=("), range.start()));
             edits.push(Edit::insertion(")".to_owned(), range.end()));
         } else {
