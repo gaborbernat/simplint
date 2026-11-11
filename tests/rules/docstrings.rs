@@ -554,6 +554,34 @@ fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, lis
     assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
 }
 
+// Ruff names a decorator in a package by its dotted path, so `ignore-decorators` also matches one imported relatively or
+// defined in the same module.
+#[test_case("from ._decos import skip\n\n\n@skip", "pkg._decos.skip", [true, true] ; "relative_import")]
+#[test_case("def skip(func):\n    return func\n\n\n@skip", "pkg.api.skip", [true, true] ; "same_module")]
+#[test_case("import pkg._decos\n\n\n@pkg._decos.skip", "pkg._decos.skip", [true, true] ; "absolute_import")]
+#[test_case("@undefined", "pkg.api.undefined", [true, false] ; "unbound_not_listed")]
+fn undocumented_public_api_keeps_package_ignore_decorator_functions(
+    decorated: &str,
+    listed: &str,
+    reported: [bool; 2],
+) {
+    let source = format!("{decorated}\ndef run() -> None:\n    pass\n");
+    let settings = format!(
+        "[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"{listed}\"]\n"
+    );
+    let case = common::RuffOverlap {
+        settings: &settings,
+        select: "SMP903",
+        ruff_code: "D103",
+        files: &[
+            ("pkg/__init__.py", ""),
+            ("pkg/_decos.py", "def skip(func):\n    return func\n"),
+            ("pkg/api.py", source.as_str()),
+        ],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
+}
+
 // Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
 // the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
 #[test_case(

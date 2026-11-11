@@ -9,7 +9,8 @@ use std::path::Path;
 use ruff_linter::settings::LinterSettings;
 use ruff_python_ast::identifier::Identifier;
 
-use ruff_python_ast::name::QualifiedName;
+use ruff_python_ast::helpers::from_relative_import;
+use ruff_python_ast::name::{QualifiedName, UnqualifiedName};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_semantic::analyze::logging;
 use ruff_python_semantic::analyze::typing::{
@@ -17,7 +18,7 @@ use ruff_python_semantic::analyze::typing::{
     is_mutable_func,
 };
 use ruff_python_semantic::{
-    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, Scope, ScopeKind, SemanticModel,
+    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, Scope, ScopeKind, SemanticModel, Symbol,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -191,6 +192,31 @@ impl<'a> Semantic<'a> {
     // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.
     pub fn qualified_name<'e>(&'e self, expr: &'e Expr) -> Option<QualifiedName<'e>> {
         self.model.resolve_qualified_name(expr)
+    }
+
+    // The name Ruff gives `expr` in a module it knows the dotted path of: there a relative import and a definition in
+    // the module resolve too. The model stays without that path, as the rules read those names through the project.
+    pub fn ruff_qualified_name<'e>(
+        &'e self,
+        expr: &'e Expr,
+        module_path: Option<&'e [String]>,
+    ) -> Option<QualifiedName<'e>> {
+        let (Some(module_path), Some(name)) = (module_path, UnqualifiedName::from_expr(expr)) else {
+            return self.qualified_name(expr);
+        };
+        let (head, tail) = name.segments().split_first()?;
+        let Symbol::Binding(id) = self.model.lookup_symbol(head) else {
+            return self.qualified_name(expr);
+        };
+        match &self.model.binding(id).kind {
+            RuffBindingKind::FromImport(import) if import.qualified_name.is_unresolved_import() => {
+                from_relative_import(module_path, import.qualified_name.segments(), tail)
+            }
+            RuffBindingKind::ClassDefinition(_) | RuffBindingKind::FunctionDefinition(_) => {
+                Some(module_path.iter().map(String::as_str).chain(name.segments().iter().copied()).collect())
+            }
+            _ => self.qualified_name(expr),
+        }
     }
 
     // Whether Ruff's B008 reports a call to `func` in a parameter default. It leaves alone a mutable or immutable

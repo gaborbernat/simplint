@@ -56,7 +56,7 @@ fn ruff_ignores_function(checker: &Checker, decorators: &[Decorator]) -> bool {
     decorators.iter().any(|decorator| {
         checker
             .semantic()
-            .qualified_name(map_callable(&decorator.expression))
+            .ruff_qualified_name(map_callable(&decorator.expression), checker.module_path())
             .is_some_and(|name| ignored.iter().any(|listed| QualifiedName::from_dotted_name(listed) == name))
     })
 }
