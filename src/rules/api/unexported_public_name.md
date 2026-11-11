@@ -1,5 +1,4 @@
 Flags top-level functions and classes that look public, with no leading underscore, but are missing from `__all__`.
-Readers cannot tell whether they may depend on such a name.
 
 ## Why is this bad?
 

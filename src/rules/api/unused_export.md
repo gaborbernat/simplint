@@ -1,5 +1,4 @@
-Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,
-so listing it makes the module look larger than it is.
+Flags names in `__all__` that no other module of the run imports.
 
 ## Why is this bad?
 
