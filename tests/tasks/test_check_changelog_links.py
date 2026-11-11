@@ -25,6 +25,11 @@ if TYPE_CHECKING:
         ),
         pytest.param("`module-variable-prefix`", 0, id="bare_rule_name"),
         pytest.param("[`all-format`](src/rules/api/all_format.md)", 0, id="relative_source_link"),
+        pytest.param(
+            "[`all-format`](https://github.com/gaborbernat/simplint/blob/1.0.0/src/rules/api/all_format.md)",
+            0,
+            id="release_source_link",
+        ),
         pytest.param("[all-format](src/rules/api/all_format.md)", 1, id="unquoted_source_link"),
         pytest.param("[`all-format`](src/rules/api/missing_from_all.md)", 1, id="mismatched_source_link"),
         pytest.param("[`all-format`](src/rules/other/all_format.md)", 1, id="missing_source_link"),

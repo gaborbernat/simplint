@@ -40,14 +40,27 @@ def test_assemble_consumes_the_fragments(release_tree: Path) -> None:
     assert not fragment.exists()
 
 
-def test_assemble_relocates_rule_source_links(release_tree: Path) -> None:
-    (release_tree / "changelog.d" / "+fix.bugfix.md").write_text(
-        "Fix [`all-format`](../src/rules/api/all_format.md).\n"
-    )
+@pytest.mark.parametrize(
+    ("fragment", "linked"),
+    [
+        pytest.param(
+            "Fix [`all-format`](../src/rules/api/all_format.md).\n",
+            "[`all-format`](https://github.com/gaborbernat/simplint/blob/1.1.0/src/rules/api/all_format.md)",
+            id="rule_source",
+        ),
+        pytest.param(
+            "See [the principles](../docs/explanation/design-principles.rst).\n",
+            "[the principles](https://github.com/gaborbernat/simplint/blob/1.1.0/docs/explanation/design-principles.rst)",
+            id="project_file",
+        ),
+    ],
+)
+def test_assemble_pins_links_to_the_release(release_tree: Path, fragment: str, linked: str) -> None:
+    (release_tree / "changelog.d" / "+fix.bugfix.md").write_text(fragment)
 
     assemble(release_tree, "1.1.0", "2026-10-21")
 
-    assert "[`all-format`](src/rules/api/all_format.md)" in (release_tree / "CHANGELOG.md").read_text()
+    assert linked in (release_tree / "CHANGELOG.md").read_text()
 
 
 def test_assemble_rejects_mismatched_rule_source_link(release_tree: Path) -> None:

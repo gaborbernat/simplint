@@ -50,10 +50,10 @@ def main(paths: list[str]) -> int:
 
 def _validate_source_link(match: re.Match[str], path: Path, known_names: dict[Path, set[str]]) -> None:
     name = rule_source_name(match)
-    if not (path.parent / match["path"]).is_file():
+    root = path.parent if path.name == "CHANGELOG.md" else path.parent.parent
+    if not (root / match["source"]).is_file():
         msg = f"missing rule source for {match[0]}"
         raise ValueError(msg)
-    root = path.parent if path.name == "CHANGELOG.md" else path.parent.parent
     if root not in known_names:
         known_names[root] = {rule["name"] for rule in rule_entries(root)}
     if name not in known_names[root]:

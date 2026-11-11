@@ -15,19 +15,28 @@ if TYPE_CHECKING:
 TITLE: Final[str] = "# Changelog"
 #: The anchor line release_section writes above each release and category; generate_changelog reads them back.
 ANCHOR: Final[re.Pattern[str]] = re.compile(r'<a name="(?P<name>[^"]+)"></a>')
+# Where the files of a release are browsed. GitHub Release notes and PyPI resolve a relative link against no file, so
+# the changelog links each file of the release it describes there.
+_BLOB: Final[str] = "https://github.com/gaborbernat/simplint/blob"
 RULE_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
     r"""
     \[`(?P<name>[a-z0-9-]+)`\]  # long rule name
     \(                            # Markdown link target
-    (?P<path>                     # path from the changelog source
-        (?:\.\./)?                # fragment files sit one directory below the root
-        src/rules/                 # rule source directory
-        [a-z0-9_/]+\.md           # rule source file
+    (?P<path>
+        (?:\.\./                  # a fragment sits one directory below the root
+        |https://github\.com/gaborbernat/simplint/blob/[^/)]+/  # the changelog links the release's file
+        )?
+        (?P<source>               # path from the root
+            src/rules/             # rule source directory
+            [a-z0-9_/]+\.md       # rule source file
+        )
     )
     \)                            # end of target
     """,
     re.VERBOSE,
 )
+# A link a fragment writes from its own directory to a file of the project.
+_FRAGMENT_LINK: Final[re.Pattern[str]] = re.compile(r"\]\(\.\./(?P<path>[^)]+)\)")
 
 
 def rule_source_name(match: re.Match[str]) -> str:
@@ -64,11 +73,9 @@ def assemble(root: Path, version: str, date: str) -> None:
     fragments = sorted((root / "changelog.d").glob("*.md"))
     entry = "\n".join(release_section(fragments, f"{version} ({date})", f"release-{version.replace('.', '-')}"))
 
-    def relocate(match: re.Match[str]) -> str:
+    for match in RULE_SOURCE_LINK.finditer(entry):
         rule_source_name(match)
-        return match[0].replace("(../src/rules/", "(src/rules/")
-
-    entry = RULE_SOURCE_LINK.sub(relocate, entry)
+    entry = _FRAGMENT_LINK.sub(lambda match: f"]({_BLOB}/{version}/{match['path']})", entry)
     changelog.write_text(f"{heading}\n{entry}{history.removeprefix(heading)}", encoding="utf-8")
     for fragment in fragments:
         fragment.unlink()
