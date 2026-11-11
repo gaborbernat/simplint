@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:5 SMP505 `_seal` is called only from `register`, and inlining keeps `register` short; inline it

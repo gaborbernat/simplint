@@ -12964,7 +12964,7 @@
     "name": "forwarding-function",
     "summary": "Private functions that only forward to another call",
     "fix": "None",
-    "explanation": "Flags private functions and methods whose body only forwards their parameters to another call. The wrapper adds a name\nand an extra hop without adding behavior, so a reader has to open it to learn that it calls something else.\n\n## Why is this bad?\n\nThe wrapper adds a name and an extra hop without adding behavior, and a reader has to open it to learn that it calls\nsomething else. Calling the target directly removes the indirection.\n\n## Example\n\n```python report\ndef config_path() -> Path:\n    return _make_path(\"config.toml\").resolve()\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n```\n\nUse instead:\n\n```python ok\ndef config_path() -> Path:\n    return Path(\"config.toml\").resolve()\n```\n\n## What it does\n\nNo fix is offered, since inlining needs each call site's arguments mapped onto the target's parameters.\n\n### Active on\n\nA function is reported when its body, apart from a docstring, is a single call that is returned or used as an expression\nstatement, and every argument of the call is one of the function's own parameters, passed as is, as `*args` or\n`**kwargs` ([arbitrary argument lists](https://docs.python.org/3/tutorial/controlflow.html#arbitrary-argument-lists)),\nor as `keyword=parameter`. The call target must be a name or a dotted name such as `self.client.get`.\n\n- **Module-level functions whose name starts with `_`**: their callers are all in the file, so each can call the target\n  directly.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Methods with such names in module-level classes without base classes**: matched through `self.name`, `cls.name` or\n  `ClassName.name`.\n\n  ```python report\n  class Store:\n      def load(self, name: str) -> Path:\n          return self._make_path(name)\n\n      def _make_path(self, name: str) -> Path:\n          return Path(name)\n  ```\n\n### Exceptions\n\n- **[Dunder](https://docs.python.org/3/reference/datamodel.html#special-method-names) functions**: Python calls them by\n  name, so there is no call site to rewrite.\n\n  ```python ok\n  def __repr__(value: object) -> str:\n      return str(value)\n  ```\n\n- **Decorated functions**: the decorator wraps or registers the function, so it does more than forward.\n\n  ```python ok\n  import functools\n\n\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  @functools.cache\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Functions the file never refers to, or refers to anywhere without calling**, for example when passing one as a\n  callback: such a reference needs the function itself, which a direct call to the target cannot replace.\n\n  ```python ok\n  def load(names: list[str]) -> list[Path]:\n      return list(map(_make_path, names))\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Wrappers that add their own values**: they configure the call, so they are not a pure forward. These additions\n  count:\n\n  - `check=True`: a keyword argument the wrapper sets itself.\n\n    ```python ok\n    def load(text: str) -> str:\n        return _run(text)\n\n\n    def _run(text: str) -> str:\n        return subprocess.run(text, check=True)\n    ```\n\n  - a computed argument: a value the wrapper works out before the call.\n\n  - a parameter default: a default on a parameter of the wrapped function, which the wrapper does not pass.\n\n    ```python ok\n    def load(name: str) -> IO[str]:\n        return _open(name)\n\n\n    def _open(name: str, mode: str = \"r\") -> IO[str]:\n        return open(name, mode)\n    ```\n\n- **Functions another file in the run patches by name**, such as with `mocker.patch(\"pkg.module._load\")`: tests replace\n  them, so they must keep existing.\n\n  ```python ok file=service.py\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n  ```python context file=test_service.py\n  from unittest import mock\n\n  from service import load\n\n\n  def test_load() -> None:\n      with mock.patch(\"service._make_path\"):\n          assert load(\"a\")\n  ```\n\n- **Calls on a computed value**, such as `make(name).strip()`: this is a call on the result of another call, not a\n  forward to a named function.\n\n  ```python ok\n  def load(name: str) -> str:\n      return _clean(name)\n\n\n  def _clean(name: str) -> str:\n      return make(name).strip()\n  ```\n\n- **Calls whose target starts with one of the function's own parameters**, such as `fn` in\n  `def _apply(fn, x): return fn(x)`: the call runs whatever the caller passed in, so there is no fixed target to call\n  instead.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _apply(str.strip, text)\n\n\n  def _apply(fn: Callable[[str], str], text: str) -> str:\n      return fn(text)\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [PLW0108](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) reports the same forward written as a lambda.\n",
+    "explanation": "Flags private functions and methods whose body only forwards their parameters to another call. The wrapper adds a name\nand an extra hop without adding behavior, so a reader has to open it to learn that it calls something else.\n\n## Why is this bad?\n\nThe wrapper adds a name and an extra hop without adding behavior, and a reader has to open it to learn that it calls\nsomething else. Calling the target directly removes the indirection.\n\n## Example\n\n```python report\ndef config_path() -> Path:\n    return _make_path(\"config.toml\").resolve()\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n```\n\nUse instead:\n\n```python ok\ndef config_path() -> Path:\n    return Path(\"config.toml\").resolve()\n```\n\n## What it does\n\nNo fix is offered, since inlining needs each call site's arguments mapped onto the target's parameters.\n\n### Active on\n\nA function is reported when its body, apart from a docstring, is a single call that is returned or used as an expression\nstatement, and every argument of the call is one of the function's own parameters, passed as is, as `*args` or\n`**kwargs` ([arbitrary argument lists](https://docs.python.org/3/tutorial/controlflow.html#arbitrary-argument-lists)),\nor as `keyword=parameter`. The call target must be a name or a dotted name such as `self.client.get`.\n\n- **Module-level functions whose name starts with `_`**: their callers are all in the file, so each can call the target\n  directly.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Methods with such names in module-level classes without base classes**: matched through `self.name`, `cls.name` or\n  `ClassName.name`.\n\n  ```python report\n  class Store:\n      def load(self, name: str) -> Path:\n          return self._make_path(name)\n\n      def _make_path(self, name: str) -> Path:\n          return Path(name)\n  ```\n\n- **A call whose `(` starts a later line**: the callee is the name the call reads, whatever line the `(` is on, so the\n  call is reported like one on a single line.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n### Exceptions\n\n- **[Dunder](https://docs.python.org/3/reference/datamodel.html#special-method-names) functions**: Python calls them by\n  name, so there is no call site to rewrite.\n\n  ```python ok\n  def __repr__(value: object) -> str:\n      return str(value)\n  ```\n\n- **Decorated functions**: the decorator wraps or registers the function, so it does more than forward.\n\n  ```python ok\n  import functools\n\n\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  @functools.cache\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Functions the file never refers to, or refers to anywhere without calling**, for example when passing one as a\n  callback: such a reference needs the function itself, which a direct call to the target cannot replace.\n\n  ```python ok\n  def load(names: list[str]) -> list[Path]:\n      return list(map(_make_path, names))\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the name is only read there\n  and not called.\n\n  ```python ok\n  def load(name: str) -> Path:\n      callback = _make_path\n      (callback)(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Wrappers that add their own values**: they configure the call, so they are not a pure forward. These additions\n  count:\n\n  - `check=True`: a keyword argument the wrapper sets itself.\n\n    ```python ok\n    def load(text: str) -> str:\n        return _run(text)\n\n\n    def _run(text: str) -> str:\n        return subprocess.run(text, check=True)\n    ```\n\n  - a computed argument: a value the wrapper works out before the call.\n\n  - a parameter default: a default on a parameter of the wrapped function, which the wrapper does not pass.\n\n    ```python ok\n    def load(name: str) -> IO[str]:\n        return _open(name)\n\n\n    def _open(name: str, mode: str = \"r\") -> IO[str]:\n        return open(name, mode)\n    ```\n\n- **Functions another file in the run patches by name**, such as with `mocker.patch(\"pkg.module._load\")`: tests replace\n  them, so they must keep existing.\n\n  ```python ok file=service.py\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n  ```python context file=test_service.py\n  from unittest import mock\n\n  from service import load\n\n\n  def test_load() -> None:\n      with mock.patch(\"service._make_path\"):\n          assert load(\"a\")\n  ```\n\n- **Calls on a computed value**, such as `make(name).strip()`: this is a call on the result of another call, not a\n  forward to a named function.\n\n  ```python ok\n  def load(name: str) -> str:\n      return _clean(name)\n\n\n  def _clean(name: str) -> str:\n      return make(name).strip()\n  ```\n\n- **Calls whose target starts with one of the function's own parameters**, such as `fn` in\n  `def _apply(fn, x): return fn(x)`: the call runs whatever the caller passed in, so there is no fixed target to call\n  instead.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _apply(str.strip, text)\n\n\n  def _apply(fn: Callable[[str], str], text: str) -> str:\n      return fn(text)\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [PLW0108](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) reports the same forward written as a lambda.\n",
     "examples": {
       "parsed": [
         {
@@ -13037,8 +13037,25 @@
         },
         {
           "section": "What it does",
-          "line": 67,
-          "end_line": 70,
+          "line": 65,
+          "end_line": 72,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 65,
+              "end_line": 72,
+              "source": "def load(name: str) -> Path:\n    return _make_path(name)\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 79,
+          "end_line": 82,
           "config": null,
           "blocks": [
             {
@@ -13046,32 +13063,15 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 67,
-              "end_line": 70,
+              "line": 79,
+              "end_line": 82,
               "source": "def __repr__(value: object) -> str:\n    return str(value)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 74,
-          "end_line": 85,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 74,
-              "end_line": 85,
-              "source": "import functools\n\n\ndef load(name: str) -> Path:\n    return _make_path(name)\n\n\n@functools.cache\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 90,
+          "line": 86,
           "end_line": 97,
           "config": null,
           "blocks": [
@@ -13080,16 +13080,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 90,
+              "line": 86,
               "end_line": 97,
+              "source": "import functools\n\n\ndef load(name: str) -> Path:\n    return _make_path(name)\n\n\n@functools.cache\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 102,
+          "end_line": 109,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 102,
+              "end_line": 109,
               "source": "def load(names: list[str]) -> list[Path]:\n    return list(map(_make_path, names))\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 104,
-          "end_line": 111,
+          "line": 114,
+          "end_line": 122,
           "config": null,
           "blocks": [
             {
@@ -13097,33 +13114,50 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 104,
-              "end_line": 111,
-              "source": "def load(text: str) -> str:\n    return _run(text)\n\n\ndef _run(text: str) -> str:\n    return subprocess.run(text, check=True)\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 117,
-          "end_line": 124,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 117,
-              "end_line": 124,
-              "source": "def load(name: str) -> IO[str]:\n    return _open(name)\n\n\ndef _open(name: str, mode: str = \"r\") -> IO[str]:\n    return open(name, mode)\n"
+              "line": 114,
+              "end_line": 122,
+              "source": "def load(name: str) -> Path:\n    callback = _make_path\n    (callback)(name)\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 129,
-          "end_line": 147,
+          "end_line": 136,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 129,
+              "end_line": 136,
+              "source": "def load(text: str) -> str:\n    return _run(text)\n\n\ndef _run(text: str) -> str:\n    return subprocess.run(text, check=True)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 142,
+          "end_line": 149,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 142,
+              "end_line": 149,
+              "source": "def load(name: str) -> IO[str]:\n    return _open(name)\n\n\ndef _open(name: str, mode: str = \"r\") -> IO[str]:\n    return open(name, mode)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 154,
+          "end_line": 172,
           "config": null,
           "blocks": [
             {
@@ -13131,8 +13165,8 @@
               "language": "python",
               "file": "service.py",
               "named": true,
-              "line": 129,
-              "end_line": 136,
+              "line": 154,
+              "end_line": 161,
               "source": "def load(name: str) -> Path:\n    return _make_path(name)\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
             },
             {
@@ -13140,16 +13174,16 @@
               "language": "python",
               "file": "test_service.py",
               "named": true,
-              "line": 138,
-              "end_line": 147,
+              "line": 163,
+              "end_line": 172,
               "source": "from unittest import mock\n\nfrom service import load\n\n\ndef test_load() -> None:\n    with mock.patch(\"service._make_path\"):\n        assert load(\"a\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 152,
-          "end_line": 159,
+          "line": 177,
+          "end_line": 184,
           "config": null,
           "blocks": [
             {
@@ -13157,16 +13191,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 152,
-              "end_line": 159,
+              "line": 177,
+              "end_line": 184,
               "source": "def load(name: str) -> str:\n    return _clean(name)\n\n\ndef _clean(name: str) -> str:\n    return make(name).strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 165,
-          "end_line": 172,
+          "line": 190,
+          "end_line": 197,
           "config": null,
           "blocks": [
             {
@@ -13174,8 +13208,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 165,
-              "end_line": 172,
+              "line": 190,
+              "end_line": 197,
               "source": "def load(text: str) -> str:\n    return _apply(str.strip, text)\n\n\ndef _apply(fn: Callable[[str], str], text: str) -> str:\n    return fn(text)\n"
             }
           ]
@@ -15047,7 +15081,7 @@
     "name": "single-caller-helper",
     "summary": "Private helpers with one short call site, which inlining would keep short",
     "fix": "None",
-    "explanation": "Flags a private module-level function that only one other function calls, when inlining its statements into that caller\nkeeps the caller short.\n\n## Why is this bad?\n\nA helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn\nwhat the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements\nkeeps the work in one function, as long as the caller stays short enough to read at once.\n\n## Example\n\n```python report\ndef load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    first = text.splitlines()[0]\n    header = first.strip()\n    return {\"header\": header}\n```\n\n## Configuration\n\n- [`logic.max-helper-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements a helper may have to be suggested for inlining, such as\n  `max-helper-statements = 2` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-helper-statements = 2\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- [`logic.max-caller-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements the caller may have once the helper's are added, such as\n  `max-caller-statements = 30` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n## What it does\n\nStatements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does\nnot count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the\nhelper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must\nalso stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that\n[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits\nof the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and\n`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.\nIt also checks PLR1702's nested-block limit, PLW0717's try-clause statement limit and TRY301 when a helper raises inside\na caller's `try` block. These counts are conservative estimates, so a caller they might report is left as it is.\n\n### Active on\n\n- **Private module-level functions with one call site in the run**: a function whose name starts with an underscore,\n  that no other module imports and no string names, and that one other function calls. The call is the only reference to\n  the helper, and the helper has fewer statements than `max-helper-statements`.\n\n  ```python report\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n### Exceptions\n\n- **Helpers that only forward their arguments**: [forwarding-function](SMP501.html) reports them, asking to call the\n  target directly rather than inline the wrapper.\n\n  ```python ok\n  import json\n\n\n  def run(path: str) -> dict[str, str]:\n      return _load(path)\n\n\n  def _load(path: str) -> dict[str, str]:\n      return json.loads(path)\n  ```\n\n- **Helpers called from another module**: inlining would move code across files, so an import of the helper keeps it.\n\n  ```python ok file=helpers.py\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n  ```python context file=main.py\n  from helpers import _parse_header\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n  ```\n\n- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      return list(map(_parse_header, texts))\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Decorated helpers**: a decorator wraps the helper, so the call does not run its body.\n\n  ```python ok\n  import functools\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  @functools.cache\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers named in `__all__`**: the module exports them, so they stay.\n\n  ```python ok\n  __all__ = [\"_parse_header\", \"load\"]\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Recursive helpers**: a helper that calls itself keeps its own call.\n\n  ```python ok\n  def load(depth: int) -> int:\n      return _count(depth)\n\n\n  def _count(depth: int) -> int:\n      return 0 if depth == 0 else _count(depth - 1)\n  ```\n\n- **Calls inside a loop, a comprehension or a lambda**: inlining would run the helper's statements once per pass.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      headers = []\n      for text in texts:\n          headers.append(_parse_header(text))\n      return headers\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers with `max-helper-statements` or more statements**: a longer helper is worth its name.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      stripped = first.strip()\n      return stripped.lower()\n  ```\n\n- **A caller that would grow past `max-caller-statements`**: the inlined caller would be too long to read at once.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller\n  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-cognitive-complexity = 5\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      if text:\n          return _first(text)\n      return \"\"\n\n\n  def _first(text: str) -> str:\n      for line in text.splitlines():\n          if line:\n              return line.strip()\n      return \"\"\n  ```\n\n- **Branching helpers called from a test**: [conditional-in-test](SMP803.html) reports the branches of a test function,\n  so inlining a helper with an `if`, `match` or conditional expression would move that branch into the test. A\n  conditional that only forms a comprehension's item does not count, since conditional-in-test exempts it.\n\n  ```python ok file=tests/test_header.py\n  def test_kind() -> None:\n      assert _expected(\"a\") == 1\n\n\n  def _expected(kind: str) -> int:\n      if kind == \"a\":\n          return 1\n      return 2\n  ```\n\n- **A caller that the inlined helper might push over a limit of a Ruff rule**: Ruff's complexity and size rules count\n  the inlined statements too, so a caller one of them might report stays as it is. Each limit counts only while its rule\n  is selected in Ruff: `lint.mccabe.max-complexity` for C901 `complex-structure`, `lint.pylint.max-branches` for PLR0912\n  `too-many-branches`, `lint.pylint.max-statements` for PLR0915 `too-many-statements`, and `lint.pylint.max-returns` for\n  PLR0911 `too-many-return-statements`.\n\n  While any of those four rules runs, a call in a conditional expression or in a later `and`/`or` operand is left alone,\n  since inlining it would need a new `if`. A helper that is a lone `return` is reported anyway, as it inlines as an\n  expression.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"C901\"]\n\n  [tool.ruff.lint.mccabe]\n  max-complexity = 1\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      if text:\n          return text.strip()\n      return \"\"\n  ```\n\n- **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code\n  instead.\n\n  ```python ok\n  async def load(text: str) -> str:\n      return await _parse_header(text)\n\n\n  async def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Generators**: a helper with `yield` runs only when iterated, so inlining it would turn its caller into a generator.\n\n  ```python ok\n  def load(text: str) -> list[str]:\n      return list(_lines(text))\n\n\n  def _lines(text: str):\n      for line in text.splitlines():\n          yield line.strip()\n  ```\n\n- **Type guards**: a helper returning `TypeGuard[...]` or `TypeIs[...]`, from `typing` or `typing_extensions` under any\n  alias, narrows the caller's type where it is called, and the bare expression inlined in its place would not, so the\n  caller would fail type checking.\n\n  ```python ok\n  from typing import TypeGuard\n\n\n  def load(value: object) -> str:\n      if _is_text(value):\n          return value\n      return \"\"\n\n\n  def _is_text(value: object) -> TypeGuard[str]:\n      return isinstance(value, str)\n  ```\n\n### Fix\n\nThe rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not\nattempt.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a private module-level function that only one other function calls, when inlining its statements into that caller\nkeeps the caller short.\n\n## Why is this bad?\n\nA helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn\nwhat the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements\nkeeps the work in one function, as long as the caller stays short enough to read at once.\n\n## Example\n\n```python report\ndef load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    first = text.splitlines()[0]\n    header = first.strip()\n    return {\"header\": header}\n```\n\n## Configuration\n\n- [`logic.max-helper-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements a helper may have to be suggested for inlining, such as\n  `max-helper-statements = 2` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-helper-statements = 2\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- [`logic.max-caller-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements the caller may have once the helper's are added, such as\n  `max-caller-statements = 30` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n## What it does\n\nStatements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does\nnot count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the\nhelper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must\nalso stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that\n[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits\nof the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and\n`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.\nIt also checks PLR1702's nested-block limit, PLW0717's try-clause statement limit and TRY301 when a helper raises inside\na caller's `try` block. These counts are conservative estimates, so a caller they might report is left as it is.\n\n### Active on\n\n- **Private module-level functions with one call site in the run**: a function whose name starts with an underscore,\n  that no other module imports and no string names, and that one other function calls. The call is the only reference to\n  the helper, and the helper has fewer statements than `max-helper-statements`.\n\n  ```python report\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A call whose `(` starts a later line**: the call counts like one on a single line, so its helper is reported when\n  that is the only call.\n\n  ```python report\n  def load(name):\n      return [\n          _fill_a(name)  # why\n      ]\n\n\n  def _fill_a(name):\n      value = name.strip()\n      return value.upper()\n  ```\n\n### Exceptions\n\n- **Helpers that only forward their arguments**: [forwarding-function](SMP501.html) reports them, asking to call the\n  target directly rather than inline the wrapper.\n\n  ```python ok\n  import json\n\n\n  def run(path: str) -> dict[str, str]:\n      return _load(path)\n\n\n  def _load(path: str) -> dict[str, str]:\n      return json.loads(path)\n  ```\n\n- **Helpers called from another module**: inlining would move code across files, so an import of the helper keeps it.\n\n  ```python ok file=helpers.py\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n  ```python context file=main.py\n  from helpers import _parse_header\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n  ```\n\n- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      return list(map(_parse_header, texts))\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the helper is only passed\n  on there, not called.\n\n  ```python ok\n  def register(table: dict[str, str], key: str) -> None:\n      table[key] = _build\n      (table)\n\n\n  def _build(key: str) -> str:\n      return key.strip()\n  ```\n\n- **Decorated helpers**: a decorator wraps the helper, so the call does not run its body.\n\n  ```python ok\n  import functools\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  @functools.cache\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers named in `__all__`**: the module exports them, so they stay.\n\n  ```python ok\n  __all__ = [\"_parse_header\", \"load\"]\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Recursive helpers**: a helper that calls itself keeps its own call.\n\n  ```python ok\n  def load(depth: int) -> int:\n      return _count(depth)\n\n\n  def _count(depth: int) -> int:\n      return 0 if depth == 0 else _count(depth - 1)\n  ```\n\n- **Calls inside a loop, a comprehension or a lambda**: inlining would run the helper's statements once per pass.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      headers = []\n      for text in texts:\n          headers.append(_parse_header(text))\n      return headers\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers with `max-helper-statements` or more statements**: a longer helper is worth its name.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      stripped = first.strip()\n      return stripped.lower()\n  ```\n\n- **A caller that would grow past `max-caller-statements`**: the inlined caller would be too long to read at once.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller\n  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-cognitive-complexity = 5\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      if text:\n          return _first(text)\n      return \"\"\n\n\n  def _first(text: str) -> str:\n      for line in text.splitlines():\n          if line:\n              return line.strip()\n      return \"\"\n  ```\n\n- **Branching helpers called from a test**: [conditional-in-test](SMP803.html) reports the branches of a test function,\n  so inlining a helper with an `if`, `match` or conditional expression would move that branch into the test. A\n  conditional that only forms a comprehension's item does not count, since conditional-in-test exempts it.\n\n  ```python ok file=tests/test_header.py\n  def test_kind() -> None:\n      assert _expected(\"a\") == 1\n\n\n  def _expected(kind: str) -> int:\n      if kind == \"a\":\n          return 1\n      return 2\n  ```\n\n- **A caller that the inlined helper might push over a limit of a Ruff rule**: Ruff's complexity and size rules count\n  the inlined statements too, so a caller one of them might report stays as it is. Each limit counts only while its rule\n  is selected in Ruff: `lint.mccabe.max-complexity` for C901 `complex-structure`, `lint.pylint.max-branches` for PLR0912\n  `too-many-branches`, `lint.pylint.max-statements` for PLR0915 `too-many-statements`, and `lint.pylint.max-returns` for\n  PLR0911 `too-many-return-statements`.\n\n  While any of those four rules runs, a call in a conditional expression or in a later `and`/`or` operand is left alone,\n  since inlining it would need a new `if`. A helper that is a lone `return` is reported anyway, as it inlines as an\n  expression.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"C901\"]\n\n  [tool.ruff.lint.mccabe]\n  max-complexity = 1\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      if text:\n          return text.strip()\n      return \"\"\n  ```\n\n- **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code\n  instead.\n\n  ```python ok\n  async def load(text: str) -> str:\n      return await _parse_header(text)\n\n\n  async def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Generators**: a helper with `yield` runs only when iterated, so inlining it would turn its caller into a generator.\n\n  ```python ok\n  def load(text: str) -> list[str]:\n      return list(_lines(text))\n\n\n  def _lines(text: str):\n      for line in text.splitlines():\n          yield line.strip()\n  ```\n\n- **Type guards**: a helper returning `TypeGuard[...]` or `TypeIs[...]`, from `typing` or `typing_extensions` under any\n  alias, narrows the caller's type where it is called, and the bare expression inlined in its place would not, so the\n  caller would fail type checking.\n\n  ```python ok\n  from typing import TypeGuard\n\n\n  def load(value: object) -> str:\n      if _is_text(value):\n          return value\n      return \"\"\n\n\n  def _is_text(value: object) -> TypeGuard[str]:\n      return isinstance(value, str)\n  ```\n\n### Fix\n\nThe rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not\nattempt.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15145,8 +15179,25 @@
         },
         {
           "section": "What it does",
-          "line": 107,
-          "end_line": 117,
+          "line": 105,
+          "end_line": 115,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 105,
+              "end_line": 115,
+              "source": "def load(name):\n    return [\n        _fill_a(name)  # why\n    ]\n\n\ndef _fill_a(name):\n    value = name.strip()\n    return value.upper()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 122,
+          "end_line": 132,
           "config": null,
           "blocks": [
             {
@@ -15154,16 +15205,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 107,
-              "end_line": 117,
+              "line": 122,
+              "end_line": 132,
               "source": "import json\n\n\ndef run(path: str) -> dict[str, str]:\n    return _load(path)\n\n\ndef _load(path: str) -> dict[str, str]:\n    return json.loads(path)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 121,
-          "end_line": 133,
+          "line": 136,
+          "end_line": 148,
           "config": null,
           "blocks": [
             {
@@ -15171,8 +15222,8 @@
               "language": "python",
               "file": "helpers.py",
               "named": true,
-              "line": 121,
-              "end_line": 125,
+              "line": 136,
+              "end_line": 140,
               "source": "def _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             },
             {
@@ -15180,16 +15231,16 @@
               "language": "python",
               "file": "main.py",
               "named": true,
-              "line": 127,
-              "end_line": 133,
+              "line": 142,
+              "end_line": 148,
               "source": "from helpers import _parse_header\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 137,
-          "end_line": 145,
+          "line": 152,
+          "end_line": 160,
           "config": null,
           "blocks": [
             {
@@ -15197,33 +15248,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 137,
-              "end_line": 145,
+              "line": 152,
+              "end_line": 160,
               "source": "def load(texts: list[str]) -> list[str]:\n    return list(map(_parse_header, texts))\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 149,
-          "end_line": 161,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 149,
-              "end_line": 161,
-              "source": "import functools\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n\n\n@functools.cache\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
           "line": 165,
-          "end_line": 176,
+          "end_line": 173,
           "config": null,
           "blocks": [
             {
@@ -15232,48 +15266,48 @@
               "file": "example.py",
               "named": false,
               "line": 165,
-              "end_line": 176,
+              "end_line": 173,
+              "source": "def register(table: dict[str, str], key: str) -> None:\n    table[key] = _build\n    (table)\n\n\ndef _build(key: str) -> str:\n    return key.strip()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 177,
+          "end_line": 189,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 177,
+              "end_line": 189,
+              "source": "import functools\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n\n\n@functools.cache\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 193,
+          "end_line": 204,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 193,
+              "end_line": 204,
               "source": "__all__ = [\"_parse_header\", \"load\"]\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 180,
-          "end_line": 187,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 180,
-              "end_line": 187,
-              "source": "def load(depth: int) -> int:\n    return _count(depth)\n\n\ndef _count(depth: int) -> int:\n    return 0 if depth == 0 else _count(depth - 1)\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 191,
-          "end_line": 202,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 191,
-              "end_line": 202,
-              "source": "def load(texts: list[str]) -> list[str]:\n    headers = []\n    for text in texts:\n        headers.append(_parse_header(text))\n    return headers\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 206,
+          "line": 208,
           "end_line": 215,
           "config": null,
           "blocks": [
@@ -15282,19 +15316,53 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 206,
+              "line": 208,
               "end_line": 215,
-              "source": "def load(text: str) -> str:\n    return _parse_header(text)\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    stripped = first.strip()\n    return stripped.lower()\n"
+              "source": "def load(depth: int) -> int:\n    return _count(depth)\n\n\ndef _count(depth: int) -> int:\n    return 0 if depth == 0 else _count(depth - 1)\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 219,
-          "end_line": 233,
+          "end_line": 230,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 219,
+              "end_line": 230,
+              "source": "def load(texts: list[str]) -> list[str]:\n    headers = []\n    for text in texts:\n        headers.append(_parse_header(text))\n    return headers\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 234,
+          "end_line": 243,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 234,
+              "end_line": 243,
+              "source": "def load(text: str) -> str:\n    return _parse_header(text)\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    stripped = first.strip()\n    return stripped.lower()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 247,
+          "end_line": 261,
           "config": {
-            "line": 219,
-            "end_line": 222,
+            "line": 247,
+            "end_line": 250,
             "source": "[tool.simplint.logic]\nmax-caller-statements = 3\n"
           },
           "blocks": [
@@ -15303,19 +15371,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 224,
-              "end_line": 233,
+              "line": 252,
+              "end_line": 261,
               "source": "def load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 238,
-          "end_line": 255,
+          "line": 266,
+          "end_line": 283,
           "config": {
-            "line": 238,
-            "end_line": 241,
+            "line": 266,
+            "end_line": 269,
             "source": "[tool.simplint.logic]\nmax-cognitive-complexity = 5\n"
           },
           "blocks": [
@@ -15324,16 +15392,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 243,
-              "end_line": 255,
+              "line": 271,
+              "end_line": 283,
               "source": "def load(text: str) -> str:\n    if text:\n        return _first(text)\n    return \"\"\n\n\ndef _first(text: str) -> str:\n    for line in text.splitlines():\n        if line:\n            return line.strip()\n    return \"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 261,
-          "end_line": 270,
+          "line": 289,
+          "end_line": 298,
           "config": null,
           "blocks": [
             {
@@ -15341,19 +15409,19 @@
               "language": "python",
               "file": "tests/test_header.py",
               "named": true,
-              "line": 261,
-              "end_line": 270,
+              "line": 289,
+              "end_line": 298,
               "source": "def test_kind() -> None:\n    assert _expected(\"a\") == 1\n\n\ndef _expected(kind: str) -> int:\n    if kind == \"a\":\n        return 1\n    return 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 282,
-          "end_line": 299,
+          "line": 310,
+          "end_line": 327,
           "config": {
-            "line": 282,
-            "end_line": 288,
+            "line": 310,
+            "end_line": 316,
             "source": "[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 1\n"
           },
           "blocks": [
@@ -15362,16 +15430,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 290,
-              "end_line": 299,
+              "line": 318,
+              "end_line": 327,
               "source": "def load(text: str) -> str:\n    return _first(text)\n\n\ndef _first(text: str) -> str:\n    if text:\n        return text.strip()\n    return \"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 304,
-          "end_line": 312,
+          "line": 332,
+          "end_line": 340,
           "config": null,
           "blocks": [
             {
@@ -15379,16 +15447,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 304,
-              "end_line": 312,
+              "line": 332,
+              "end_line": 340,
               "source": "async def load(text: str) -> str:\n    return await _parse_header(text)\n\n\nasync def _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 316,
-          "end_line": 324,
+          "line": 344,
+          "end_line": 352,
           "config": null,
           "blocks": [
             {
@@ -15396,16 +15464,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 316,
-              "end_line": 324,
+              "line": 344,
+              "end_line": 352,
               "source": "def load(text: str) -> list[str]:\n    return list(_lines(text))\n\n\ndef _lines(text: str):\n    for line in text.splitlines():\n        yield line.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 330,
-          "end_line": 342,
+          "line": 358,
+          "end_line": 370,
           "config": null,
           "blocks": [
             {
@@ -15413,8 +15481,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 330,
-              "end_line": 342,
+              "line": 358,
+              "end_line": 370,
               "source": "from typing import TypeGuard\n\n\ndef load(value: object) -> str:\n    if _is_text(value):\n        return value\n    return \"\"\n\n\ndef _is_text(value: object) -> TypeGuard[str]:\n    return isinstance(value, str)\n"
             }
           ]

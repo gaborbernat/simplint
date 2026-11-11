@@ -87,8 +87,11 @@ pub(super) fn forward_target<'a>(
     {
         return None;
     }
-    references
-        .iter()
-        .all(|range| checker.source[range.end().to_usize()..].trim_start().starts_with('('))
-        .then_some(&*call.func)
+    references.iter().all(|range| is_called(checker, *range)).then_some(&*call.func)
+}
+
+// Whether a reference is the callee of a call, wherever the call's `(` sits. A bare name that ends its statement is
+// read there, even when the next line starts with `(`.
+pub(super) fn is_called(checker: &Checker, reference: TextRange) -> bool {
+    checker.state().call_ends(checker).contains(&reference.end())
 }

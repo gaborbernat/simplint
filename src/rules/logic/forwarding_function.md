@@ -59,6 +59,18 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
           return Path(name)
   ```
 
+- **A call whose `(` starts a later line**: the callee is the name the call reads, whatever line the `(` is on, so the
+  call is reported like one on a single line.
+
+  ```python report
+  def load(name: str) -> Path:
+      return _make_path(name)
+
+
+  def _make_path(name: str) -> Path:
+      return Path(name)
+  ```
+
 ### Exceptions
 
 - **[Dunder](https://docs.python.org/3/reference/datamodel.html#special-method-names) functions**: Python calls them by
@@ -90,6 +102,19 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
   ```python ok
   def load(names: list[str]) -> list[Path]:
       return list(map(_make_path, names))
+
+
+  def _make_path(name: str) -> Path:
+      return Path(name)
+  ```
+
+- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the name is only read there
+  and not called.
+
+  ```python ok
+  def load(name: str) -> Path:
+      callback = _make_path
+      (callback)(name)
 
 
   def _make_path(name: str) -> Path:
