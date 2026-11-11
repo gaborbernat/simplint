@@ -256,6 +256,63 @@ __all__ = ["parse"]
     LIMIT: int
     ```
 
+- **Reads of `__all__` off a module the run cannot name**: `sys.modules["json"].__all__` reads the standard library's
+  list, not one of the run's, so it exempts none of them.
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = ["LIMIT", "local"]
+  ```
+
+  ```python context file=cli.py
+  from config import LIMIT
+
+  print(LIMIT)
+  ```
+
+  ```python context file=tests/test_json.py
+  import sys
+
+
+  def test_json_lists_names() -> None:
+      module = sys.modules["json"]
+      assert "dumps" in module.__all__
+  ```
+
+- **Modules only tests load as a value**: a test that passes a module on, as `monkeypatch.setattr(config, ...)` does,
+  may set its names but reads none through it, so a listed name that no production code reads is still reported.
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = ["LIMIT", "local"]
+  ```
+
+  ```python context file=cli.py
+  from config import LIMIT
+
+  print(LIMIT)
+  ```
+
+  ```python context file=tests/test_config.py
+  import config
+
+
+  def test_patch(monkeypatch) -> None:
+      monkeypatch.setattr(config, "LIMIT", 1)
+  ```
+
 ### Exceptions
 
 - **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name
@@ -327,6 +384,51 @@ __all__ = ["parse"]
   ```python context file=pkg/core.py
   def run() -> int:
       return 1
+  ```
+
+- **Modules production code loads as a value**: a module that a file of the run binds and passes on, as
+  `CONFIG = settings` does, may have any name read through that value, so none of its names is reported.
+
+  ```python ok file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = ["LIMIT", "local"]
+  ```
+
+  ```python context file=cli.py
+  import config as settings
+
+  CONFIG = settings
+  ```
+
+- **Submodules a star import binds through their package's `__all__`**: `from pkg import *` in production code binds
+  each submodule the package's `__all__` lists, so the names of that submodule may be read under its own name. A star
+  import in a test binds nothing that production reads, so it exempts none of them.
+
+  ```python ok file=pkg/sub.py
+  LIMIT = 3
+
+
+  def func() -> int:
+      return LIMIT
+
+
+  __all__ = ["LIMIT", "func"]
+  ```
+
+  ```python context file=pkg/__init__.py
+  __all__ = ["sub"]
+  ```
+
+  ```python context file=cli.py
+  from pkg import *
+
+  print(sub.func(), sub.LIMIT)
   ```
 
 - **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a

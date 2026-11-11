@@ -129,6 +129,69 @@ and by the tokens themselves before a report, so two different statements whose 
       return total
   ```
 
+- **Several modules repeat the block**: the report names the first three other modules in sorted order, one place each,
+  and counts the rest. A module that holds the block several times still names each other module once, so its copies do
+  not use up the places.
+
+  ```python report file=alpha.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+
+
+  def run_again(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+  ```
+
+  ```python context file=beta.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+  ```
+
+  ```python context file=delta.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+  ```
+
+  ```python context file=epsilon.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+  ```
+
+  ```python context file=gamma.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      log(count)
+      checked = total > 0
+      return checked
+  ```
+
 ### Exceptions
 
 - **Separate distributions in one repository**: files are compared within the distribution identified by their nearest

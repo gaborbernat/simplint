@@ -139,6 +139,76 @@ def build_fixture() -> dict[str, int]:
       assert fast.decode("1") == "1"
   ```
 
+  The same holds for a module reached as `app.fast` in `CODEC = app.fast`. A function body's import counts only when
+  that function loads the name it binds as a value, as `fast` in `return fast` does, so a function that only calls
+  `fast.decode()` leaves the module's other functions reported.
+
+  ```python ok file=app/fast.py
+  def decode(text: str) -> str:
+      return text
+  ```
+
+  ```python context file=app/service.py
+  import app.fast
+
+  CODEC = app.fast
+  ```
+
+  ```python context file=tests/test_fast.py
+  from app import fast
+
+
+  def test_decode() -> None:
+      assert fast.decode("1") == "1"
+  ```
+
+  A function that imports the module and loads its name as a value counts the same way:
+
+  ```python ok file=app/fast.py
+  def decode(text: str) -> str:
+      return text
+  ```
+
+  ```python context file=app/service.py
+  def codec():
+      from app import fast
+
+      return fast
+  ```
+
+  ```python context file=tests/test_fast.py
+  from app import fast
+
+
+  def test_decode() -> None:
+      assert fast.decode("1") == "1"
+  ```
+
+  An import in a class body binds a class attribute, which other code reads as `Service.codec` without naming the
+  module, so it counts whatever the name is used for:
+
+  ```python ok file=app/fast.py
+  def decode(text: str) -> str:
+      return text
+  ```
+
+  ```python context file=app/service.py
+  class Service:
+      from app import fast as codec
+
+
+  def run(text: str) -> str:
+      return Service.codec.decode(text)
+  ```
+
+  ```python context file=tests/test_fast.py
+  from app import fast
+
+
+  def test_decode() -> None:
+      assert fast.decode("1") == "1"
+  ```
+
 - **A library's public API**: a name a public module offers, or that a user of the library may import, is public even
   when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.
 

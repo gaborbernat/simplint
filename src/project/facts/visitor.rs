@@ -11,7 +11,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::runtime::{Runs, catches_import_error};
+use super::runtime::{Constants, Runs, catches_import_error};
 use super::{ImportSite, ModuleNames, Parts};
 use crate::project::receivers::module_parts;
 use crate::syntax::{attribute_call, has_decorator, last_segment};
@@ -98,6 +98,21 @@ impl<'a> LoadedModules<'a> {
     }
 }
 
+// The kind of body a statement sits in. A class body binds class attributes, which other code reads through the class.
+#[derive(Clone, Copy, PartialEq)]
+enum Body {
+    Class,
+    Other,
+}
+
+// A function body, or the module outside them: the names it loads as values, and the modules its imports bind to a name,
+// which count once the body is read and loads that name as a value.
+#[derive(Default)]
+struct Scope<'a> {
+    loads: FxHashSet<&'a str>,
+    imports: Vec<(String, String)>,
+}
+
 pub(super) struct FactVisitor<'a> {
     pub(super) module_path: Option<&'a [String]>,
     pub(super) aliases: FxHashMap<&'a str, String>,
@@ -165,11 +180,22 @@ pub(super) struct FactVisitor<'a> {
     // spec loads resolve against.
     file: PathBuf,
     root: Option<PathBuf>,
-    // The module-level names bound once to a false constant, as `_false = 0`, whose `if` bodies never run.
-    pub(super) falsy_constants: FxHashSet<&'a str>,
+    // The module-level names bound once to a constant, as `_false = 0` or `DEBUG = True` is.
+    pub(super) constants: Constants<'a>,
     pub(super) runtime_sites: Vec<ImportSite>,
     // The names the file loads other than as the object of an attribute, as `fast` in `codec = fast` is.
     pub(super) value_loads: FxHashSet<&'a str>,
+    // The dotted names the file loads other than as the object of an attribute, as `app.fast` in `codec = app.fast` is.
+    pub(super) dotted_loads: FxHashSet<String>,
+    // The modules a class body's imports bind, which other code reads through the class, and the modules a function
+    // body's imports bind whose names the body loads as values.
+    pub(super) nested_modules: Vec<String>,
+    // The kind of body the statements visited are directly in.
+    body: Body,
+    // The loads and pending imports of the function bodies being visited, innermost last.
+    scopes: Vec<Scope<'a>>,
+    // The loads and pending imports of the module's own statements outside any function or class body.
+    module_scope: Scope<'a>,
     // The ranges of the objects of the attributes the file reads, which are not loads as a value.
     attribute_values: FxHashSet<TextRange>,
     // The facts only some rules read that the run collects.
@@ -182,7 +208,7 @@ impl<'a> FactVisitor<'a> {
         module_path: Option<&'a [String]>,
         own_module: String,
         parts: Parts,
-        falsy_constants: FxHashSet<&'a str>,
+        constants: Constants<'a>,
     ) -> Self {
         let file = lexically_normalized(file);
         let root =
@@ -214,7 +240,7 @@ impl<'a> FactVisitor<'a> {
             doctest_names: BTreeSet::new(),
             handler_depth: 0,
             runtime: Runs::Always,
-            falsy_constants,
+            constants,
             loaded_modules: LoadedModules::default(),
             specs: FxHashMap::default(),
             unknown_modules: FxHashSet::default(),
@@ -228,6 +254,11 @@ impl<'a> FactVisitor<'a> {
             parts,
             runtime_sites: Vec::new(),
             value_loads: FxHashSet::default(),
+            dotted_loads: FxHashSet::default(),
+            nested_modules: Vec::new(),
+            body: Body::Other,
+            scopes: Vec::new(),
+            module_scope: Scope::default(),
             attribute_values: FxHashSet::default(),
         }
     }
@@ -237,12 +268,76 @@ impl<'a> FactVisitor<'a> {
     // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
     // as values.
     fn record_value_load(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(ast::ExprAttribute { value, .. }) = expr {
+        if let Expr::Attribute(ast::ExprAttribute { value, ctx, .. }) = expr {
+            if ctx.is_load()
+                && !self.attribute_values.contains(&expr.range())
+                && let Some(name) = UnqualifiedName::from_expr(expr)
+            {
+                self.dotted_loads.insert(name.segments().join("."));
+            }
             self.attribute_values.insert(value.range());
         } else if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, range, .. }) = expr
             && !self.attribute_values.contains(range)
         {
             self.value_loads.insert(id.as_str());
+            self.scope_mut().loads.insert(id.as_str());
+        }
+    }
+
+    // The innermost function body being visited, or the module outside them.
+    fn scope_mut(&mut self) -> &mut Scope<'a> {
+        self.scopes.last_mut().unwrap_or(&mut self.module_scope)
+    }
+
+    // Walks a function or class statement, whose statements sit in the body it names.
+    fn walk_body(&mut self, stmt: &'a Stmt, body: Body) {
+        let outer = std::mem::replace(&mut self.body, body);
+        visitor::walk_stmt(self, stmt);
+        self.body = outer;
+    }
+
+    // Walks a function statement, whose imports count only for the names its own body loads as values.
+    fn walk_function(&mut self, stmt: &'a Stmt) {
+        self.scopes.push(Scope::default());
+        self.walk_body(stmt, Body::Other);
+        self.close_scope();
+    }
+
+    // Ends the innermost function body: its imports count for the names it loads, and its loads reach the scope it sits
+    // in, since a nested function reads the names of the one around it.
+    fn close_scope(&mut self) {
+        let scope = self.scopes.pop().unwrap_or_default();
+        self.nested_modules.extend(
+            scope
+                .imports
+                .iter()
+                .filter(|(bound, _)| scope.loads.contains(bound.as_str()))
+                .map(|(_, module)| module.clone()),
+        );
+        self.scope_mut().loads.extend(scope.loads);
+    }
+
+    // Ends the module: the imports outside any function body count for the names the module loads.
+    pub(super) fn finish_module(&mut self) {
+        let scope = std::mem::take(&mut self.module_scope);
+        self.nested_modules.extend(
+            scope
+                .imports
+                .iter()
+                .filter(|(bound, _)| scope.loads.contains(bound.as_str()))
+                .map(|(_, module)| module.clone()),
+        );
+    }
+
+    // The module an import in a function or class body binds to a name, as `fast` for `from pkg import fast` in a class.
+    fn record_nested(&mut self, top_level: bool, bound: &str, module: &str) {
+        if top_level {
+            return;
+        }
+        if self.body == Body::Class {
+            self.nested_modules.push(module.to_owned());
+        } else {
+            self.scope_mut().imports.push((bound.to_owned(), module.to_owned()));
         }
     }
 
@@ -273,6 +368,10 @@ impl<'a> FactVisitor<'a> {
                 self.edges.entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
                 let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
                 self.aliases.insert(bound, format!("{resolved}.{}", alias.name.as_str()));
+            }
+            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
+                let bound = alias.asname.as_ref().unwrap_or(&alias.name);
+                self.record_nested(top_level, bound.as_str(), &format!("{resolved}.{}", alias.name.as_str()));
             }
             self.from_statements.push(FromImport { module: resolved, names, top_level });
         }
@@ -691,7 +790,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 let parameters = parameter_names(&function.parameters);
                 let shadowed = self.shadow(parameters.clone());
                 self.loaded_modules.enter(parameters);
-                visitor::walk_stmt(self, stmt);
+                self.walk_function(stmt);
                 self.loaded_modules.functions.pop();
                 restore_bindings(&mut self.loop_modules, shadowed);
             }
@@ -707,12 +806,14 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                         if top_level {
                             self.module_aliases.push((asname.as_str().to_owned(), full.to_owned()));
                         }
+                        self.record_nested(top_level, asname.as_str(), full);
                         self.aliases.insert(asname.as_str(), full.to_owned())
                     } else {
                         let root = full.split('.').next().unwrap_or_default();
                         if top_level {
                             self.plain_modules.push((root.to_owned(), root.to_owned()));
                         }
+                        self.record_nested(top_level, root, full);
                         self.aliases.insert(root, root.to_owned())
                     };
                 }
@@ -734,7 +835,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     UnqualifiedName::from_expr(base)
                         .and_then(|name| name.segments().last().map(|last| (*last).to_owned()))
                 }));
-                visitor::walk_stmt(self, stmt);
+                self.walk_body(stmt, Body::Class);
             }
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 // A clause runs when its own test may hold and every test before it may fail.

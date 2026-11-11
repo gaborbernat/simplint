@@ -136,6 +136,20 @@ first eight, then how many it leaves out, before the module it closes on.
       import a
   ```
 
+  A module that binds `TYPE_CHECKING` to a true constant runs the block, so the name is an ordinary flag and the import
+  counts:
+
+  ```python context file=a.py
+  import b
+  ```
+
+  ```python report file=b.py
+  TYPE_CHECKING = True
+
+  if TYPE_CHECKING:
+      import a
+  ```
+
 - **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as
   `if __name__ == "__main__":`, which run only when the file is executed as a script.
 
@@ -183,6 +197,44 @@ first eight, then how many it leaves out, before the module it closes on.
       import a
   ```
 
+  A `from module import *` rebinds the public module-level names, so it makes every such public constant an ordinary
+  flag. A name starting with an underscore is never treated as rebound, even when the star-imported module's `__all__`
+  lists it, so it stays a constant:
+
+  ```python context file=a.py
+  import b
+  ```
+
+  ```python context file=flags.py
+  FLAG = True
+  ```
+
+  ```python report file=b.py
+  FLAG = False
+  from flags import *
+
+  if FLAG:
+      import a
+  ```
+
+  With an underscore in the name, the same flag stays a constant:
+
+  ```python context file=a.py
+  import b
+  ```
+
+  ```python context file=flags.py
+  FLAG = True
+  ```
+
+  ```python ok file=b.py
+  _FLAG = False
+  from flags import *
+
+  if _FLAG:
+      import a
+  ```
+
 - **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as
   `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of
   `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or
@@ -196,6 +248,21 @@ first eight, then how many it leaves out, before the module it closes on.
   import sys
 
   if sys.version_info < (3, 8):
+      import a
+  ```
+
+  The `else` of a check of the first item that holds on Python 3, the only major a supported Python has, never runs:
+
+  ```python context file=a.py
+  import b
+  ```
+
+  ```python ok file=b.py
+  import sys
+
+  if sys.version_info[0] == 3:
+      VALUE = 1
+  else:
       import a
   ```
 

@@ -15,6 +15,7 @@ pub(super) struct StarTargets {
     pub(super) star_imported: FxHashSet<FileId>,
     pub(super) package_star_imported: FxHashSet<FileId>,
     pub(super) star_sources: FxHashSet<FileId>,
+    pub(super) package_bound: FxHashSet<FileId>,
 }
 
 impl StarTargets {
@@ -23,6 +24,7 @@ impl StarTargets {
         sources: &FxHashMap<FileId, &FileFacts>,
         unresolved: &FxHashSet<&str>,
         files: &FileIds,
+        production: &FxHashSet<FileId>,
     ) -> Self {
         let star_imported = stars
             .iter()
@@ -38,7 +40,23 @@ impl StarTargets {
             .map(|(_, source)| *source)
             .collect();
         let star_sources = stars.iter().map(|(_, source)| *source).collect();
-        Self { star_imported, package_star_imported, star_sources }
+        let package_bound = stars
+            .iter()
+            .filter(|(importer, _)| production.contains(importer))
+            .map(|(_, source)| *source)
+            .flat_map(|package| {
+                let path = files.path(package);
+                let listed = sources.get(&package).and_then(|facts| facts.exports.as_deref());
+                let directory = path.parent().filter(|_| path.ends_with("__init__.py"));
+                directory.zip(listed).into_iter().flat_map(|(directory, listed)| {
+                    listed.iter().flat_map(move |name| {
+                        [directory.join(format!("{name}.py")), directory.join(name).join("__init__.py")]
+                    })
+                })
+            })
+            .filter_map(|path| files.get(&path))
+            .collect();
+        Self { star_imported, package_star_imported, star_sources, package_bound }
     }
 }
 

@@ -52,8 +52,8 @@ impl CacheKey for DuplicateRun {
 // A window of statements, by its file and the position of its first statement among the file's statements.
 type Place = (FileId, usize);
 
-// A window repeated in many files pairs each place with this many of the others, so the pairs grow with the files rather
-// than with every pair of them. The blocks still count every file that repeats a window.
+// A window repeated in many files pairs each place with this many other files, one place in each, so the pairs grow with
+// the files rather than with every pair of them. The blocks still count every file that repeats a window.
 const PARTNERS: usize = 3;
 
 // The duplicate blocks of every file, made of windows of `window` statements of one body that another file holds too.
@@ -120,10 +120,12 @@ pub(super) fn duplicate_runs(
         for &(file, start) in &places {
             windows.entry(file).or_default().push((start, set));
         }
-        for copies in places.chunk_by(|(left, _), (right, _)| left == right) {
+        let chunks: Vec<&[Place]> = places.chunk_by(|(left, _), (right, _)| left == right).collect();
+        let heads: Vec<Place> = chunks.iter().map(|copies| copies[0]).collect();
+        for copies in chunks {
             let file = copies[0].0;
             let partners: Vec<Place> =
-                places.iter().filter(|(other, _)| *other != file).take(PARTNERS).copied().collect();
+                heads.iter().filter(|(other, _)| *other != file).take(PARTNERS).copied().collect();
             for &(place_file, start) in copies {
                 for &(other, other_start) in &partners {
                     let offset = start.cast_signed() - other_start.cast_signed();

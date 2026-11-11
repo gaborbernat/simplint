@@ -56,6 +56,40 @@ fn duplicate_block_repeated_in_pieces_names_each_repeating_file_once() {
     ));
 }
 
+const DUP_BLOCK: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    mean = total / count\n    spread = max(items) - min(items)\n    label = f\"{mean}:{spread}\"\n    print(label)\n";
+const DUP_EXTRA: &str = "    extra = label.upper()\n    more = extra.lower()\n    again = more.title()\n    final = again.strip()\n    return final\n";
+
+// Each file names the first three other files in sorted order, one place each, and counts the rest. A later statement
+// that only two files share does not make a file a partner of the whole block, nor name it at that later line.
+#[test]
+fn repeated_block_names_three_files_one_place_each() {
+    let repeated = (1..=4)
+        .map(|n| format!("{}\n\n", DUP_BLOCK.replace("def run(", &format!("def run{n}("))))
+        .collect::<Vec<_>>()
+        .concat();
+    let longer = format!("{DUP_BLOCK}{DUP_EXTRA}");
+    let root = project(&[
+        ("a.py", repeated.as_str()),
+        ("b.py", DUP_BLOCK),
+        ("c.py", DUP_BLOCK),
+        ("d.py", DUP_BLOCK),
+        ("e.py", DUP_BLOCK),
+        ("f.py", DUP_BLOCK),
+        ("g.py", longer.as_str()),
+        ("h.py", longer.as_str()),
+    ]);
+    let stdout = check(root.path(), &["--select", "SMP530"]).1;
+    assert!(stdout.contains(
+        "b.py:2:5: SMP530 These statements repeat in `a.py:2`, `c.py:2`, `d.py:2`, and 4 more; move them into one definition \
+         the modules share\n"
+    ));
+    assert!(stdout.contains(
+        "g.py:2:5: SMP530 These statements repeat in `a.py:2`, `b.py:2`, `c.py:2`, and 4 more; move them into one definition \
+         the modules share\n"
+    ));
+    assert!(!stdout.contains("h.py:5"), "{stdout}");
+}
+
 #[test]
 fn package_outside_the_source_roots_resolves_from_its_parent() {
     let root = project(&[
@@ -1818,6 +1852,68 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+// A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
+// through it, so none of its names is reported. Reading only one name through a module leaves the others reported.
+#[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", "All checks passed!\n" ; "loaded_as_value")]
+#[test_case("from app import *\n\nprint(config.LIMIT)\n", "All checks passed!\n" ; "star_bound_by_package_all")]
+#[test_case(
+    "from app import config\n\nprint(config.LIMIT)\n",
+    "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules \
+     use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n" ;
+    "module_attribute"
+)]
+fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("app/__init__.py", "__all__ = [\"config\"]\n"),
+        ("app/config.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
+        ("cli.py", consumer),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// Only a production file's star import binds the submodules a package's `__all__` lists, so a test's star import of the
+// package exempts none of them.
+#[test]
+fn star_import_in_a_test_exempts_no_submodule_name() {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("pkg/__init__.py", "__all__ = [\"sub\"]\n"),
+        ("pkg/sub.py", "LIMIT = 3\n\n\ndef func() -> int:\n    return LIMIT\n\n\n__all__ = [\"LIMIT\", \"func\"]\n"),
+        ("cli.py", "from pkg.sub import LIMIT\n\nprint(LIMIT)\n"),
+        ("tests/test_pkg.py", "from pkg import *\n\n\ndef test_it() -> None:\n    assert sub\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other modules \
+         use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a module
+// the run defines.
+#[test]
+fn all_read_off_an_unnamed_module_keeps_other_modules_checked() {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("a.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
+        ("b.py", "from a import LIMIT\n\nprint(LIMIT)\n"),
+        (
+            "tests/test_json.py",
+            "import sys\n\n\ndef test_json_lists_names() -> None:\n    module = sys.modules[\"json\"]\n    assert \"dumps\" in module.__all__\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        "a.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules use\n\
+         Found 1 error.\n[*] 1 fixable with `--fix`.\n"
+    );
+}
+
 #[test_case("from a import __all__ as base\n\n__all__ = [*base, \"Z\"]\n" ; "imported")]
 #[test_case("import a\n\n__all__ = [*a.__all__, \"Z\"]\n" ; "read_through_module")]
 #[test_case("import a\n\nprint([name for name in a.__all__])\n" ; "iterated_through_module")]
@@ -2297,6 +2393,150 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
         check(root.path(), &["--select", "SMP408"]).1,
         stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
     );
+}
+
+// A production module reaches another as a value through a dotted name, or through an import in a function or class
+// body, so a call through the value reaches the module's functions with no import of them. Only the import alone is not
+// a value.
+#[test_case("import pkg.fast\n\nCODEC = pkg.fast\n", "All checks passed!\n" ; "dotted_name_loaded")]
+#[test_case(
+    "def codec():\n    from pkg import fast\n\n    return fast\n",
+    "All checks passed!\n" ; "import_in_function"
+)]
+#[test_case(
+    "class Service:\n    from pkg import fast as codec\n\n\ndef run(text: str) -> str:\n    return Service.codec.decode(text)\n",
+    "All checks passed!\n" ;
+    "import_in_class_read_as_an_attribute"
+)]
+#[test_case(
+    "import pkg.fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ;
+    "dotted_import_alone"
+)]
+#[test_case(
+    "class Service:\n    import pkg.fast\n\n\ndef run(text: str) -> str:\n    return Service.pkg.fast.decode(text)\n",
+    "All checks passed!\n" ;
+    "dotted_import_in_class_read_through_the_class"
+)]
+#[test_case(
+    "def run(text: str) -> str:\n    from pkg import fast\n\n    return str(fast.OTHER)\n\n\ndef other(fast: object) -> object:\n    return fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ;
+    "function_attribute_while_another_parameter_is_named_the_module"
+)]
+fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "def decode(text: str) -> str:\n    return text\n"),
+        ("pkg/service.py", service),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A function that imports a module and only calls one of its functions loads no name as a value, so the module's other
+// functions that only tests use are still reported.
+#[test]
+fn import_only_called_through_keeps_other_test_only_names() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        (
+            "pkg/fast.py",
+            "def decode(text: str) -> str:\n    return text\n\n\ndef encode(text: str) -> str:\n    return text\n",
+        ),
+        ("pkg/service.py", "def run(text: str) -> str:\n    from pkg import fast\n\n    return fast.decode(text)\n"),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_encode() -> None:\n    assert fast.encode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        "pkg/fast.py:5:5: SMP408 `encode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n"
+            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+const MAIL: &str = "def send(address: str, urgent: bool = False) -> str:\n    return f\"{address}:{urgent}\"\n";
+const PLAIN: &str = "from app.mail import send\n\n\ndef notify(address: str) -> str:\n    return send(address)\n";
+const SERVICE: &str =
+    "from app.mail import send\n\n\ndef escalate(address: str) -> str:\n    return send(address, urgent=True)\n";
+const PROGRAM_SERVICE: &str = "from app.mail import send\n\n\ndef escalate(address: str) -> str:\n    return send(address, urgent=True)\n\n\nif __name__ == \"__main__\":\n    print(escalate(\"x\"))\n";
+
+// A module a star import or a `__main__` guard runs is production code, so its calls to `send` are production calls, not
+// the calls of a test that imports it.
+#[test_case(
+    "from app.plain import notify\nfrom app.service import *\n\nprint(notify(\"x\"), escalate(\"x\"))\n",
+    SERVICE,
+    "All checks passed!\n" ;
+    "star_imported_by_program"
+)]
+#[test_case("from app.plain import notify\n\nprint(notify(\"x\"))\n", PROGRAM_SERVICE, "All checks passed!\n" ; "guard_runs_as_program")]
+#[test_case(
+    "from app.plain import notify\n\nprint(notify(\"x\"))\n",
+    SERVICE,
+    "app/mail.py:1:24: SMP410 Only tests pass `urgent` to `send`; production calls leave it at its default\nFound 1 error.\n" ;
+    "imported_only_by_tests"
+)]
+fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, stdout: &str) {
+    let root = project(&[
+        ("app/__init__.py", ""),
+        ("app/__main__.py", main),
+        ("app/mail.py", MAIL),
+        ("app/plain.py", PLAIN),
+        ("app/service.py", service),
+        (
+            "tests/test_service.py",
+            "from app.service import escalate\n\n\ndef test_escalate() -> None:\n    assert escalate(\"a\") == \"a:True\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP410"]).1,
+        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production imports.
+#[test_case("from pkg import fast\n\nCODEC = fast\n", "All checks passed!\n" ; "module_loaded_as_value")]
+#[test_case(
+    "from pkg.fast import LIMIT\n\nCODEC = LIMIT\n",
+    "pkg/fast.py:1:1: SMP401 `LIMIT` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 unsafe fix \
+     available with `--fix --unsafe-fixes`.\n" ;
+    "imported_by_production"
+)]
+fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "LIMIT = 1\nMODE = 2\n"),
+        ("pkg/service.py", service),
+        ("tests/test_fast.py", "from pkg.fast import LIMIT\n\n\ndef test_limit() -> None:\n    assert LIMIT == 1\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP401"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant
+// guards nothing, and a star import rebinds a flag bound false.
+#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = 2\n", false ; "else_of_three_never_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    from a import VALUE\n\nSCALE = 2\n", true ; "body_of_three_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    from a import VALUE\n\nSCALE = 2\n", false ; "body_of_two_never_runs")]
+#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = 2\n", true ; "else_of_two_runs")]
+#[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = 2\n", false ; "typing_guard")]
+#[test_case("TYPE_CHECKING = True\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = 2\n", true ; "true_constant_is_no_guard")]
+#[test_case("FLAG = False\n\nif FLAG:\n    from a import VALUE\n\nSCALE = 2\n", false ; "false_constant_guard")]
+#[test_case("FLAG = False\nfrom flags import *\n\nif FLAG:\n    from a import VALUE\n\nSCALE = 2\n", true ; "star_rebinds_flag")]
+#[test_case("_FLAG = False\nfrom flags import *\n\nif _FLAG:\n    from a import VALUE\n\nSCALE = 2\n", false ; "star_keeps_private_flag")]
+fn runtime_guards_follow_versions_and_constants(b: &str, reported: bool) {
+    let root = project(&[("a.py", "import b\n\nVALUE = b.SCALE + 1\n"), ("b.py", b), ("flags.py", "FLAG = True\n")]);
+    let report = check(root.path(), &["--select", "SMP308"]).1;
+    assert_eq!(report.contains("SMP308"), reported, "{report}");
 }
 
 // A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in the

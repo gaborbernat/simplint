@@ -9,6 +9,7 @@ mod visitor;
 pub(crate) use visitor::doctest_code;
 
 use crate::project::computed_reads::ComputedReads;
+use crate::syntax::is_main_guard;
 use std::collections::BTreeSet;
 use std::hash::Hasher;
 use std::mem::take;
@@ -19,13 +20,12 @@ use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
 use ruff_python_parser::{Parsed, parse_module};
 use ruff_text_size::{TextRange, TextSize};
-use rustc_hash::FxHashSet;
 
 use self::api_reached::interface;
 pub(crate) use self::api_reached::{Closure, Definition};
 use self::module_reads::module_reads;
 use self::names::string_words;
-use self::runtime::{Runs, falsy_constants};
+use self::runtime::{Runs, constants};
 use self::scan::Scan;
 use self::statements::statements;
 pub(crate) use self::statements::{Statement, statement_texts};
@@ -74,6 +74,8 @@ pub struct FileFacts {
     // The modules among those names the file loads as a value, as `fast` in `codec = fast` does, which a call through
     // the value reaches with no attribute read of the module's names.
     pub(super) module_values: Vec<String>,
+    // Whether the module has an `if __name__ == "__main__":` block, which runs it as a program.
+    pub(super) main_guard: bool,
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
@@ -181,9 +183,10 @@ impl FileFacts {
             module_path.or(importable),
             module_name(module_path.or(importable), path),
             parts,
-            falsy_constants(&parsed.syntax().body),
+            constants(&parsed.syntax().body),
         );
         imports.visit_body(&parsed.syntax().body);
+        imports.finish_module();
         let functions = module_functions(&parsed.syntax().body);
         let classes = module_classes(&parsed.syntax().body, &imports);
         // A stub publishes what it declares, so its names are the API of the module it describes.
@@ -219,11 +222,7 @@ impl FileFacts {
             defined.extend(declared_names(stmt));
         }
         let bindings = top_level_bindings(&imports.from_statements);
-        let module_names: Vec<(String, String)> = bindings
-            .iter()
-            .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
-            .chain(imports.module_aliases)
-            .collect();
+        let (module_names, module_values) = module_bindings(&bindings, &imports);
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
@@ -241,7 +240,8 @@ impl FileFacts {
                 (false, false) => ExportsUnknown::No,
             },
             bindings,
-            module_values: module_values(&module_names, &imports.value_loads),
+            module_values,
+            main_guard: parsed.syntax().body.iter().any(is_main_guard),
             module_names,
             defined,
             attribute_writes,
@@ -279,12 +279,31 @@ impl FileFacts {
     }
 }
 
-// The modules among the names a file binds at its top level that the file loads as a value.
-fn module_values(module_names: &[(String, String)], value_loads: &FxHashSet<&str>) -> Vec<String> {
+// The modules a file binds at its top level, by the name each binds, and the modules it loads as a value.
+fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Vec<(String, String)>, Vec<String>) {
+    let module_names: Vec<(String, String)> = bindings
+        .iter()
+        .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
+        .chain(imports.module_aliases.iter().cloned())
+        .collect();
+    let values = module_values(&module_names, imports);
+    (module_names, values)
+}
+
+// The modules a file loads as a value: those among the names it binds that it loads as a value, as `fast` in
+// `codec = fast` does, those a dotted name it loads as a value names, as `app.fast` in `codec = app.fast` does, and those
+// its class bodies and function bodies import and use, as the visitor works out.
+fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
+    let dotted = imports
+        .dotted_loads
+        .iter()
+        .filter_map(|dotted| visitor::qualified(&dotted.split('.').collect::<Vec<_>>(), &imports.aliases));
     module_names
         .iter()
-        .filter(|(bound, _)| value_loads.contains(bound.as_str()))
+        .filter(|(bound, _)| imports.value_loads.contains(bound.as_str()))
         .map(|(_, module)| module.clone())
+        .chain(dotted)
+        .chain(imports.nested_modules.iter().cloned())
         .collect()
 }
 
