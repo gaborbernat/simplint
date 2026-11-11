@@ -90,6 +90,29 @@ No fix is offered for a statement that binds other names as well, such as `impor
 import, or a read through the name it binds, takes a name the new module lacks, such as `gzip.READ` or
 `zlib._ZlibDecompressor`.
 
+A `lazy import` keeps its `lazy` keyword in the rewritten `from` import, so the import stays lazy:
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+lazy import gzip
+
+
+def unpack(data):
+    return gzip.decompress(data)
+```
+
+```python fixed
+lazy from compression import gzip
+
+
+def unpack(data):
+    return gzip.decompress(data)
+```
+
 ### Exceptions
 
 - **Imports in a `try` block**: such a block is a fallback for the Pythons that lack the new names.

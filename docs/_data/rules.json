@@ -20631,7 +20631,7 @@
     "name": "up-compression-modules",
     "summary": "`gzip`, `bz2`, `lzma` and `zlib` imports that `compression` names",
     "fix": "Sometimes",
-    "explanation": "Flags imports of `gzip`, `bz2`, `lzma` and `zlib`, which the `compression` package names from Python 3.14.\n\n## Why is this bad?\n\nPython 3.14 adds the `compression` package, with `compression.gzip`, `compression.bz2`, `compression.lzma` and\n`compression.zlib` beside `compression.zstd`. The new names are the preferred way to import these codecs from Python\n3.14, and the old top-level modules are not deprecated. A project that targets 3.14 and later can import the codecs\nunder the package that groups them.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport gzip\nfrom bz2 import BZ2File\n\n\ndef pack(path, data):\n    with gzip.open(path, \"wb\") as handle:\n        handle.write(data)\n    return BZ2File(path + \".bz2\", \"wb\")\n```\n\nUse instead:\n\n```python ok\nfrom compression import gzip\nfrom compression.bz2 import BZ2File\n\n\ndef pack(path, data):\n    with gzip.open(path, \"wb\") as handle:\n        handle.write(data)\n    return BZ2File(path + \".bz2\", \"wb\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python report\n  import gzip\n\n\n  def read(path):\n      with gzip.open(path) as handle:\n          return handle.read()\n  ```\n\n## What it does\n\n### Active on\n\n- **Imports of `gzip`, `bz2`, `lzma` and `zlib`**, as `import gzip`, `import gzip as name` or `from gzip import name`,\n  in any body but a `try` block. **Unsafe fix:** `import gzip` becomes `from compression import gzip`, and\n  `from gzip import name` becomes `from compression.gzip import name`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from gzip import GzipFile\n  ```\n\n  ```python fixed\n  from compression.gzip import GzipFile\n  ```\n\n### Fix\n\nThe fix is unsafe, because `compression.gzip` is not an alias of `gzip`. It is a module that runs `from gzip import *`,\nso it lacks the names outside `__all__`, such as `gzip.READ`, and it is a different module object: a patch of\n`gzip.open` does not reach a call through `compression.gzip`. A rewritten import also changes the module's `__name__`.\n\nNo fix is offered for a statement that binds other names as well, such as `import os, gzip`. Nor is one offered when the\nimport, or a read through the name it binds, takes a name the new module lacks, such as `gzip.READ` or\n`zlib._ZlibDecompressor`.\n\n### Exceptions\n\n- **Imports in a `try` block**: such a block is a fallback for the Pythons that lack the new names.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  try:\n      from compression import gzip\n  except ImportError:\n      import gzip\n  ```\n\n- **Targets before Python 3.14**: the `compression` package does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  import gzip\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n- [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same imports as\n  [FTP133](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp133), with no fix.\n",
+    "explanation": "Flags imports of `gzip`, `bz2`, `lzma` and `zlib`, which the `compression` package names from Python 3.14.\n\n## Why is this bad?\n\nPython 3.14 adds the `compression` package, with `compression.gzip`, `compression.bz2`, `compression.lzma` and\n`compression.zlib` beside `compression.zstd`. The new names are the preferred way to import these codecs from Python\n3.14, and the old top-level modules are not deprecated. A project that targets 3.14 and later can import the codecs\nunder the package that groups them.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport gzip\nfrom bz2 import BZ2File\n\n\ndef pack(path, data):\n    with gzip.open(path, \"wb\") as handle:\n        handle.write(data)\n    return BZ2File(path + \".bz2\", \"wb\")\n```\n\nUse instead:\n\n```python ok\nfrom compression import gzip\nfrom compression.bz2 import BZ2File\n\n\ndef pack(path, data):\n    with gzip.open(path, \"wb\") as handle:\n        handle.write(data)\n    return BZ2File(path + \".bz2\", \"wb\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python report\n  import gzip\n\n\n  def read(path):\n      with gzip.open(path) as handle:\n          return handle.read()\n  ```\n\n## What it does\n\n### Active on\n\n- **Imports of `gzip`, `bz2`, `lzma` and `zlib`**, as `import gzip`, `import gzip as name` or `from gzip import name`,\n  in any body but a `try` block. **Unsafe fix:** `import gzip` becomes `from compression import gzip`, and\n  `from gzip import name` becomes `from compression.gzip import name`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from gzip import GzipFile\n  ```\n\n  ```python fixed\n  from compression.gzip import GzipFile\n  ```\n\n### Fix\n\nThe fix is unsafe, because `compression.gzip` is not an alias of `gzip`. It is a module that runs `from gzip import *`,\nso it lacks the names outside `__all__`, such as `gzip.READ`, and it is a different module object: a patch of\n`gzip.open` does not reach a call through `compression.gzip`. A rewritten import also changes the module's `__name__`.\n\nNo fix is offered for a statement that binds other names as well, such as `import os, gzip`. Nor is one offered when the\nimport, or a read through the name it binds, takes a name the new module lacks, such as `gzip.READ` or\n`zlib._ZlibDecompressor`.\n\nA `lazy import` keeps its `lazy` keyword in the rewritten `from` import, so the import stays lazy:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nlazy import gzip\n\n\ndef unpack(data):\n    return gzip.decompress(data)\n```\n\n```python fixed\nlazy from compression import gzip\n\n\ndef unpack(data):\n    return gzip.decompress(data)\n```\n\n### Exceptions\n\n- **Imports in a `try` block**: such a block is a fallback for the Pythons that lack the new names.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  try:\n      from compression import gzip\n  except ImportError:\n      import gzip\n  ```\n\n- **Targets before Python 3.14**: the `compression` package does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  import gzip\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n- [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same imports as\n  [FTP133](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp133), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -20729,11 +20729,41 @@
         },
         {
           "section": "What it does",
-          "line": 97,
-          "end_line": 107,
+          "line": 95,
+          "end_line": 114,
           "config": {
-            "line": 97,
-            "end_line": 100,
+            "line": 95,
+            "end_line": 98,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 100,
+              "end_line": 106,
+              "source": "lazy import gzip\n\n\ndef unpack(data):\n    return gzip.decompress(data)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 108,
+              "end_line": 114,
+              "source": "lazy from compression import gzip\n\n\ndef unpack(data):\n    return gzip.decompress(data)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 120,
+          "end_line": 130,
+          "config": {
+            "line": 120,
+            "end_line": 123,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -20742,19 +20772,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 102,
-              "end_line": 107,
+              "line": 125,
+              "end_line": 130,
               "source": "try:\n    from compression import gzip\nexcept ImportError:\n    import gzip\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 111,
-          "end_line": 118,
+          "line": 134,
+          "end_line": 141,
           "config": {
-            "line": 111,
-            "end_line": 114,
+            "line": 134,
+            "end_line": 137,
             "source": "[tool.ruff]\ntarget-version = \"py313\"\n"
           },
           "blocks": [
@@ -20763,8 +20793,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 116,
-              "end_line": 118,
+              "line": 139,
+              "end_line": 141,
               "source": "import gzip\n"
             }
           ]

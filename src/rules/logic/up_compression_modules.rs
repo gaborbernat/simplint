@@ -31,7 +31,8 @@ pub fn up_compression_modules(checker: &Checker) {
                             && all_re_exported(&alias.name, &attributes_of(checker.body(), alias_binding(alias))))
                         .then(|| {
                             let asname = alias.asname.as_ref().map_or_else(String::new, |name| format!(" as {name}"));
-                            let replacement = format!("from compression import {}{asname}", alias.name);
+                            let lazy = if import.is_lazy { "lazy " } else { "" };
+                            let replacement = format!("{lazy}from compression import {}{asname}", alias.name);
                             Fix::unsafe_edit(Edit::range_replacement(replacement, stmt.range()))
                         });
                         report(checker, alias.name.range(), alias.name.as_str(), fix);

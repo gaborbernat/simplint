@@ -149,6 +149,7 @@ use crate::common::{self, check, read};
 #[test_case("up-compression-modules", "up_compression_modules.py", "py314" ; "compression_modules")]
 #[test_case("up-compression-modules", "up_compression_modules.py", "py313" ; "compression_modules_before_python314")]
 #[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", "py314" ; "compression_modules_in_compression_package")]
+#[test_case("up-compression-modules", "up_compression_modules_lazy.py", "py315" ; "compression_modules_lazy")]
 #[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py313" ; "warnings_deprecated")]
 #[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py312" ; "warnings_deprecated_before_python313")]
 #[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py312" ; "deprecated_stdlib_alias")]
