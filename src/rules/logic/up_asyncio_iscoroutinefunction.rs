@@ -8,10 +8,10 @@ use crate::lint::walker::Walker;
 use crate::rules::edits::{ensure_import, with_import};
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(ast::ExprCall { func, .. }) = expr else {
         return;
     };
+    let checker = walker.checker;
     if !checker.semantic().resolves_to(func, &["asyncio", "iscoroutinefunction"]) {
         return;
     }
@@ -26,7 +26,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 
 // The legacy marker of `asyncio.coroutine` counts for `asyncio` only, so the rewrite can change the result.
 fn fix(checker: &Checker, func: &Expr) -> Option<Fix> {
-    let replacement = Edit::range_replacement("inspect.iscoroutinefunction".to_owned(), func.range());
     let import = ensure_import(checker, "inspect", None, func.range())?;
+    let replacement = Edit::range_replacement("inspect.iscoroutinefunction".to_owned(), func.range());
     Some(with_import(replacement, import, Applicability::Unsafe))
 }
