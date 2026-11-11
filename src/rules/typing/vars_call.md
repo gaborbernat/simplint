@@ -1,5 +1,4 @@
-Flags direct calls to the builtin `vars()`. It returns a `dict[str, Any]`, so the attribute types are lost and a
-misspelled key fails only at runtime.
+Flags direct calls to the builtin `vars()`, which return an untyped `dict`.
 
 ## Why is this bad?
 
