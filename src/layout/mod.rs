@@ -4,6 +4,10 @@ use ruff_python_trivia::{SuppressionKind as FormatSuppression, has_leading_conte
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
+mod width;
+
+pub(crate) use width::{fits, fits_line, joined};
+
 // Lines too long for any layout `ruff format` can give the code, and pragma comments it would move off their code,
 // judged from the tokens alone: the formatter decides the layout after simplint, so a fix is judged by what every
 // layout of its result shows, and the same code gets the same answer however it is laid out now. The formatter
