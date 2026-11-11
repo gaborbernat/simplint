@@ -1,3 +1,4 @@
+mod comment_text;
 mod function_docstring;
 mod lines;
 mod long_docstring_paragraph;
