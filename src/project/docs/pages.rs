@@ -1,21 +1,5 @@
 use super::{DocReferences, Module};
 
-const ROLES: [&str; 12] =
-    ["func", "class", "meth", "attr", "data", "obj", "mod", "exc", "const", "type", "deco", "property"];
-
-const OBJECTS: [&str; 10] = [
-    "function",
-    "class",
-    "method",
-    "attribute",
-    "data",
-    "exception",
-    "decorator",
-    "property",
-    "classmethod",
-    "staticmethod",
-];
-
 impl DocReferences {
     pub(super) fn read(&mut self, text: &str) {
         let mut open: Option<Directive> = None;
@@ -47,17 +31,29 @@ struct Directive<'t> {
 impl Directive<'_> {
     // A name relative to the page's `currentmodule` needs no resolving, since names match by their dotted suffix.
     fn record(self, references: &mut DocReferences) {
+        const OBJECTS: [&str; 10] = [
+            "function",
+            "class",
+            "method",
+            "attribute",
+            "data",
+            "exception",
+            "decorator",
+            "property",
+            "classmethod",
+            "staticmethod",
+        ];
         let value = |key: &str| self.options.iter().find(|(option, _)| *option == key).map(|(_, value)| *value);
         let target = self.argument.split(['(', ' ']).next().unwrap_or_default().to_owned();
         let name = self.name.strip_prefix("py:").unwrap_or(self.name);
         let object = name.strip_prefix("auto").unwrap_or(name);
         if matches!(object, "module" | "class" | "exception") && name.starts_with("auto") {
-            let exclude = listed(value("exclude-members").unwrap_or_default()).map(str::to_owned).collect();
+            // Sphinx documents every member for `:members:` alone, and only the listed ones when it has a list.
             match value("members") {
                 Some("") if object == "module" => {
                     references.modules.insert(Module {
                         target: target.clone(),
-                        exclude,
+                        exclude: listed(value("exclude-members").unwrap_or_default()).map(str::to_owned).collect(),
                         private: value("private-members").is_some(),
                         special: value("special-members").is_some(),
                     });
@@ -103,8 +99,9 @@ fn option(line: &str) -> Option<(&str, &str)> {
     (!key.is_empty() && !key.contains(' ')).then(|| (key, value.trim()))
 }
 
-// A leading `.` searches every module, which the relative match already does.
 fn role_targets(line: &str) -> Vec<String> {
+    const ROLES: [&str; 12] =
+        ["func", "class", "meth", "attr", "data", "obj", "mod", "exc", "const", "type", "deco", "property"];
     let parts: Vec<&str> = line.split('`').collect();
     (1..parts.len())
         .step_by(2)
@@ -116,6 +113,7 @@ fn role_targets(line: &str) -> Vec<String> {
             };
             ROLES.contains(&role.strip_prefix("py:").unwrap_or(role)).then_some(())?;
             let target = content.rsplit_once('<').map_or(content, |(_, inner)| inner.trim_end_matches('>'));
+            // A leading `.` searches every module, which the relative match already does.
             let target = target.trim_start_matches(['~', '!', '.']).trim_end_matches("()");
             (!target.is_empty()).then(|| target.to_owned())
         })

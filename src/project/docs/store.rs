@@ -12,9 +12,9 @@ struct CachedDocs {
 }
 
 impl DocReferences {
+    // Any read failure or key mismatch is a miss: the pages are read again and the cache is written anew.
     pub(super) fn cached(path: &Path, key: u64) -> Option<Self> {
-        let bytes = cache::read_aligned(path).ok()?;
-        let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&bytes).ok()?;
+        let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&cache::read_aligned(path).ok()?).ok()?;
         (cached.key == key).then(|| Self {
             names: cached.names.into_iter().collect(),
             scopes: cached.scopes.into_iter().collect(),
