@@ -53,6 +53,7 @@ use crate::common;
 #[test_case("unexported-public-name", "unexported_public_name_ply.py" ; "unexported_public_name_ply_grammar")]
 #[test_case("unexported-public-name", "missing_from_all_reached.py" ; "unexported_public_name_reached_types")]
 #[test_case("module-variable-prefix", "_module_variable_prefix.py" ; "module_variable_prefix")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_empty_name.py" ; "module_variable_prefix_empty_or_keyword_name")]
 #[test_case("module-variable-prefix", "module_variable_prefix_source_text.py" ; "module_variable_prefix_source_text")]
 #[test_case("module-variable-prefix", "module_variable_prefix_type_alias.py" ; "module_variable_prefix_type_alias")]
 #[test_case("module-variable-prefix", "module_variable_prefix_function_alias.py" ; "module_variable_prefix_function_alias")]

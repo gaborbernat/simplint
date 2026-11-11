@@ -1,3 +1,5 @@
+use ruff_python_stdlib::identifiers::is_identifier;
+
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::rename::{kept_message, rename_fix};
@@ -13,6 +15,10 @@ pub fn module_variable_prefix(checker: &Checker) {
         } else {
             variable.name.trim_start_matches('_').to_owned()
         };
+        // A name with no valid spelling, as `_` in `__all__`, has nothing to rename it to.
+        if !is_identifier(&expected) {
+            continue;
+        }
         // A public module's variables are the API its users import, so the author lists or renames them by hand.
         if public {
             checker.report(

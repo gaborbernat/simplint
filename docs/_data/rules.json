@@ -9652,7 +9652,7 @@
     "name": "module-variable-prefix",
     "summary": "Module variables whose leading `_` does not match their visibility",
     "fix": "Sometimes",
-    "explanation": "Flags module-scope variables whose leading underscore does not match their visibility. A name that no other module\nimports and `__all__` does not list needs one, and a name that `__all__` lists must not have one.\n[module-variable-case](SMP102.html) checks the case.\n\n## Why is this bad?\n\nA leading underscore tells readers whether other modules may use a name\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). Deriving it from `__all__` and from the\nimports of other modules keeps the underscore in line with what the module exports.\n\nThe expected underscore comes from two questions, asked in this order:\n\n1. **Another module in the run imports it**: keep its leading underscore as it is.\n1. **`__all__` lists it**: no leading underscore.\n1. **Neither**: a leading underscore. In a module without `__all__`, every variable counts as private.\n\n## Example\n\n```python report\nLIMIT = 3\n_LOGGER = logging.getLogger(__name__)\n\n__all__ = [\"_LOGGER\"]\n```\n\nUse instead:\n\n```python ok\n_LIMIT = 3\nLOGGER = logging.getLogger(__name__)\n\n__all__ = [\"LOGGER\"]\n```\n\n## Configuration\n\n- [`naming.keep-names`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#naming) in\n  `[tool.simplint]`: module-scope names the rule leaves as they are, such as `keep-names = [\"limit\"]` under\n  `[tool.simplint.naming]`\n\n  ```toml config\n  [tool.simplint.naming]\n  keep-names = [\"limit\"]\n  ```\n\n  ```python ok\n  limit = 3\n  ```\n\n## What it does\n\n### Active on\n\n- **Names listed in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)**: they have\n  no leading underscore, as the module exports them.\n\n  ```python report\n  _limit = 3\n\n  __all__ = [\"_limit\"]\n  ```\n\n- **Names neither listed in `__all__` nor imported by another module**: they have a leading underscore. In a module\n  without `__all__`, every variable counts as private.\n\n  ```python report\n  LIMIT = 3\n  ```\n\nsimplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append(\"name\")` with string literals.\n\n### Exceptions\n\n- **Names another module in the run imports**: the importer already depends on the name, so its underscore stays as it\n  is. A name read off the result of a string-named import call, such as `pytest.importorskip(\"config\")`, counts as\n  imported too.\n\n  ```python ok file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- **Names [module-variable-case](SMP102.html) leaves alone**: the same exceptions apply, since renaming these breaks the\n  program or the tool that reads them by their exact spelling. They include dunder names, class-like names, type aliases\n  from a `type` statement, names also bound by an import, `def` or `class`, aliases of a function the module defines,\n  names bound only as loop targets, annotations alone under `if TYPE_CHECKING:`, the framework names and\n  `naming.keep-names`.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Conventional type parameters**: assignments to `typing.TypeVar`, `typing.TypeVarTuple` and `typing.ParamSpec` keep\n  the declared name when the string argument matches it. Changing `T = TypeVar(\"T\")` to `_T = TypeVar(\"T\")` would make\n  the declaration invalid for type checkers.\n\n  ```python ok\n  from typing import TypeVar\n\n  T = TypeVar(\"T\")\n  ```\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python ok\n  type vector = list[float]\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      pass\n  ```\n\n  ```python ok\n  import typing\n\n  if typing.TYPE_CHECKING:\n      verbosity: int\n  else:\n\n      def __getattr__(name: str) -> object: ...\n  ```\n\n  ```python ok file=tests/test_api.py\n  import pytest\n\n  pytestmark = pytest.mark.slow\n  ```\n\n- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check\n  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 10):\n      msg = \"requires Python 3.10\"\n      raise RuntimeError(msg)\n  ```\n\n### Fix\n\nThe fix adds the leading underscore, or removes every leading underscore, and keeps the rest of the name as written. It\nrenames every use in the file, including the `__all__` entry. **Unsafe fix:** always, as importers outside the run keep\nthe old name, and so do string references in unchecked files, and code that loads a module under a name no file of the\nrun defines, such as a test that copies a file's text into a module.\n\nIn a public module of a library, a variable whose name the module offers gets no fix, whether `__all__` lists it or not:\nits name is the API users import, so the report asks for the variable in `__all__` or a rename by hand, and for a listed\nvariable only the rename by hand.\n\nRemoving every underscore, rather than one, keeps `__x` from becoming `_x`, which the rule would report again.\n\n```python report\n__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n```\n\n```python fixed\n__all__ = [\"LIMIT\"]\n\nLIMIT = 3\n```\n\n```python report\nlimit = 3\nprint(limit)\n```\n\n```python fixed\n_limit = 3\nprint(_limit)\n```\n\nNo fix is offered in the cases [module-variable-case](SMP102.html) lists under its fix, such as an importer outside the\nrun, a string that holds the old name, or another module that assigns the variable as an attribute of its module.\n\n### Related rules\n\n[module-variable-case](SMP102.html) checks the case of the same variables. [unexported-public-name](SMP403.html) applies\nthe underscore convention to functions and classes.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#18380](https://github.com/astral-sh/ruff/issues/18380),\n  which asks for a leading underscore on top-level names no other file imports, functions and classes included.\n",
+    "explanation": "Flags module-scope variables whose leading underscore does not match their visibility. A name that no other module\nimports and `__all__` does not list needs one, and a name that `__all__` lists must not have one.\n[module-variable-case](SMP102.html) checks the case.\n\n## Why is this bad?\n\nA leading underscore tells readers whether other modules may use a name\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). Deriving it from `__all__` and from the\nimports of other modules keeps the underscore in line with what the module exports.\n\nThe expected underscore comes from two questions, asked in this order:\n\n1. **Another module in the run imports it**: keep its leading underscore as it is.\n1. **`__all__` lists it**: no leading underscore.\n1. **Neither**: a leading underscore. In a module without `__all__`, every variable counts as private.\n\n## Example\n\n```python report\nLIMIT = 3\n_LOGGER = logging.getLogger(__name__)\n\n__all__ = [\"_LOGGER\"]\n```\n\nUse instead:\n\n```python ok\n_LIMIT = 3\nLOGGER = logging.getLogger(__name__)\n\n__all__ = [\"LOGGER\"]\n```\n\n## Configuration\n\n- [`naming.keep-names`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#naming) in\n  `[tool.simplint]`: module-scope names the rule leaves as they are, such as `keep-names = [\"limit\"]` under\n  `[tool.simplint.naming]`\n\n  ```toml config\n  [tool.simplint.naming]\n  keep-names = [\"limit\"]\n  ```\n\n  ```python ok\n  limit = 3\n  ```\n\n## What it does\n\n### Active on\n\n- **Names listed in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)**: they have\n  no leading underscore, as the module exports them.\n\n  ```python report\n  _limit = 3\n\n  __all__ = [\"_limit\"]\n  ```\n\n- **Names neither listed in `__all__` nor imported by another module**: they have a leading underscore. In a module\n  without `__all__`, every variable counts as private.\n\n  ```python report\n  LIMIT = 3\n  ```\n\nsimplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append(\"name\")` with string literals.\n\n### Exceptions\n\n- **Names another module in the run imports**: the importer already depends on the name, so its underscore stays as it\n  is. A name read off the result of a string-named import call, such as `pytest.importorskip(\"config\")`, counts as\n  imported too.\n\n  ```python ok file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- **Names [module-variable-case](SMP102.html) leaves alone**: the same exceptions apply, since renaming these breaks the\n  program or the tool that reads them by their exact spelling. They include dunder names, class-like names, type aliases\n  from a `type` statement, names also bound by an import, `def` or `class`, aliases of a function the module defines,\n  names bound only as loop targets, annotations alone under `if TYPE_CHECKING:`, the framework names and\n  `naming.keep-names`.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Conventional type parameters**: assignments to `typing.TypeVar`, `typing.TypeVarTuple` and `typing.ParamSpec` keep\n  the declared name when the string argument matches it. Changing `T = TypeVar(\"T\")` to `_T = TypeVar(\"T\")` would make\n  the declaration invalid for type checkers.\n\n  ```python ok\n  from typing import TypeVar\n\n  T = TypeVar(\"T\")\n  ```\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python ok\n  type vector = list[float]\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      pass\n  ```\n\n  ```python ok\n  import typing\n\n  if typing.TYPE_CHECKING:\n      verbosity: int\n  else:\n\n      def __getattr__(name: str) -> object: ...\n  ```\n\n  ```python ok file=tests/test_api.py\n  import pytest\n\n  pytestmark = pytest.mark.slow\n  ```\n\n- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check\n  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 10):\n      msg = \"requires Python 3.10\"\n      raise RuntimeError(msg)\n  ```\n\n- **Names with no valid spelling**: a name of underscores only, such as `_`, or one whose spelling without its\n  underscores is a keyword, such as `_class`, has no name to take, so the rule leaves it alone.\n\n  ```python ok\n  __all__ = [\"_\", \"_class\"]\n\n  _ = print\n  _class = 1\n  ```\n\n### Fix\n\nThe fix adds the leading underscore, or removes every leading underscore, and keeps the rest of the name as written. It\nrenames every use in the file, including the `__all__` entry. **Unsafe fix:** always, as importers outside the run keep\nthe old name, and so do string references in unchecked files, and code that loads a module under a name no file of the\nrun defines, such as a test that copies a file's text into a module.\n\nIn a public module of a library, a variable whose name the module offers gets no fix, whether `__all__` lists it or not:\nits name is the API users import, so the report asks for the variable in `__all__` or a rename by hand, and for a listed\nvariable only the rename by hand.\n\nRemoving every underscore, rather than one, keeps `__x` from becoming `_x`, which the rule would report again.\n\n```python report\n__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n```\n\n```python fixed\n__all__ = [\"LIMIT\"]\n\nLIMIT = 3\n```\n\n```python report\nlimit = 3\nprint(limit)\n```\n\n```python fixed\n_limit = 3\nprint(_limit)\n```\n\nNo fix is offered in the cases [module-variable-case](SMP102.html) lists under its fix, such as an importer outside the\nrun, a string that holds the old name, or another module that assigns the variable as an attribute of its module.\n\n### Related rules\n\n[module-variable-case](SMP102.html) checks the case of the same variables. [unexported-public-name](SMP403.html) applies\nthe underscore convention to functions and classes.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#18380](https://github.com/astral-sh/ruff/issues/18380),\n  which asks for a leading underscore on top-level names no other file imports, functions and classes included.\n",
     "examples": {
       "parsed": [
         {
@@ -9895,33 +9895,24 @@
         },
         {
           "section": "What it does",
-          "line": 164,
-          "end_line": 174,
+          "line": 154,
+          "end_line": 159,
           "config": null,
           "blocks": [
             {
-              "role": "report",
+              "role": "ok",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 164,
-              "end_line": 168,
-              "source": "__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 170,
-              "end_line": 174,
-              "source": "__all__ = [\"LIMIT\"]\n\nLIMIT = 3\n"
+              "line": 154,
+              "end_line": 159,
+              "source": "__all__ = [\"_\", \"_class\"]\n\n_ = print\n_class = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 176,
+          "line": 174,
           "end_line": 184,
           "config": null,
           "blocks": [
@@ -9930,8 +9921,34 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 176,
-              "end_line": 179,
+              "line": 174,
+              "end_line": 178,
+              "source": "__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 180,
+              "end_line": 184,
+              "source": "__all__ = [\"LIMIT\"]\n\nLIMIT = 3\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 186,
+          "end_line": 194,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 186,
+              "end_line": 189,
               "source": "limit = 3\nprint(limit)\n"
             },
             {
@@ -9939,8 +9956,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 181,
-              "end_line": 184,
+              "line": 191,
+              "end_line": 194,
               "source": "_limit = 3\nprint(_limit)\n"
             }
           ]

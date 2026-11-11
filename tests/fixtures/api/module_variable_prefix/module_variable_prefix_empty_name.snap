@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+assertion_line: 137
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:1 SMP404 `_empty_export` is in `__all__`; name it `empty_export` [unsafe fix: Rename `_empty_export` to `empty_export`]
+--- fixed (1 applied, 0 remaining) ---
+__all__ = ["_", "_class", "empty_export"]
+
+_ = print
+_class = 1
+empty_export = 2
