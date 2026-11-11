@@ -81,8 +81,38 @@ target.
 
 ### Fix
 
-The import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. No fix
-is offered when:
+The import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. When a
+comment sits directly above that import, the new import goes above the comment, so the comment stays with its import:
+
+```toml config
+[project]
+requires-python = ">=3.10"
+```
+
+```python report
+import asyncio
+
+# os: the loop runs in the target directory
+import os
+
+
+def check(task):
+    return asyncio.iscoroutinefunction(task), asyncio.run, os.sep
+```
+
+```python fixed
+import asyncio
+import inspect
+
+# os: the loop runs in the target directory
+import os
+
+
+def check(task):
+    return inspect.iscoroutinefunction(task), asyncio.run, os.sep
+```
+
+No fix is offered when:
 
 - `inspect` is already bound to something else in the module, which the import would shadow;
 

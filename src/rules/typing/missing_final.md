@@ -512,6 +512,30 @@ above it is a syntax error.
 # fmt: on
 ```
 
+When a comment sits directly above the statement the import goes before, the import goes above the comment, unless the
+comment starts the file, where a shebang or a licence header stays put:
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+"""Settings."""
+
+# Settings are read at start-up.
+LIMIT = 3
+```
+
+```python fixed
+"""Settings."""
+
+from typing import Final
+
+# Settings are read at start-up.
+LIMIT: Final[int] = 3
+```
+
 A `Final` imported only under [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)
 does not count as bound when annotations are evaluated eagerly, which is before Python 3.14 without
 `from __future__ import annotations`. In that case the fix adds a runtime import.

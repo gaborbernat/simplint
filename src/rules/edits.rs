@@ -263,12 +263,12 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         })
         .collect();
     let (line, insertion) = if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
-        (source.line_start(next.start()), text)
+        (above_comments(checker, next), text)
     } else if let Some((last, _)) = stdlib.last() {
         (source.full_line_end(last.end()), text)
     } else {
         // The statement the import goes before follows the preamble, so the body has one there.
-        (source.line_start(body[preamble].start()), format!("{text}{eol}"))
+        (above_comments(checker, &body[preamble]), format!("{text}{eol}"))
     };
     // A line that starts inside the preamble's last statement would put the import above a docstring sharing its line,
     // which then stops being `__doc__`, or above a `from __future__` import, which is a syntax error.
@@ -276,6 +276,17 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         return None;
     }
     Some(Edit::insertion(insertion, line))
+}
+
+// The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file, where a
+// shebang, encoding or licence header stays put.
+fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
+    let source = checker.source;
+    let mut line_start = source.line_start(stmt.start());
+    while checker.comment_above(TextRange::empty(line_start)).is_some() {
+        line_start = previous_line_start(source, line_start);
+    }
+    if line_start > source.bom_start_offset() { line_start } else { source.line_start(stmt.start()) }
 }
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.

@@ -1215,3 +1215,67 @@ fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
         (0, "Found 1 error (1 fixed, 0 remaining).\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
     );
 }
+
+// The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
+#[test]
+fn chdir_restore_import_goes_above_the_comment_of_the_import_it_precedes() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "block.py",
+            "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "block.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the docstring
+// and not into the docstring.
+#[test]
+fn chdir_restore_import_skips_a_docstring_line_starting_with_hash() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "h.py",
+            "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "h.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A comment on the first line is a header of the file, which the import stays below.
+#[test]
+fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "first.py",
+            "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "first.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
+        )
+    );
+}
