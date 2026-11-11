@@ -33,19 +33,20 @@ fn nested_project_takes_the_project_kind_around_it(kind: &str, reported: bool) {
 }
 
 // A `[tool.simplint]` of a nested project's own replaces the project kind around it.
-#[test]
-fn nested_project_with_its_own_settings_takes_them() {
+#[test_case("[tool.simplint]\nproject-kind = \"application\"\n", true ; "own_application_kind")]
+#[test_case("[tool.simplint]\nproject-kind = \"library\"\n", false ; "own_library_kind")]
+fn nested_project_with_its_own_settings_takes_them(nested: &str, reported: bool) {
     let root = project(&[
         (
             "pyproject.toml",
             "[project]\nname = \"demo\"\nversion = \"0\"\n\n[tool.simplint]\nproject-kind = \"library\"\n",
         ),
-        ("roots/test-a/pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("roots/test-a/pyproject.toml", nested),
         ("roots/test-a/conf.py", ""),
         ("roots/test-a/mod.py", "def helper() -> None:\n    pass\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP903"]).1;
-    assert!(!stdout.contains(" SMP903 "), "{stdout}");
+    let stdout = check(root.path(), &["--select", "SMP409"]).1;
+    assert_eq!(stdout.contains(&common::native("roots/test-a/mod.py")), reported, "{stdout}");
 }
 
 // A nested project's documentation names its own definitions as used, and the documentation of the run's project does

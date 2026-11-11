@@ -73,18 +73,20 @@ fn class_named_by_its_own_module_doctest_is_used(docstring: &str, reported: bool
 // A doctest reads a name off a module, which the call-site rules must see as a use, yet it imports nothing for the
 // other modules: a function only a doctest calls is not reported as unread, and a name a doctest reads is not imported
 // by the others.
-#[test]
-fn doctest_reads_are_opaque_to_call_sites_but_not_imports() {
+#[test_case(">>> q.calc.ratio(3)\n1.5", "" ; "doctest_reads_ratio")]
+#[test_case(">>> q.calc.total(3)\n3", "`ratio`" ; "doctest_reads_total")]
+fn doctest_reads_are_opaque_to_call_sites_but_not_imports(read: &str, unused: &str) {
     let root = project(&[
         ("q/__init__.py", ""),
         (
             "q/calc.py",
             "def total(value):\n    ratio(value)\n    return value\n\n\ndef ratio(value):\n    return value / 2\n",
         ),
-        ("q/guide.py", "\"\"\"Guide.\n\n>>> import q.calc\n>>> q.calc.ratio(3)\n1.5\n\"\"\"\n"),
+        ("q/guide.py", &format!("\"\"\"Guide.\n\n>>> import q.calc\n{read}\n\"\"\"\n")),
         ("q/main.py", "from q.calc import total\n\nprint(total(1))\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP411"]).1, common::PASSED);
+    let unread = check(root.path(), &["--select", "SMP411"]).1;
+    assert_eq!((unread == common::PASSED, unread.contains(unused)), (unused.is_empty(), true), "{unread}");
     let stdout = check(root.path(), &["--select", "SMP401"]).1;
     assert!(stdout.contains("`total` is imported by other modules"), "{stdout}");
     assert!(!stdout.contains("`ratio`"), "{stdout}");

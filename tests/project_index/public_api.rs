@@ -251,11 +251,16 @@ fn excluded_init_module_still_reexports() {
 }
 
 // A module read from standard input has no index, so its own `__all__` tells what it offers. Ruff's D103 reports the
-// undocumented `run` of such a module, so SMP903 leaves it to Ruff.
-#[test]
-fn standard_input_reads_its_own_exports() {
+// undocumented `run` of such a module, so SMP903 leaves it to Ruff while Ruff runs it.
+#[test_case("\"D103\"", common::PASSED ; "left_to_d103")]
+#[test_case(
+    "",
+    "pkg/mod.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n" ;
+    "reported_without_d103"
+)]
+fn standard_input_reads_its_own_exports(select: &str, expected: &str) {
     let root = project(&[
-        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nselect = [\"D103\"]\n")),
+        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nselect = [{select}]\n")),
         ("pkg/__init__.py", ""),
     ]);
     let stdout = check_with_stdin(
@@ -264,7 +269,7 @@ fn standard_input_reads_its_own_exports() {
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
-    assert_eq!(stdout, common::PASSED);
+    assert_eq!(stdout, common::native(expected));
 }
 
 // A class a listed function returns is library API, so its docstring and its method's docstring stay when SMP901's
