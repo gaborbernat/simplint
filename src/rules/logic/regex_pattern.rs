@@ -579,6 +579,9 @@ pub(crate) struct Scan {
 pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
     let verbose = has_verbose_flag(pattern) || verbose?;
     let mut scan = Scan { groups: Vec::new(), refers: false, named: false, constructs: 0, comments: 0, verbose };
+    // A scoped `(?x:...)` changes verbose mode for its own group only, so a `)` restores the mode around that group.
+    let mut outer: Vec<bool> = Vec::new();
+    let mut inside = verbose;
     let mut index = 0;
     while index < pattern.len() {
         let rest = &pattern[index..];
@@ -593,7 +596,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
                 scan.constructs += 1;
                 class_length(rest)?
             }
-            [b'#', ..] if verbose => {
+            [b'#', ..] if inside => {
                 scan.comments += 1;
                 rest.iter().position(|&byte| byte == b'\n').unwrap_or(rest.len())
             }
@@ -605,6 +608,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
             [b'(', b'?', b'(', ..] => {
                 scan.refers = true;
                 scan.constructs += 1;
+                outer.push(inside);
                 rest.iter().position(|&byte| byte == b')')? + 1
             }
             [b'(', b'?', b'P', b'=', ..] => {
@@ -614,6 +618,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
             [b'(', b'?', b'P', b'<', ..] | [b'(', b'?', b'<', b'a'..=b'z' | b'A'..=b'Z' | b'_', ..] => {
                 scan.named = true;
                 scan.constructs += 1;
+                outer.push(inside);
                 2
             }
             // `(?i)` sets flags for the whole pattern, which is not a group; `(?i:...)` and `(?:...)` are.
@@ -623,16 +628,20 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
                     3 + flags
                 } else {
                     scan.constructs += 1;
+                    outer.push(inside);
+                    inside = scoped_verbose(&rest[2..2 + flags], inside);
                     2
                 }
             }
             [b'(', ..] => {
                 scan.groups.push(index);
                 scan.constructs += 1;
+                outer.push(inside);
                 1
             }
             [b')', ..] => {
                 scan.constructs += usize::from(repeats(&rest[1..]));
+                inside = outer.pop().unwrap_or(inside);
                 1
             }
             [b'|', ..] => {
@@ -643,6 +652,21 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
         };
     }
     Some(scan)
+}
+
+// Whether verbose mode is on inside a group whose flags are `on-off`, as `(?x:` turns it on and `(?-x:` turns it off.
+fn scoped_verbose(flags: &[u8], verbose: bool) -> bool {
+    let (on, off) = match flags.iter().position(|&byte| byte == b'-') {
+        Some(dash) => (&flags[..dash], &flags[dash + 1..]),
+        None => (flags, &flags[flags.len()..]),
+    };
+    if off.contains(&b'x') {
+        false
+    } else if on.contains(&b'x') {
+        true
+    } else {
+        verbose
+    }
 }
 
 // The length of the character class at the start of `class`. A `]` right after its opening `[` or `[^` is a member.

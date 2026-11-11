@@ -243,6 +243,34 @@ keyword-only parameter always qualifies, and a positional one only when no param
 the default of `first` in `def pair(first=1, second=2)` lets `second` qualify on the next pass, so the fixed output
 below drops both.
 
+A default with a comment in it is reported without a fix, since deleting the default would delete the comment too.
+
+```python report
+def connect(
+    host,
+    timeout=(  # seconds, as the gateway counts them
+        30
+    ),
+):
+    return host, timeout
+
+
+connect("db", 5)
+```
+
+```python fixed
+def connect(
+    host,
+    timeout=(  # seconds, as the gateway counts them
+        30
+    ),
+):
+    return host, timeout
+
+
+connect("db", 5)
+```
+
 **Unsafe fix:** the fix relies on the calls the run shows, so a call from outside the run may break.
 
 ```python report

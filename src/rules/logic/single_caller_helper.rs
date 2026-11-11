@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::cognitive_complexity;
-use crate::rules::logic::forwarding_function::forward_target;
+use crate::rules::logic::forwarding_function::{forward_target, is_called};
 use crate::rules::testing::{conditionals, is_test_module_function};
 use crate::syntax::{Visibility, is_repeating_expr, last_segment};
 
@@ -44,11 +44,11 @@ fn check_helper<'a>(
     let [reference] = checker.semantic().references_to(name) else {
         return;
     };
-    if !checker.source[reference.range.end().to_usize()..].trim_start().starts_with('(') {
+    if !is_called(checker, reference.range) {
         return;
     }
     // A helper that only forwards its arguments is forwarding-function's (SMP501), which asks to call the target instead.
-    if forward_target(checker, helper, &[reference.range]).is_some() {
+    if forward_target(checker, helper, &[reference.range], None).is_some() {
         return;
     }
     let defs =

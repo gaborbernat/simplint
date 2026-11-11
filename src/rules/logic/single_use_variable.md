@@ -157,6 +157,26 @@ def total_price(prices: list[float]) -> str:
       print(f"total={len(items)!r}")
   ```
 
+- **A raw f-string whose debug text holds its quote**: a raw f-string keeps the backslash that an escaped quote would
+  need, so the debug text cannot be written in it. The read is reported, but no fix is offered.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py312"
+  ```
+
+  ```python report
+  def show(items: list[str]) -> None:
+      total = len(items)
+      print(rf"{"k" * total=}")
+  ```
+
+  ```python fixed
+  def show(items: list[str]) -> None:
+      total = len(items)
+      print(rf"{"k" * total=}")
+  ```
+
 - **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so
   `f"[{inner}]"` with `inner = f"<{value}>"` becomes `f"[<{value}>]"` rather than a nested f-string.
 
@@ -362,6 +382,21 @@ def total_price(prices: list[float]) -> str:
   def quote(value: str) -> str:
       quoted = value.replace("'", "''")
       return f"'{quoted}'"
+  ```
+
+- **Before Python 3.12, a value whose strings hold the quote of any f-string around the field**: the inlined text joins
+  the field's own f-string and each one that encloses it, and Python before 3.12 rejects a quote that an enclosing
+  f-string already uses inside a replacement field. From 3.12 on, the same value is inlined.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python ok
+  def quoted(suffix: str) -> str:
+      label = 'say "hi"'
+      return f"{f'{label}'}" + suffix
   ```
 
 - **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.

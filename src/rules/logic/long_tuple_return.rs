@@ -1,4 +1,5 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_parser::parse_expression;
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
@@ -41,8 +42,11 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     );
 }
 
-// An annotation of a tuple of any length, `tuple[T, ...]`.
+// An annotation of a tuple of any length, `tuple[T, ...]`, written out or quoted, as a forward reference is.
 fn is_sequence(walker: &Walker, annotation: &Expr) -> bool {
+    if let Expr::StringLiteral(literal) = annotation {
+        return parse_expression(literal.value.to_str()).is_ok_and(|parsed| is_sequence(walker, parsed.expr()));
+    }
     let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = annotation else {
         return false;
     };

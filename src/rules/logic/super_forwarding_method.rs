@@ -1,5 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::body_without_leading_docstring;
+use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
@@ -8,7 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{delete_statement, lines_with_trailing_blanks};
 use crate::rules::logic::kinds::class_named;
-use crate::syntax::is_name;
+use crate::syntax::{alias_binding, is_name};
 
 pub fn super_forwarding_method(checker: &Checker) {
     for stmt in checker.body() {
@@ -40,8 +41,11 @@ fn check_method<'a>(checker: &Checker<'a>, body: &[Stmt], parent: &'a ast::StmtC
     {
         return;
     }
-    // Another binding of the name would take over from the method once it is deleted.
-    if body.iter().filter(|stmt| binds(stmt, name)).count() != 1 {
+    // Once the method is deleted, the class body looks the name up in the globals, so another binding of the name
+    // there, or a read of it, would change what it gets.
+    let mut uses = ClassBodyUses { name, method: function.range, found: false };
+    uses.visit_body(body);
+    if uses.found {
         return;
     }
     // The parent's method must take the same arguments: a forwarder for an abstract method makes the class concrete,
@@ -195,5 +199,75 @@ fn binds(stmt: &Stmt, name: &str) -> bool {
         Stmt::Assign(assign) => assign.targets.iter().any(|target| is_name(target, name)),
         Stmt::AnnAssign(assign) => is_name(&assign.target, name),
         _ => false,
+    }
+}
+
+// Whether the class body binds or reads `name` outside the body of the `method` being deleted. The bodies of other
+// methods and of nested scopes run in their own scope, which does not see the class body's names, so they are left out.
+struct ClassBodyUses<'n> {
+    name: &'n str,
+    method: TextRange,
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for ClassBodyUses<'_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(function) => {
+                if function.range == self.method {
+                    return;
+                }
+                self.found |= function.name.as_str() == self.name;
+                for decorator in &function.decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                self.visit_parameters(&function.parameters);
+                if let Some(returns) = &function.returns {
+                    self.visit_annotation(returns);
+                }
+            }
+            Stmt::ClassDef(class) => {
+                self.found |= class.name.as_str() == self.name;
+                for decorator in &class.decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(arguments) = &class.arguments {
+                    self.visit_arguments(arguments);
+                }
+            }
+            Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+                self.found |= names.iter().any(|alias| alias_binding(alias).split('.').next() == Some(self.name));
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Name(name) => self.found |= name.id.as_str() == self.name,
+            Expr::Lambda(lambda) => {
+                if let Some(parameters) = &lambda.parameters {
+                    self.visit_parameters(parameters);
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name, .. }) = handler;
+        self.found |= name.as_ref().is_some_and(|bound| bound.as_str() == self.name);
+        visitor::walk_except_handler(self, handler);
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
+        let captured = match pattern {
+            ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
+            | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
+            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
+            _ => None,
+        };
+        self.found |= captured.is_some_and(|bound| bound.as_str() == self.name);
+        visitor::walk_pattern(self, pattern);
     }
 }

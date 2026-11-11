@@ -264,7 +264,7 @@ be a plain `def` taking the same parameters under the same names, without defaul
   ```
 
 - **A name bound more than once in the class body**: the method that counts is the last binding, and deleting one of the
-  others would change it.
+  others would change it. Imports and bindings under an `if` or `try` count too.
 
   ```python ok
   class Base:
@@ -277,6 +277,23 @@ be a plain `def` taking the same parameters under the same names, without defaul
           return super().load(name)
 
       load = None
+  ```
+
+- **A name the class body reads**: once the method is gone, the class body looks the name up in the module, so a read
+  such as `label = load` in the class body would fail or pick up another value. A call in another method's body runs
+  later, in its own scope, so it does not count.
+
+  ```python ok
+  class Base:
+      def load(self, name):
+          return name.encode()
+
+
+  class Store(Base):
+      def load(self, name):
+          return super().load(name)
+
+      label = load
   ```
 
 - **A class nested in a function or another class**: its base name may refer to a local class rather than the module's.

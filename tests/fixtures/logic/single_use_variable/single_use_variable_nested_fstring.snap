@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+7:5 SMP504 `stripped` is used once, right below; inline its value [fix: Inline `stripped`]
+--- fixed (2 applied, 0 remaining) ---
+def quoted(suffix: str) -> str:
+    return f"{f'say "hi"'}" + suffix
+
+
+def other(value: str, suffix: str) -> str:
+    return value.strip() + suffix

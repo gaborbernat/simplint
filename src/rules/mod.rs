@@ -55,6 +55,8 @@ pub(crate) struct FileState<'a> {
     debug_fields: OnceCell<edits::DebugFields<'a>>,
     // The `def`s that implement an `@overload` set, which Ruff's ANN401 leaves unchecked.
     overload_implementations: OnceCell<FxHashSet<TextSize>>,
+    // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
+    call_ends: OnceCell<FxHashSet<TextSize>>,
 }
 
 impl<'a> FileState<'a> {
@@ -147,12 +149,36 @@ impl<'a> FileState<'a> {
         self.overload_implementations.get_or_init(|| typing::imprecise_annotation::overload_implementations(checker))
     }
 
+    pub(crate) fn call_ends(&self, checker: &Checker<'a>) -> &FxHashSet<TextSize> {
+        self.call_ends.get_or_init(|| {
+            let mut ends = CallEnds::default();
+            ends.visit_body(checker.body());
+            ends.ends
+        })
+    }
+
     fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
         self.debug_fields.get_or_init(|| {
             let mut finder = edits::DebugFields::default();
             finder.visit_body(checker.body());
             finder
         })
+    }
+}
+
+// The ends of the callees of the calls in a file. A name or an attribute ends where its reference does, so a reference
+// is the callee of a call when its end is one of these, wherever the call's `(` sits.
+#[derive(Default)]
+struct CallEnds {
+    ends: FxHashSet<TextSize>,
+}
+
+impl<'a> Visitor<'a> for CallEnds {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Call(call) = expr {
+            self.ends.insert(call.func.end());
+        }
+        visitor::walk_expr(self, expr);
     }
 }
 

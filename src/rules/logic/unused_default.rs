@@ -123,13 +123,13 @@ fn report_default(
         param_name(param),
         checker.text(range)
     );
-    let fix = removable.then(|| {
-        let start = match parameter.annotation.as_deref() {
-            Some(annotation) => checker.parenthesized_range(annotation, parameter.into()).end(),
-            None => parameter.name.range.end(),
-        };
-        Fix::unsafe_edit(Edit::range_deletion(TextRange::new(start, range.end())))
-    });
+    let start = match parameter.annotation.as_deref() {
+        Some(annotation) => checker.parenthesized_range(annotation, parameter.into()).end(),
+        None => parameter.name.range.end(),
+    };
+    let removed = TextRange::new(start, range.end());
+    // A comment in the default goes with it, so the fix would delete a note the code keeps.
+    let fix = (removable && !checker.has_comment_in(removed)).then(|| Fix::unsafe_edit(Edit::range_deletion(removed)));
     checker.report_fix(
         Rule::UnusedDefault,
         range,

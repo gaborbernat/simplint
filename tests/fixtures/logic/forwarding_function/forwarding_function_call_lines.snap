@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:5 SMP501 `_make_a` only forwards to `Path`; call `Path` at its call sites instead
+18:5 SMP501 `_make_b` only forwards to `Path`; call `Path` at its call sites instead
+26:5 SMP501 `_make_c` only forwards to `Path`; call `Path` at its call sites instead
+35:5 SMP501 `_make_d` only forwards to `Path`; call `Path` at its call sites instead

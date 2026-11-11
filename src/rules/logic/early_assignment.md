@@ -146,6 +146,27 @@ that statement comes at least two statements below the assignment in the same bl
       return count + len(items)
   ```
 
+- **A comment on the line above the assignment**: the comment explains the assignment, and it would stay behind when the
+  assignment moves. The assignment is still reported, but no fix is offered.
+
+  ```python report
+  def run(items, prepare, log, send):
+      # Retries allowed before giving up: the upstream API drops one call in three.
+      limit = 3
+      prepare(items)
+      log(items)
+      return send(items, limit)
+  ```
+
+  ```python fixed
+  def run(items, prepare, log, send):
+      # Retries allowed before giving up: the upstream API drops one call in three.
+      limit = 3
+      prepare(items)
+      log(items)
+      return send(items, limit)
+  ```
+
 - **A constant assigned again between the assignment and its use**: the two constants would take turns moving past each
   other from one fix round to the next, so only the constant nearest its use is reported, and that one moves first.
 

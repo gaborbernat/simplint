@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP505 `_fill_a` is called only from `load`, and inlining keeps `load` short; inline it

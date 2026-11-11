@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `count` is used once, right below; inline its value
+7:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+12:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+--- fixed (2 applied, 1 remaining) ---
+def quoted_raw(suffix):
+    count = 1
+    print(rf"{"k" * count=}", suffix)
+
+
+def quoted(suffix):
+    print(f"\"k\" * count={"k" * 1!r}", suffix)
+
+
+def plain_raw(suffix):
+    print(rf"count={1!r}", suffix)

@@ -159,7 +159,14 @@ fn inlined_replacement(
     let value = assign.value.as_ref();
     let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
     if let Some(field) = reading.bare_field
-        && let Some(text) = spliced_text(checker, value, reading.field_fstring, reading.in_format_spec, before_312)
+        && let Some(text) = spliced_text(
+            checker,
+            value,
+            reading.field_fstring,
+            &reading.fstring_quotes,
+            reading.in_format_spec,
+            before_312,
+        )
     {
         return Some((field, text));
     }
@@ -213,6 +220,7 @@ fn spliced_text(
     checker: &Checker,
     value: &Expr,
     outer: Option<ast::FStringFlags>,
+    quotes: &[Quote],
     in_format_spec: bool,
     before_312: bool,
 ) -> Option<String> {
@@ -222,7 +230,7 @@ fn spliced_text(
     }
     let text: String = fstring_body_parts(checker, value)?.into_iter().map(|(_, text)| text).collect();
     let splices_wrongly = text.contains(outer.quote_style().as_char())
-        || (before_312 && text.contains('\\'))
+        || (before_312 && (text.contains('\\') || quotes.iter().any(|quote| text.contains(quote.as_char()))))
         || (in_format_spec && text.contains(['{', '}']));
     (!splices_wrongly).then_some(text)
 }

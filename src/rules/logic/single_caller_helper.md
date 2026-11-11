@@ -99,6 +99,21 @@ a caller's `try` block. These counts are conservative estimates, so a caller the
       return first.strip()
   ```
 
+- **A call whose `(` starts a later line**: the call counts like one on a single line, so its helper is reported when
+  that is the only call.
+
+  ```python report
+  def load(name):
+      return [
+          _fill_a(name)  # why
+      ]
+
+
+  def _fill_a(name):
+      value = name.strip()
+      return value.upper()
+  ```
+
 ### Exceptions
 
 - **Helpers that only forward their arguments**: [forwarding-function](SMP501.html) reports them, asking to call the
@@ -142,6 +157,19 @@ a caller's `try` block. These counts are conservative estimates, so a caller the
   def _parse_header(text: str) -> str:
       first = text.splitlines()[0]
       return first.strip()
+  ```
+
+- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the helper is only passed
+  on there, not called.
+
+  ```python ok
+  def register(table: dict[str, str], key: str) -> None:
+      table[key] = _build
+      (table)
+
+
+  def _build(key: str) -> str:
+      return key.strip()
   ```
 
 - **Decorated helpers**: a decorator wraps the helper, so the call does not run its body.

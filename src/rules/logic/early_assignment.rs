@@ -165,11 +165,13 @@ fn check_assign<'a>(
     if body[index + 1..index + 1 + offset].iter().any(is_constant_assign) {
         return;
     }
+    // A comment above the assignment would stay where it is and sit above the statement that follows it.
+    let fix = checker.comment_above(assign).is_none().then(|| move_fix(checker, assign, next)).flatten();
     checker.report_fix(
         Rule::EarlyAssignment,
         assign.range,
         format!("`{name}` is assigned above the statements that do not use it; assign it just before its first use"),
-        move_fix(checker, assign, next),
+        fix,
         "Move the assignment down",
     );
 }

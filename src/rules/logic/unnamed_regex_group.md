@@ -248,6 +248,30 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
       )
   ```
 
+- **A parenthesis in a verbose comment of a scoped group**: `(?x:...)` turns verbose mode on for its own group only, so
+  its `#` comment hides the parenthesis, and the mode goes back after the group's `)`. A `(?-x:...)` group turns it off,
+  so there its `#` is text and its parentheses count.
+
+  ```python ok
+  import re
+
+
+  def is_version(text):
+      return re.match(
+          r"""(?x:(\d+)  # the major (or the minor) number
+      )""",
+          text,
+      )
+  ```
+
+  ```python report
+  import re
+
+
+  def pair(text):
+      return re.match(r"(?-x:(a) # (b))", text, re.VERBOSE)
+  ```
+
 - **A pattern that is not a literal**, such as an f-string or a name, is not read.
 
   ```python ok
