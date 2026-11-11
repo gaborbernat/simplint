@@ -10,21 +10,6 @@ use super::FileId;
 use super::classes::{ClassGraph, Reexports, acyclic_order};
 use super::resolve::{ClassKey, ModuleFacts};
 
-fn expand_tuples(caught: &mut Vec<ClassKey>, tuples: &FxHashMap<ClassKey, Vec<ClassKey>>) {
-    let mut pending = std::mem::take(caught);
-    let mut expanded: FxHashSet<ClassKey> = FxHashSet::default();
-    while let Some(key) = pending.pop() {
-        match tuples.get(&key) {
-            Some(elements) => {
-                if expanded.insert(key.clone()) {
-                    pending.extend(elements.iter().cloned());
-                }
-            }
-            None => caught.push(key),
-        }
-    }
-}
-
 // A warning is not reported, since a warning is raised to be seen, not caught.
 pub(super) fn exception_classes(
     modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
@@ -95,6 +80,27 @@ pub(super) fn exception_classes(
     (uncaught, types)
 }
 
+fn expand_tuples(caught: &mut Vec<ClassKey>, tuples: &FxHashMap<ClassKey, Vec<ClassKey>>) {
+    let mut pending = std::mem::take(caught);
+    let mut expanded: FxHashSet<ClassKey> = FxHashSet::default();
+    while let Some(key) = pending.pop() {
+        match tuples.get(&key) {
+            Some(elements) => {
+                if expanded.insert(key.clone()) {
+                    pending.extend(elements.iter().cloned());
+                }
+            }
+            None => caught.push(key),
+        }
+    }
+}
+
+fn is_exception_name(module: &str, name: &str, minor: u8) -> bool {
+    let standard = is_stdlib_root(minor, module);
+    is_exception(name, minor)
+        || standard && ["Error", "Exception", "Warning"].iter().any(|suffix| name.ends_with(suffix))
+}
+
 // A file that reaches a star-import cycle is walked, since a cycle leaves the file out of its own names.
 fn star_exception_names<'a>(
     starred: &FxHashMap<FileId, Vec<FileId>>,
@@ -134,10 +140,4 @@ fn starred_exception_names<'a>(
         }
     }
     names
-}
-
-fn is_exception_name(module: &str, name: &str, minor: u8) -> bool {
-    let standard = is_stdlib_root(minor, module);
-    is_exception(name, minor)
-        || standard && ["Error", "Exception", "Warning"].iter().any(|suffix| name.ends_with(suffix))
 }

@@ -212,6 +212,13 @@ fn blocks(
         .collect()
 }
 
+struct Block {
+    first: usize,
+    last: usize,
+    longest: usize,
+    others: Vec<(FileId, u32)>,
+}
+
 // A set that several windows of the block share is counted once.
 fn sharers(file: FileId, block: &Block, windows: &[(usize, usize)], sets: &[Vec<FileId>], window: usize) -> usize {
     let first = windows.partition_point(|(start, _)| *start < block.first);
@@ -225,11 +232,4 @@ fn sharers(file: FileId, block: &Block, windows: &[(usize, usize)], sets: &[Vec<
     let mut others: FxHashSet<FileId> = picked.iter().flat_map(|set| sets[*set].iter().copied()).collect();
     others.remove(&file);
     others.len()
-}
-
-struct Block {
-    first: usize,
-    last: usize,
-    longest: usize,
-    others: Vec<(FileId, u32)>,
 }

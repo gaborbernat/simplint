@@ -145,14 +145,6 @@ impl RunWide {
         hasher.finish()
     }
 
-    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
-        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
-        let counts =
-            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
-        let only_other = others.keys().filter(|word| !own.contains_key(*word));
-        counts.chain(only_other.map(String::as_str))
-    }
-
     // Low protocol pickling concerns every dataclass, so its change names `dataclass`.
     pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
@@ -179,6 +171,14 @@ impl RunWide {
             .chain(pickling)
             .chain(self.string_word_changes(other))
             .collect()
+    }
+
+    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
+        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
+        let counts =
+            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
+        let only_other = others.keys().filter(|word| !own.contains_key(*word));
+        counts.chain(only_other.map(String::as_str))
     }
 }
 

@@ -80,16 +80,16 @@ pub(super) struct RunModules<'a> {
     pub(super) members: &'a FxHashMap<FileId, Members>,
 }
 
+impl PartialEq for RunModules<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.by_alias() == other.by_alias()
+    }
+}
+
 impl<'a> RunModules<'a> {
     fn by_alias(&self) -> Option<BTreeMap<&'a str, &'a Members>> {
         self.modules
             .map(|modules| modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect())
-    }
-}
-
-impl PartialEq for RunModules<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.by_alias() == other.by_alias()
     }
 }
 
@@ -203,14 +203,14 @@ impl CacheKey for FileIndex<'_> {
 }
 
 impl<'a> FileIndex<'a> {
-    pub fn is_imported(&self, name: &str) -> bool {
-        self.answers.imported.is_some_and(|names| names.contains(name))
-    }
-
     // Whether another module of the run imports the name, as opposed to only an entry point naming it, which the host
     // loads without an import.
     pub fn is_imported_by_others(&self, name: &str) -> bool {
         self.is_imported(name) && !self.answers.entry_only.is_some_and(|names| names.contains(name))
+    }
+
+    pub fn is_imported(&self, name: &str) -> bool {
+        self.answers.imported.is_some_and(|names| names.contains(name))
     }
 
     pub fn string_word_count(&self, word: &str) -> u32 {
@@ -278,6 +278,11 @@ impl<'a> FileIndex<'a> {
         self.answers.test_only.is_some_and(|names| names.contains(name)) && !self.is_read_unnamed(name)
     }
 
+    fn is_read_unnamed(&self, name: &str) -> bool {
+        (self.answers.star_imported && Visibility::of(name) == Visibility::Public)
+            || self.project.wide.module_reads.contains(name)
+    }
+
     pub fn is_star_import_source(&self) -> bool {
         self.answers.star_source
     }
@@ -318,11 +323,6 @@ impl<'a> FileIndex<'a> {
         self.is_imported(name)
             || self.answers.referenced.is_some_and(|names| names.contains(name))
             || self.is_read_unnamed(name)
-    }
-
-    fn is_read_unnamed(&self, name: &str) -> bool {
-        (self.answers.star_imported && Visibility::of(name) == Visibility::Public)
-            || self.project.wide.module_reads.contains(name)
     }
 
     pub fn is_used_elsewhere(&self, name: &str) -> bool {

@@ -167,10 +167,6 @@ impl ImportResolver {
     }
 }
 
-pub(super) fn normalized(path: &Path) -> PathBuf {
-    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
-}
-
 pub(super) struct UnreachedPath {
     pub(super) package: PathBuf,
     pub(super) last: String,
@@ -182,67 +178,9 @@ pub(super) struct Resolved<F> {
     pub(super) unreached: Vec<UnreachedPath>,
 }
 
-impl<F> Resolved<F> {
-    fn map_files<G>(self, mut to: impl FnMut(F) -> G) -> Resolved<G> {
-        Resolved {
-            files: self.files.into_iter().map(|(file, names)| (to(file), names)).collect(),
-            unreached: self.unreached,
-        }
-    }
-}
-
 pub(super) type ClassKey = (FileId, String);
 
 pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
-
-fn class_tuples<'f>(
-    tuples: &'f [(String, Vec<(String, String)>)],
-    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
-) -> Vec<(String, Vec<(PathBuf, String)>)> {
-    tuples
-        .iter()
-        .map(|(name, classes)| {
-            let classes = classes.iter().filter_map(|(module, class)| Some((resolved(module)?, class.clone())));
-            (name.clone(), classes.collect())
-        })
-        .collect()
-}
-
-fn named_modules<'f>(
-    names: &'f [(String, String)],
-    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
-    own: &Path,
-) -> Vec<(String, String, PathBuf)> {
-    names
-        .iter()
-        .filter_map(|(bound, module)| Some((bound.clone(), module.clone(), resolved(module)?)))
-        .filter(|(_, _, file)| file != own)
-        .collect()
-}
-
-// A module that resolves to no file, such as `distutils.log` where the standard library has no `distutils` and the
-// run shims its own `log`, may be the run's file of the same last name, so its calls read that file.
-fn constructor_reads<'f>(
-    module: &'f str,
-    uses: &[NameUse],
-    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
-    found: &impl Fn(&str) -> bool,
-    run: RunFiles,
-) -> Vec<(PathBuf, Vec<NameUse>)> {
-    if let Some(file) = resolved(module) {
-        return vec![(file, uses.to_vec())];
-    }
-    let reads: Vec<NameUse> =
-        uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
-    if reads.is_empty() {
-        return Vec::new();
-    }
-    let last = module.rsplit('.').next().unwrap_or(module);
-    match run.namesakes.get(last) {
-        Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
-        _ => Vec::new(),
-    }
-}
 
 #[derive(Clone, Copy)]
 pub(super) struct RunFiles<'a> {
@@ -271,6 +209,15 @@ pub(super) struct ModuleFacts<F> {
     pub(super) runtime: Vec<(F, TextRange)>,
     pub(super) computed_writes: Vec<F>,
     pub(super) written: Vec<(F, Vec<String>)>,
+}
+
+impl<F> Resolved<F> {
+    fn map_files<G>(self, mut to: impl FnMut(F) -> G) -> Resolved<G> {
+        Resolved {
+            files: self.files.into_iter().map(|(file, names)| (to(file), names)).collect(),
+            unreached: self.unreached,
+        }
+    }
 }
 
 impl<F> ModuleFacts<F> {
@@ -426,17 +373,18 @@ impl ModuleFacts<PathBuf> {
     }
 }
 
-// Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
-// with Python, whose stub has no file on disk. The newest Python's standard library decides, so a module older Pythons
-// ship and the newest lacks, such as `distutils`, is one a run file of its name may shadow.
-pub(super) fn is_module_found<'db>(
+// The source file a module name imports: the `.py` file even when a stub sits next to it, since that is where its names
+// are defined; a module with only a stub counts as its `.py` path, which the stub declarations also use.
+pub(super) fn resolve<'db>(
     db: &'db ModuleDb,
     environment: ResolverEnvironment<'db>,
     importing: Option<File>,
     module: &str,
-) -> bool {
-    is_stdlib_root(PythonVersion::latest().minor, module)
-        || ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some())
+) -> Option<PathBuf> {
+    let name = ModuleName::new(module)?;
+    let module = locate(db, environment, importing, &name)?;
+    let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
+    Some(normalized(&path.with_extension("py")))
 }
 
 fn locate<'db>(
@@ -453,18 +401,21 @@ fn locate<'db>(
     }
 }
 
-// The source file a module name imports: the `.py` file even when a stub sits next to it, since that is where its names
-// are defined; a module with only a stub counts as its `.py` path, which the stub declarations also use.
-pub(super) fn resolve<'db>(
+pub(super) fn normalized(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+// Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
+// with Python, whose stub has no file on disk. The newest Python's standard library decides, so a module older Pythons
+// ship and the newest lacks, such as `distutils`, is one a run file of its name may shadow.
+pub(super) fn is_module_found<'db>(
     db: &'db ModuleDb,
     environment: ResolverEnvironment<'db>,
     importing: Option<File>,
     module: &str,
-) -> Option<PathBuf> {
-    let name = ModuleName::new(module)?;
-    let module = locate(db, environment, importing, &name)?;
-    let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
-    Some(normalized(&path.with_extension("py")))
+) -> bool {
+    is_stdlib_root(PythonVersion::latest().minor, module)
+        || ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some())
 }
 
 fn written_names<'f>(
@@ -523,6 +474,55 @@ fn star_targets<'f>(
         }
     }
     (stars, unresolved)
+}
+
+// A module that resolves to no file, such as `distutils.log` where the standard library has no `distutils` and the
+// run shims its own `log`, may be the run's file of the same last name, so its calls read that file.
+fn constructor_reads<'f>(
+    module: &'f str,
+    uses: &[NameUse],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    found: &impl Fn(&str) -> bool,
+    run: RunFiles,
+) -> Vec<(PathBuf, Vec<NameUse>)> {
+    if let Some(file) = resolved(module) {
+        return vec![(file, uses.to_vec())];
+    }
+    let reads: Vec<NameUse> =
+        uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
+    if reads.is_empty() {
+        return Vec::new();
+    }
+    let last = module.rsplit('.').next().unwrap_or(module);
+    match run.namesakes.get(last) {
+        Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn named_modules<'f>(
+    names: &'f [(String, String)],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    own: &Path,
+) -> Vec<(String, String, PathBuf)> {
+    names
+        .iter()
+        .filter_map(|(bound, module)| Some((bound.clone(), module.clone(), resolved(module)?)))
+        .filter(|(_, _, file)| file != own)
+        .collect()
+}
+
+fn class_tuples<'f>(
+    tuples: &'f [(String, Vec<(String, String)>)],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+) -> Vec<(String, Vec<(PathBuf, String)>)> {
+    tuples
+        .iter()
+        .map(|(name, classes)| {
+            let classes = classes.iter().filter_map(|(module, class)| Some((resolved(module)?, class.clone())));
+            (name.clone(), classes.collect())
+        })
+        .collect()
 }
 
 // The files each runtime import statement runs, with the statement's range. A `from` import reads each name as a

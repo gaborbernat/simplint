@@ -328,51 +328,53 @@ impl Project {
     }
 }
 
-#[derive(Clone, Copy)]
-enum Origin {
-    Test,
-    Other,
+fn interned_inputs(
+    resolver: &mut ImportResolver,
+    inputs: &IndexInputs,
+) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
+    let test_modules = inputs.test_modules.iter().map(|path| resolver.intern(path)).collect();
+    let roles = inputs.roles.iter().map(|(path, role)| (resolver.intern(path), *role)).collect();
+    (test_modules, roles)
 }
 
-#[derive(Default)]
-struct Uses {
-    imported: FxHashMap<FileId, FxHashSet<String>>,
-    referenced: FxHashMap<FileId, FxHashSet<String>>,
-    // Doctests' reads are in `referenced` but not here, as reading a name patches nothing.
-    stored_references: FxHashMap<FileId, FxHashSet<String>>,
-    from_tests: FxHashMap<FileId, FxHashSet<String>>,
-    from_others: FxHashMap<FileId, FxHashSet<String>>,
-}
-
-impl Uses {
-    fn import(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.imported.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn reference(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.referenced.entry(file).or_default().extend(names.iter().cloned());
-        self.stored_references.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn read(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.referenced.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn bucket(&mut self, file: FileId, names: &[String], origin: Origin) {
-        let bucket = match origin {
-            Origin::Test => &mut self.from_tests,
-            Origin::Other => &mut self.from_others,
-        };
-        bucket.entry(file).or_default().extend(names.iter().cloned());
-    }
-
-    fn reexport(&mut self, stars: &[(FileId, FileId)], sources: &FxHashMap<FileId, &FileFacts>) {
-        for names in [&mut self.imported, &mut self.referenced, &mut self.from_tests, &mut self.from_others] {
-            reexport(names, stars, sources);
+fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
+    let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
+    for (id, _) in files {
+        let module = &resolver.modules[id];
+        // A star import uses the names of the module it reads, as a named import does.
+        for file in module.names[Channel::Import]
+            .files
+            .iter()
+            .chain(&module.names[Channel::Reference].files)
+            .map(|(file, _)| file)
+            .chain(&module.stars)
+        {
+            importers.entry(*file).or_default().insert(*id);
         }
+    }
+    importers
+}
+
+// The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
+// calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
+// import, and a module with a `__main__` guard runs as a program, so none of them is one.
+fn test_support(
+    importers: &FxHashMap<FileId, FxHashSet<FileId>>,
+    test_modules: &FxHashSet<FileId>,
+    entries: &FxHashSet<FileId>,
+) -> FxHashSet<FileId> {
+    let mut support: FxHashSet<FileId> = FxHashSet::default();
+    loop {
+        let found: Vec<FileId> = importers
+            .iter()
+            .filter(|(file, _)| !test_modules.contains(*file) && !support.contains(*file) && !entries.contains(*file))
+            .filter(|(_, by)| by.iter().all(|importer| test_modules.contains(importer) || support.contains(importer)))
+            .map(|(file, _)| *file)
+            .collect();
+        if found.is_empty() {
+            return support;
+        }
+        support.extend(found);
     }
 }
 
@@ -443,6 +445,66 @@ impl<'r> Gathered<'r> {
     }
 }
 
+fn every(files: &[(FileId, &FileFacts)], names: impl Fn(&FileFacts) -> &Vec<String>) -> FxHashSet<String> {
+    every_in(files, |_| true, names)
+}
+
+fn every_in(
+    files: &[(FileId, &FileFacts)],
+    selected: impl Fn(FileId) -> bool,
+    names: impl Fn(&FileFacts) -> &Vec<String>,
+) -> FxHashSet<String> {
+    files.iter().filter(|(id, _)| selected(*id)).flat_map(|(_, facts)| names(facts).iter().cloned()).collect()
+}
+
+#[derive(Clone, Copy)]
+enum Origin {
+    Test,
+    Other,
+}
+
+#[derive(Default)]
+struct Uses {
+    imported: FxHashMap<FileId, FxHashSet<String>>,
+    referenced: FxHashMap<FileId, FxHashSet<String>>,
+    // Doctests' reads are in `referenced` but not here, as reading a name patches nothing.
+    stored_references: FxHashMap<FileId, FxHashSet<String>>,
+    from_tests: FxHashMap<FileId, FxHashSet<String>>,
+    from_others: FxHashMap<FileId, FxHashSet<String>>,
+}
+
+impl Uses {
+    fn import(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.imported.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn reference(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.stored_references.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn read(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn bucket(&mut self, file: FileId, names: &[String], origin: Origin) {
+        let bucket = match origin {
+            Origin::Test => &mut self.from_tests,
+            Origin::Other => &mut self.from_others,
+        };
+        bucket.entry(file).or_default().extend(names.iter().cloned());
+    }
+
+    fn reexport(&mut self, stars: &[(FileId, FileId)], sources: &FxHashMap<FileId, &FileFacts>) {
+        for names in [&mut self.imported, &mut self.referenced, &mut self.from_tests, &mut self.from_others] {
+            reexport(names, stars, sources);
+        }
+    }
+}
+
 // A stub declares its module's names, which the module's own source already holds.
 fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHashMap<FileId, &'a FileFacts> {
     ids.iter()
@@ -483,72 +545,6 @@ fn duplicate_reports(
             duplicates::duplicate_runs(&compared, files, window)
         })
         .collect()
-}
-
-fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
-    map.get(&id?)
-}
-
-fn every(files: &[(FileId, &FileFacts)], names: impl Fn(&FileFacts) -> &Vec<String>) -> FxHashSet<String> {
-    every_in(files, |_| true, names)
-}
-
-fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
-    let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
-    for (id, _) in files {
-        let module = &resolver.modules[id];
-        // A star import uses the names of the module it reads, as a named import does.
-        for file in module.names[Channel::Import]
-            .files
-            .iter()
-            .chain(&module.names[Channel::Reference].files)
-            .map(|(file, _)| file)
-            .chain(&module.stars)
-        {
-            importers.entry(*file).or_default().insert(*id);
-        }
-    }
-    importers
-}
-
-// The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
-// calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
-// import, and a module with a `__main__` guard runs as a program, so none of them is one.
-fn test_support(
-    importers: &FxHashMap<FileId, FxHashSet<FileId>>,
-    test_modules: &FxHashSet<FileId>,
-    entries: &FxHashSet<FileId>,
-) -> FxHashSet<FileId> {
-    let mut support: FxHashSet<FileId> = FxHashSet::default();
-    loop {
-        let found: Vec<FileId> = importers
-            .iter()
-            .filter(|(file, _)| !test_modules.contains(*file) && !support.contains(*file) && !entries.contains(*file))
-            .filter(|(_, by)| by.iter().all(|importer| test_modules.contains(importer) || support.contains(importer)))
-            .map(|(file, _)| *file)
-            .collect();
-        if found.is_empty() {
-            return support;
-        }
-        support.extend(found);
-    }
-}
-
-fn every_in(
-    files: &[(FileId, &FileFacts)],
-    selected: impl Fn(FileId) -> bool,
-    names: impl Fn(&FileFacts) -> &Vec<String>,
-) -> FxHashSet<String> {
-    files.iter().filter(|(id, _)| selected(*id)).flat_map(|(_, facts)| names(facts).iter().cloned()).collect()
-}
-
-fn interned_inputs(
-    resolver: &mut ImportResolver,
-    inputs: &IndexInputs,
-) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
-    let test_modules = inputs.test_modules.iter().map(|path| resolver.intern(path)).collect();
-    let roles = inputs.roles.iter().map(|(path, role)| (resolver.intern(path), *role)).collect();
-    (test_modules, roles)
 }
 
 // A name the file only imports is no definition of its own, so another project reading it is no use of the file.
@@ -603,6 +599,10 @@ fn only_tests(
             (file, names.collect())
         })
         .collect()
+}
+
+fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
+    map.get(&id?)
 }
 
 fn range_key(range: TextRange, state: &mut CacheKeyHasher) {

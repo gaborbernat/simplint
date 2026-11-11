@@ -37,50 +37,6 @@ pub(super) fn interned_entry_names(
     (names, bare)
 }
 
-pub(super) fn startup_entries(
-    resolver: &mut ImportResolver,
-    startup: &[String],
-) -> (FxHashSet<FileId>, Vec<(FileId, String)>) {
-    let mut loaded = FxHashSet::default();
-    let mut reads = Vec::new();
-    for (file, attribute) in startup_targets(resolver, startup) {
-        let id = resolver.intern(&file);
-        loaded.insert(id);
-        reads.extend(attribute.map(|attribute| (id, attribute)));
-    }
-    (loaded, reads)
-}
-
-fn startup_targets(resolver: &ImportResolver, startup: &[String]) -> Vec<(PathBuf, Option<String>)> {
-    let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, resolver.paths.clone());
-    startup
-        .iter()
-        .filter_map(|name| {
-            let parts: Vec<&str> = name.split('.').collect();
-            (1..=parts.len()).rev().find_map(|length| {
-                let file = resolve(&resolver.db, environment, None, &parts[..length].join("."))?;
-                Some((file, parts.get(length).map(|attribute| (*attribute).to_owned())))
-            })
-        })
-        .collect()
-}
-
-// Coverage calls `coverage_init` on a module it loads by dotted name, so no import reaches the function.
-pub(super) fn coverage_plugin_names(
-    resolver: &mut ImportResolver,
-    plugins: &[(PathBuf, String)],
-) -> Vec<(FileId, String)> {
-    let files: Vec<PathBuf> = plugins
-        .iter()
-        .filter_map(|(root, module)| {
-            let paths = resolver.coverage_paths.get(root)?;
-            let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
-            resolve(&resolver.db, environment, None, module)
-        })
-        .collect();
-    files.iter().map(|file| (resolver.intern(file), "coverage_init".to_owned())).collect()
-}
-
 // Each resolves with its project's directory on the search path, since a flat layout's modules sit there.
 fn entry_point_targets(
     resolver: &ImportResolver,
@@ -110,5 +66,49 @@ fn public_names(facts: &FileFacts) -> Vec<String> {
         .chain(facts.bindings.iter().map(|binding| binding.bound.as_str()))
         .filter(|name| Visibility::of(name) == Visibility::Public)
         .map(str::to_owned)
+        .collect()
+}
+
+// Coverage calls `coverage_init` on a module it loads by dotted name, so no import reaches the function.
+pub(super) fn coverage_plugin_names(
+    resolver: &mut ImportResolver,
+    plugins: &[(PathBuf, String)],
+) -> Vec<(FileId, String)> {
+    let files: Vec<PathBuf> = plugins
+        .iter()
+        .filter_map(|(root, module)| {
+            let paths = resolver.coverage_paths.get(root)?;
+            let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
+            resolve(&resolver.db, environment, None, module)
+        })
+        .collect();
+    files.iter().map(|file| (resolver.intern(file), "coverage_init".to_owned())).collect()
+}
+
+pub(super) fn startup_entries(
+    resolver: &mut ImportResolver,
+    startup: &[String],
+) -> (FxHashSet<FileId>, Vec<(FileId, String)>) {
+    let mut loaded = FxHashSet::default();
+    let mut reads = Vec::new();
+    for (file, attribute) in startup_targets(resolver, startup) {
+        let id = resolver.intern(&file);
+        loaded.insert(id);
+        reads.extend(attribute.map(|attribute| (id, attribute)));
+    }
+    (loaded, reads)
+}
+
+fn startup_targets(resolver: &ImportResolver, startup: &[String]) -> Vec<(PathBuf, Option<String>)> {
+    let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, resolver.paths.clone());
+    startup
+        .iter()
+        .filter_map(|name| {
+            let parts: Vec<&str> = name.split('.').collect();
+            (1..=parts.len()).rev().find_map(|length| {
+                let file = resolve(&resolver.db, environment, None, &parts[..length].join("."))?;
+                Some((file, parts.get(length).map(|attribute| (*attribute).to_owned())))
+            })
+        })
         .collect()
 }

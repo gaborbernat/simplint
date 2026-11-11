@@ -87,60 +87,6 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     cycles
 }
 
-fn inside<'a>(
-    imports: &'a [(FileId, TextRange)],
-    component: &'a FxHashMap<FileId, usize>,
-    home: usize,
-) -> impl Iterator<Item = &'a (FileId, TextRange)> {
-    imports.iter().filter(move |(target, _)| component.get(target) == Some(&home))
-}
-
-fn ring_chain(
-    graph: &RuntimeGraph,
-    component: &FxHashMap<FileId, usize>,
-    home: usize,
-    file: FileId,
-    size: usize,
-) -> (Vec<FileId>, usize) {
-    let mut chain = vec![file];
-    let mut at = file;
-    while chain.len() < size.min(SHOWN) {
-        at = inside(&graph[&at], component, home).next().expect("a file in a ring imports a file of it").0;
-        chain.push(at);
-    }
-    chain.push(file);
-    (chain, size.saturating_sub(SHOWN))
-}
-
-fn shortest_path(
-    graph: &RuntimeGraph,
-    component: &FxHashMap<FileId, usize>,
-    home: usize,
-    from: FileId,
-    to: FileId,
-) -> Vec<FileId> {
-    let mut previous: FxHashMap<FileId, FileId> = FxHashMap::default();
-    let mut seen: FxHashSet<FileId> = FxHashSet::from_iter([from]);
-    let mut queue = VecDeque::from([from]);
-    while let Some(file) = queue.pop_front() {
-        if file == to {
-            break;
-        }
-        for (next, _) in graph.get(&file).into_iter().flatten() {
-            if component.get(next) == Some(&home) && seen.insert(*next) {
-                previous.insert(*next, file);
-                queue.push_back(*next);
-            }
-        }
-    }
-    let mut path = vec![to];
-    while let Some(file) = previous.get(path.last().expect("the path holds `to`")) {
-        path.push(*file);
-    }
-    path.reverse();
-    path
-}
-
 // Iterative, so a long chain of imports does not exhaust the stack.
 fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
     let mut order: FxHashMap<FileId, usize> = FxHashMap::default();
@@ -197,4 +143,58 @@ fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
         }
     }
     component
+}
+
+fn inside<'a>(
+    imports: &'a [(FileId, TextRange)],
+    component: &'a FxHashMap<FileId, usize>,
+    home: usize,
+) -> impl Iterator<Item = &'a (FileId, TextRange)> {
+    imports.iter().filter(move |(target, _)| component.get(target) == Some(&home))
+}
+
+fn ring_chain(
+    graph: &RuntimeGraph,
+    component: &FxHashMap<FileId, usize>,
+    home: usize,
+    file: FileId,
+    size: usize,
+) -> (Vec<FileId>, usize) {
+    let mut chain = vec![file];
+    let mut at = file;
+    while chain.len() < size.min(SHOWN) {
+        at = inside(&graph[&at], component, home).next().expect("a file in a ring imports a file of it").0;
+        chain.push(at);
+    }
+    chain.push(file);
+    (chain, size.saturating_sub(SHOWN))
+}
+
+fn shortest_path(
+    graph: &RuntimeGraph,
+    component: &FxHashMap<FileId, usize>,
+    home: usize,
+    from: FileId,
+    to: FileId,
+) -> Vec<FileId> {
+    let mut previous: FxHashMap<FileId, FileId> = FxHashMap::default();
+    let mut seen: FxHashSet<FileId> = FxHashSet::from_iter([from]);
+    let mut queue = VecDeque::from([from]);
+    while let Some(file) = queue.pop_front() {
+        if file == to {
+            break;
+        }
+        for (next, _) in graph.get(&file).into_iter().flatten() {
+            if component.get(next) == Some(&home) && seen.insert(*next) {
+                previous.insert(*next, file);
+                queue.push_back(*next);
+            }
+        }
+    }
+    let mut path = vec![to];
+    while let Some(file) = previous.get(path.last().expect("the path holds `to`")) {
+        path.push(*file);
+    }
+    path.reverse();
+    path
 }
