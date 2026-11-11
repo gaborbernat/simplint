@@ -1,15 +1,10 @@
-// What a scan finds in a decoded pattern: the unnamed groups as the offsets of their `(`, whether the pattern refers
-// to a group by number or name, which a group that does not capture would break, and the constructs a reader follows.
+// `refers` matters because a fix that stops a group capturing would break a reference to it.
 pub(crate) struct Scan {
     pub(crate) groups: Vec<usize>,
     pub(crate) refers: bool,
     pub(crate) named: bool,
-    // Each group, alternation, character class and repeat of a group. A class with its repeat is one, and a flag or a
-    // comment is none.
     pub(crate) constructs: usize,
-    // The comments that explain the pattern: a `#` comment outside a character class in verbose mode, or a `(?#...)`.
     pub(crate) comments: usize,
-    // Whether verbose mode is on, by the flag argument or an inline `(?x)`.
     pub(crate) verbose: bool,
 }
 
@@ -108,7 +103,7 @@ fn scoped_verbose(flags: &[u8], verbose: bool) -> bool {
     }
 }
 
-// The length of the character class at the start of `class`. A `]` right after its opening `[` or `[^` is a member.
+// A `]` right after the opening `[` or `[^` is a member of the class, not its end.
 fn class_length(class: &[u8]) -> Option<usize> {
     let mut index = 1;
     if class.get(index) == Some(&b'^') {

@@ -8,8 +8,6 @@ use crate::rules::logic::regex_pattern::{Context, Facts, scan};
 
 const MATCH_CALLS: [&str; 5] = ["compile", "match", "search", "fullmatch", "finditer"];
 
-const TITLE: &str = "Make the unnamed groups non-capturing";
-
 pub fn unnamed_regex_group(checker: &Checker) {
     let facts = Facts::collect(checker);
     for (literal, call) in facts.sites() {
@@ -31,18 +29,27 @@ pub fn unnamed_regex_group(checker: &Checker) {
             .then(|| insertions(checker, &literal.parts, &scan.groups))
             .flatten();
         let message = if count == 1 {
-            "regex has 1 unnamed capture group that the code reads by index; name it with `(?P<name>...)` so readers do not count parentheses".to_owned()
+            "regex has 1 unnamed capture group that the code reads by index; name it with `(?P<name>...)` so readers \
+             do not count parentheses"
+                .to_owned()
         } else {
             format!(
-                "regex has {count} unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses"
+                "regex has {count} unnamed capture groups; name them with `(?P<name>...)` so readers \
+                 do not count parentheses"
             )
         };
-        checker.report_fix(Rule::UnnamedRegexGroup, literal.range, message, fix, TITLE);
+        checker.report_fix(
+            Rule::UnnamedRegexGroup,
+            literal.range,
+            message,
+            fix,
+            "Make the unnamed groups non-capturing",
+        );
     }
 }
 
-// Inserts `?:` after each unnamed group's `(`. Each insertion lands in the source only when every part's source text is
-// its decoded value, so a part with an escape leaves the fix out rather than misplacing it.
+// Each insertion lands in the source only when every part's source text is its decoded value, so a part with an escape
+// leaves the fix out rather than misplacing it.
 fn insertions(checker: &Checker, parts: &[(&[u8], TextRange)], groups: &[usize]) -> Option<Fix> {
     let mut starts = Vec::with_capacity(parts.len());
     let mut decoded = 0;

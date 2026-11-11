@@ -22,31 +22,27 @@ pub fn cognitive_complexity(checker: &Checker) {
     }
 }
 
-// The score of `body` when it sits `nesting` bodies deep, where each nesting-sensitive increment grows by that depth.
-// An inlined body adds the score it has at the depth of the call it replaces.
-pub fn score(body: &[Stmt], nesting: usize) -> usize {
+// `nesting` is the depth an inlined body starts at, so its increments grow from there.
+pub(super) fn score(body: &[Stmt], nesting: usize) -> usize {
     Score::of(body, nesting).total
 }
 
-// The score of `body` together with the number of bodies the expression at `range` sits in, the nesting an inlined
-// body would start at. The nesting is `None` when the walk does not reach `range`.
-pub fn score_probed(body: &[Stmt], range: TextRange) -> (usize, Option<usize>) {
+// The nesting an inlined body starting at `range` would have, or `None` when the walk does not reach `range`.
+pub(super) fn score_probed(body: &[Stmt], range: TextRange) -> (usize, Option<usize>) {
     let mut score = Score { probe: Some(range), ..Score::default() };
     score.visit_body(body);
     (score.total, score.probed)
 }
 
-// The SonarSource score of one function body. A branch, loop, handler or conditional expression adds one, plus one for
-// each level of nesting it sits in; `elif` and `else` add one without the nesting; each run of one boolean operator
-// adds one. As in SonarSource's Python analyzer, only the bodies nest, so a condition counts at the level of its
-// statement, and comprehensions add nothing. A nested function is scored on its own, so its body is left out.
+// Mirrors SonarSource's Python analyzer: only bodies nest, so a condition counts at the level of its statement, and
+// comprehensions add nothing.
 #[derive(Default)]
 struct Score {
     total: usize,
     nesting: usize,
-    // The boolean operator the expression being walked is a direct operand of, which a run of the same operator shares.
+    // Shared by a run of one boolean operator, which counts once.
     boolean: Option<ast::BoolOp>,
-    // The expression whose nesting the walk records, for a call site that an inlined helper would move to.
+    // For a call site an inlined helper would move, the nesting it would start at.
     probe: Option<TextRange>,
     probed: Option<usize>,
 }
@@ -84,6 +80,7 @@ impl Score {
 impl<'a> Visitor<'a> for Score {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
+            // A nested function or class is scored on its own, so its body does not add to this one.
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 self.branch();

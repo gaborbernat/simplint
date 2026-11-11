@@ -13,7 +13,7 @@ use crate::syntax::{ExprCollector, for_each_body, is_name};
 // The `str` methods that read the text of an exception to tell it apart from others.
 const TEXT_METHODS: [&str; 5] = ["startswith", "endswith", "find", "index", "count"];
 
-pub(crate) fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
+pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
     let checker = walker.checker;
     let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name: Some(name), body, .. }) = handler
     else {
@@ -47,7 +47,7 @@ pub(crate) fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::
     }
 }
 
-// The `assert` statements of a handler body, at any depth, as Ruff's PT017 walks them.
+// Walked at any depth, as Ruff's PT017 walks them, so a nested `assert` is left to Ruff too.
 #[derive(Default)]
 struct Asserts(Vec<TextRange>);
 
@@ -66,7 +66,6 @@ impl<'a> Visitor<'a> for Asserts {
     }
 }
 
-// The text an exception carries, as the name of the exception: `str(exc)`, `exc.args`, `exc.args[N]` or `exc.message`.
 fn text_name(expr: &Expr) -> Option<&ast::ExprName> {
     match expr {
         Expr::Call(_) => str_arg(expr),
@@ -90,8 +89,8 @@ fn str_arg(expr: &Expr) -> Option<&ast::ExprName> {
     }
 }
 
-// Whether the name is the one the handler binds. A name that resolves to nothing is taken as the handler's when it has
-// the handler's text, as a lambda body reads the name of a handler it sits in, which the handler has unbound by then.
+// A name that resolves to nothing is the handler's when it has the handler's text: a lambda in the handler reads the
+// name after the handler has unbound it.
 fn is_bound_name(checker: &Checker, name: &ast::ExprName, bound: &Identifier) -> bool {
     let bindings = checker.semantic().resolved_bindings(name);
     if bindings.is_empty() {
@@ -104,12 +103,6 @@ fn is_message(checker: &Checker, expr: &Expr, bound: &Identifier) -> bool {
     text_name(expr).is_some_and(|name| is_bound_name(checker, name, bound))
 }
 
-// Whether the text is that of an exception, which tells nothing apart by wording when compared with another one.
-fn is_exception_text(checker: &Checker, expr: &Expr) -> bool {
-    text_name(expr).is_some_and(|name| is_exception_name(checker, name))
-}
-
-// Whether every binding the name resolves to is an `except` clause name or a parameter annotated with an exception.
 fn is_exception_name(checker: &Checker, name: &ast::ExprName) -> bool {
     let bindings = checker.semantic().resolved_bindings(name);
     !bindings.is_empty() && bindings.into_iter().all(|binding| is_exception_binding(checker, binding))
@@ -126,8 +119,7 @@ fn is_exception_binding(checker: &Checker, binding: &Binding) -> bool {
     }
 }
 
-// Whether the annotation names an exception class, alone, in a union with `None`, or in `Optional`. The names of a
-// string annotation are not resolved, since they are read from the string, not from the file.
+// A string annotation's names are read from the string, not from the file, so they are not resolved.
 fn is_exception_type(checker: &Checker, annotation: &Expr, resolved: bool) -> bool {
     match annotation {
         Expr::Name(_) => is_exception_class_name(checker, annotation, resolved, &mut Vec::new()),
@@ -150,19 +142,19 @@ fn is_exception_type(checker: &Checker, annotation: &Expr, resolved: bool) -> bo
     }
 }
 
-// Whether the name is an exception class: a builtin one, one the index knows, or a class of the file, at any depth, that
-// derives from one. The index only knows the classes at the top of a module, so the file's own classes are read here.
-// A class's bases are always real expressions, so they resolve, while a string annotation's names do not. `seen` stops
-// a cycle of classes that derive from each other.
+// The index only knows the classes at the top of a module, so the file's own classes are read here. A class's bases
+// are real expressions, so they resolve, while a string annotation's names do not. `seen` stops a cycle of classes
+// that derive from each other.
 fn is_exception_class_name(checker: &Checker, expr: &Expr, resolved: bool, seen: &mut Vec<TextRange>) -> bool {
     expr.as_name_expr().is_some_and(|name| {
-        let minor = checker.target_version().minor;
         let builtin = if resolved {
             checker.semantic().is_builtin(expr, name.id.as_str())
         } else {
             !checker.semantic().is_bound_in_file(name.id.as_str())
         };
-        if (builtin && is_exception(name.id.as_str(), minor)) || checker.project().is_exception_type(name.id.as_str()) {
+        if (builtin && is_exception(name.id.as_str(), checker.target_version().minor))
+            || checker.project().is_exception_type(name.id.as_str())
+        {
             return true;
         }
         let classes: Vec<&ast::StmtClassDef> = if resolved {
@@ -185,16 +177,16 @@ fn is_exception_class_name(checker: &Checker, expr: &Expr, resolved: bool, seen:
     })
 }
 
-// The range of a comparison, or of a `str` method or `re` function, that reads the text of the exception bound at
-// `bound`. A comparison is left alone when each of its other operands is the text of an exception too, since two
-// exceptions differ by wording only.
+// A comparison is left alone when each of its other operands is the text of an exception too, since two exceptions
+// differ by wording only.
 fn by_text(checker: &Checker, bound: &Identifier, expr: &Expr) -> Option<TextRange> {
     let found = match expr {
         Expr::Compare(ast::ExprCompare { operands, .. }) => {
             operands.iter().any(|operand| is_message(checker, operand, bound))
-                && operands
-                    .iter()
-                    .any(|operand| !is_message(checker, operand, bound) && !is_exception_text(checker, operand))
+                && operands.iter().any(|operand| {
+                    !is_message(checker, operand, bound)
+                        && !text_name(operand).is_some_and(|name| is_exception_name(checker, name))
+                })
         }
         Expr::Call(ast::ExprCall { func, arguments, .. }) => {
             let text_method = func.as_attribute_expr().is_some_and(|attribute| {
