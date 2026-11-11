@@ -15,6 +15,21 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
+// Ruff's E266 and E265 report a plain comment of prose after its hashes, with the text SMP001's fix keeps, so SMP001
+// leaves such a comment to them whether or not the project selects them. A decorated comment or a short heading is not
+// the same text as Ruff's fix, so SMP001 keeps it.
+#[test_case("E266", "## Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "spaced_hashes")]
+#[test_case("E265", "##Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "unspaced_hashes")]
+#[test_case("E265", "##\tRemove this return to update the cron job\nVALUE = 1\n", [false, false] ; "tab_after_hashes")]
+#[test_case("E266", "VALUES = [\n    1,\n    ## Remove this return to update the cron job\n    2,\n]\n", [false, false] ; "inside_brackets")]
+#[test_case("E266", "## --- Remove this return to update the cron job ---\nVALUE = 1\n", [true, true] ; "decorated_prose")]
+#[test_case("E266", "#### Remove this return to update the cron job ####\nVALUE = 1\n", [true, true] ; "decorated_hashes")]
+#[test_case("E266", "## Setup\nVALUE = 1\n", [true, true] ; "short_heading")]
+fn section_comment_prose_is_left_to_ruff_e265_and_e266(ruff_code: &str, source: &str, reported: [bool; 2]) {
+    let case = common::RuffOverlap { settings: "", select: "SMP001", ruff_code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "SMP001"), reported);
+}
+
 #[test]
 fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
     let source = "x = 1  # simplint: ignore[SMP101, imprecise-annotation, SMP999] # external name\n";

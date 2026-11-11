@@ -29,6 +29,7 @@ pub fn section_comment(checker: &Checker) {
             continue;
         }
         match prose(&source[range]) {
+            Some(_) if left_to_ruff(&source[range]) => {}
             Some(text) => checker.report_fix(
                 Rule::SectionComment,
                 range,
@@ -65,6 +66,13 @@ fn is_section_comment(comment: &str) -> bool {
     // Two repeated characters also end prose (`C++`), so a single run needs three; a pair on both ends frames a title.
     let (leading, trailing) = decoration(content);
     hashes >= 2 && !content.is_empty() || leading.max(trailing) >= 3 || leading.min(trailing) >= 2
+}
+
+// Ruff's E266 and E265 report a plain comment with the text this rule's fix keeps, so the comment is left to them. A
+// decorated comment is not one of them: their fix keeps the decoration.
+fn left_to_ruff(comment: &str) -> bool {
+    let hashes = comment.chars().take_while(|char| *char == '#').count();
+    decoration(comment[hashes..].trim()) == (0, 0)
 }
 
 // The text of a section comment with more words than a title, such as an instruction, with the decoration around it
