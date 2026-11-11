@@ -18,7 +18,7 @@ use super::loaded::{Globals, lexically_normalized};
 use super::patches::named_attribute_call;
 use super::runtime::{Constants, Runs, catches_import_error};
 use super::{Channel, Channels, ImportSite, ModuleNames, Parts};
-use crate::syntax::{alias_binding, attribute_call, last_segment, target_names};
+use crate::syntax::{alias_binding, alias_root_binding, attribute_call, last_segment, target_names};
 
 // A name a `from module import name as bound` statement binds; `redundant` marks `name as name`, which the typing spec
 // reads as a re-export.
@@ -509,7 +509,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                         self.record_nested(top_level, asname.as_str(), full);
                         self.aliases.insert(asname.as_str(), full.to_owned())
                     } else {
-                        let root = full.split('.').next().unwrap_or_default();
+                        let root = alias_root_binding(alias);
                         if top_level {
                             self.plain_modules.push(root.to_owned());
                         }
@@ -763,10 +763,9 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
         Stmt::With(ast::StmtWith { items, .. }) => {
             items.iter().filter_map(|item| item.optional_vars.as_deref()).flat_map(target_names).collect()
         }
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names
-            .iter()
-            .filter_map(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str().split('.').next())
-            .collect(),
+        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+            names.iter().map(alias_root_binding).collect()
+        }
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
             vec![name.as_str()]
         }

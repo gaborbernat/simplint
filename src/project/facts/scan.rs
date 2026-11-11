@@ -11,7 +11,7 @@ use super::Parts;
 use super::module_reads::{is_module_load, is_module_type};
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::discarded_call;
-use crate::syntax::{attribute_call, is_prose_statement};
+use crate::syntax::{attribute_call, identifier_words, is_prose_statement};
 
 // The facts that need no scopes, collected in one walk of the module rather than a walk for each, which would visit
 // every node again.
@@ -51,7 +51,7 @@ impl<'a> Scan<'a> {
 
     // A word repeats across the strings, so it is copied once, when it first appears.
     fn add_words(&mut self, text: &str) {
-        for word in text.split(|char: char| !(char.is_alphanumeric() || char == '_')).filter(|word| !word.is_empty()) {
+        for word in identifier_words(text).filter(|word| !word.is_empty()) {
             if !self.words.contains(word) {
                 self.words.insert(word.to_owned());
             }

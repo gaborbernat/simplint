@@ -5,7 +5,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::visitor::FactVisitor;
-use crate::syntax::{is_main_test, is_type_checking_name};
+use crate::syntax::{alias_root_binding, is_main_test, is_type_checking_name, pattern_capture};
 
 impl FactVisitor<'_> {
     // When the body of an `if` with this test runs, and when the clauses after it can.
@@ -190,13 +190,13 @@ impl<'a> Visitor<'a> for Bindings<'a> {
             Stmt::ClassDef(class) => self.bind(class.name.as_str(), None),
             Stmt::Import(ast::StmtImport { names, .. }) => {
                 for alias in names {
-                    self.bind(bound_name(alias), None);
+                    self.bind(alias_root_binding(alias), None);
                 }
             }
             Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 self.star |= names.iter().any(|alias| alias.name.as_str() == "*");
                 for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                    self.bind(bound_name(alias), None);
+                    self.bind(alias_root_binding(alias), None);
                 }
             }
             _ => visitor::walk_stmt(self, stmt),
@@ -219,13 +219,8 @@ impl<'a> Visitor<'a> for Bindings<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        match pattern {
-            ast::Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-            | ast::Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => {
-                self.bind(name.as_str(), None);
-            }
-            _ => {}
+        if let Some(name) = pattern_capture(pattern) {
+            self.bind(name.as_str(), None);
         }
         visitor::walk_pattern(self, pattern);
     }
@@ -243,14 +238,6 @@ impl<'a> Visitor<'a> for GlobalNames<'a> {
             self.names.extend(names.iter().map(ast::Identifier::as_str));
         }
         visitor::walk_stmt(self, stmt);
-    }
-}
-
-// The name an import alias binds: its `as` name, or for `import pkg.module` the first part of the module's name.
-fn bound_name(alias: &ast::Alias) -> &str {
-    match &alias.asname {
-        Some(asname) => asname.as_str(),
-        None => alias.name.as_str().split('.').next().unwrap_or_default(),
     }
 }
 

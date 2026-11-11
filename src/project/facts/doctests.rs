@@ -3,6 +3,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 
 use super::Channel;
 use super::visitor::FactVisitor;
+use crate::syntax::identifier_words;
 
 // The code of a docstring's `>>>` example lines, without the prompt.
 pub(crate) fn doctest_code(text: &str) -> impl Iterator<Item = &str> {
@@ -11,10 +12,7 @@ pub(crate) fn doctest_code(text: &str) -> impl Iterator<Item = &str> {
 
 // The identifiers of the `>>>` example lines of a docstring.
 pub(super) fn doctest_names(text: &str) -> impl Iterator<Item = String> + '_ {
-    doctest_code(text)
-        .flat_map(|code| code.split(|char: char| !(char.is_alphanumeric() || char == '_')))
-        .filter(|word| is_identifier(word))
-        .map(str::to_owned)
+    doctest_code(text).flat_map(identifier_words).filter(|word| is_identifier(word)).map(str::to_owned)
 }
 
 // The level, module and names a `from module import name, other as alias` example imports.

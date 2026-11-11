@@ -18,7 +18,8 @@ use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
 use crate::syntax::{
-    ExprCollector, alias_binding, attribute_call, dataclass_decorator, keyword_is_true, last_segment, module_statements,
+    ExprCollector, alias_binding, attribute_call, dataclass_decorator, identifier_words, keyword_is_true, last_segment,
+    module_statements,
 };
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
@@ -368,10 +369,7 @@ impl<'a> Visitor<'a> for Unparsed {
         strings.visit_expr(annotation);
         for literal in strings.found {
             for part in &literal.value {
-                let words = part
-                    .value
-                    .split(|character: char| !(character.is_alphanumeric() || character == '_'))
-                    .filter(|word| !word.is_empty());
+                let words = identifier_words(&part.value).filter(|word| !word.is_empty());
                 self.0.extend(words.map(str::to_owned));
             }
         }

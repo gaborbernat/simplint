@@ -8,7 +8,7 @@ use ruff_linter::package::PackageRoot;
 use ruff_python_ast::PythonVersion;
 use ruff_python_stdlib::identifiers::is_identifier;
 
-use crate::project::docs::{Stat, stat};
+use crate::project::cache::{Stat, stat};
 
 use super::resolve::normalized;
 use super::startup;

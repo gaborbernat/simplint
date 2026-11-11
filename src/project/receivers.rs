@@ -8,7 +8,8 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 use super::facts::qualified;
 use crate::syntax::MOCK_CLASSES;
 use crate::syntax::{
-    alias_binding, instance_writes, is_classmethod, is_name, last_segment, module_statements, receiver,
+    alias_root_binding, instance_writes, is_classmethod, is_name, last_segment, module_statements, pattern_capture,
+    receiver,
 };
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
@@ -567,8 +568,7 @@ impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
-                    let bound = alias_binding(alias);
-                    self.bind(bound.split('.').next().unwrap_or(bound), Receiver::Unknown);
+                    self.bind(alias_root_binding(alias), Receiver::Unknown);
                 }
             }
             Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
@@ -603,13 +603,7 @@ impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
-        let captured = match pattern {
-            Pattern::MatchAs(ast::PatternMatchAs { name, .. })
-            | Pattern::MatchStar(ast::PatternMatchStar { name, .. }) => name.as_ref(),
-            Pattern::MatchMapping(ast::PatternMatchMapping { rest, .. }) => rest.as_ref(),
-            _ => None,
-        };
-        if let Some(name) = captured {
+        if let Some(name) = pattern_capture(pattern) {
             self.bind(name.as_str(), Receiver::Unknown);
         }
         visitor::walk_pattern(self, pattern);

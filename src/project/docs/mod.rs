@@ -14,8 +14,6 @@ use rustc_hash::FxHashSet;
 use crate::project::cache;
 use walk::{pages, tree_key};
 
-pub(super) use crate::project::cache::{Stat, stat};
-
 #[derive(Clone, Default, PartialEq)]
 pub struct DocReferences {
     // The dotted names roles and directives give. Sphinx resolves a role against the page's module, its class or the
