@@ -72,9 +72,9 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // last, keeps the syntax tree, so it cannot undo this.
     //
     // A run can withdraw a fix that is only bad next to another rule's pending fixes, yet once those apply, a run over
-    // the result can offer the withdrawn fixes again. The single fixes withdrawn carry over to the later runs, which then
-    // do not try them again; whole rules do not, as a rule may cover reports that only appear once other fixes apply.
-    // Running until a run changes nothing, or returns to a source seen before, makes a single run final.
+    // the result can offer the withdrawn fixes again. The single fixes withdrawn carry over to the later runs, which
+    // then do not try them again; whole rules do not, as a rule may cover reports that only appear once other fixes
+    // apply. Running until a run changes nothing, or returns to a source seen before, makes a single run final.
     pub fn fix(&self, source: &str) -> Result<(FixerResult, Withdrawn)> {
         Ok(self.runs(source).inspect_err(|bug| bug.report(self.path))?)
     }
@@ -115,8 +115,8 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let linted = Linted { source, lint: self.lint(source) };
         let mut settled = self.settle(&linted, &withdrawn)?;
         while settled.left > 0 {
-            // Rules are tried in code order, so the same file always yields the same fixes. Among withdrawals that leave
-            // as little for Ruff, one whose result a second run leaves alone wins, so a single run is final. The
+            // Rules are tried in code order, so the same file always yields the same fixes. Among withdrawals that
+            // leave as little for Ruff, one whose result a second run leaves alone wins, so a single run is final. The
             // candidates run in parallel and are compared in that order, which keeps the choice the same. A candidate
             // whose fixes hit a bug is dropped, as another may still give a valid result.
             let applied: BTreeSet<Rule> = Self::fixing_rules(&settled.result.fixed).collect();
@@ -200,7 +200,6 @@ impl<'l, 'a> Fixer<'l, 'a> {
         fixes.iter().filter_map(|(_, code, _)| Rule::from_code(code?.as_str()))
     }
 
-    // Whether another run over the fixed source would apply fixes and leave Ruff nothing new.
     fn reapplies(&self, source: &str) -> Result<bool, FixBug> {
         let settled = self.settle(&Linted { source, lint: self.lint(source) }, &Withdrawn::default())?;
         Ok(!settled.result.fixed.is_empty() && settled.result.transformed != source && settled.left == 0)
@@ -337,8 +336,6 @@ fn version_counts(errors: &[UnsupportedSyntaxError]) -> VersionCounts {
     counts
 }
 
-// The message of the syntax error a fix introduced: a parse error, or a version error of a kind the source had fewer
-// of before the fixes.
 fn check_syntax(
     diagnostics: &[Diagnostic],
     errors: &[UnsupportedSyntaxError],
@@ -375,8 +372,6 @@ fn earlier_unless_beaten(
     }
 }
 
-// A rule withdrawn whole: the fixes it withdrew, how many Ruff rules it leaves work for, whether a second run over its
-// result would fix more, and its result.
 struct Candidate {
     rule: Rule,
     withdrawn: Withdrawn,
@@ -384,8 +379,8 @@ struct Candidate {
     settled: Settled,
 }
 
-// The fixes the loop withdrew: whole rules, and single fixes by their key. A key is the rule, the message and the text
-// under the report, which a fix keeps through the passes that reparse the file, where its range moves.
+// A key is the rule, the message and the text under the report, which a fix keeps through the passes that reparse the
+// file, where its range moves.
 #[derive(Clone, Default)]
 pub struct Withdrawn {
     pub rules: RuleSet,
@@ -424,7 +419,6 @@ impl Withdrawn {
             .collect();
     }
 
-    // Whether each report is held back, by its rule or by its fix's key.
     pub fn held_back(&self, source: &str, diagnostics: &[Diagnostic]) -> Vec<bool> {
         let mut held: Vec<bool> = diagnostics
             .iter()
@@ -464,7 +458,6 @@ fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
         .collect()
 }
 
-// A withdrawal's state: the fixes still withheld, and the settled source they leave.
 struct Admission {
     withheld: Withdrawn,
     settled: Settled,
@@ -543,7 +536,6 @@ impl Sources {
     }
 }
 
-// The source the fixes start from, whose reports are the first pass of every fix loop.
 struct Linted<'s> {
     source: &'s str,
     lint: Lint,
@@ -565,11 +557,6 @@ mod tests {
         version_counts,
     };
     use crate::lint::registry::{Rule, RuleSet};
-
-    fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
-        let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
-        parse_unchecked(source, options).unsupported_syntax_errors().to_vec()
-    }
 
     const NESTED_QUOTE: &str = "print(f\"{x[\"a\"]}\")\n";
 
@@ -595,20 +582,17 @@ mod tests {
         assert_eq!(result.err().as_deref(), error);
     }
 
+    fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
+        let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
+        parse_unchecked(source, options).unsupported_syntax_errors().to_vec()
+    }
+
     #[test]
     fn check_syntax_reports_a_parse_error_first() {
         let file = SourceFileBuilder::new("module.py", "").finish();
         let diagnostic = Diagnostic::invalid_syntax(Span::from(file), "Expected an expression", TextRange::default());
         let result = check_syntax(&[diagnostic], &[], &VersionCounts::default());
         assert_eq!(result.err().as_deref(), Some("Expected an expression"));
-    }
-
-    // A withdrawal candidate of `rule` leaving `left` Ruff rules work, or one that hit a bug when `left` is `None`.
-    fn candidate(rule: Rule, left: Option<usize>) -> Result<Candidate, FixBug> {
-        let left = left.ok_or_else(|| FixBug::NotConverging { rules: rule.code().to_owned() })?;
-        let result = FixerResult { diagnostics: Vec::new(), transformed: String::new(), fixed: FixTable::default() };
-        let settled = Settled { result, left, held: Withdrawn::default() };
-        Ok(Candidate { rule, withdrawn: Withdrawn::default(), reapplies: false, settled })
     }
 
     #[test_case(&[None, Some(1)], Some(Rule::DataclassKwOnly) ; "a_bug_loses_to_a_later_candidate")]
@@ -627,13 +611,12 @@ mod tests {
         assert_eq!(picked.ok().map(|candidate| candidate.rule.code()), chosen.map(Rule::code));
     }
 
-    fn key(occurrence: usize) -> FixKey {
-        FixKey {
-            rule: Rule::SingleUseVariable,
-            message: "message".to_owned(),
-            text: "lock = build()".to_owned(),
-            occurrence,
-        }
+    // A withdrawal candidate of `rule` leaving `left` Ruff rules work, or one that hit a bug when `left` is `None`.
+    fn candidate(rule: Rule, left: Option<usize>) -> Result<Candidate, FixBug> {
+        let left = left.ok_or_else(|| FixBug::NotConverging { rules: rule.code().to_owned() })?;
+        let result = FixerResult { diagnostics: Vec::new(), transformed: String::new(), fixed: FixTable::default() };
+        let settled = Settled { result, left, held: Withdrawn::default() };
+        Ok(Candidate { rule, withdrawn: Withdrawn::default(), reapplies: false, settled })
     }
 
     #[test_case(&[3], &[1], &[2] ; "held_moves_up_past_an_applied_identical_report")]
@@ -646,5 +629,14 @@ mod tests {
         let mut occurrences: Vec<usize> = withdrawn.fixes.iter().map(|fix| fix.occurrence).collect();
         occurrences.sort_unstable();
         assert_eq!(occurrences, moved);
+    }
+
+    fn key(occurrence: usize) -> FixKey {
+        FixKey {
+            rule: Rule::SingleUseVariable,
+            message: "message".to_owned(),
+            text: "lock = build()".to_owned(),
+            occurrence,
+        }
     }
 }

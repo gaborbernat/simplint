@@ -76,7 +76,6 @@ impl<'c, 'a> Walker<'c, 'a> {
         &self.scopes
     }
 
-    // The innermost statement holding the current node.
     pub fn statement(&self) -> Option<&'a Stmt> {
         self.statements.last().copied()
     }
