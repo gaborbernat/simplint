@@ -221,6 +221,7 @@ fn private_module_object_import_reports_both_import_and_attribute() {
 #[test_case("consumer.py", "from typing import cast\n\nfrom pkg._api import API\n\nVALUE = cast(\"API\", 1)\n", true ; "string_cast")]
 #[test_case("consumer.py", "from pkg._api import API\n\nVALUE: \"list[API]\" = []\n", true ; "string_variable_annotation")]
 #[test_case("consumer.py", "from pkg._api import API\n\n__all__ = [\"API\"]\n\n\ndef run(value: API) -> None:\n    return None\n", false ; "listed_in_all")]
+#[test_case("consumer.py", "\"\"\"Uses API.\"\"\"\nfrom pkg._api import API\n\nVALUE = 1\n", false ; "docstring_mention")]
 #[test_case("consumer.py", "from pkg._api import API\n\n\nclass Consumer:\n    attr: \"API | None\" = None\n", true ; "string_class_annotation")]
 #[test_case("consumer.py", "from typing import TypeAlias\n\nfrom pkg._api import API\n\nAlias: TypeAlias = \"API\"\n", true ; "string_type_alias")]
 fn private_import_path_follows_ruff_import_private_name(file: &str, source: &str, reported: bool) {

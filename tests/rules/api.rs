@@ -413,6 +413,7 @@ const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 #[test_case("", "from json import dumps\nfrom typing import cast\n\nvalue = cast(\"dumps\", 1)\n", &[1, 2] ; "cast_string_keeps_import")]
 #[test_case("", "from json import dumps\nfrom typing import TypeVar\n\nT = TypeVar(\"T\", bound=\"dumps\")\n", &[1, 2] ; "type_var_bound_keeps_import")]
 #[test_case("", "from json import dumps\nNAME = \"dumps\"\n", &[1] ; "plain_string_keeps_import")]
+#[test_case("", "\"\"\"Wraps dumps.\"\"\"\nfrom json import dumps\n", &[] ; "docstring_mention_left_to_f401")]
 #[test_case("", "from json import dumps, loads\n__all__ = [\"dumps\"]\n", &[] ; "partly_listed_statement_left_to_f401")]
 #[test_case(
     "[tool.ruff.lint.pyflakes]\nallowed-unused-imports = [\"json.dumps\"]\n",

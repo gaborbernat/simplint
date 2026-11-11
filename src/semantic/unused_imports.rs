@@ -11,7 +11,7 @@ use ruff_python_semantic::{
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{Exports, annotated_names, dunder_all, string_values, string_words};
+use crate::syntax::{Exports, annotated_names, code_string_values, dunder_all, string_words};
 
 pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRange> {
     let exports = dunder_all(body);
@@ -24,8 +24,8 @@ pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRan
     }
     let annotated = annotated_names(body);
     // Ruff reads the names that a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
-    // model does not resolve them, so every word of any string of the module counts as a read.
-    let strings = string_values(body);
+    // model does not resolve them, so every word of a string of the module that is not prose counts as a read.
+    let strings = code_string_values(body);
     let words = string_words(&strings);
     let mut unused = FxHashSet::default();
     for (name, live) in scope.bindings() {

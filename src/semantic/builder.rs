@@ -27,7 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{Exports, dunder_all, pattern_capture, signature_annotations, string_values, string_words};
+use crate::syntax::{Exports, code_string_values, dunder_all, pattern_capture, signature_annotations, string_words};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -99,7 +99,7 @@ pub fn build<'a>(
 // makes, which is the alias of its import.
 fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Option<&Path>) -> FxHashSet<TextRange> {
     let exports = dunder_all(body);
-    let strings = string_values(body);
+    let strings = code_string_values(body);
     let words = string_words(&strings);
     semantic
         .scopes
