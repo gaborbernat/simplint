@@ -150,15 +150,10 @@ definition a Sphinx page names is used.
   print(Point().x, cast("list[_Entry]", []))
   ```
 
-- **Private protocols and TypedDicts Ruff reports**: when the project's Ruff configuration selects
-  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) or
-  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), Ruff reports a private `Protocol` or
-  `TypedDict` class that nothing in its file reads, so this rule leaves it to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PYI046", "PYI049"]
-  ```
+- **Private protocols and TypedDicts Ruff reports**:
+  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) and
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/) report a private `Protocol` or `TypedDict`
+  class that nothing in its file reads, so this rule leaves it to Ruff.
 
   ```python ok
   from typing import Protocol, TypedDict

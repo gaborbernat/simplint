@@ -3,19 +3,20 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:5 SMP531 `values` is filled by 2 statements right after its literal; write its entries in the literal [fix: Write the entries in the literal]
-9:5 SMP531 `names` is filled by 2 statements right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
 16:5 SMP531 `seen` is filled by 2 statements right after its literal; write its entries in the literal [fix: Write the entries in the literal]
 23:5 SMP531 `result` is filled by 1 statement right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
 29:5 SMP531 `grid` is filled by 1 statement right after its literal; write its entries in the literal [fix: Write the entries in the literal]
 77:5 SMP531 `out` is filled by 1 statement right after its literal; write its entries in the literal [fix: Write the entries in the literal]
---- fixed (6 applied, 0 remaining) ---
+--- fixed (5 applied, 0 remaining) ---
 def mapping(a: str, b: int) -> dict[str, int]:
     values = {"x": 1, "y": 2}
     return values
 
 
 def items(a: str, b: int) -> list[str]:
-    names = [a, b]
+    names = []
+    names.append(a)
+    names.append(b)
     return names
 
 

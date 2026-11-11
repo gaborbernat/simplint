@@ -273,14 +273,18 @@ fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
     assert!(!stdout.contains("SMP102 [*]"));
 }
 
-// Ruff's E741, E742 and E743 report `l`, `I` and `O` on the variables, classes and functions of their kind. SMP101
-// leaves those letters to the Ruff rule of the binding's kind while it runs.
-#[test_case("l = 1\n", "E741", "Single-letter name `l`" ; "variable")]
-#[test_case("class I:\n    pass\n", "E742", "Single-letter name `I`" ; "class")]
-#[test_case("def l() -> None:\n    pass\n", "E743", "Single-letter name `l`" ; "function")]
-fn single_letter_name_follows_ruff_ambiguous_names(source: &str, code: &str, fragment: &str) {
-    let case = common::RuffOverlap { settings: "", select: "SMP101", ruff_code: code, files: &[("module.py", source)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
+// Ruff's E741, E742 and E743 report `l`, `I` and `O` on the variables, classes and functions of their kind, so SMP101
+// leaves those letters to them whether or not the project selects them. Other letters stay with the rule, and so do
+// those three letters on an import alias, which no Ruff rule checks.
+#[test_case("l = 1\n", "Single-letter name `l`", false ; "variable")]
+#[test_case("class I:\n    pass\n", "Single-letter name `I`", false ; "class")]
+#[test_case("def l() -> None:\n    pass\n", "Single-letter name `l`", false ; "function")]
+#[test_case("k = 1\n", "Single-letter name `k`", true ; "other_letter")]
+#[test_case("import os as l\n", "Single-letter name `l`", true ; "import_alias")]
+fn single_letter_name_leaves_ambiguous_names_to_ruff(source: &str, fragment: &str, reported: bool) {
+    let root = common::project(&[("module.py", source)]);
+    let stdout = common::check(root.path(), &["--select", "SMP101"]).1;
+    assert_eq!(stdout.contains(fragment), reported, "{stdout}");
 }
 
 #[test_case("from typing import TypeVar\n\nT = TypeVar(\"T\")\n", 0, 0 ; "type_var")]

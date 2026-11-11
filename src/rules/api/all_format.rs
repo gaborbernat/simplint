@@ -1,5 +1,4 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::token::{Token, TokenKind};
 use ruff_python_ast::{self as ast, Expr};
 use ruff_python_trivia::leading_indentation;
@@ -57,9 +56,7 @@ pub fn all_format(checker: &Checker) {
                 // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.
                 let closes_on_own_line = checker.source[TextRange::new(last.end(), value.end())].contains('\n');
                 // Ruff's COM812 reports a list whose closing bracket follows a line break with no comma before it.
-                if checker.settings.from_ruff.ruff_runs(RuffRule::MissingTrailingComma)
-                    && closing_bracket_follows_line_break(checker, last, value)
-                {
+                if closing_bracket_follows_line_break(checker, last, value) {
                     continue;
                 }
                 let edit = if multiline && closes_on_own_line || has_comment {

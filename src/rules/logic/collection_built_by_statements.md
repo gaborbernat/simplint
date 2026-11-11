@@ -33,19 +33,19 @@ for a set. The run stops at the first statement that is not such an add.
 
 Keys and values must be constants or plain names, and must not read the collection itself.
 
-- **A list filled with appends**: the entries are written in the order they were added.
+- **A list filled with an append**: the entry is written in the literal. A run of two or more appends is left to Ruff's
+  FURB113, under Exceptions.
 
   ```python report
-  def names(first: str, second: str) -> list[str]:
+  def names(first: str) -> list[str]:
       out = []
       out.append(first)
-      out.append(second)
       return out
   ```
 
   ```python fixed
-  def names(first: str, second: str) -> list[str]:
-      out = [first, second]
+  def names(first: str) -> list[str]:
+      out = [first]
       return out
   ```
 
@@ -142,15 +142,8 @@ Keys and values must be constants or plain names, and must not read the collecti
       return table
   ```
 
-- **A list that Ruff's FURB113 reports**: with Ruff's preview mode on and
-  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) selected, Ruff reports two or more appends to a list,
-  even with appends to other lists between them, and this rule leaves that list to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  preview = true
-  select = ["FURB113"]
-  ```
+- **A list that Ruff's FURB113 reports**: [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) reports two or
+  more appends to a list, even with appends to other lists between them, and this rule leaves that list to Ruff.
 
   ```python ok
   def build() -> list[int]:

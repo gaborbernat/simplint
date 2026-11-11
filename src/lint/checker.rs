@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
@@ -250,8 +249,8 @@ impl<'a> Checker<'a> {
     pub fn semantic(&self) -> &Semantic<'a> {
         self.semantic.get_or_init(|| {
             let matches = RuffMatches {
-                list_appends: counts_ruff_appends(self.settings),
-                django_reports: leaves_django_order_to_ruff(self.settings),
+                list_appends: self.settings.rules.contains(Rule::CollectionBuiltByStatements),
+                django_reports: self.settings.rules.contains(Rule::ClassMemberOrder),
                 private_imports: self.settings.rules.contains(Rule::PrivateImportPath),
                 unused_imports: self.is_init_module() && self.settings.rules.contains(Rule::InitModuleContent),
             };
@@ -463,21 +462,6 @@ impl<'a> Checker<'a> {
     pub fn line_number(&self, offset: TextSize) -> OneIndexed {
         self.file.index().line_index(offset)
     }
-}
-
-// Whether `class-member-order` runs on a file where Ruff's DJ012 reports Django model statements out of order, which
-// the rule leaves to Ruff and reads from the semantic model.
-pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::ClassMemberOrder)
-        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
-}
-
-// Whether `collection-built-by-statements` runs on a file where Ruff's FURB113 counts list appends, which the rule then
-// reads from the semantic model.
-pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::CollectionBuiltByStatements)
-        && settings.from_ruff.preview
-        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
 }
 
 // Whether the edits of a fix are sorted and do not overlap, as `Fix` requires. Touching edits, such as an insertion at

@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::str::Quote;
 use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion};
@@ -64,13 +63,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 }
 
 // Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines, so this rule leaves those to Ruff while it runs.
+// lines, so this rule leaves those to Ruff.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
     let settings = &walker.checker.settings.from_ruff;
-    (settings.ruff_runs(RuffRule::LoggingStringConcat) && is_logging_message(walker, expr))
-        || (settings.allow_multiline
-            && settings.ruff_runs(RuffRule::ExplicitStringConcatenation)
-            && starts_with_literal_pair_across_lines(walker.checker, expr))
+    is_logging_message(walker, expr)
+        || (settings.allow_multiline && starts_with_literal_pair_across_lines(walker.checker, expr))
 }
 
 // Whether `expr` is the message argument of a logging call, as G003 finds it: the `msg` keyword or the argument at

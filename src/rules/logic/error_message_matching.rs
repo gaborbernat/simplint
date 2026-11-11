@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Identifier, Stmt};
 use ruff_python_parser::parse_expression;
@@ -27,10 +26,8 @@ pub(crate) fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::
     let mut asserts = Asserts::default();
     asserts.visit_body(body);
     // Ruff's PT017 reports each `assert` that names the exception, so a comparison inside one is left to it.
-    let left_to_ruff = checker.settings.from_ruff.ruff_runs(RuffRule::PytestAssertInExcept);
-    let mut tests = ExprCollector::new(|expr: &Expr| {
-        by_text(checker, name, expr).filter(|range| !(left_to_ruff && asserts.contains(*range)))
-    });
+    let mut tests =
+        ExprCollector::new(|expr: &Expr| by_text(checker, name, expr).filter(|range| !asserts.contains(*range)));
     tests.visit_body(body);
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {

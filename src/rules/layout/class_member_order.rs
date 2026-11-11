@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 
 use super::class_order::{Arrangement, ClassOrder, Inversion, Section};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
-use crate::lint::checker::{Checker, leaves_django_order_to_ruff};
+use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
 pub fn class_member_order(checker: &Checker) {
@@ -32,9 +32,8 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef, order: &ClassOrder<
     let resolved = |inversion: &Inversion| position[inversion.statement] < position[inversion.anchor];
     // Ruff's DJ012 reports a statement of a Django model that is out of the style guide order, without a fix, so the
     // layout leaves that report to Ruff unless it is the one that carries the class's fix.
-    let dj012 = leaves_django_order_to_ruff(checker.settings);
     let left_to_ruff =
-        |inversion: &Inversion| dj012 && checker.semantic().reported_by_dj012(class.body[inversion.statement].range());
+        |inversion: &Inversion| checker.semantic().reported_by_dj012(class.body[inversion.statement].range());
     let carrier = pending.as_ref().and_then(|_| {
         let mut candidates = inversions.iter().enumerate().filter(|(_, inversion)| resolved(inversion));
         let first = candidates.clone().next();

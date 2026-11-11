@@ -193,13 +193,7 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 - **`l`, `I` and `O`**: Ruff's [ambiguous-variable-name](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/),
   [ambiguous-class-name](https://docs.astral.sh/ruff/rules/ambiguous-class-name/) and
   [ambiguous-function-name](https://docs.astral.sh/ruff/rules/ambiguous-function-name/) report these letters wherever
-  this rule would, so this rule leaves them to Ruff while the project's Ruff configuration selects the rule for the kind
-  of binding. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["E741"]
-  ```
+  this rule would, so this rule leaves them to Ruff.
 
   ```python ok
   l = 3
@@ -212,10 +206,8 @@ Each name is reported once per scope, at its first binding.
 ## Ruff overlap
 
 Ruff's E741, E742 and E743 report `l`, `I` and `O` on variables, parameters, except names, classes and functions, with
-no fix. This rule leaves those three letters to Ruff at those sites, and only while the project's Ruff configuration
-selects the rule of each kind. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
-It keeps every other single letter, and the `l`, `I` and `O` that Ruff does not check: import aliases, `match` captures
-and lowercase type parameters.
+no fix. This rule leaves those three letters to Ruff at those sites. It keeps every other single letter, and the `l`,
+`I` and `O` that Ruff does not check: import aliases, `match` captures and lowercase type parameters.
 
 ## Other tools
 

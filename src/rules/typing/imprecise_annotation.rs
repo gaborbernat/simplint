@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
@@ -29,7 +28,7 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
                 matches!(last_segment(value), Some("TypeIs" | "TypeGuard"))
             });
             let settings = &walker.checker.settings.from_ruff;
-            let checked = settings.ruff_runs(RuffRule::AnyType) && ann401_checks(walker, function);
+            let checked = ann401_checks(walker, function);
             // ANN401 leaves the `self` or `cls` a method receives unchecked, unless the method is static, and the
             // `*args` and `**kwargs` alone when `allow-star-arg-any` is set.
             let receiver = receiver_name(walker, function);

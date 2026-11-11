@@ -151,14 +151,12 @@ fn constant_assert_leaves_ruff_cases_without_a_fix(source: &str, reported: bool)
     assert_eq!(stdout.contains("Assertion on a constant always passes"), reported, "{stdout}");
 }
 
-// Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, which SMP808 leaves to it while the
-// project's Ruff configuration selects it.
-#[test_case("while not done():\n        await asyncio.sleep(1)", "ASYNC110", 0 ; "sole_await_left_to_ruff")]
-#[test_case("while not done():\n        await asyncio.sleep(1)", "E501", 1 ; "sole_await_reported_without_async110")]
-#[test_case("while not done():\n        await asyncio.sleep(1)\n        done()", "ASYNC110", 1 ; "await_with_another_statement")]
-fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, code: &str, reports: usize) {
+// Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, so SMP808 leaves that sleep to Ruff
+// whether or not the project selects it. A body with another statement is not one ASYNC110 reports, so the rule keeps it.
+#[test_case("while not done():\n        await asyncio.sleep(1)", 0 ; "sole_await_left_to_ruff")]
+#[test_case("while not done():\n        await asyncio.sleep(1)\n        done()", 1 ; "await_with_another_statement")]
+fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
     let source = format!("import asyncio\n\n\nasync def test_busy(done):\n    {body}\n");
-    let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
-    let root = common::project(&[("pyproject.toml", &settings), ("test_busy.py", &source)]);
+    let root = common::project(&[("test_busy.py", &source)]);
     common::assert_report_count(root.path(), "SMP808", reports);
 }

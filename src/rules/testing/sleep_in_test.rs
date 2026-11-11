@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -42,7 +41,6 @@ impl<'a> Visitor<'a> for Sleeps<'_, '_> {
             && let [Stmt::Expr(ast::StmtExpr { value, .. })] = body.as_slice()
             && let Expr::Await(ast::ExprAwait { value: awaited, .. }) = value.as_ref()
             && let Expr::Call(call) = awaited.as_ref()
-            && self.checker.settings.from_ruff.ruff_runs(RuffRule::AsyncBusyWait)
             && self.checker.semantic().resolves_to(&call.func, &["asyncio", "sleep"])
         {
             self.busy_waits.push(awaited.range());

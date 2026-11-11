@@ -110,20 +110,20 @@ fn callable_ellipsis_in_test_module_outside_function_reports() {
     assert_eq!(stdout.matches("Callable[..., T]").count(), 1, "{stdout}");
 }
 
-// Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, which SMP602 leaves to it
-// while the project's Ruff configuration runs it.
-#[test_case("def f(value: Any | None) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "parameter")]
-#[test_case("def f(value: Any) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "whole_parameter")]
-#[test_case("def f() -> Any:\n    return 1\n", "ANN401", "`Any` accepts any value" ; "whole_return")]
-fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment: &str) {
+// Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, so SMP602 leaves it to
+// Ruff whether or not the project selects ANN401.
+#[test_case("def f(value: Any | None) -> None:\n    print(value)\n" ; "parameter")]
+#[test_case("def f(value: Any) -> None:\n    print(value)\n" ; "whole_parameter")]
+#[test_case("def f() -> Any:\n    return 1\n" ; "whole_return")]
+fn imprecise_annotation_leaves_any_to_ann401(source: &str) {
     let module = format!("from typing import Any\n\n{source}");
-    let case =
-        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: code, files: &[("module.py", &module)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
+    let root = common::project(&[("module.py", &module)]);
+    let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
+    assert!(!stdout.contains("`Any` accepts any value"), "{stdout}");
 }
 
 // Ruff's ANN401 reports an `Any` that is, or sits in an `Optional`, a `Union`, a `|` or the first argument of
-// `Annotated`, in a parameter or return annotation. SMP602 leaves those to it while the project's Ruff configuration selects it.
+// `Annotated`, in a parameter or return annotation. SMP602 leaves those to it whether or not ANN401 is selected.
 #[test_case("def f(value: Optional[Any]) -> None:\n    print(value)\n", false ; "optional")]
 #[test_case("def f(value: Union[int, Any]) -> None:\n    print(value)\n", false ; "union")]
 #[test_case("def f(value: Union[Any]) -> None:\n    print(value)\n", false ; "single_element_union")]
@@ -133,18 +133,15 @@ fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment
 #[test_case("def f(value: list[Any]) -> None:\n    print(value)\n", true ; "known_generic")]
 #[test_case("def f(value: Annotated[int, Any]) -> None:\n    print(value)\n", true ; "annotated_metadata")]
 #[test_case("def f(value: Foo[Any]) -> None:\n    print(value)\n", true ; "unknown_generic")]
-fn imprecise_annotation_follows_ruff_optional_any(source: &str, reported_when_selected: bool) {
+fn imprecise_annotation_leaves_optional_any_to_ann401(source: &str, reported: bool) {
     let module = format!("from typing import Annotated, Any, Optional, Union\n\n\n{source}");
-    let case =
-        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: "ANN401", files: &[("module.py", &module)] };
-    assert_eq!(
-        common::reported_without_and_with_ruff(&case, "`Any` accepts any value"),
-        [true, reported_when_selected]
-    );
+    let root = common::project(&[("module.py", &module)]);
+    let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
+    assert_eq!(stdout.contains("`Any` accepts any value"), reported, "{stdout}");
 }
 
 // ANN401 skips `*args` and `**kwargs` under `allow-star-arg-any`, the `self` or `cls` of a method, and `@override`
-// signatures, so SMP602 reports those while ANN401 runs.
+// signatures, so SMP602 reports those whether or not ANN401 is selected.
 #[test_case("", "def f(*args: Any) -> None:\n    print(args)\n", false ; "star_args")]
 #[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(*args: Any) -> None:\n    print(args)\n", true ; "star_args_allowed")]
 #[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(**kwargs: Optional[Any]) -> None:\n    print(kwargs)\n", true ; "star_kwargs_allowed")]
@@ -152,7 +149,7 @@ fn imprecise_annotation_follows_ruff_optional_any(source: &str, reported_when_se
 #[test_case("", "class C(Base):\n    @override\n    def m(self, value: Any) -> None:\n        print(value)\n", true ; "override")]
 fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, reported: bool) {
     let root = common::project(&[
-        ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [\"ANN401\"]\n{extra}")),
+        ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = []\n{extra}")),
         ("module.py", &format!("from typing import Annotated, Any, Optional, override\n\n\n{source}")),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP602"]).1;

@@ -3,14 +3,14 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:5 SMP531 `result` is filled by 2 statements right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
-9:5 SMP531 `names` is filled by 1 statement right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
---- fixed (2 applied, 0 remaining) ---
+--- fixed (1 applied, 0 remaining) ---
 def keyed(name: str, value: int) -> dict[str, int]:
     result = {name: value, "total": 1}
     return result
 
 
 def listed(items: list[str], first: str) -> list[str]:
-    names = [first]
+    names = []
+    names.append(first)
     names.append(items[0])
     return names
