@@ -1,6 +1,7 @@
 mod common;
 
 use std::fs;
+use std::io;
 use std::path::Path;
 use std::process::Command;
 
@@ -19,12 +20,19 @@ fn docs_data_matches_the_binary(args: &[&str], file: &str) {
     let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), args);
     assert_eq!((code, stderr.as_str()), (0, ""));
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
-    let committed = fs::read_to_string(&path).unwrap_or_default();
-    if committed != stdout {
-        fs::write(&path, &stdout).expect("write docs data");
+    regenerate_if_stale(&Path::new(env!("CARGO_MANIFEST_DIR")).join(file), &stdout);
+}
+
+fn regenerate_if_stale(path: &Path, generated: &str) {
+    let committed = match fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => panic!("read {}: {error}", path.display()),
+    };
+    if committed != generated {
+        fs::write(path, generated).expect("write docs data");
         let diff =
-            TextDiff::from_lines(&committed, &stdout).unified_diff().header("committed", "regenerated").to_string();
+            TextDiff::from_lines(&committed, generated).unified_diff().header("committed", "regenerated").to_string();
         panic!("{} was stale and is now regenerated; commit it\n{diff}", path.display());
     }
 }
@@ -40,25 +48,7 @@ fn rules_data_matches_the_binary() {
     let binary: Vec<Value> = serde_json::from_str(&stdout).expect("the binary lists rules as JSON");
     let derived: Vec<Value> =
         serde_json::from_slice(&rules_data_json(&script)).expect("the derivation lists rules as JSON");
-    assert_eq!(derived.len(), binary.len(), "the derivation lists a different number of rules");
-    for (binary_rule, derived_rule) in binary.iter().zip(&derived) {
-        if binary_rule != derived_rule {
-            let differing = binary_rule
-                .as_object()
-                .expect("a rule is an object")
-                .keys()
-                .find(|key| binary_rule[key.as_str()] != derived_rule[key.as_str()]);
-            let code = &binary_rule["code"];
-            match differing {
-                Some(key) => panic!(
-                    "{code} differs in `{key}`\nbinary:  {}\nderived: {}",
-                    binary_rule[key.as_str()],
-                    derived_rule[key.as_str()]
-                ),
-                None => panic!("{code} differs in its keys"),
-            }
-        }
-    }
+    assert_eq!(derived, binary, "docs/rules_data.py lists rules differently from `simplint rules`");
 }
 
 // The derivation needs Python 3.10 for its `match` statements, so an older `python3` falls through to `python`.

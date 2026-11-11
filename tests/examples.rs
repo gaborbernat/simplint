@@ -18,8 +18,13 @@ fn rule_examples_hold() {
     let (code, stdout, stderr) = simplint(root.path(), &["rules", "--output-format", "json"]);
     assert_eq!((code, stderr.as_str()), (0, ""));
     let rules: Vec<Value> = serde_json::from_str(&stdout).expect("json");
+    let failures = example_failures(&rules);
+    assert!(failures.is_empty(), "examples that do not hold:\n{}", failures.join("\n"));
+}
+
+fn example_failures(rules: &[Value]) -> Vec<String> {
     let mut failures = Vec::new();
-    for rule in &rules {
+    for rule in rules {
         let code = text(&rule["code"]);
         match parse(text(&rule["explanation"])) {
             Ok(examples) => {
@@ -32,7 +37,7 @@ fn rule_examples_hold() {
             Err(reason) => failures.push(format!("{code}: {reason}")),
         }
     }
-    assert!(failures.is_empty(), "examples that do not hold:\n{}", failures.join("\n"));
+    failures
 }
 
 // Every block parses without syntax the example's target version lacks, so a reader on that version can run it.
@@ -66,7 +71,6 @@ fn target_version(config: Option<&Fence>) -> Result<PythonVersion, String> {
     lower.parse().map_err(|error| format!("requires-python {requires}: {error}"))
 }
 
-// Checks the reports, the clean files and the fix of one example, each in a project of its own.
 fn check_example(code: &str, example: &Example) -> Result<(), String> {
     // A `fixed` block names the file its report wrote, so only the other blocks are written.
     let files: Vec<(&str, &str)> = example
