@@ -83,7 +83,8 @@ message = f"Hello, {name}!"
 - **Two literals joined by `+` across lines**, such as `("Hello, "` followed by `+ "world")`: Ruff's
   [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it when
   `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain that starts with such a pair is left to Ruff
-  as well, since both would report the same spot.
+  as well, since both would report the same spot. Ruff gives no fix to a pair with a parenthesized operand, so this rule
+  keeps that pair and its chain, where its own fix stays available.
 
   ```python ok
   # fmt: off
@@ -92,6 +93,10 @@ message = f"Hello, {name}!"
       + "world"
   )
   # fmt: on
+  ```
+
+  ```python report
+  title = ("Hello, ") + "world"
   ```
 
 - **Chains with an operand that is an instance of a class**, such as `Markup("<b>")` for a `Markup` class that overrides

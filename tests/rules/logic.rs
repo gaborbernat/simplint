@@ -899,6 +899,8 @@ fn single_use_variable_follows_ruff_defaults(
 #[test_case("", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
 #[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
 #[test_case("", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
+#[test_case("", "x = (\n    (\"Hello, \")\n    + \"world\"\n)\n", true ; "parenthesized_left_of_pair")]
+#[test_case("", "x = (\n    \"Hello, \"\n    + (\"world\")\n)\n", true ; "parenthesized_right_of_pair")]
 #[test_case("[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
 fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) {
     let root = common::project(&[
