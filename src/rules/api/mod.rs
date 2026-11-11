@@ -1,4 +1,5 @@
 mod all_format;
+mod all_list;
 mod all_not_last;
 mod init_module_content;
 mod missing_from_all;
@@ -22,6 +23,7 @@ pub(crate) use unused_definition::unused_definition;
 pub(crate) use unused_export::unused_export;
 pub(crate) use unused_return_value::unused_return_value;
 
+use all_list::{AllList, exploded, is_alone_on_line};
 use ruff_python_ast as ast;
 use ruff_python_ast::visitor::Visitor;
 use ruff_text_size::TextRange;
@@ -31,14 +33,6 @@ use crate::lint::checker::Checker;
 use crate::project::constructors::{CallContexts, CallSites, Use};
 use crate::rules::call_sites::{module_candidate, module_uses};
 use crate::syntax::ReturnVisitor;
-
-// The one-name-per-line layout `ruff format` gives a list with a trailing comma, so the fix needs no formatter pass.
-fn exploded(checker: &Checker, base: &str, items: &[String]) -> String {
-    let indent = checker.stylist.indentation().as_str();
-    let eol = checker.line_ending();
-    let lines = items.iter().fold(String::new(), |text, item| text + base + indent + item + "," + eol);
-    format!("[{eol}{lines}{base}]")
-}
 
 // A star import of this module can call its functions under names no file spells out, so none is judged. A module
 // only tests import serves them, so its calls are test code.

@@ -8,7 +8,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::api::exploded;
+use crate::rules::api::{AllList, exploded};
 use crate::syntax::{AllBinding, all_binding, module_statements};
 
 pub fn all_format(checker: &Checker) {
@@ -45,9 +45,10 @@ pub fn all_format(checker: &Checker) {
             .iter()
             .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment | TokenKind::Rpar))
             .filter(|token| token.kind() == TokenKind::Comma);
+        let all = AllList::new(stmt, value.range(), elements);
         let multiline = checker.source.contains_line_break(value.range());
-        let has_comment = checker.has_comment_in(value.range());
-        let items: Vec<String> = elements.iter().map(|elt| checker.text(elt.range()).to_owned()).collect();
+        let has_comment = all.has_comment(checker);
+        let items = all.items(checker);
         let base = leading_indentation(checker.source.full_line_str(value.start()));
         // With `skip-magic-trailing-comma`, `ruff format` drops the comma from a list that fits on one line.
         let magic = checker.settings.from_ruff.magic_trailing_comma;

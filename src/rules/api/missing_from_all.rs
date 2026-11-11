@@ -11,12 +11,18 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
-use crate::rules::api::{exploded, is_type_checking};
+use crate::rules::api::{AllList, exploded, is_type_checking};
 use crate::rules::edits::fix_of;
 use crate::rules::{export_key, indentation};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
-use crate::syntax::{Exports, Visibility, alias_binding, all_binding, all_literal};
+use crate::syntax::{Exports, Visibility, alias_binding, all_binding};
+
+struct Missing<'a> {
+    name: &'a str,
+    range: TextRange,
+    imported: bool,
+}
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
@@ -39,7 +45,7 @@ pub fn missing_from_all(checker: &Checker) {
         .filter_map(|stmt| stmt.as_if_stmt().filter(|stmt| is_type_checking(&stmt.test, checker)))
         .filter_map(|stmt| Some(TextRange::new(stmt.body.first()?.start(), stmt.body.last()?.end())))
         .collect();
-    let mut missing: Vec<(&str, TextRange, bool)> = checker
+    let mut missing: Vec<Missing> = checker
         .semantic()
         .all_bindings()
         .filter(|(name, bindings)| {
@@ -55,23 +61,27 @@ pub fn missing_from_all(checker: &Checker) {
                     || checker.project().is_api_reached(name))
                 && !shadows_module(name)
         })
-        .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported_by_others(name)))
+        .map(|(name, bindings)| Missing {
+            name,
+            range: bindings[0].range,
+            imported: checker.project().is_imported_by_others(name),
+        })
         .collect();
     if missing.is_empty() {
         return;
     }
-    missing.sort_by_key(|(_, range, _)| range.start());
-    let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
+    missing.sort_by_key(|missing| missing.range.start());
+    let names: Vec<String> = missing.iter().map(|missing| format!("`{}`", missing.name)).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
     let reports = missing
         .iter()
-        .map(|&(name, range, imported)| {
-            let reason = if imported {
+        .map(|missing| {
+            let reason = if missing.imported {
                 "is imported by other modules"
             } else {
                 "appears in the signature of a name in `__all__`"
             };
-            (range, format!("`{name}` {reason}; list it in `__all__`"), title.clone())
+            (missing.range, format!("`{}` {reason}; list it in `__all__`", missing.name), title.clone())
         })
         .collect();
     // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
@@ -80,7 +90,7 @@ pub fn missing_from_all(checker: &Checker) {
         if checker.project().role().public {
             None
         } else {
-            all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
+            all_insertion(checker, missing.iter().map(|missing| missing.name))
                 .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
         }
     });
@@ -88,13 +98,13 @@ pub fn missing_from_all(checker: &Checker) {
 
 // Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff
 // reports as RUF100. The fix drops those comments with the listing.
-fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, TextRange, bool)]) -> Option<Fix> {
+fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -> Option<Fix> {
     let applicability = fix.applicability();
-    let listed: FxHashSet<&str> = missing.iter().map(|(name, _, _)| *name).collect();
+    let listed: FxHashSet<&str> = missing.iter().map(|missing| missing.name).collect();
     // Names on one line share its comment, which is removed once: two deletions of it would overlap.
     let comments: BTreeSet<(TextSize, TextSize)> = missing
         .iter()
-        .filter_map(|(_, range, _)| checker.trailing_comment(*range))
+        .filter_map(|missing| checker.trailing_comment(missing.range))
         .filter(|comment| is_noqa_for_only(checker.text(*comment), "F401"))
         .filter(|comment| binds_only_listed(checker, *comment, &listed))
         .map(|comment| (comment.start(), comment.end()))
@@ -133,24 +143,24 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
         return new_all(checker, &names);
     };
-    let (value, elts) = all_literal(stmt)?;
+    let all = AllList::of(stmt)?;
     let source = checker.source;
-    let one_per_line =
-        elts.iter().all(|elt| source[TextRange::new(source.line_start(elt.start()), elt.start())].trim().is_empty());
-    let has_comment = checker.has_comment_in(value);
+    let elts = all.elements();
+    let one_per_line = all.one_per_line(checker);
+    let has_comment = all.has_comment(checker);
     if has_comment && elts.is_empty() {
         return None;
     }
-    if source.contains_line_break(value) && !elts.is_empty() && (one_per_line || has_comment) {
-        return lines_insertion(checker, stmt, (elts, one_per_line), &names);
+    if source.contains_line_break(all.value()) && !elts.is_empty() && (one_per_line || has_comment) {
+        return lines_insertion(checker, &all, &names);
     }
-    let mut items: Vec<String> = elts.iter().map(|elt| checker.text(elt.range()).to_owned()).collect();
+    let mut items = all.items(checker);
     for name in names.iter().rev() {
         items.insert(position(elts, name), quoted(checker, name));
     }
-    let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
+    let (open, close) = all.brackets(checker);
     let list = exploded(checker, indentation(source, stmt), &items);
-    Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), value)))
+    Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), all.value())))
 }
 
 // The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
@@ -174,13 +184,10 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
 }
 
 // Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
-fn lines_insertion(
-    checker: &Checker,
-    stmt: &Stmt,
-    (elts, one_per_line): (&[Expr], bool),
-    names: &[&str],
-) -> Option<Fix> {
+fn lines_insertion(checker: &Checker, all: &AllList, names: &[&str]) -> Option<Fix> {
     let source = checker.source;
+    let elts = all.elements();
+    let one_per_line = all.one_per_line(checker);
     let tail = &elts[elts.len() - 1];
     let indent = if one_per_line {
         indentation(source, &elts[0])
@@ -188,7 +195,7 @@ fn lines_insertion(
         leading_indentation(source.full_line_str(tail.start()))
     };
     // A parenthesized element ends at its closing parenthesis, so the names go after that.
-    let tail_range = checker.parenthesized_range(tail, stmt.into());
+    let tail_range = all.element_range(checker, tail);
     // A comment ending the last element's line stays with that element only when the names go on the lines after it,
     // so nothing but a comma may come between them, and the closing bracket must follow the line.
     let line_comment = match checker
@@ -216,7 +223,7 @@ fn lines_insertion(
         .map(|(at, group)| match elts.get(at) {
             Some(next) => Edit::insertion(
                 group.iter().fold(String::new(), |text, name| text + name + &separator),
-                checker.parenthesized_range(next, stmt.into()).start(),
+                all.element_range(checker, next).start(),
             ),
             None if line_comment.is_some() => Edit::insertion(
                 group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),

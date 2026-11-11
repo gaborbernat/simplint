@@ -484,7 +484,7 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     let mut exports = Exports::Absent;
     for stmt in body {
         let (resets, elements): (bool, Option<Vec<&Expr>>) = if let Some(binding) = all_binding(stmt) {
-            (binding.operator.is_none(), all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+            (binding.operator.is_none(), all_literal(stmt).map(|literal| literal.elements.iter().collect()))
         } else if let Some((method, arguments)) = all_mutation(stmt) {
             let elements = match (method, &*arguments.args) {
                 ("append", [element]) => Some(vec![element]),
@@ -540,7 +540,12 @@ pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
     Some((attribute.attr.as_str(), &call.arguments))
 }
 
-pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
+pub struct AllLiteral<'a> {
+    pub value: TextRange,
+    pub elements: &'a [Expr],
+}
+
+pub fn all_literal(stmt: &Stmt) -> Option<AllLiteral<'_>> {
     // In `alias = __all__ = [...]` the list has a second name that can change it out of sight.
     if let Stmt::Assign(ast::StmtAssign { targets, .. }) = stmt
         && !targets.first().is_some_and(is_all_target)
@@ -551,7 +556,7 @@ pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
         AllBinding {
             value: Some(value @ (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }))),
             operator: None | Some(ast::Operator::Add),
-        } => Some((value.range(), elts)),
+        } => Some(AllLiteral { value: value.range(), elements: elts }),
         _ => None,
     }
 }

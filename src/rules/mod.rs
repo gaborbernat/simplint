@@ -103,7 +103,7 @@ impl<'a> FileState<'a> {
                 .body()
                 .iter()
                 .filter_map(all_literal)
-                .flat_map(|(_, elements)| elements)
+                .flat_map(|literal| literal.elements)
                 .filter_map(Expr::as_string_literal_expr)
                 .collect()
         })
