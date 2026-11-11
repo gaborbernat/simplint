@@ -18,26 +18,23 @@ use crate::rules::is_class_like;
 use crate::syntax::{Visibility, sole_argument};
 
 impl<'w, 'a> Kinds<'w, 'a> {
-    pub fn new(walker: &'w Walker<'w, 'a>, range: TextRange) -> Self {
+    pub(in crate::rules::logic) fn new(walker: &'w Walker<'w, 'a>, range: TextRange) -> Self {
         // A default value or decorator sits in the scope around its def.
         let scopes =
             walker.scopes().iter().take_while(|scope| scope.body_range().contains_range(range)).copied().collect();
         Self { walker, scopes, at_spot: true, resolving: Vec::new(), reading: Vec::new(), relies_on: usize::MAX }
     }
 
-    pub fn is_str(&mut self, expr: &'a Expr) -> bool {
-        let depth = self.scopes.len();
-        self.kind(expr, depth) == Some(Kind::Str)
+    pub(in crate::rules::logic) fn is_str(&mut self, expr: &'a Expr) -> bool {
+        self.kind(expr, self.scopes.len()) == Some(Kind::Str)
     }
 
-    // Whether `expr` is an instance of a class, which an operator may run the class's own method for.
-    pub fn is_class_instance(&mut self, expr: &'a Expr) -> bool {
-        let depth = self.scopes.len();
-        matches!(self.kind(expr, depth), Some(Kind::Instance(_) | Kind::ImportedInstance))
+    // An operator on such an instance may run the class's own method.
+    pub(in crate::rules::logic) fn is_class_instance(&mut self, expr: &'a Expr) -> bool {
+        matches!(self.kind(expr, self.scopes.len()), Some(Kind::Instance(_) | Kind::ImportedInstance))
     }
 
-    // The kind of `expr`, read in the innermost `depth` scopes.
-    pub(super) fn kind(&mut self, expr: &'a Expr, depth: usize) -> Option<Kind> {
+    fn kind(&mut self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         match expr {
             Expr::StringLiteral(_) | Expr::FString(_) => Some(Kind::Str),
             Expr::BytesLiteral(_) => Some(Kind::Bytes),
@@ -97,17 +94,11 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    // The kind every one of `exprs` has, if they share one.
-    pub(super) fn same(&mut self, exprs: impl IntoIterator<Item = &'a Expr>, depth: usize) -> Option<Kind> {
-        let mut kinds = Vec::new();
-        for expr in exprs {
-            kinds.push(self.kind(expr, depth)?);
-        }
-        shared(kinds)
+    fn same(&mut self, exprs: impl IntoIterator<Item = &'a Expr>, depth: usize) -> Option<Kind> {
+        exprs.into_iter().map(|expr| self.kind(expr, depth)).collect::<Option<Vec<_>>>().and_then(shared)
     }
 
-    // The kind of each item iterating `expr` gives.
-    pub(super) fn item(&mut self, expr: &'a Expr, depth: usize) -> Option<Kind> {
+    fn item(&mut self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         match self.kind(expr, depth)? {
             Kind::Str | Kind::StrItems => Some(Kind::Str),
             Kind::IntItems => Some(Kind::Int),
@@ -115,7 +106,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    pub(super) fn call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
+    fn call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
         let ast::ExprCall { func, arguments, .. } = call;
         match func.as_ref() {
             Expr::Name(name) => match self.lookup(&name.id, depth) {
@@ -169,8 +160,6 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    // The kind a call to a name the module imports gives: an instance of a class of the run, nothing for a function of
-    // the run, else what the standard library gives, or an instance of a class the name is spelled as.
     fn imported_callee(
         &mut self,
         call: &'a ast::ExprCall,
@@ -187,8 +176,6 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    // The kind a call of an attribute of a module the code imports gives: the attribute of a module of the run is a class
-    // or a function there, and any other attribute is the standard library's or spelled as a class.
     fn imported_attribute_call(
         &mut self,
         call: &'a ast::ExprCall,
@@ -205,11 +192,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
             },
             None => None,
         };
-        let name = self.imported_root(value, depth).then_some(attr);
-        self.imported_callee(call, run, name, depth)
+        self.imported_callee(call, run, self.imported_root(value, depth).then_some(attr), depth)
     }
 
-    // Whether `expr` is a name the module imports, or an attribute of one.
     fn imported_root(&self, expr: &'a Expr, depth: usize) -> bool {
         attribute_root(expr)
             .as_name_expr()
@@ -217,11 +202,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
             .is_some_and(|(bindings, _)| bindings.imported)
     }
 
-    // What a call to a standard library function returns, for a function the module imports.
-    pub(super) fn library_call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
-        let name = self.qualified(&call.func, depth)?;
+    fn library_call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
         let args = &call.arguments.args;
-        match name.segments() {
+        match self.qualified(&call.func, depth)?.segments() {
             ["os", "getcwd"]
             | ["getpass", "getuser"]
             | ["json", "dumps"]
@@ -249,7 +232,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    pub(super) fn attribute(&mut self, attribute: &'a ast::ExprAttribute, depth: usize) -> Option<Kind> {
+    fn attribute(&mut self, attribute: &'a ast::ExprAttribute, depth: usize) -> Option<Kind> {
         let ast::ExprAttribute { value, attr, .. } = attribute;
         if matches!(attr.as_str(), "__name__" | "__qualname__" | "__module__") {
             return Some(Kind::Str);
@@ -288,8 +271,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 _ => None,
             };
         }
-        let name = self.qualified(value, depth)?;
-        match (name.segments(), attr.as_str()) {
+        match (self.qualified(value, depth)?.segments(), attr.as_str()) {
             (["os"], "curdir" | "extsep" | "linesep" | "name" | "pardir" | "pathsep" | "sep")
             | (["sys"], "executable" | "platform" | "version") => Some(Kind::Str),
             (["string"], constant) if STRING_CONSTANTS.contains(&constant) => Some(Kind::Str),
@@ -298,15 +280,12 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
     }
 
-    // The qualified name of `expr`, an imported name or an attribute of one, when the module's own import binds the
-    // name it starts with.
-    pub(super) fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
+    fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
         let (bindings, scope) = self.lookup(&attribute_root(expr).as_name_expr()?.id, depth)?;
-        let semantic = self.walker.checker.semantic();
-        (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()
+        (scope == 0 && bindings.only_imported()).then(|| self.walker.checker.semantic().qualified_name(expr)).flatten()
     }
 
-    pub(super) fn name(&mut self, name: &'a str, depth: usize) -> Option<Kind> {
+    fn name(&mut self, name: &'a str, depth: usize) -> Option<Kind> {
         // A comprehension binds its targets in a scope of its own.
         if self.at_spot
             && self.resolving.is_empty()
@@ -321,7 +300,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         if bindings.opaque || bindings.imported || !bindings.functions.is_empty() {
             return None;
         }
-        let key = (name, self.scope_key(depth));
+        let key = (name, depth.checked_sub(1).map_or_else(TextRange::default, |index| self.scopes[index].body_range()));
         if let Some(index) = self.resolving.iter().position(|(other, at, _)| (*other, *at) == key) {
             self.relies_on = self.relies_on.min(index + 1);
             return self.resolving[index].2;
@@ -330,18 +309,16 @@ impl<'w, 'a> Kinds<'w, 'a> {
         if let Some(kind) = checker.state().kinds().resolved.borrow().get(&key) {
             return *kind;
         }
-        let floor = self.resolving.len();
         let outer = std::mem::replace(&mut self.relies_on, usize::MAX);
         let kind = self.bound(&bindings, key, depth);
-        if self.relies_on > floor {
+        if self.relies_on > self.resolving.len() {
             checker.state().kinds().resolved.borrow_mut().insert(key, kind);
         }
         self.relies_on = self.relies_on.min(outer);
         kind
     }
 
-    // The kind every binding of a name gives it.
-    pub(super) fn bound(&mut self, bindings: &Bindings<'a>, key: (&'a str, TextRange), depth: usize) -> Option<Kind> {
+    fn bound(&mut self, bindings: &Bindings<'a>, key: (&'a str, TextRange), depth: usize) -> Option<Kind> {
         // An annotation holds unless a value the code shows contradicts it, as a loop over numbers would.
         if let Some(declared) = bindings.declared {
             let kinds = self.values(&bindings.values, key, Some(declared), depth);
@@ -359,7 +336,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         })
     }
 
-    pub(super) fn values(
+    fn values(
         &mut self,
         values: &[Value<'a>],
         key: (&'a str, TextRange),
@@ -380,7 +357,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     }
 
     // What `with` gives the target of a context manager: the name of a temporary directory is a `str`.
-    pub(super) fn entered(&self, expr: &'a Expr, depth: usize) -> Option<Kind> {
+    fn entered(&self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         let Expr::Call(ast::ExprCall { func, .. }) = expr else {
             return None;
         };
@@ -389,13 +366,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             .then_some(Kind::Str)
     }
 
-    // The scope the innermost `depth` scopes end in, the module's as an empty range.
-    pub(super) fn scope_key(&self, depth: usize) -> TextRange {
-        depth.checked_sub(1).map_or_else(TextRange::default, |index| self.scopes[index].body_range())
-    }
-
-    // The innermost generator of a comprehension around the spot that binds `name`.
-    pub(super) fn comprehension(&self, name: &str) -> Option<&'a ast::Comprehension> {
+    fn comprehension(&self, name: &str) -> Option<&'a ast::Comprehension> {
         self.walker.expressions().iter().rev().find_map(|expr| {
             let generators = match expr {
                 Expr::ListComp(ast::ExprListComp { generators, .. })
@@ -408,10 +379,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
         })
     }
 
-    // The bindings of `name` in the innermost of the `depth` scopes, then the module, that binds it, with the depth
-    // that scope ends. A class body is skipped unless innermost, since its methods do not see it, but a type parameter
-    // of the class is seen from them.
-    pub(super) fn lookup(&self, name: &'a str, depth: usize) -> Option<(Rc<Bindings<'a>>, usize)> {
+    // A class body is skipped unless innermost, since its methods do not see it, but a type parameter of the class is
+    // seen from them.
+    fn lookup(&self, name: &'a str, depth: usize) -> Option<(Rc<Bindings<'a>>, usize)> {
         let checker = self.walker.checker;
         self.scopes[..depth]
             .iter()
@@ -426,8 +396,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             .find(|(bindings, _)| bindings.binds())
     }
 
-    // The kind every one of `functions` declares it returns.
-    pub(super) fn returns(&self, functions: &[&'a ast::StmtFunctionDef]) -> Option<Kind> {
+    fn returns(&self, functions: &[&'a ast::StmtFunctionDef]) -> Option<Kind> {
         let checker = self.walker.checker;
         let mut kinds = Vec::new();
         for function in functions {
@@ -444,14 +413,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         shared(kinds)
     }
 
-    // How the class gives `attr` to the instances its method reads as `receiver`, with the depth of the class's
-    // scope.
-    pub(super) fn members(
-        &self,
-        receiver: &'a Expr,
-        attr: &'a str,
-        depth: usize,
-    ) -> Option<(Rc<Members<'a>>, Class<'a>)> {
+    fn members(&self, receiver: &'a Expr, attr: &'a str, depth: usize) -> Option<(Rc<Members<'a>>, Class<'a>)> {
         let receiver = receiver.as_name_expr()?;
         let index = self.scopes[..depth].iter().rposition(|scope| matches!(scope, Scope::Function(_)))?;
         let (Scope::Function(method), Some(Scope::Class(class))) =
@@ -459,7 +421,6 @@ impl<'w, 'a> Kinds<'w, 'a> {
         else {
             return None;
         };
-        let checker = self.walker.checker;
         // The parameter must be the only binding of the name, so it still holds the instance.
         if self_parameter(method) != Some(receiver.id.as_str())
             || self.lookup(&receiver.id, depth).is_none_or(|(bindings, at)| {
@@ -472,12 +433,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
         {
             return None;
         }
-        Some((members_of(checker, class, attr), Class { def: class, depth: index - 1 }))
+        Some((members_of(self.walker.checker, class, attr), Class { def: class, depth: index - 1 }))
     }
 
-    // What an attribute holds, from the annotation the class gives it, the property that computes it, or the values
-    // the class and its methods set.
-    pub(super) fn member(&mut self, members: &Members<'a>, class: Class<'a>, attr: &'a str) -> Option<Kind> {
+    fn member(&mut self, members: &Members<'a>, class: Class<'a>, attr: &'a str) -> Option<Kind> {
         if members.opaque || !members.methods.is_empty() {
             return None;
         }
@@ -487,10 +446,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
         if !members.properties.is_empty() {
             return members.values.is_empty().then(|| self.returns(&members.properties)).flatten();
         }
-        // A subclass or another file may give it any value.
         let Class { def: class, depth: class_depth } = class;
         let project = self.walker.checker.project();
         let key = (class.range, attr);
+        // A subclass or another file may give it any value.
         if members.values.is_empty()
             || project.is_base_class(&class.name)
             || project.is_attribute_written(attr)
@@ -505,15 +464,19 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
         self.reading.push((key.0, key.1, self.resolving.len()));
         let outer_at_spot = std::mem::replace(&mut self.at_spot, false);
-        let mut kinds = Vec::new();
-        for (value, method) in &members.values {
-            let mut scopes = self.scopes[..=class_depth].to_vec();
-            scopes.extend(method.map(Scope::Function));
-            let depth = scopes.len();
-            let outer = std::mem::replace(&mut self.scopes, scopes);
-            kinds.push(self.kind(value, depth));
-            self.scopes = outer;
-        }
+        let kinds = members
+            .values
+            .iter()
+            .map(|(value, method)| {
+                let mut scopes = self.scopes[..=class_depth].to_vec();
+                scopes.extend(method.map(Scope::Function));
+                let depth = scopes.len();
+                let outer = std::mem::replace(&mut self.scopes, scopes);
+                let kind = self.kind(value, depth);
+                self.scopes = outer;
+                kind
+            })
+            .collect::<Vec<_>>();
         self.at_spot = outer_at_spot;
         self.reading.pop();
         kinds.into_iter().collect::<Option<Vec<_>>>().and_then(shared)
@@ -521,7 +484,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
 }
 
 // A type parameter binds its name in a scope the code here does not follow, so the name is unknown there.
-pub(super) fn type_params_bind(class: &ast::StmtClassDef, name: &str) -> bool {
+fn type_params_bind(class: &ast::StmtClassDef, name: &str) -> bool {
     class
         .type_params
         .as_deref()

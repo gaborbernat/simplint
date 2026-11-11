@@ -1,6 +1,4 @@
-// What inlining or moving a value takes, shared by the rules that do so, such as `single-use-variable` and
-// `early-assignment`: the walks over the scopes a body sits in and the names it reads and binds, the classes of
-// literals, the text that replaces a use, and the width the statement then needs.
+// What inlining or moving a value takes, shared by the rules that do so.
 mod fstring;
 mod literals;
 mod names;
@@ -16,8 +14,6 @@ pub(in crate::rules::logic) use fstring::{fstring_body_parts, requoted_text};
 pub(in crate::rules::logic) use literals::{is_constant, is_hashable};
 pub(in crate::rules::logic) use names::{LOCALS_READERS, Names};
 
-// Calls `visit` with each statement list under `body`, the scope it sits in and how many indented blocks enclose it.
-// `enter` gives the scope of the statements inside a compound statement.
 pub(super) fn for_each_scoped_body<'a, S: Copy>(
     body: &'a [Stmt],
     scope: S,
@@ -34,14 +30,12 @@ pub(super) fn for_each_scoped_body<'a, S: Copy>(
     }
 }
 
-// The value as the use takes it, parenthesised when `parenthesize` is set and the source does not already parenthesise
-// it. The value's range is the one its parentheses sit in, so the source text is compared with the bare value.
+// The value's range is the one its parentheses sit in, so the source text is compared with the bare value.
 pub(super) fn inlined_text(checker: &Checker, value: &Expr, value_range: TextRange, parenthesize: bool) -> String {
     let text = checker.text(value_range);
     if parenthesize && text == checker.text(value.range()) { format!("({text})") } else { text.to_owned() }
 }
 
-// The names a function declares `global` or `nonlocal`, in its nested blocks and functions too.
 pub(super) fn declared_outer(body: &[Stmt]) -> FxHashSet<&str> {
     let mut names = FxHashSet::default();
     for_each_body(body, &mut |statements, _| {
@@ -56,8 +50,7 @@ pub(super) fn declared_outer(body: &[Stmt]) -> FxHashSet<&str> {
     names
 }
 
-// The name a test starts with, through `not`, comparisons and `and`/`or`. `bare` is set while the name is the test
-// itself rather than an operand of it.
+// `bare` is set while the name is the test itself, not an operand of it.
 pub(super) fn leading_name(test: &Expr, bare: bool) -> Option<(&ast::ExprName, bool)> {
     match test {
         Expr::Name(name) => Some((name, bare)),
@@ -68,7 +61,6 @@ pub(super) fn leading_name(test: &Expr, bare: bool) -> Option<(&ast::ExprName, b
     }
 }
 
-// `function` is the innermost `def` around a body; only statements inside a function are checked.
 pub(super) fn enter_function<'a>(
     function: Option<&'a ast::StmtFunctionDef>,
     stmt: &'a Stmt,

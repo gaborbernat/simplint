@@ -1,5 +1,4 @@
-// The type inference behind the string and number rules: the few kinds the code can show for sure, read off the scopes
-// around a spot in the module.
+// Infers the few kinds an expression shows for sure, from the scopes around it.
 mod bindings;
 mod declared;
 mod members;
@@ -18,9 +17,8 @@ use self::bindings::ScopeBindings;
 pub(in crate::rules::logic) use self::declared::class_named;
 use self::members::Members;
 
-// The few types the code can show for sure, enough to tell what `+` and `*` on them return.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
+pub(super) enum Kind {
     Str,
     Int,
     Bytes,
@@ -37,8 +35,7 @@ pub enum Kind {
     ImportedInstance,
 }
 
-// What the code shows about the type of an expression, read off the scopes around one spot in the module.
-pub struct Kinds<'w, 'a> {
+pub(super) struct Kinds<'w, 'a> {
     walker: &'w Walker<'w, 'a>,
     // The scopes the expression being read sits in, outermost first, the module left out: those around the spot, or
     // those of the method that sets an attribute the spot reads.
@@ -56,7 +53,7 @@ pub struct Kinds<'w, 'a> {
     relies_on: usize,
 }
 
-// What the kinds read off the module, kept for the file since each `+` chain builds a `Kinds` of its own.
+// Kept for the file, since each `+` chain builds a `Kinds` of its own.
 #[derive(Default)]
 pub(crate) struct KindsCache<'a> {
     // The bindings of the names in the def, class or lambda at a range, the module's at the default range.
