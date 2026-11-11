@@ -997,11 +997,13 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// FURB113 reports two or more appends to a list, with appends to other lists between them. The run leaves a list that
-// Ruff reports to Ruff, and keeps the rest. No Ruff rule is selected here, so the skip does not depend on the selection.
+// FURB113 fixes two or more appends to a list only while they run one after another with no comment between them. The
+// run leaves a list that Ruff fixes to Ruff, and keeps the rest. No Ruff rule is selected here, so the skip does not
+// depend on the selection.
 #[test_case("xs = []\nxs.append(1)\nxs.append(2)\n", 0 ; "repeated_appends_left_to_ruff")]
 #[test_case("xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
-#[test_case("ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 0 ; "append_to_other_list_between")]
+#[test_case("ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 1 ; "append_to_other_list_between")]
+#[test_case("xs = []\nxs.append(1)\n# the second\nxs.append(g())\n", 1 ; "comment_between_appends")]
 #[test_case("xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
 #[test_case("def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
 #[test_case("def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
