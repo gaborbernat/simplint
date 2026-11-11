@@ -527,6 +527,19 @@ fn function_docstring_keeps_overload_docstring_in_a_stub() {
     assert!(stdout.contains("docstring on internal code"), "{stdout}");
 }
 
+// Ruff's D419 reports an empty docstring of a single string, which SMP902 can remove only with its fix. A file-level
+// `noqa` withdraws that fix, and then SMP902 leaves the docstring to Ruff whether or not the project selects D419.
+#[test_case("# ruff: noqa: E501\n\"\"\"\"\"\"\n\nimport os\n", [false, false] ; "empty_with_file_noqa")]
+#[test_case("\"\"\"\"\"\"\n\nimport os\n", [true, true] ; "fixable_empty")]
+#[test_case("# ruff: noqa: E501\n\"\" \"\"\n\nimport os\n", [true, true] ; "implicit_concatenation")]
+#[test_case("# ruff: noqa: E501\n\"\"\"\\x20\"\"\"\n\nimport os\n", [true, true] ; "escape_is_text")]
+#[test_case("# ruff: noqa: E501\n\"\"\"Tests.\"\"\"\n\nimport os\n", [true, true] ; "not_empty")]
+fn test_module_docstring_is_left_to_ruff_d419(source: &str, reported: [bool; 2]) {
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP902", ruff_code: "D419", files: &[("test_module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Test module carries a docstring"), reported);
+}
+
 // A public class of a library inherits the members of its private base without overriding them, so users reach them
 // through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
 // the public class's own, so the base's docstring of it stays internal.

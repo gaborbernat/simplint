@@ -3,7 +3,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::docstring_deletion;
+use crate::rules::docstrings::{docstring_deletion, ruff_reports_empty_docstring};
 use crate::syntax::docstring;
 
 pub fn test_module_docstring(checker: &Checker) {
@@ -19,6 +19,9 @@ pub fn test_module_docstring(checker: &Checker) {
         .then(|| docstring_deletion(checker, body))
         .flatten()
         .map(Fix::unsafe_edit);
+    if fix.is_none() && ruff_reports_empty_docstring(checker, literal) {
+        return;
+    }
     checker.report_fix(
         Rule::TestModuleDocstring,
         literal.range(),
