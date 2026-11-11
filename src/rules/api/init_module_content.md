@@ -221,8 +221,8 @@ it belongs.
 
 - **Unused imports**: [F401](https://docs.astral.sh/ruff/rules/unused-import/) reports an import that nothing reads, so
   this rule does not report it, whether or not the run selects F401. A statement keeps its report when one of its names
-  is not one F401 reports, such as a name that a string annotation reads, a star import, or a redundant alias that the
-  package does not expose.
+  is not one F401 reports, such as a name that any string of the module spells, a star import, or a redundant alias that
+  the package does not expose.
 
   ```python ok file=pkg/__init__.py
   """HTTP client."""

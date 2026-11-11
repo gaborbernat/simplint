@@ -11,19 +11,29 @@ use ruff_python_semantic::{
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{Exports, annotated_names, dunder_all};
+use crate::syntax::{Exports, annotated_names, dunder_all, identifier_words, string_values};
 
 pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRange> {
     let exports = dunder_all(body);
     if matches!(exports, Exports::Dynamic) {
         return FxHashSet::default();
     }
-    let annotated = annotated_names(body);
     let scope = model.global_scope();
+    if !scope.bindings().any(|(_, live)| is_import(model.binding(live))) {
+        return FxHashSet::default();
+    }
+    let annotated = annotated_names(body);
+    // Ruff reads the names that a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
+    // model does not resolve them, so every word of any string of the module counts as a read.
+    let strings = string_values(body);
+    let words: FxHashSet<&str> = strings.iter().flat_map(|(_, text)| identifier_words(text)).collect();
     let mut unused = FxHashSet::default();
     for (name, live) in scope.bindings() {
         let binding = model.binding(live);
         if !is_import(binding) || binding.is_global() || binding.is_nonlocal() || binding.is_explicit_export() {
+            continue;
+        }
+        if words.contains(name) {
             continue;
         }
         let read = exports.lists(name) || annotated.contains(name);
