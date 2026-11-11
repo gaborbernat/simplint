@@ -17,9 +17,8 @@ use crate::rules::logic::sole_name_target;
 use crate::syntax::{Nesting, identifier_words};
 
 pub fn early_assignment(checker: &Checker) {
-    // A function's scope is walked once, and only when one of its blocks assigns a constant to a name.
     let mut scopes: FxHashMap<TextRange, Scope> = FxHashMap::default();
-    let strings = OnceCell::new();
+    let cached_strings = OnceCell::new();
     for_each_scoped_body(checker.body(), None, 0, &enter_function, &mut |body, function, _depth| {
         let Some(function) = function else {
             return;
@@ -28,9 +27,10 @@ pub fn early_assignment(checker: &Checker) {
             if let Stmt::Assign(assign) = stmt
                 && let Some(target) = candidate(assign)
             {
+                // Built on the first candidate, since most functions assign no constant.
                 let scope = scopes.entry(function.range).or_insert_with(|| Scope::of(&function.body));
-                let strings = strings.get_or_init(|| string_tokens(checker));
-                check_assign(checker, scope, strings, body, index, (assign, target));
+                let strings = cached_strings.get_or_init(|| string_tokens(checker));
+                check_assign(checker, scope, strings, (body, index), (assign, target));
             }
         }
     });
@@ -54,8 +54,7 @@ fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
     (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
 }
 
-// A function's names, the ranges of the scopes nested in it, and whether it reads names by their text: a scope runs
-// whenever it is called, so a name it mentions must exist from the assignment on.
+// A scope runs whenever it is called, so a name it mentions must exist from the assignment on.
 struct Scope<'a> {
     names: Names<'a>,
     nested: Nesting,
@@ -95,8 +94,7 @@ impl<'a> Visitor<'a> for ScopeWalk {
     }
 }
 
-// The builtins that read the locals or globals by name, and the `exec` and `exec_` calls that run code from a string,
-// such as `six.exec_`, which may read any name in the function.
+// Builtins and `exec`-like calls that read names by their text, such as `six.exec_`, so any name may be read.
 fn reads_by_name(name: &str) -> bool {
     matches!(name, "eval" | "globals" | "locals" | "vars") || name.ends_with("exec") || name.ends_with("exec_")
 }
@@ -106,15 +104,13 @@ fn spells(text: &str, name: &str) -> bool {
     identifier_words(text).any(|word| word == name)
 }
 
-// A constant assigned to a local whose first use is at least two statements down the same block. Nothing reads or
-// binds the name between the two, so moving the assignment down to the use cannot change what the function does, and a
-// constant is the same wherever it is built.
+// Moving the assignment down to its first use cannot change what the function does: nothing reads or binds the name
+// between the two, and a constant is the same wherever it is built.
 fn check_assign<'a>(
     checker: &Checker<'a>,
     scope: &Scope<'a>,
     strings: &[TextRange],
-    body: &'a [Stmt],
-    index: usize,
+    (body, index): (&'a [Stmt], usize),
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
 ) {
     let name = target.id.as_str();
@@ -150,8 +146,8 @@ fn check_assign<'a>(
         return;
     }
     let after = &body[index + 1..];
-    let candidate = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1);
-    let Some(offset) = candidate.filter(|&offset| after[offset].range().contains_range(first)) else { return };
+    let last_started = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1);
+    let Some(offset) = last_started.filter(|&offset| after[offset].range().contains_range(first)) else { return };
     let next = &after[offset];
     // Only the statement directly after the assignment is SMP504's, which inlines a single use.
     if offset == 0 || checker.has_comment_in(TextRange::new(assign.start(), next.start())) {
@@ -162,13 +158,12 @@ fn check_assign<'a>(
     if body[index + 1..index + 1 + offset].iter().any(is_constant_assign) {
         return;
     }
-    // A comment above the assignment would stay where it is and sit above the statement that follows it.
-    let fix = checker.comment_above(assign).is_none().then(|| move_fix(checker, assign, next)).flatten();
     checker.report_fix(
         Rule::EarlyAssignment,
         assign.range,
         format!("`{name}` is assigned above the statements that do not use it; assign it just before its first use"),
-        fix,
+        // A comment above the assignment would stay where it is and sit above the statement that follows it.
+        checker.comment_above(assign).is_none().then(|| move_fix(checker, assign, next)).flatten(),
         "Move the assignment down",
     );
 }
@@ -181,18 +176,20 @@ fn is_constant_assign(stmt: &Stmt) -> bool {
 // statement sharing its line with others, joined by `;`, gets the line split around it, as `ruff format` splits it, so
 // the assignment lands on a line of its own.
 fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<Fix> {
-    let source = checker.source;
     if !checker.is_alone_on_lines(assign.range) {
         return None;
     }
+    let source = checker.source;
     let lines = source.full_lines_range(assign.range);
     let start = source.line_start(next.start());
     let end = source.line_end(next.end());
     let before = checker.text(TextRange::new(start, next.start()));
     let after = checker.text(TextRange::new(next.end(), end));
     if before.trim().is_empty() && after.trim().is_empty() {
-        let text = checker.text(lines).to_owned();
-        return Some(Fix::safe_edits(Edit::range_deletion(lines), [Edit::insertion(text, start)]));
+        return Some(Fix::safe_edits(
+            Edit::range_deletion(lines),
+            [Edit::insertion(checker.text(lines).to_owned(), start)],
+        ));
     }
     let indentation = leading_indentation(before);
     let eol = checker.line_ending();
