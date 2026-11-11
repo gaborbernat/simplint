@@ -8,7 +8,6 @@ use crate::syntax::is_name;
 
 // Python 3.15 unpacks inside a comprehension, so a nested `for` that only unpacks its iterable moves into the element.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let (generators, element) = match expr {
         Expr::ListComp(ast::ExprListComp { elt, generators, .. })
         | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
@@ -36,6 +35,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(unpacking) = unpacking(element, inner, source) else {
         return;
     };
+    let checker = walker.checker;
     // The inner `for` clause runs from the outer iterable to the inner one, parentheses included.
     let clause = TextRange::new(
         checker.parenthesized_range(&outer.iter, outer.into()).end(),
@@ -92,7 +92,6 @@ impl Unpacking {
     }
 }
 
-// The element must be the inner target, or, for a dict, the key and value unpacked from the pairs of `source.items()`.
 fn unpacking(element: Element, inner: &Comprehension, source: &str) -> Option<Unpacking> {
     match element {
         Element::Single(elt) => {
@@ -117,8 +116,8 @@ fn unpacking(element: Element, inner: &Comprehension, source: &str) -> Option<Un
                         attribute.attr.as_str() == "items" && is_name(&attribute.value, source)
                     })
             });
-            let paired = key.id == first.id && value.id == second.id && first.id != second.id;
-            (items && paired).then_some(Unpacking { kind: Kind::Entries, safe: false })
+            (items && key.id == first.id && value.id == second.id && first.id != second.id)
+                .then_some(Unpacking { kind: Kind::Entries, safe: false })
         }
     }
 }
