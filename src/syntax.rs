@@ -599,6 +599,11 @@ pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
     values.values
 }
 
+// The identifier words of the strings a module holds, which Ruff reads as uses where a string spells a type expression.
+pub(crate) fn string_words<'a>(strings: &'a [(TextRange, Cow<'_, str>)]) -> FxHashSet<&'a str> {
+    strings.iter().flat_map(|(_, text)| identifier_words(text)).collect()
+}
+
 // The strings a name may be spelled in to patch or look it up, which leaves out the prose of the statements that hold a
 // string alone, such as docstrings.
 pub(crate) fn code_string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {

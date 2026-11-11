@@ -27,7 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{pattern_capture, signature_annotations};
+use crate::syntax::{pattern_capture, signature_annotations, string_values, string_words};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -76,7 +76,7 @@ pub fn build<'a>(
     let annotations_are_lazy = builder.annotations_are_lazy();
     builder.visit_deferred();
     let private_imports = if builder.matches.private_imports {
-        private_import_reports(&builder.semantic, package)
+        private_import_reports(&builder.semantic, body, package)
     } else {
         FxHashSet::default()
     };
@@ -97,19 +97,26 @@ pub fn build<'a>(
 // Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT), which reads the
 // bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
 // makes, which is the alias of its import.
-fn private_import_reports(semantic: &SemanticModel, package: Option<&Path>) -> FxHashSet<TextRange> {
+fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Option<&Path>) -> FxHashSet<TextRange> {
+    let strings = string_values(body);
+    let words = string_words(&strings);
     semantic
         .scopes
         .iter()
         .filter(|scope| matches!(scope.kind, ScopeKind::Function(_) | ScopeKind::Module))
-        .flat_map(ruff_python_semantic::Scope::binding_ids)
-        .map(|binding_id| semantic.binding(binding_id))
-        .filter(|binding| is_private_import(semantic, binding, package))
-        .map(|binding| binding.range)
+        .flat_map(ruff_python_semantic::Scope::bindings)
+        .filter(|&(name, binding_id)| is_private_import(semantic, semantic.binding(binding_id), name, package, &words))
+        .map(|(_, binding_id)| semantic.binding(binding_id).range)
         .collect()
 }
 
-fn is_private_import(semantic: &SemanticModel, binding: &Binding, package: Option<&Path>) -> bool {
+fn is_private_import(
+    semantic: &SemanticModel,
+    binding: &Binding,
+    name: &str,
+    package: Option<&Path>,
+    words: &FxHashSet<&str>,
+) -> bool {
     let Some(import) = binding.as_any_import().filter(|import| !import.is_submodule_import()) else {
         return false;
     };
@@ -126,6 +133,11 @@ fn is_private_import(semantic: &SemanticModel, binding: &Binding, package: Optio
         return false;
     }
     if !segments.iter().any(|name| name.starts_with('_') && !is_dunder(name)) || matches!(segments, ["os", "_exit"]) {
+        return false;
+    }
+    // Ruff resolves the names a string type expression spells, which this model does not, so the string may be
+    // the only use of the import.
+    if words.contains(name) {
         return false;
     }
     binding.references().next().is_none() || binding.references().any(|id| !is_typing_only(semantic.reference(id)))
