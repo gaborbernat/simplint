@@ -24890,7 +24890,7 @@
     "name": "test-class",
     "summary": "Test classes",
     "fix": "Sometimes",
-    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nEach method is dedented by its class body's indentation, not by the file's first indented block, so a file that indents\nanother block by a different width still gets valid code.\n\n```python report file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\nclass TestThing:\n    def test_one(self):\n        assert helper() == 2\n# fmt: on\n```\n\n```python fixed file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\ndef test_thing_one():\n    assert helper() == 2\n# fmt: on\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class\n  line, which no function would carry;\n\n  ```python report file=tests/test_noted.py\n  class TestParser:  # grouped for the report\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would\n  replace it;\n\n  ```python report file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n  ```python fixed file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nEach method is dedented by its class body's indentation, not by the file's first indented block, so a file that indents\nanother block by a different width still gets valid code.\n\n```python report file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\nclass TestThing:\n    def test_one(self):\n        assert helper() == 2\n# fmt: on\n```\n\n```python fixed file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\ndef test_thing_one():\n    assert helper() == 2\n# fmt: on\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class\n  line, which no function would carry;\n\n  ```python report file=tests/test_noted.py\n  class TestParser:  # grouped for the report\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would\n  replace it;\n\n  ```python report file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n  ```python fixed file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file, or an earlier class of the file gets the same name; the earlier class keeps\n  its fix;\n\n  ```python report file=tests/test_parse.py\n  class TestParse:\n      def test_error_value(self) -> None:\n          assert parse(\"1\") == 1\n\n\n  class TestParseError:\n      def test_value(self) -> None:\n          assert parse(\"2\") == 3\n  ```\n\n  ```python fixed file=tests/test_parse.py\n  def test_parse_error_value() -> None:\n      assert parse(\"1\") == 1\n\n\n  class TestParseError:\n      def test_value(self) -> None:\n          assert parse(\"2\") == 3\n  ```\n\n- two methods of the class get the same name, as `test_a` and `testa` do in `TestSame`;\n\n  ```python report file=tests/test_same.py\n  class TestSame:\n      def test_a(self) -> None:\n          assert parse(\"1\") == 1\n\n      def testa(self) -> None:\n          assert parse(\"2\") == 2\n  ```\n\n  ```python fixed file=tests/test_same.py\n  class TestSame:\n      def test_a(self) -> None:\n          assert parse(\"1\") == 1\n\n      def testa(self) -> None:\n          assert parse(\"2\") == 2\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -25121,6 +25121,58 @@
               "line": 172,
               "end_line": 176,
               "source": "class TestParser:\n    def test_handles_empty(self) -> None:\n        assert self.parse(\"\") == []\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 181,
+          "end_line": 200,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "tests/test_parse.py",
+              "named": true,
+              "line": 181,
+              "end_line": 190,
+              "source": "class TestParse:\n    def test_error_value(self) -> None:\n        assert parse(\"1\") == 1\n\n\nclass TestParseError:\n    def test_value(self) -> None:\n        assert parse(\"2\") == 3\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "tests/test_parse.py",
+              "named": true,
+              "line": 192,
+              "end_line": 200,
+              "source": "def test_parse_error_value() -> None:\n    assert parse(\"1\") == 1\n\n\nclass TestParseError:\n    def test_value(self) -> None:\n        assert parse(\"2\") == 3\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 204,
+          "end_line": 220,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "tests/test_same.py",
+              "named": true,
+              "line": 204,
+              "end_line": 211,
+              "source": "class TestSame:\n    def test_a(self) -> None:\n        assert parse(\"1\") == 1\n\n    def testa(self) -> None:\n        assert parse(\"2\") == 2\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "tests/test_same.py",
+              "named": true,
+              "line": 213,
+              "end_line": 220,
+              "source": "class TestSame:\n    def test_a(self) -> None:\n        assert parse(\"1\") == 1\n\n    def testa(self) -> None:\n        assert parse(\"2\") == 2\n"
             }
           ]
         }
@@ -26094,7 +26146,7 @@
     "name": "mock-attribute-assignment",
     "summary": "Mock attributes assigned after construction",
     "fix": "Sometimes",
-    "explanation": "Flags attributes set on a mock right after it is created. The mock constructors take any attribute as a keyword\nargument, so the whole setup fits in one call.\n\n## Why is this bad?\n\nSetting attributes after construction spreads the mock's configuration over several statements. The mock constructors\ntake any attribute as a keyword argument and set it on the new mock, so the whole setup fits in one call.\n\n## Example\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\nUse instead:\n\n```python ok\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n## What it does\n\n### Active on\n\n- **`mock.attr = value` statements directly after the mock is created**: the mock must be assigned to a plain name, with\n  or without an annotation, from a call to\n  [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,\n  `NonCallableMock`, `NonCallableMagicMock` or\n  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call\n  matches by the last part of its name, so `mocker.MagicMock()` counts too. Only that run of statements is reported,\n  since each one could be a keyword argument of the call.\n\n  - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines\n\n    ```python report\n    fetch = create_autospec(fetch_user)\n    fetch.return_value = user\n    fetch.side_effect = None\n    ```\n\n  - A `MagicMock` call assigned to a plain name\n\n    ```python report\n    client = MagicMock()\n    client.timeout = 5\n    ```\n\n  - An annotated assignment, here from `mocker.MagicMock()`\n\n    ```python report\n    client: MagicMock = mocker.MagicMock()\n    client.timeout = 5\n    ```\n\n### Exceptions\n\nThe run stops at:\n\n- **Any other statement, including `mock.child.attr = value`**: it is no longer a plain attribute of the new mock.\n\n  ```python ok\n  client = MagicMock()\n  client.child.attr = 1\n  ```\n\n- **An attribute the constructor treats specially**: `spec`, `spec_set`, `wraps`, `name`, `parent`, `unsafe`,\n  `instance`, `_name` or `_parent`. These constructor arguments configure the mock itself, so passing one differs from\n  setting the attribute.\n\n  ```python ok\n  client = MagicMock()\n  client.name = \"api\"\n  ```\n\n- **An attribute already set earlier in the run**: a call can pass each keyword only once, so the run stops at the\n  second assignment. A later round of fixes folds it in, replacing the keyword's value.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5\n  client.timeout = 6\n  ```\n\n  ```python fixed\n  client = MagicMock(timeout=6)\n  ```\n\n- **A value that refers to the mock itself**: the mock does not exist yet while its constructor's arguments run.\n\n  ```python ok\n  client = MagicMock()\n  client.child = client.copy()\n  ```\n\n### Fix\n\nThe fix moves the assignments into the constructor call as keyword arguments and deletes them. An assignment to a\nkeyword the call already passes replaces that keyword's value.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n```python report\nclient = MagicMock(timeout=1)\nclient.timeout = 5\n```\n\n```python fixed\nclient = MagicMock(timeout=5)\n```\n\nA comment after the last argument does not hide its comma, so no second comma is added:\n\n```python report\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n)\nclient.timeout = 3\n# fmt: on\n```\n\n```python fixed\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n timeout=3)\n# fmt: on\n```\n\n**Unsafe fix** for a `create_autospec` call that sets an attribute other than `return_value` or `side_effect`: when the\nspec is a function, `create_autospec` returns a wrapper function and hands the other keywords to the mock inside it, so\nthe test no longer sees them on the object it holds.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.call_count = 0\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, call_count=0)\n```\n\nNo fix is offered when:\n\n- the call has a `**kwargs` argument, which may already carry any of the attributes, so the merged call could repeat a\n  keyword;\n\n  ```python report\n  client = MagicMock(**options)\n  client.timeout = 5\n  ```\n\n- an assignment shares a line with another statement;\n\n- a comment sits on its lines.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5  # seconds\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags attributes set on a mock right after it is created. The mock constructors take any attribute as a keyword\nargument, so the whole setup fits in one call.\n\n## Why is this bad?\n\nSetting attributes after construction spreads the mock's configuration over several statements. The mock constructors\ntake any attribute as a keyword argument and set it on the new mock, so the whole setup fits in one call.\n\n## Example\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\nUse instead:\n\n```python ok\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n## What it does\n\n### Active on\n\n- **`mock.attr = value` statements directly after the mock is created**: the mock must be assigned to a plain name, with\n  or without an annotation, from a call to\n  [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,\n  `NonCallableMock`, `NonCallableMagicMock` or\n  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call\n  matches by the last part of its name, so `mocker.MagicMock()` counts too. Only that run of statements is reported,\n  since each one could be a keyword argument of the call.\n\n  - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines\n\n    ```python report\n    fetch = create_autospec(fetch_user)\n    fetch.return_value = user\n    fetch.side_effect = None\n    ```\n\n  - A `MagicMock` call assigned to a plain name\n\n    ```python report\n    client = MagicMock()\n    client.timeout = 5\n    ```\n\n  - An annotated assignment, here from `mocker.MagicMock()`\n\n    ```python report\n    client: MagicMock = mocker.MagicMock()\n    client.timeout = 5\n    ```\n\n### Exceptions\n\nThe run stops at:\n\n- **Any other statement, including `mock.child.attr = value`**: it is no longer a plain attribute of the new mock.\n\n  ```python ok\n  client = MagicMock()\n  client.child.attr = 1\n  ```\n\n- **An attribute the constructor treats specially**: `cls`, `self`, `spec`, `spec_set`, `wraps`, `name`, `parent`,\n  `unsafe`, `instance`, `_name`, `_parent`, `_spec_state`, `_new_name`, `_new_parent`, `_spec_as_instance` or\n  `_eat_self`. These constructor arguments configure the mock itself, and `cls` and `self` are the constructor's own\n  parameters, so passing one differs from setting the attribute or fails.\n\n  ```python ok\n  client = MagicMock()\n  client.name = \"api\"\n  ```\n\n  ```python ok\n  request = MagicMock()\n  request.cls = int\n  ```\n\n  ```python report\n  request = MagicMock()\n  request.timeout = 5\n  request.cls = int\n  ```\n\n  ```python fixed\n  request = MagicMock(timeout=5)\n  request.cls = int\n  ```\n\n- **An attribute already set earlier in the run**: a call can pass each keyword only once, so the run stops at the\n  second assignment. A later round of fixes folds it in, replacing the keyword's value.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5\n  client.timeout = 6\n  ```\n\n  ```python fixed\n  client = MagicMock(timeout=6)\n  ```\n\n- **A value that refers to the mock itself**: the mock does not exist yet while its constructor's arguments run.\n\n  ```python ok\n  client = MagicMock()\n  client.child = client.copy()\n  ```\n\n### Fix\n\nThe fix moves the assignments into the constructor call as keyword arguments and deletes them. An assignment to a\nkeyword the call already passes replaces that keyword's value.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n```python report\nclient = MagicMock(timeout=1)\nclient.timeout = 5\n```\n\n```python fixed\nclient = MagicMock(timeout=5)\n```\n\nA comment after the last argument does not hide its comma, so no second comma is added:\n\n```python report\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n)\nclient.timeout = 3\n# fmt: on\n```\n\n```python fixed\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n timeout=3)\n# fmt: on\n```\n\n**Unsafe fix** for a `create_autospec` call that sets an attribute other than `return_value` or `side_effect`: when the\nspec is a function, `create_autospec` returns a wrapper function and hands the other keywords to the mock inside it, so\nthe test no longer sees them on the object it holds.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.call_count = 0\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, call_count=0)\n```\n\nNo fix is offered when:\n\n- the call has a `**kwargs` argument, which may already carry any of the attributes, so the merged call could repeat a\n  keyword;\n\n  ```python report\n  client = MagicMock(**options)\n  client.timeout = 5\n  ```\n\n- an assignment shares a line with another statement;\n\n- a comment sits on its lines.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5  # seconds\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -26201,8 +26253,8 @@
         },
         {
           "section": "What it does",
-          "line": 72,
-          "end_line": 75,
+          "line": 73,
+          "end_line": 76,
           "config": null,
           "blocks": [
             {
@@ -26210,16 +26262,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 72,
-              "end_line": 75,
+              "line": 73,
+              "end_line": 76,
               "source": "client = MagicMock()\nclient.name = \"api\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 80,
-          "end_line": 88,
+          "line": 78,
+          "end_line": 81,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 78,
+              "end_line": 81,
+              "source": "request = MagicMock()\nrequest.cls = int\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 83,
+          "end_line": 92,
           "config": null,
           "blocks": [
             {
@@ -26227,8 +26296,34 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 80,
-              "end_line": 84,
+              "line": 83,
+              "end_line": 87,
+              "source": "request = MagicMock()\nrequest.timeout = 5\nrequest.cls = int\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 89,
+              "end_line": 92,
+              "source": "request = MagicMock(timeout=5)\nrequest.cls = int\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 97,
+          "end_line": 105,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 97,
+              "end_line": 101,
               "source": "client = MagicMock()\nclient.timeout = 5\nclient.timeout = 6\n"
             },
             {
@@ -26236,16 +26331,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 86,
-              "end_line": 88,
+              "line": 103,
+              "end_line": 105,
               "source": "client = MagicMock(timeout=6)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 92,
-          "end_line": 95,
+          "line": 109,
+          "end_line": 112,
           "config": null,
           "blocks": [
             {
@@ -26253,16 +26348,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 92,
-              "end_line": 95,
+              "line": 109,
+              "end_line": 112,
               "source": "client = MagicMock()\nclient.child = client.copy()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 102,
-          "end_line": 110,
+          "line": 119,
+          "end_line": 127,
           "config": null,
           "blocks": [
             {
@@ -26270,8 +26365,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 102,
-              "end_line": 106,
+              "line": 119,
+              "end_line": 123,
               "source": "fetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n"
             },
             {
@@ -26279,16 +26374,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 108,
-              "end_line": 110,
+              "line": 125,
+              "end_line": 127,
               "source": "fetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 112,
-          "end_line": 119,
+          "line": 129,
+          "end_line": 136,
           "config": null,
           "blocks": [
             {
@@ -26296,8 +26391,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 112,
-              "end_line": 115,
+              "line": 129,
+              "end_line": 132,
               "source": "client = MagicMock(timeout=1)\nclient.timeout = 5\n"
             },
             {
@@ -26305,16 +26400,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 117,
-              "end_line": 119,
+              "line": 134,
+              "end_line": 136,
               "source": "client = MagicMock(timeout=5)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 123,
-          "end_line": 138,
+          "line": 140,
+          "end_line": 155,
           "config": null,
           "blocks": [
             {
@@ -26322,8 +26417,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 123,
-              "end_line": 130,
+              "line": 140,
+              "end_line": 147,
               "source": "# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n)\nclient.timeout = 3\n# fmt: on\n"
             },
             {
@@ -26331,16 +26426,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 132,
-              "end_line": 138,
+              "line": 149,
+              "end_line": 155,
               "source": "# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n timeout=3)\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 144,
-          "end_line": 151,
+          "line": 161,
+          "end_line": 168,
           "config": null,
           "blocks": [
             {
@@ -26348,8 +26443,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 144,
-              "end_line": 147,
+              "line": 161,
+              "end_line": 164,
               "source": "fetch = create_autospec(fetch_user)\nfetch.call_count = 0\n"
             },
             {
@@ -26357,16 +26452,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 149,
-              "end_line": 151,
+              "line": 166,
+              "end_line": 168,
               "source": "fetch = create_autospec(fetch_user, call_count=0)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 158,
-          "end_line": 161,
+          "line": 175,
+          "end_line": 178,
           "config": null,
           "blocks": [
             {
@@ -26374,16 +26469,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 158,
-              "end_line": 161,
+              "line": 175,
+              "end_line": 178,
               "source": "client = MagicMock(**options)\nclient.timeout = 5\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 167,
-          "end_line": 170,
+          "line": 184,
+          "end_line": 187,
           "config": null,
           "blocks": [
             {
@@ -26391,8 +26486,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 167,
-              "end_line": 170,
+              "line": 184,
+              "end_line": 187,
               "source": "client = MagicMock()\nclient.timeout = 5  # seconds\n"
             }
           ]
@@ -27452,7 +27547,7 @@
     "name": "mock-assertion-typo",
     "summary": "Mock assertion methods misspelled or missing their `assert_` prefix",
     "fix": "Always",
-    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\nAn assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops\nthe `assert` and any parentheses around the call.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    assert (save.not_called())\n    # fmt: on\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    save.assert_not_called()\n    # fmt: on\n```\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n```\n\nOnly a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name\nwould be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
+    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\nAn assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops\nthe `assert` and any parentheses around the call.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    assert (save.not_called())\n    # fmt: on\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    save.assert_not_called()\n    # fmt: on\n```\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n```\n\nOnly a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name\nwould be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n```\n\nA comment in the text the fix drops, such as one inside the parentheses of the test, keeps the call unfixed, so the\ncomment is not lost. A comment inside the call does not block the fix.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert (  # the writer must be reached exactly once\n        save.called_once_with(\"out.json\")\n    )\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert (  # the writer must be reached exactly once\n        save.called_once_with(\"out.json\")\n    )\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
     "examples": {
       "parsed": [
         {
@@ -27763,6 +27858,36 @@
               "line": 180,
               "end_line": 184,
               "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 189,
+          "end_line": 208,
+          "config": {
+            "line": 189,
+            "end_line": 192,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 194,
+              "end_line": 200,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert (  # the writer must be reached exactly once\n        save.called_once_with(\"out.json\")\n    )\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 202,
+              "end_line": 208,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert (  # the writer must be reached exactly once\n        save.called_once_with(\"out.json\")\n    )\n"
             }
           ]
         }

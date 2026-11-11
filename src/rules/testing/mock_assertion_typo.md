@@ -183,6 +183,30 @@ def test_save(save: MagicMock) -> None:
     assert not save.called_once
 ```
 
+A comment in the text the fix drops, such as one inside the parentheses of the test, keeps the call unfixed, so the
+comment is not lost. A comment inside the call does not block the fix.
+
+```toml config
+[tool.ruff.lint]
+select = []
+```
+
+```python report
+def test_save(save: MagicMock) -> None:
+    run_save()
+    assert (  # the writer must be reached exactly once
+        save.called_once_with("out.json")
+    )
+```
+
+```python fixed
+def test_save(save: MagicMock) -> None:
+    run_save()
+    assert (  # the writer must be reached exactly once
+        save.called_once_with("out.json")
+    )
+```
+
 ## Ruff overlap
 
 There is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)

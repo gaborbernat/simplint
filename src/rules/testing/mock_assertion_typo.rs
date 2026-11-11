@@ -68,13 +68,18 @@ pub fn mock_assertion_typo(checker: &Checker) {
         if checker.project().is_attribute_assigned(name) || defined.contains(name) {
             continue;
         }
-        let fix = finder.fixable.get(&attr.range()).map(|deletions| {
-            let rename = Edit::range_replacement(intended.to_owned(), attr.range());
-            let mut edits: Vec<Edit> = deletions.iter().map(|range| Edit::range_deletion(*range)).collect();
-            edits.push(rename);
-            let first = edits.remove(0);
-            Fix::unsafe_edits(first, edits)
-        });
+        // A comment in the text the fix drops would be lost with it.
+        let fix = finder
+            .fixable
+            .get(&attr.range())
+            .filter(|deletions| !deletions.iter().any(|&range| checker.has_comment_in(range)))
+            .map(|deletions| {
+                let rename = Edit::range_replacement(intended.to_owned(), attr.range());
+                let mut edits: Vec<Edit> = deletions.iter().map(|range| Edit::range_deletion(*range)).collect();
+                edits.push(rename);
+                let first = edits.remove(0);
+                Fix::unsafe_edits(first, edits)
+            });
         checker.report_fix(
             Rule::MockAssertionTypo,
             attr.range(),

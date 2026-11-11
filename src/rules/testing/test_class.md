@@ -175,7 +175,49 @@ No fix is offered when:
           assert self.parse("") == []
   ```
 
-- a new name is already used in the file.
+- a new name is already used in the file, or an earlier class of the file gets the same name; the earlier class keeps
+  its fix;
+
+  ```python report file=tests/test_parse.py
+  class TestParse:
+      def test_error_value(self) -> None:
+          assert parse("1") == 1
+
+
+  class TestParseError:
+      def test_value(self) -> None:
+          assert parse("2") == 3
+  ```
+
+  ```python fixed file=tests/test_parse.py
+  def test_parse_error_value() -> None:
+      assert parse("1") == 1
+
+
+  class TestParseError:
+      def test_value(self) -> None:
+          assert parse("2") == 3
+  ```
+
+- two methods of the class get the same name, as `test_a` and `testa` do in `TestSame`;
+
+  ```python report file=tests/test_same.py
+  class TestSame:
+      def test_a(self) -> None:
+          assert parse("1") == 1
+
+      def testa(self) -> None:
+          assert parse("2") == 2
+  ```
+
+  ```python fixed file=tests/test_same.py
+  class TestSame:
+      def test_a(self) -> None:
+          assert parse("1") == 1
+
+      def testa(self) -> None:
+          assert parse("2") == 2
+  ```
 
 ## Other tools
 
