@@ -152,7 +152,7 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(common::reports(&stdout, "SMP407").len(), 2, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
     assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
     assert!(!stdout.contains("roots/test-example"), "{stdout}");
 }
@@ -374,7 +374,8 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
 #[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
 #[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
-#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 1 ; "preview_off_leaves_it_to_the_run")]
+#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 0 ; "preview_off_skipped")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", "import os\nVALUE = 1\n", 0 ; "unselected_skipped")]
 #[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 0 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
@@ -393,12 +394,12 @@ const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 // runs. A statement keeps its report when one of its names is not one F401 reports.
 #[test_case("", "from json import dumps\n", &[] ; "unused_import_left_to_f401")]
 #[test_case("[tool.ruff.lint]\nselect = []\n", "from json import dumps\n", &[] ; "unused_import_skipped_without_f401")]
-#[test_case("", "from json import dumps, loads\nprint(dumps)\n", &[1, 2] ; "partly_used_statement_kept")]
-#[test_case("", "from json import dumps\nprint(dumps)\n", &[1, 2] ; "used_import_kept")]
-#[test_case("", "from json import dumps\ndel dumps\n", &[1, 2] ; "deleted_import_kept")]
-#[test_case("", "from json import dumps\n\n\ndef load(value: \"dumps\") -> None:\n    pass\n", &[1, 4] ; "string_annotation_keeps_import")]
+#[test_case("", "from json import dumps, loads\nprint(dumps)\n", &[1] ; "partly_used_statement_kept")]
+#[test_case("", "from json import dumps\nprint(dumps)\n", &[1] ; "used_import_kept")]
+#[test_case("", "from json import dumps\ndel dumps\n", &[1] ; "deleted_import_kept")]
+#[test_case("", "from json import dumps\n\n\ndef load(value: \"dumps\") -> None:\n    pass\n", &[1] ; "string_annotation_keeps_import")]
 #[test_case("", "from json import dumps as dumps\n__all__ = [\"loads\"]\n", &[1] ; "explicit_alias_kept")]
-#[test_case(PREVIEW, "import json.decoder\nimport json\nprint(json.decoder)\n", &[1, 3] ; "shadowed_import_read_kept")]
+#[test_case(PREVIEW, "import json.decoder\nimport json\nprint(json.decoder)\n", &[1] ; "shadowed_import_read_kept")]
 #[test_case(PREVIEW, "import json.decoder\nimport json\n", &[] ; "shadowed_unread_imports_left_to_f401")]
 #[test_case("", "from json import *\n", &[1] ; "star_import_kept")]
 #[test_case("", "from json import dumps, loads\n__all__ = [\"dumps\"]\n", &[] ; "partly_listed_statement_left_to_f401")]

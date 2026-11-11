@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{body_without_leading_docstring, collect_import_from_member, is_dunder};
 use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::QualifiedName;
@@ -43,14 +42,13 @@ pub fn init_module_content(checker: &Checker) {
     }
 }
 
-// RUF067 reports the statements of an `__init__.py` that this rule reports, when its preview mode is on and the project
-// selects it. Ruff allows the imports, dunder assignments and `if TYPE_CHECKING` blocks of a package unless the project
-// bans all code, and an attribute docstring, which follows an assignment, is documentation rather than code.
+// RUF067 reports the statements of an `__init__.py` that this rule would report, so the statements are skipped whether or
+// not the run selects it or preview mode is on. Ruff allows the imports, dunder assignments and `if TYPE_CHECKING` blocks
+// of a package unless the project bans all code, and an attribute docstring, which follows an assignment, is
+// documentation rather than code.
 fn left_to_ruff(checker: &Checker, stmt: &Stmt, previous: Option<&Stmt>) -> bool {
     let from_ruff = &checker.settings.from_ruff;
-    from_ruff.preview
-        && from_ruff.ruff_runs(RuffRule::NonEmptyInitModule)
-        && !is_attribute_docstring(stmt, previous)
+    !is_attribute_docstring(stmt, previous)
         && (from_ruff.strictly_empty_init_modules || !is_allowed_by_default(stmt, checker))
 }
 
