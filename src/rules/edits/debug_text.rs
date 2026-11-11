@@ -8,11 +8,11 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::syntax::Nesting;
 
-// Rewrites the edits that change a name read in an f-string field with a `=` debug specifier, so the field prints what
-// it printed before. The field prints its source text, `x=`, then the value of the expression, so the rewrite keeps that
-// text as written and moves the edits into a plain field: `{x=}` becomes `x={x!r}`, and a conversion or format spec
-// carries over. `None` when an edit lands where that cannot hold, such as in a t-string field, which keeps its source
-// text in the template, or in a field nested in another one.
+// Rewrites the edits that change a name read in an f-string field with a `=` debug specifier, so the field prints
+// what it printed before. The field prints its source text, `x=`, then the value of the expression, so the rewrite
+// keeps that text as written and moves the edits into a plain field: `{x=}` becomes `x={x!r}`, and a conversion or
+// format spec carries over. `None` when an edit lands where that cannot hold, such as in a t-string field, which keeps
+// its source text in the template, or in a field nested in another one.
 pub(crate) fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec<Edit>> {
     let finder = checker.state().debug_fields(checker);
     let mut groups: BTreeMap<usize, Vec<Edit>> = BTreeMap::new();
@@ -40,7 +40,6 @@ pub(crate) fn escape_braces(text: &str) -> String {
     text.replace('{', "{{").replace('}', "}}")
 }
 
-// The text of a `=` debug field with its edits applied: the debug text, escaped to a literal, then a plain field.
 fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<String> {
     let debug = field.debug.as_str();
     if debug.contains(['\n', '\r', '\\']) {
@@ -52,18 +51,15 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
         return None;
     }
     let start = usize::from(field.range.start()) + 1;
-    let text_end = start + debug.len();
     let equals = start + debug.rfind('=')?;
-    let end = usize::from(field.range.end()) - 1;
     let (mut expression_edits, mut remainder_edits): (Vec<&Edit>, Vec<&Edit>) =
         edits.iter().partition(|edit| usize::from(edit.start()) >= start && usize::from(edit.end()) <= equals);
     let expression = splice(source, start, equals, &mut expression_edits)?;
     let expression = expression.trim_end();
-    let remainder = splice(source, text_end, end, &mut remainder_edits)?;
+    let remainder = splice(source, start + debug.len(), usize::from(field.range.end()) - 1, &mut remainder_edits)?;
     let conversion = if remainder.is_empty() { "!r" } else { &remainder };
-    let space = if expression.starts_with('{') { " " } else { "" };
     let literal = escape_braces(debug).replace(quote, &format!("\\{quote}"));
-    Some(format!("{literal}{{{space}{expression}{conversion}}}"))
+    Some(format!("{literal}{{{}{expression}{conversion}}}", if expression.starts_with('{') { " " } else { "" }))
 }
 
 // The source between `from` and `to` with the edits inside it applied. `None` when an edit lies outside the span.
@@ -80,7 +76,6 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
     Some(text)
 }
 
-// The `=` debug fields of a module, each with its quote and the text of its debug specifier.
 #[derive(Default)]
 pub(in crate::rules) struct DebugFields<'a> {
     fields: Vec<DebugField<'a>>,

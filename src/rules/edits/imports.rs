@@ -8,7 +8,6 @@ use crate::lint::checker::Checker;
 use crate::semantic::future_import;
 use crate::syntax::{is_stdlib_root, previous_line_start};
 
-// What a fix needs to use a name: the import is there already, or the edit adds it.
 #[derive(Clone)]
 pub(crate) enum Import {
     Present,
@@ -41,7 +40,8 @@ pub(crate) fn with_import(edit: Edit, import: Import, applicability: Applicabili
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
-// `import x` lines before `from x import y` lines, each group in module order. A new section gets a blank line after it.
+// `import x` lines before `from x import y` lines, each group in module order. A new section gets a blank line
+// after it.
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Option<Edit> {
     let body = checker.body();
     let source = checker.source;
@@ -88,8 +88,8 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
     Some(Edit::insertion(insertion, line))
 }
 
-// The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file, where a
-// shebang, encoding or license header stays put.
+// The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file,
+// where a shebang, encoding or license header stays put.
 fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
     let source = checker.source;
     let mut line_start = source.line_start(stmt.start());

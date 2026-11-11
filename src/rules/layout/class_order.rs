@@ -13,7 +13,7 @@ use super::reorder::{Read, depth_first};
 use crate::lint::checker::Checker;
 use crate::syntax::{ExprCollector, decorator_names, signature_annotations};
 
-// The sections of a definition. A method that is in none of them sorts after all of them.
+// A method that is in none of them sorts after all of them.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Section {
     Nested,
@@ -23,8 +23,6 @@ pub(super) enum Section {
     Property,
 }
 
-// The place of a unit in the layout: the nested classes, then the class attributes, then the definitions by section,
-// with the methods last.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Rank {
     Nested,
@@ -79,7 +77,6 @@ pub(super) struct Inversion<'a> {
 
 #[derive(Clone, Copy)]
 enum Kind<'a> {
-    // A statement that is not a definition.
     Statement,
     // A definition, which is a method when it is in no section.
     Definition { name: &'a str, section: Option<Section> },
@@ -155,7 +152,6 @@ pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -
     ClassOrder { units, unit_of, ranges, owner, children }
 }
 
-// The units of a class body: each `def` of one name with the others of its name, and each other statement on its own.
 fn units_of<'a>(
     class: &'a ast::StmtClassDef,
     factories: &FxHashSet<&str>,
@@ -214,8 +210,8 @@ fn pin(units: &mut [Unit], swaps: &Swaps, by_name: &FxHashMap<&str, usize>, body
     for unit in conflicting {
         units[unit].fixed = true;
     }
-    // An enum's `auto()` reads `_generate_next_value_` from the class namespace rather than by name, and the enum rejects
-    // the definition once a member above it has called `auto()`.
+    // An enum's `auto()` reads `_generate_next_value_` from the class namespace rather than by name, and the enum
+    // rejects the definition once a member above it has called `auto()`.
     if let Some(&unit) = by_name.get("_generate_next_value_") {
         units[unit].fixed = true;
     }
@@ -227,7 +223,6 @@ fn pin(units: &mut [Unit], swaps: &Swaps, by_name: &FxHashMap<&str, usize>, body
     }
 }
 
-// The statements that read each definition of the class body, with the statement and the offset of each read.
 fn users(checker: &Checker, class: &ast::StmtClassDef, units: &[Unit], unit_of: &[usize]) -> Vec<Vec<Read>> {
     let body = &class.body;
     let mut users: Vec<Vec<Read>> = vec![Vec::new(); units.len()];
@@ -270,9 +265,9 @@ fn owners_of_pinned(units: &mut [Unit], swaps: &Swaps, users: &[Vec<Read>]) -> V
 }
 
 // The owner of each helper: the caller that comes first when the sections are sorted and each caller is followed by its
-// helpers, depth first. Both arrangements pick the same caller, and a fix that sorts the sections leaves each helper's owner
-// as it was. A helper that no entry point reaches, as in a pair of methods that only call each other, becomes an entry
-// point itself. Constructors, statements that are not definitions and fixed units never move under a caller.
+// helpers, depth first. Both arrangements pick the same caller, and a fix that sorts the sections leaves each helper's
+// owner as it was. A helper that no entry point reaches, as in a pair of methods that only call each other, becomes an
+// entry point itself. Constructors, statements that are not definitions and fixed units never move under a caller.
 fn owners(units: &[Unit<'_>], users: &[Vec<Read>]) -> Vec<Option<usize>> {
     let mut helper: Vec<bool> = units
         .iter()
@@ -316,8 +311,6 @@ fn owners(units: &[Unit<'_>], users: &[Vec<Read>]) -> Vec<Option<usize>> {
     }
 }
 
-// The entry points in the arrangement's order: a fixed unit keeps its place, and under `Arrangement::Sections` the
-// units between two fixed units sort by section.
 fn entry_order(units: &[Unit<'_>], is_entry: impl Fn(usize) -> bool, arrangement: Arrangement) -> Vec<usize> {
     let mut order = Vec::with_capacity(units.len());
     let mut segment = Vec::new();
@@ -340,7 +333,6 @@ fn flush(units: &[Unit<'_>], segment: &mut Vec<usize>, arrangement: Arrangement,
     order.append(segment);
 }
 
-// Which statements of a class body can swap with each other, from what each reads and binds.
 struct Swaps<'r, 'a> {
     reads: &'r [FxHashSet<&'a str>],
     binds: &'r [FxHashSet<&'a str>],
@@ -364,8 +356,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
         Self { reads, binds, unit_of, binders, readers }
     }
 
-    // The statements that do not commute with some member of a unit: those binding a name a member reads or binds, and
-    // those reading a name a member binds.
     fn conflicts(&self, info: &Unit) -> FxHashSet<usize> {
         let mut others = FxHashSet::default();
         for &member in &info.members {
@@ -380,7 +370,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
         others
     }
 
-    // Whether a helper can take its owner's place: no statement between them conflicts with it.
     fn can_move(&self, units: &[Unit], unit: usize, owner: usize) -> bool {
         let info = &units[unit];
         let low = info.first().min(units[owner].first());
@@ -388,7 +377,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
         !self.conflicts(info).into_iter().any(|other| (low..=high).contains(&other) && self.unit_of[other] != unit)
     }
 
-    // Whether a definition's members cannot be contiguous: a statement among them is fixed, or conflicts with a member.
     fn splits(&self, units: &[Unit], unit: usize) -> bool {
         let info = &units[unit];
         (info.first() + 1..info.last()).any(|other| {
@@ -398,7 +386,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
         })
     }
 
-    // Whether two statements can swap: neither reads a name the other binds, and they bind no name in common.
     fn commutes(&self, first: usize, second: usize) -> bool {
         self.reads[first].is_disjoint(&self.binds[second])
             && self.reads[second].is_disjoint(&self.binds[first])
@@ -407,7 +394,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
 }
 
 impl<'a> ClassOrder<'a> {
-    // The statement order the arrangement asks for, as a permutation of the body's statements.
     pub(super) fn expected(&self, arrangement: Arrangement) -> Vec<usize> {
         let mut order = Vec::with_capacity(self.unit_of.len());
         let entries = entry_order(&self.units, |unit| self.owner[unit].is_none(), arrangement);
@@ -417,12 +403,10 @@ impl<'a> ClassOrder<'a> {
         order
     }
 
-    // The owning statement of each statement that is a helper, `None` for the rest.
     pub(super) fn helper_owners(&self) -> Vec<Option<usize>> {
         self.unit_of.iter().map(|&unit| self.owner[unit].map(|owner| self.units[owner].first())).collect()
     }
 
-    // The definitions that sit below a definition of a later section, with the first such definition above them.
     pub(super) fn inversions(&self) -> Vec<Inversion<'a>> {
         let entries: Vec<(usize, &'a str, Option<Section>)> = (0..self.units.len())
             .filter_map(|unit| match self.units[unit].kind {
@@ -465,7 +449,6 @@ impl<'a> ClassOrder<'a> {
     }
 }
 
-// The section of a definition; `None` for a method, which is in no section.
 fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
     let Stmt::FunctionDef(function) = stmt else { return Some(Section::Nested) };
     let name = function.name.as_str();
@@ -488,8 +471,6 @@ fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
     }
 }
 
-// The names a statement reads while the class body runs: the parts of a `def` that run when it is defined, or the whole
-// of any other statement.
 fn creation_reads(stmt: &Stmt, lazy: bool) -> FxHashSet<&str> {
     let mut reads = ExprCollector::new(|expr| {
         expr.as_name_expr().filter(|name| name.ctx == ExprContext::Load).map(|name| name.id.as_str())

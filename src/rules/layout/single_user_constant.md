@@ -204,10 +204,11 @@ functions nested in it. These values count:
 
 - **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive
   each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds
-  another name to it lets that state be changed or kept. A container stays reportable only when the function tests
-  membership with `in` or calls `len` on it, or, when its items are immutable, iterates, indexes or unpacks it, calls
-  `copy`, `count`, `get`, `index`, `items`, `keys` or `values` on it, or passes it to a builtin that copies or reduces
-  it, such as `sorted` or `sum`.
+  another name to it lets that state be changed or kept.
+
+  A container stays reportable only when the function tests membership with `in` or calls `len` on it, or, when its
+  items are immutable, iterates, indexes or unpacks it, calls `copy`, `count`, `get`, `index`, `items`, `keys` or
+  `values` on it, or passes it to a builtin that copies or reduces it, such as `sorted` or `sum`.
 
   ```python ok
   _SEEN = {"a"}

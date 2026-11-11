@@ -49,11 +49,9 @@ pub(crate) struct PublicApi<'a> {
 impl<'a> PublicApi<'a> {
     // Built once per file on first use; rules read it as `checker.state().public_api(checker)`.
     pub(crate) fn of(checker: &Checker<'a>) -> Self {
-        let body = checker.body();
         let project = checker.project();
-        let exports = checker.dunder_all();
         let reach = |name: &str| project.library_exposure(name);
-        let dynamic = matches!(exports, Exports::Dynamic);
+        let dynamic = matches!(checker.dunder_all(), Exports::Dynamic);
         let mut api = Self {
             items: Vec::new(),
             statements: FxHashMap::default(),
@@ -63,7 +61,7 @@ impl<'a> PublicApi<'a> {
         };
         // Definitions in top-level `if`, `try` and `match` blocks, as a version switch or an optional accelerator, are
         // the module's too.
-        for (stmt, next) in module_statements_with_next(body) {
+        for (stmt, next) in module_statements_with_next(checker.body()) {
             match stmt {
                 Stmt::FunctionDef(function) => {
                     let name = function.name.as_str();
@@ -73,13 +71,11 @@ impl<'a> PublicApi<'a> {
                             api.optional.insert(function.range);
                         }
                         Some(exposure) => {
-                            let range = function.name.range;
-                            let kind = ApiKind::Function;
                             api.items.push(ApiItem {
                                 stmt,
                                 name: name.to_owned(),
-                                range,
-                                kind,
+                                range: function.name.range,
+                                kind: ApiKind::Function,
                                 next: None,
                                 via: exposure.reexporter(),
                                 docs: exposure.is_offered(),
@@ -165,7 +161,6 @@ impl<'a> PublicApi<'a> {
         }
     }
 
-    // A public class, its public methods and properties, and its public nested classes with theirs.
     fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, exposure: Exposure<'a>) {
         let range = class.name.range;
         let (via, docs) = (exposure.reexporter(), exposure.is_offered());
@@ -197,8 +192,8 @@ impl<'a> PublicApi<'a> {
     }
 
     // Whether the definition at `range` is part of the public API, as opposed to optional or possibly public: an item
-    // of the API, or one the documentation names. Only the docstring rules need `Need::Docs`, which leaves out the items
-    // only a signature reaches.
+    // of the API, or one the documentation names. Only the docstring rules need `Need::Docs`, which leaves out the
+    // items only a signature reaches.
     pub(crate) fn is_public(&self, range: TextRange, need: Need) -> bool {
         self.is_item(range, need) || self.documented.contains(&range)
     }
@@ -247,8 +242,6 @@ fn offer(method: &ast::StmtFunctionDef) -> Offer {
     }
 }
 
-// The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`,
-// `try` or `match`.
 pub(super) fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
     fn collect<'a>(body: &'a [Stmt], found: &mut Vec<(&'a Stmt, Option<&'a Stmt>)>) {
         for (index, stmt) in body.iter().enumerate() {
@@ -281,8 +274,8 @@ pub(super) fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&
     found
 }
 
-// The module's functions, classes and class members that the documentation names by their dotted name under the module's
-// package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
+// The module's functions, classes and class members that the documentation names by their dotted name under the
+// module's package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
 fn documented_definitions(checker: &Checker) -> FxHashSet<TextRange> {
     let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
     let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {

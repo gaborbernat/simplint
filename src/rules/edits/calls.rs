@@ -19,8 +19,7 @@ pub(crate) fn keyword_removal(checker: &Checker, call: &ast::ExprCall, keyword: 
     arguments.sort_by_key(Ranged::start);
     let index = arguments.iter().position(|range| *range == keyword.range())?;
     let range = keyword.range();
-    let previous = index.checked_sub(1).map(|previous| arguments[previous]);
-    Some(match (previous, arguments.get(index + 1)) {
+    Some(match (index.checked_sub(1).map(|previous| arguments[previous]), arguments.get(index + 1)) {
         (_, Some(next)) => TextRange::new(range.start(), next.start()),
         (Some(previous), None) => TextRange::new(previous.end(), range.end()),
         (None, None) => TextRange::new(range.start(), call.range().end() - TextSize::from(1)),

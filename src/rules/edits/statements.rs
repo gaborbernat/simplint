@@ -7,7 +7,6 @@ use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::syntax::previous_line_start;
 
-// The blank lines a removed statement takes with its lines, which each caller picks for the code around it.
 #[derive(Clone, Copy)]
 pub(crate) enum Blanks {
     Keep,
@@ -16,8 +15,6 @@ pub(crate) enum Blanks {
     WiderSide,
 }
 
-// The lines a statement takes when it goes, with the blank lines `blanks` names, for a statement that has its lines to
-// itself.
 pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) -> TextRange {
     match blanks {
         Blanks::Keep => source.full_lines_range(range),
@@ -27,8 +24,6 @@ pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) ->
     }
 }
 
-// The removal of a statement: a `pass` in place of a body's only statement, and otherwise its deletion, as
-// `statement_deletion` gives it.
 pub(crate) fn statement_removal(
     checker: &Checker,
     stmt: TextRange,
@@ -58,8 +53,7 @@ pub(crate) fn statement_deletion(
     }
     let line_start = source.line_start(range.start());
     let before = source[TextRange::new(line_start, range.start())].trim_end();
-    let after = &source[TextRange::new(range.end(), source.line_end(range.end()))];
-    if before.ends_with(';') && after.trim().is_empty() {
+    if before.ends_with(';') && source[TextRange::new(range.end(), source.line_end(range.end()))].trim().is_empty() {
         return Some(TextRange::new(line_start + before.text_len() - TextSize::from(1), range.end()));
     }
     let up_to_next = TextRange::new(range.start(), next?.start());
@@ -127,7 +121,6 @@ fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     TextRange::new(start, end)
 }
 
-// The full lines of a statement with its decorators and the comment lines directly above it, which go wherever it goes.
 pub(crate) fn statement_block(checker: &Checker, stmt: &Stmt) -> TextRange {
     let source = checker.source;
     let start = match stmt {

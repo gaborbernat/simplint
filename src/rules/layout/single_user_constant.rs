@@ -53,7 +53,8 @@ pub fn single_user_constant(checker: &Checker) {
             continue;
         }
         let references = semantic.references_to(name);
-        // A reference inside a module-level lambda reports the lambda as its function, and a constant cannot move there.
+        // A reference inside a module-level lambda reports the lambda as its function, and a constant cannot
+        // move there.
         let Some(function) = references
             .first()
             .and_then(|reference| reference.function)
@@ -94,8 +95,9 @@ pub fn single_user_constant(checker: &Checker) {
     }
 }
 
-// Only a value written out in the source moves: a call result such as a cache, logger, client, compiled pattern or path,
-// and a name or attribute read from elsewhere, may be state shared between calls or patched by tests, so it stays.
+// Only a value written out in the source moves: a call result such as a cache, logger, client, compiled pattern
+// or path, and a name or attribute read from elsewhere, may be state shared between calls or patched by tests,
+// so it stays.
 fn is_literal(checker: &Checker, value: &Expr) -> bool {
     let all_literal = |values: &[Expr]| values.iter().all(|value| is_literal(checker, value));
     match value {
@@ -170,7 +172,6 @@ fn has_mutable_items(expr: &Expr) -> bool {
     }
 }
 
-// The references read without exposing the container (`opaque`), and those that expose only its items (`items`).
 struct Reads<'c, 'a> {
     checker: &'c Checker<'a>,
     references: &'c [TextRange],
@@ -272,27 +273,39 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
     }
     let deletion = Edit::range_deletion(statement_lines(source, constant.stmt.range(), Blanks::WiderSide));
     let value_text = checker.parenthesized_text(constant.value, constant.stmt.into());
-    // Inside an f-string replacement field a value with quotes is a syntax error before Python 3.12, and any longer
-    // expression buries the text the f-string builds, so only a number goes there.
-    let simple = constant.value.is_number_literal_expr();
     // A comment or a triple-quoted string keeps a value on several lines whatever the layout, so it gets a local name.
     let spans_lines =
         value_text.contains("\"\"\"") || value_text.contains("'''") || checker.has_comment_in(constant.value.range());
     // An inlined literal is inferred on its own, which may not match the annotation the constant declares, so an
     // annotated constant keeps its name as a local.
+    // Inside an f-string replacement field a value with quotes is a syntax error before Python 3.12, and any longer
+    // expression buries the text the f-string builds, so only a number goes there.
     if let [reference] = constant.references.as_slice()
         && !spans_lines
         && local_annotation(checker, constant).is_none()
     {
         let context = ReferenceContext::of(&function.body, *reference);
         if !context.repeated
-            && (simple || !context.in_fstring)
+            && (constant.value.is_number_literal_expr() || !context.in_fstring)
             && (!context.format_receiver || !constant.value.is_string_literal_expr())
         {
             return inline_fix(checker, constant.value, value_text, deletion, *reference).map(|fix| (fix, false));
         }
     }
     local_fix(checker, constant, value_text, deletion).map(|fix| (fix, true))
+}
+
+// The type a local keeps from the constant's annotation. An empty container needs its declared type to type check,
+// while `Final` belongs to module scope only, so `Final[T]` keeps `T` and a bare `Final` keeps nothing.
+fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {
+    match constant.annotation {
+        Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {
+            Some(checker.text(slice.range()))
+        }
+        Some(annotation) if last_segment(annotation) == Some("Final") => None,
+        Some(annotation) => Some(checker.text(annotation.range())),
+        None => None,
+    }
 }
 
 fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit, reference: TextRange) -> Option<Fix> {
@@ -369,18 +382,6 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
     fix_of(keep_debug_text(checker, edits)?, Applicability::Unsafe)
-}
-// The type a local keeps from the constant's annotation. An empty container needs its declared type to type check,
-// while `Final` belongs to module scope only, so `Final[T]` keeps `T` and a bare `Final` keeps nothing.
-fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {
-    match constant.annotation {
-        Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {
-            Some(checker.text(slice.range()))
-        }
-        Some(annotation) if last_segment(annotation) == Some("Final") => None,
-        Some(annotation) => Some(checker.text(annotation.range())),
-        None => None,
-    }
 }
 
 // Where the one reference to a constant sits, which decides whether the value can replace it.
