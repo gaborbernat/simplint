@@ -122,12 +122,11 @@ impl<'a> Docstring<'a> {
         let mut open: Option<(usize, usize)> = None;
         let mut text_since_field = false;
         for (index, line) in lines.iter().enumerate() {
-            let content = line.text;
-            if content.is_empty() {
+            if line.text.is_empty() {
                 continue;
             }
             let level = line.indent;
-            let trimmed = content.trim_start();
+            let trimmed = line.text.trim_start();
             if level == base
                 && let Some(marker) = field_marker(trimmed)
             {
@@ -160,8 +159,8 @@ impl<'a> Docstring<'a> {
                 field.described = true;
                 field.description.push(' ');
                 field.description.push_str(trimmed);
-                if let (Some(start), Some(lines)) = (start, field.lines) {
-                    field.lines = Some(TextRange::new(lines.start(), start + line.start + TextSize::of(line.raw)));
+                if let (Some(start), Some(range)) = (start, field.lines) {
+                    field.lines = Some(TextRange::new(range.start(), start + line.start + TextSize::of(line.raw)));
                 }
                 continue;
             }
