@@ -7,17 +7,16 @@ use crate::rules::public_api::Need;
 use crate::syntax::{Visibility, module_statements};
 
 pub fn test_only_code(checker: &Checker) {
-    let project = checker.project();
     if !names_are_followed(checker) {
         return;
     }
-    let api = checker.state().public_api(checker);
+    let project = checker.project();
     for definition in definitions(module_statements(checker.body())) {
         let name = definition.name.as_str();
         // A decorator may register the definition with something outside the run, such as a framework or a plugin list.
         if definition.decorated
             || Visibility::of(name) == Visibility::Dunder
-            || api.is_public(definition.stmt.range(), Need::Any)
+            || checker.state().public_api(checker).is_public(definition.stmt.range(), Need::Any)
             || checker.dunder_all().lists(name)
             || project.is_loaded_as_value()
             || !project.is_used_only_by_tests(name)
