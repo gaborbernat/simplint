@@ -352,6 +352,33 @@ class Counted:
         return "Counted"
 ```
 
+Two members that stay adjacent in the same order keep the blank lines they had between them. The other members are
+separated by one blank line.
+
+```python report
+class Parser:
+    def load(self) -> int:
+        return 1
+
+    LIMIT = 3
+    SEP = ","
+
+    def __init__(self) -> None:
+        self.sep = SEP
+```
+
+```python fixed
+class Parser:
+    LIMIT = 3
+    SEP = ","
+
+    def __init__(self) -> None:
+        self.sep = SEP
+
+    def load(self) -> int:
+        return 1
+```
+
 No fix is offered when the member stays behind a statement it conflicts with, when the span holds a comment that is not
 attached to a definition, or when two statements share a line.
 

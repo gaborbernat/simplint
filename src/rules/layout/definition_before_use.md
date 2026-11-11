@@ -354,29 +354,29 @@ The fix rewrites the span from the first to the last misplaced statement in the 
 - A line of a string that starts with `#` is not a comment, so it stays with the string.
 
   ```python report
+  # fmt: off
   MESSAGE = """
   # not a comment"""
-
-
   def _clean(line: str) -> str:
       return line.strip()
 
 
   def load(text: str) -> list[str]:
       return [_clean(line) for line in text.splitlines()]
+  # fmt: on
   ```
 
   ```python fixed
+  # fmt: off
   MESSAGE = """
   # not a comment"""
-
-
   def load(text: str) -> list[str]:
       return [_clean(line) for line in text.splitlines()]
 
 
   def _clean(line: str) -> str:
       return line.strip()
+  # fmt: on
   ```
 
 - Statements are separated by two blank lines at module level and one in a class body. Two statements that stay adjacent
