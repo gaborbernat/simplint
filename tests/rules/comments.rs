@@ -190,12 +190,13 @@ fn unused_ignore_removes_multiple_selectors_after_unicode() {
 fn unused_ignore_rewrites_separators_around_a_stale_selector() {
     let root = common::project(&[(
         "module.py",
-        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
+        "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  \
+         # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
     )]);
     assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP602,SMP009", "--fix"]).0, 0);
     assert_eq!(
         common::read(root.path(), "module.py"),
-        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n"
+        "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n"
     );
 }
 
