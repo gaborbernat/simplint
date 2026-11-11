@@ -3,7 +3,7 @@ use std::cell::{OnceCell, RefCell};
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
-use ruff_text_size::{Ranged, TextLen, TextRange};
+use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::layout::joined_width;
@@ -176,10 +176,9 @@ fn candidate<'a>(
                     .contains(name)
             }),
         ),
-        Scope::Module => (
-            TextRange::up_to(checker.source.text_len()),
-            checker.project().is_referenced(name) || checker.dunder_all().may_list(name),
-        ),
+        Scope::Module => {
+            (checker.file_range(), checker.project().is_referenced(name) || checker.dunder_all().may_list(name))
+        }
     };
     let mentions = mentions.get_or_init(|| Mentions::of(checker.body()));
     // `globals()` reads the module's names, so it keeps only a module-level name alive.

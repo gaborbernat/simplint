@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::ensure_import;
-use crate::rules::logic::scoped_block::{finally_call, identifier_uses, is_exported_module_name, scope_of, wrap_edits};
+use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, wrap_edits};
 use crate::syntax::{for_each_body, sole_argument};
 
 // Since Python 3.11 `contextlib.chdir` enters a directory and returns to the one it left on exit.
@@ -47,7 +47,7 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
         return;
     }
     // The assignment and the `chdir` argument of the `finally` are the name's only spellings in its scope.
-    if identifier_uses(checker, scope_of(checker, assign.range()), old.id.as_str()) != 2 {
+    if checker.identifier_count_in(checker.enclosing_scope(assign.range()), old.id.as_str()) != 2 {
         return;
     }
     let header = format!("with contextlib.chdir({}):", checker.text(target));

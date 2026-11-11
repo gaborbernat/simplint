@@ -21,7 +21,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
@@ -175,7 +175,7 @@ impl<'a> FileState<'a> {
     // How many identifier tokens of the file spell `name` outside an attribute access, the whole file included.
     pub(crate) fn unqualified_name_count(&self, checker: &Checker<'a>, name: &str) -> usize {
         let counts = self.unqualified_names.get_or_init(|| {
-            let tokens = checker.parsed.tokens().in_range(TextRange::up_to(checker.source.text_len()));
+            let tokens = checker.parsed.tokens().in_range(checker.file_range());
             let mut counts = FxHashMap::default();
             for (index, token) in tokens.iter().enumerate() {
                 if token.kind() == TokenKind::Identifier

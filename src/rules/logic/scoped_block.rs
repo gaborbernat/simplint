@@ -2,10 +2,9 @@
 // block.
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 
@@ -19,30 +18,6 @@ pub fn finally_call(try_stmt: &ast::StmtTry) -> Option<&ast::ExprCall> {
         return None;
     };
     (try_stmt.handlers.is_empty() && try_stmt.orelse.is_empty() && !try_stmt.is_star).then_some(call)
-}
-
-// The range of the innermost function or class that holds `range`, or the whole file at module level.
-pub fn scope_of(checker: &Checker, range: TextRange) -> TextRange {
-    let scopes = checker.state().scope_nesting(checker);
-    scopes
-        .holders(range)
-        .next()
-        .map_or_else(|| TextRange::up_to(checker.source.text_len()), |index| scopes.range(index))
-}
-
-// How many identifiers in `scope` spell `name`. An attribute such as `obj.name` reads another binding, so it does not
-// count. Any other spelling, a parameter or an import included, may bind the name, so the fix leaves it alone.
-pub fn identifier_uses(checker: &Checker, scope: TextRange, name: &str) -> usize {
-    let tokens = checker.parsed.tokens().in_range(scope);
-    tokens
-        .iter()
-        .enumerate()
-        .filter(|(index, token)| {
-            token.kind() == TokenKind::Identifier
-                && checker.text(token.range()) == name
-                && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
-        })
-        .count()
 }
 
 // Whether `target` binds a module-level name that another module of the run reads, through an import, a star import or

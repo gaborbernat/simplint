@@ -12,7 +12,7 @@ use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
 use ruff_python_trivia::{CommentRanges, has_leading_content};
 use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
 use crate::lint::Linter;
@@ -337,6 +337,31 @@ impl<'a> Checker<'a> {
             counts
         });
         counts.get(name).copied().unwrap_or_default()
+    }
+
+    // How many identifier tokens of `range` spell `name`. An attribute such as `obj.name` reads another binding, so it
+    // does not count. Any other spelling, a parameter or an import included, may bind the name.
+    pub fn identifier_count_in(&self, range: TextRange, name: &str) -> usize {
+        let tokens = self.parsed.tokens().in_range(range);
+        tokens
+            .iter()
+            .enumerate()
+            .filter(|(index, token)| {
+                token.kind() == TokenKind::Identifier
+                    && self.text(token.range()) == name
+                    && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
+            })
+            .count()
+    }
+
+    // The range of the innermost function or class that holds `range`, or the whole file at module level.
+    pub fn enclosing_scope(&self, range: TextRange) -> TextRange {
+        let scopes = self.state().scope_nesting(self);
+        scopes.holders(range).next().map_or_else(|| self.file_range(), |index| scopes.range(index))
+    }
+
+    pub fn file_range(&self) -> TextRange {
+        TextRange::up_to(self.source.text_len())
     }
 
     // What each string of the module holds, with its range.
