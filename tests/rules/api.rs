@@ -137,7 +137,7 @@ fn missing_from_all_ignores_test_only_imports(exports: &str, production: &str, e
         ("tests/_render/test_intersphinx.py", "from pkg._render.intersphinx import Hint\n"),
     ]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP401"]).1;
-    assert_eq!(stdout.matches("SMP401").count(), expected, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP401").len(), expected, "{stdout}");
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(stdout.matches("SMP407").count(), 2, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 2, "{stdout}");
     assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
     assert!(!stdout.contains("roots/test-example"), "{stdout}");
 }
@@ -165,7 +165,7 @@ fn init_module_content_allows_explicit_api_in_applications() {
         ("package/_api.py", "API = 1\nhidden = 2\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(stdout.matches("SMP407").count(), 1, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
     assert!(stdout.contains("package/__init__.py:2:1"), "{stdout}");
 }
 
@@ -177,7 +177,7 @@ fn missing_from_all_allows_main_modules() {
         ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
-    assert_eq!(stdout.matches("SMP401").count(), 1, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP401").len(), 1, "{stdout}");
     assert!(stdout.contains("module.py"), "{stdout}");
 }
 
@@ -406,7 +406,7 @@ fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &s
     let ruff = format!("[tool.ruff.lint]\nselect = [{select}]\n");
     let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
-    assert_eq!(stdout.matches("SMP409").count(), reported, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP409").len(), reported, "{stdout}");
 }
 
 // A method a version switch defines inside an `if` in the class body is the class's method, so its calls count.
@@ -632,7 +632,7 @@ fn unused_export_keeps_the_declared_api_of_libraries(settings: &str, module: &st
         (module, "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP402"]);
-    assert_eq!(stdout.matches("SMP402").count(), reports, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP402").len(), reports, "{stdout}");
 }
 
 // A public module's names are the API its users import, so the rename to private stays with the author, though the

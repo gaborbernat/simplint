@@ -47,13 +47,25 @@ pub fn reports<'a>(stdout: &'a str, code: &str) -> Vec<&'a str> {
     stdout.lines().filter(|line| line.contains(&token)).collect()
 }
 
-pub fn report_count(root: &Path, code: &str) -> usize {
-    reports(&check(root, &["--no-cache", "--select", code]).1, code).len()
+pub fn assert_report_count(root: &Path, code: &str, expected: usize) {
+    let stdout = check(root, &["--no-cache", "--select", code]).1;
+    assert_eq!(reports(&stdout, code).len(), expected, "{stdout}");
 }
 
 // Fixes the file under `root` with every unsafe fix of `select` applied, the way most fix tests run it.
 pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
     check(root, &["--fix", "--unsafe-fixes", "--select", select])
+}
+
+pub fn fix_safe(root: &Path, select: &str) -> (i32, String, String) {
+    check(root, &["--fix", "--select", select])
+}
+
+// The fix run keeps the report of `select` on `file` and leaves the file as it is.
+pub fn assert_fix_keeps_report(root: &Path, select: &str, fix: &[&str], file: &str, report: &str) {
+    let source = read(root, file);
+    let (code, stdout, _) = check(root, &[&["--no-cache", "--select", select], fix].concat());
+    assert_eq!((code, stdout.as_str(), read(root, file)), (1, report, source));
 }
 
 // Fixes the single file `name` of a project with `pyproject`, and returns the exit code, the report and the new source.

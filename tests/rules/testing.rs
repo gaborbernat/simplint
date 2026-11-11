@@ -52,7 +52,7 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
             &format!("from unittest.mock import {imports}\n\n\ndef test_mock() -> None:\n    assert True\n"),
         ),
     ]);
-    assert_eq!(common::report_count(root.path(), "SMP809"), reports);
+    common::assert_report_count(root.path(), "SMP809", reports);
 }
 
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py311" ; "unittest_enter_context")]
@@ -156,5 +156,5 @@ fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, code: &str, reports: 
     let source = format!("import asyncio\n\n\nasync def test_busy(done):\n    {body}\n");
     let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
     let root = common::project(&[("pyproject.toml", &settings), ("test_busy.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP808"), reports);
+    common::assert_report_count(root.path(), "SMP808", reports);
 }

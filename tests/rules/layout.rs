@@ -148,7 +148,7 @@ fn definition_before_use_fixes_after_first_report_is_suppressed() {
         "module.py",
         "def main():\n    return helper()\n\n\ndef late():  # noqa: SMP201\n    return 1\n\n\ndef helper():\n    return late()\n",
     )]);
-    common::check(root.path(), &["--no-cache", "--fix", "--select", "SMP201"]);
+    common::fix_safe(root.path(), "SMP201");
     assert_eq!(
         common::read(root.path(), "module.py"),
         "def main():\n    return helper()\n\n\ndef helper():\n    return late()\n\n\ndef late():  # noqa: SMP201\n    return 1\n"

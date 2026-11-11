@@ -15,7 +15,7 @@ use crate::common;
 fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: usize) {
     let pyproject = format!("[project]\nname = \"pkg\"\nversion = \"1\"\n{metadata}");
     let root = common::project(&[("pyproject.toml", &pyproject), ("pkg/__init__.py", ""), (file, source)]);
-    assert_eq!(common::report_count(root.path(), "SMP105"), expected);
+    common::assert_report_count(root.path(), "SMP105", expected);
 }
 
 #[test_case("", "main()", 0 ; "name_alone_main")]
@@ -37,7 +37,7 @@ fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: 
             "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pass\n\n\n{trailing}\n"
         ),
     )]);
-    assert_eq!(common::report_count(root.path(), "SMP106"), expected);
+    common::assert_report_count(root.path(), "SMP106", expected);
 }
 
 #[cfg(unix)]
@@ -92,7 +92,7 @@ fn trailing_entrypoint_call_requires_unsafe_fixes() {
 #[test_case("pkg/__main__.py" ; "package")]
 fn main_module_requires_guard(file: &str) {
     let root = common::project(&[(file, "from pkg.cli import launch\n\nlaunch()\n")]);
-    assert_eq!(common::report_count(root.path(), "SMP106"), 1);
+    common::assert_report_count(root.path(), "SMP106", 1);
     let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
     assert_eq!(code, 0, "{stdout}");
     assert_eq!(
@@ -112,7 +112,7 @@ fn configured_entrypoint_call(metadata: &str, trailing: &str, expected: usize) {
         ("pkg/__init__.py", ""),
         ("pkg/cli.py", &format!("def launch() -> None:\n    pass\n\n\n{trailing}\n")),
     ]);
-    assert_eq!(common::report_count(root.path(), "SMP106"), expected);
+    common::assert_report_count(root.path(), "SMP106", expected);
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn package_init_console_script_call() {
         ("pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg:launch\"\n"),
         ("pkg/__init__.py", "def launch() -> None:\n    pass\n\n\nlaunch()\n"),
     ]);
-    assert_eq!(common::report_count(root.path(), "SMP106"), 1);
+    common::assert_report_count(root.path(), "SMP106", 1);
 }
 
 #[cfg(unix)]

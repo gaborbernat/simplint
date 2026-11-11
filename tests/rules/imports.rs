@@ -113,7 +113,7 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("def load():\n    from .._api import API\n    return API\n", 1 ; "function_import")]
 fn private_import_path(source: &str, expected: usize) {
     let root = common::project(&[("package/__init__.py", ""), ("package/module.py", source)]);
-    assert_eq!(common::report_count(root.path(), "SMP310"), expected);
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test_case("tests/a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_mirrored")]
@@ -134,7 +134,7 @@ fn private_import_path(source: &str, expected: usize) {
 #[test_case("a/b/consumer.py", "from a.b._x import Name\n", 1 ; "production_absolute")]
 fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
     let root = common::project(&[("a/b/_x.py", "Name = object()\n"), ("_x.py", "Name = object()\n"), (file, source)]);
-    assert_eq!(common::report_count(root.path(), "SMP310"), expected);
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test_case(
@@ -167,7 +167,7 @@ fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
 )]
 fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: &str, expected: usize) {
     let root = common::project(&[(source_file, "Name = object()\n"), (file, &format!("from {module} import Name\n"))]);
-    assert_eq!(common::report_count(root.path(), "SMP310"), expected);
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn private_module_object_remains_disallowed_in_paired_suite() {
         ("src/pkg/_html.pyi", "Name: object\n"),
         ("tests/_html/test_url.py", "from pkg import _html\n"),
     ]);
-    assert_eq!(common::report_count(root.path(), "SMP310"), 1);
+    common::assert_report_count(root.path(), "SMP310", 1);
 }
 
 #[test]
@@ -740,5 +740,5 @@ fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bo
 fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str, name: &str, reports: usize) {
     let root =
         common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
-    assert_eq!(common::report_count(root.path(), "SMP303"), reports);
+    common::assert_report_count(root.path(), "SMP303", reports);
 }
