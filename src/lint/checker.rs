@@ -165,6 +165,12 @@ impl<'a> Checker<'a> {
             .or(Some(first))
     }
 
+    // Whether a suppression comment hides the report of `rule` on `range`, which then leaves the code as it is.
+    pub fn is_suppressed(&self, rule: Rule, range: TextRange) -> bool {
+        self.suppressions.has_directives()
+            && self.suppressions.pending(vec![self.diagnostic(rule, range, "")]).is_empty()
+    }
+
     // Ruff attaches a fix's title as a help note: the `help:` line of the full output, and the fix message of the JSON,
     // SARIF and GitHub formats. As in Ruff, the note stays when the settings make the rule unfixable.
     pub fn report_fix(

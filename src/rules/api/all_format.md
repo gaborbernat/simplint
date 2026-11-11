@@ -80,6 +80,14 @@ literal.
     __all__ = "run", "stop"
     ```
 
+- **Augmented assignments**: a `+=` of a list or tuple literal is reported like the others, unless a plain assignment to
+  `__all__` keeps it a tuple (see Exceptions).
+
+  ```python report
+  __all__ = ("load",)
+  __all__ += ("save",)
+  ```
+
 ### Exceptions
 
 - **An empty list**: it has no name to put a comma after.
@@ -93,6 +101,31 @@ literal.
 
   ```python ok
   __all__ = sorted(["load", "save"])
+  ```
+
+- **An augmented assignment while a plain assignment keeps `__all__` a tuple**: `tuple += list` raises, so the `+=` is
+  left alone when a plain assignment is not a list or tuple literal, such as `tuple([...])`. A tuple nested in a block
+  or with a `noqa` for this rule stays a tuple too, since the fix does not convert it. Other augmented assignments do
+  not change the type of `__all__`, so they are not affected.
+
+  ```python ok
+  __all__ = tuple(["load"])
+  __all__ += ("save",)
+  ```
+
+  ```python ok
+  import sys
+
+  if sys.platform == "win32":
+      __all__ = ("load",)
+  else:
+      __all__ = ("load", "save")
+  __all__ += ("save",)
+  ```
+
+  ```python ok
+  __all__ = ("load",)  # noqa: SMP405
+  __all__ += ("save",)
   ```
 
 - **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line

@@ -10767,7 +10767,7 @@
     "name": "all-format",
     "summary": "`__all__` not a list with a trailing comma",
     "fix": "Always",
-    "explanation": "Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name. With the comma, Ruff's\nformatter puts each name on its own line, so adding or removing an export changes one line.\n\n## Why is this bad?\n\nA trailing comma after the last name makes Ruff's formatter put each name on its own line, unless\n[`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) is set. Adding or\nremoving an export then changes one line, so the diff shows exactly which name changed.\n\nUsing a list in every module gives `__all__` one shape to read and edit, and it is the shape the\n[missing-from-all](SMP401.html) fix writes for a new `__all__`. To also sort the names, see Ruff's\n[unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).\n\n## Example\n\n```python report\n__all__ = (\"load\", \"save\")\n```\n\nUse instead:\n\n```python ok\n__all__ = [\n    \"load\",\n    \"save\",\n]\n```\n\n## Configuration\n\n- [`format.skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma); see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n  ```toml config\n  [tool.ruff.format]\n  skip-magic-trailing-comma = true\n  ```\n\n  ```python ok\n  __all__ = [\"load\", \"save\"]\n  ```\n\n## What it does\n\nThe rule checks module-level `=`, annotated and augmented assignments to\n[`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) whose value is a list or tuple\nliteral.\n\n### Active on\n\n- **Lists without a trailing comma**: a list must have a trailing comma after its last name, so the formatter splits it\n  one name per line. With Ruff's\n  [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) set, the\n  formatter keeps the list as written, with or without the comma, so the rule does not report it.\n\n  - a plain assignment:\n\n    ```python report\n    __all__ = [\"load\", \"save\"]\n    ```\n\n  - an annotated assignment:\n\n    ```python report\n    __all__: list[str] = [\"load\", \"save\"]\n    ```\n\n- **Tuples**: always reported, whether parenthesized or bare, so every module uses the same list shape. **Unsafe fix:**\n  code that concatenates `__all__` with another tuple stops working once it is a list.\n\n  - parenthesized:\n\n    ```python report\n    __all__ = (\"load\", \"save\")\n    ```\n\n  - bare, without brackets:\n\n    ```python report\n    __all__ = \"run\", \"stop\"\n    ```\n\n### Exceptions\n\n- **An empty list**: it has no name to put a comma after.\n\n  ```python ok\n  __all__ = []\n  ```\n\n- **Other values**, such as `sorted([...])`: they are not a list or tuple literal, so there are no brackets or comma to\n  check.\n\n  ```python ok\n  __all__ = sorted([\"load\", \"save\"])\n  ```\n\n- **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line\n  above `]` with no comma after it: Ruff's\n  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff. A tuple written that way, which COM812 reports too,\n  stays here for the fix that turns it into a list.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"COM812\"]\n  ```\n\n  ```python ok\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\"\n  ]\n  # fmt: on\n  ```\n\n### Fix\n\n| Value                                                                                | Fix                                                   | Safe |\n| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | :--: |\n| list without the trailing comma, no comment, closing bracket after a name            | rewrites it, one name per line, with a trailing comma |  ✓   |\n| list without the trailing comma, with a comment or a closing bracket on its own line | adds the comma after the last name                    |  ✓   |\n| tuple                                                                                | rewrites it as a list                                 |  ✗   |\n| empty tuple                                                                          | becomes `[]`                                          |  ✗   |\n\n```python report\n__all__ = [\"load\", \"save\"]\n```\n\n```python fixed\n__all__ = [\n    \"load\",\n    \"save\",\n]\n```\n\n```python report\n# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"\n]\n# fmt: on\n```\n\n```python fixed\n# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",\n]\n# fmt: on\n```\n\n```python report\n__all__ = ()\n```\n\n```python fixed\n__all__ = []\n```\n\nThe fix keeps the names in their order. The layout depends on how the literal is written:\n\n- **On one line**: it becomes a list with one name per line and a trailing comma, the layout `ruff format` gives it, so\n  `(\"load\", \"save\")` needs no formatter pass. A list on one line is rewritten the same way.\n\n  ```python report\n  __all__ = (\"load\", \"save\")\n  ```\n\n  ```python fixed\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  ```\n\n- **A list whose closing bracket follows the last name**: it is rewritten one name per line, as a list on one line is.\n\n  ```python report\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\"]\n  # fmt: on\n  ```\n\n  ```python fixed\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  # fmt: on\n  ```\n\n- **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the\n  last name, after its closing parenthesis if it has one, so the layout and the comment stay.\n\n  - the closing bracket on its own line:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\"\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\",\n    ]\n    # fmt: on\n    ```\n\n  - a comment inside the list:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\"  # the public API\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\",  # the public API\n    ]\n    # fmt: on\n    ```\n\n  - a parenthesized last name:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        (\"save\")\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        (\"save\"),\n    ]\n    # fmt: on\n    ```\n\n- **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.\n\n  ```python report\n  __all__ = (\n      \"load\",\n      \"save\",\n  )\n  ```\n\n  ```python fixed\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which reports a missing trailing comma when the\n  closing bracket is on its own line and which this rule leaves to it for a list; this rule covers the rest of the\n  layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open issues\n  [#22443](https://github.com/astral-sh/ruff/issues/22443) and [#27983](https://github.com/astral-sh/ruff/issues/27983).\n- [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports\n  [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It\n  accepts tuples, which this rule reports, and it does not check the trailing comma.\n",
+    "explanation": "Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name. With the comma, Ruff's\nformatter puts each name on its own line, so adding or removing an export changes one line.\n\n## Why is this bad?\n\nA trailing comma after the last name makes Ruff's formatter put each name on its own line, unless\n[`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) is set. Adding or\nremoving an export then changes one line, so the diff shows exactly which name changed.\n\nUsing a list in every module gives `__all__` one shape to read and edit, and it is the shape the\n[missing-from-all](SMP401.html) fix writes for a new `__all__`. To also sort the names, see Ruff's\n[unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).\n\n## Example\n\n```python report\n__all__ = (\"load\", \"save\")\n```\n\nUse instead:\n\n```python ok\n__all__ = [\n    \"load\",\n    \"save\",\n]\n```\n\n## Configuration\n\n- [`format.skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma); see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n  ```toml config\n  [tool.ruff.format]\n  skip-magic-trailing-comma = true\n  ```\n\n  ```python ok\n  __all__ = [\"load\", \"save\"]\n  ```\n\n## What it does\n\nThe rule checks module-level `=`, annotated and augmented assignments to\n[`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) whose value is a list or tuple\nliteral.\n\n### Active on\n\n- **Lists without a trailing comma**: a list must have a trailing comma after its last name, so the formatter splits it\n  one name per line. With Ruff's\n  [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) set, the\n  formatter keeps the list as written, with or without the comma, so the rule does not report it.\n\n  - a plain assignment:\n\n    ```python report\n    __all__ = [\"load\", \"save\"]\n    ```\n\n  - an annotated assignment:\n\n    ```python report\n    __all__: list[str] = [\"load\", \"save\"]\n    ```\n\n- **Tuples**: always reported, whether parenthesized or bare, so every module uses the same list shape. **Unsafe fix:**\n  code that concatenates `__all__` with another tuple stops working once it is a list.\n\n  - parenthesized:\n\n    ```python report\n    __all__ = (\"load\", \"save\")\n    ```\n\n  - bare, without brackets:\n\n    ```python report\n    __all__ = \"run\", \"stop\"\n    ```\n\n- **Augmented assignments**: a `+=` of a list or tuple literal is reported like the others, unless a plain assignment to\n  `__all__` keeps it a tuple (see Exceptions).\n\n  ```python report\n  __all__ = (\"load\",)\n  __all__ += (\"save\",)\n  ```\n\n### Exceptions\n\n- **An empty list**: it has no name to put a comma after.\n\n  ```python ok\n  __all__ = []\n  ```\n\n- **Other values**, such as `sorted([...])`: they are not a list or tuple literal, so there are no brackets or comma to\n  check.\n\n  ```python ok\n  __all__ = sorted([\"load\", \"save\"])\n  ```\n\n- **An augmented assignment while a plain assignment keeps `__all__` a tuple**: `tuple += list` raises, so the `+=` is\n  left alone when a plain assignment is not a list or tuple literal, such as `tuple([...])`. A tuple nested in a block\n  or with a `noqa` for this rule stays a tuple too, since the fix does not convert it. Other augmented assignments do\n  not change the type of `__all__`, so they are not affected.\n\n  ```python ok\n  __all__ = tuple([\"load\"])\n  __all__ += (\"save\",)\n  ```\n\n  ```python ok\n  import sys\n\n  if sys.platform == \"win32\":\n      __all__ = (\"load\",)\n  else:\n      __all__ = (\"load\", \"save\")\n  __all__ += (\"save\",)\n  ```\n\n  ```python ok\n  __all__ = (\"load\",)  # noqa: SMP405\n  __all__ += (\"save\",)\n  ```\n\n- **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line\n  above `]` with no comma after it: Ruff's\n  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff. A tuple written that way, which COM812 reports too,\n  stays here for the fix that turns it into a list.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"COM812\"]\n  ```\n\n  ```python ok\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\"\n  ]\n  # fmt: on\n  ```\n\n### Fix\n\n| Value                                                                                | Fix                                                   | Safe |\n| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | :--: |\n| list without the trailing comma, no comment, closing bracket after a name            | rewrites it, one name per line, with a trailing comma |  ✓   |\n| list without the trailing comma, with a comment or a closing bracket on its own line | adds the comma after the last name                    |  ✓   |\n| tuple                                                                                | rewrites it as a list                                 |  ✗   |\n| empty tuple                                                                          | becomes `[]`                                          |  ✗   |\n\n```python report\n__all__ = [\"load\", \"save\"]\n```\n\n```python fixed\n__all__ = [\n    \"load\",\n    \"save\",\n]\n```\n\n```python report\n# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"\n]\n# fmt: on\n```\n\n```python fixed\n# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",\n]\n# fmt: on\n```\n\n```python report\n__all__ = ()\n```\n\n```python fixed\n__all__ = []\n```\n\nThe fix keeps the names in their order. The layout depends on how the literal is written:\n\n- **On one line**: it becomes a list with one name per line and a trailing comma, the layout `ruff format` gives it, so\n  `(\"load\", \"save\")` needs no formatter pass. A list on one line is rewritten the same way.\n\n  ```python report\n  __all__ = (\"load\", \"save\")\n  ```\n\n  ```python fixed\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  ```\n\n- **A list whose closing bracket follows the last name**: it is rewritten one name per line, as a list on one line is.\n\n  ```python report\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\"]\n  # fmt: on\n  ```\n\n  ```python fixed\n  # fmt: off\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  # fmt: on\n  ```\n\n- **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the\n  last name, after its closing parenthesis if it has one, so the layout and the comment stay.\n\n  - the closing bracket on its own line:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\"\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\",\n    ]\n    # fmt: on\n    ```\n\n  - a comment inside the list:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\"  # the public API\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        \"save\",  # the public API\n    ]\n    # fmt: on\n    ```\n\n  - a parenthesized last name:\n\n    ```python report\n    # fmt: off\n    __all__ = [\n        \"load\",\n        (\"save\")\n    ]\n    # fmt: on\n    ```\n\n    ```python fixed\n    # fmt: off\n    __all__ = [\n        \"load\",\n        (\"save\"),\n    ]\n    # fmt: on\n    ```\n\n- **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.\n\n  ```python report\n  __all__ = (\n      \"load\",\n      \"save\",\n  )\n  ```\n\n  ```python fixed\n  __all__ = [\n      \"load\",\n      \"save\",\n  ]\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which reports a missing trailing comma when the\n  closing bracket is on its own line and which this rule leaves to it for a list; this rule covers the rest of the\n  layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open issues\n  [#22443](https://github.com/astral-sh/ruff/issues/22443) and [#27983](https://github.com/astral-sh/ruff/issues/27983).\n- [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports\n  [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It\n  accepts tuples, which this rule reports, and it does not check the trailing comma.\n",
     "examples": {
       "parsed": [
         {
@@ -10895,8 +10895,25 @@
         },
         {
           "section": "What it does",
-          "line": 87,
+          "line": 86,
           "end_line": 89,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 86,
+              "end_line": 89,
+              "source": "__all__ = (\"load\",)\n__all__ += (\"save\",)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 95,
+          "end_line": 97,
           "config": null,
           "blocks": [
             {
@@ -10904,16 +10921,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 87,
-              "end_line": 89,
+              "line": 95,
+              "end_line": 97,
               "source": "__all__ = []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 94,
-          "end_line": 96,
+          "line": 102,
+          "end_line": 104,
           "config": null,
           "blocks": [
             {
@@ -10921,19 +10938,70 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 94,
-              "end_line": 96,
+              "line": 102,
+              "end_line": 104,
               "source": "__all__ = sorted([\"load\", \"save\"])\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 104,
-          "end_line": 116,
+          "line": 111,
+          "end_line": 114,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 111,
+              "end_line": 114,
+              "source": "__all__ = tuple([\"load\"])\n__all__ += (\"save\",)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 116,
+          "end_line": 124,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 116,
+              "end_line": 124,
+              "source": "import sys\n\nif sys.platform == \"win32\":\n    __all__ = (\"load\",)\nelse:\n    __all__ = (\"load\", \"save\")\n__all__ += (\"save\",)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 126,
+          "end_line": 129,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 126,
+              "end_line": 129,
+              "source": "__all__ = (\"load\",)  # noqa: SMP405\n__all__ += (\"save\",)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 137,
+          "end_line": 149,
           "config": {
-            "line": 104,
-            "end_line": 107,
+            "line": 137,
+            "end_line": 140,
             "source": "[tool.ruff.lint]\nselect = [\"COM812\"]\n"
           },
           "blocks": [
@@ -10942,16 +11010,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 109,
-              "end_line": 116,
+              "line": 142,
+              "end_line": 149,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 127,
-          "end_line": 136,
+          "line": 160,
+          "end_line": 169,
           "config": null,
           "blocks": [
             {
@@ -10959,8 +11027,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 127,
-              "end_line": 129,
+              "line": 160,
+              "end_line": 162,
               "source": "__all__ = [\"load\", \"save\"]\n"
             },
             {
@@ -10968,16 +11036,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 131,
-              "end_line": 136,
+              "line": 164,
+              "end_line": 169,
               "source": "__all__ = [\n    \"load\",\n    \"save\",\n]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 138,
-          "end_line": 154,
+          "line": 171,
+          "end_line": 187,
           "config": null,
           "blocks": [
             {
@@ -10985,8 +11053,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 138,
-              "end_line": 145,
+              "line": 171,
+              "end_line": 178,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"\n]\n# fmt: on\n"
             },
             {
@@ -10994,16 +11062,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 154,
+              "line": 180,
+              "end_line": 187,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 156,
-          "end_line": 162,
+          "line": 189,
+          "end_line": 195,
           "config": null,
           "blocks": [
             {
@@ -11011,8 +11079,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 156,
-              "end_line": 158,
+              "line": 189,
+              "end_line": 191,
               "source": "__all__ = ()\n"
             },
             {
@@ -11020,16 +11088,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 160,
-              "end_line": 162,
+              "line": 193,
+              "end_line": 195,
               "source": "__all__ = []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 169,
-          "end_line": 178,
+          "line": 202,
+          "end_line": 211,
           "config": null,
           "blocks": [
             {
@@ -11037,8 +11105,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 169,
-              "end_line": 171,
+              "line": 202,
+              "end_line": 204,
               "source": "__all__ = (\"load\", \"save\")\n"
             },
             {
@@ -11046,16 +11114,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 173,
-              "end_line": 178,
+              "line": 206,
+              "end_line": 211,
               "source": "__all__ = [\n    \"load\",\n    \"save\",\n]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 182,
-          "end_line": 197,
+          "line": 215,
+          "end_line": 230,
           "config": null,
           "blocks": [
             {
@@ -11063,8 +11131,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 182,
-              "end_line": 188,
+              "line": 215,
+              "end_line": 221,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"]\n# fmt: on\n"
             },
             {
@@ -11072,16 +11140,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 190,
-              "end_line": 197,
+              "line": 223,
+              "end_line": 230,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 204,
-          "end_line": 220,
+          "line": 237,
+          "end_line": 253,
           "config": null,
           "blocks": [
             {
@@ -11089,8 +11157,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 204,
-              "end_line": 211,
+              "line": 237,
+              "end_line": 244,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"\n]\n# fmt: on\n"
             },
             {
@@ -11098,16 +11166,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 213,
-              "end_line": 220,
+              "line": 246,
+              "end_line": 253,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 224,
-          "end_line": 240,
+          "line": 257,
+          "end_line": 273,
           "config": null,
           "blocks": [
             {
@@ -11115,8 +11183,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 224,
-              "end_line": 231,
+              "line": 257,
+              "end_line": 264,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\"  # the public API\n]\n# fmt: on\n"
             },
             {
@@ -11124,16 +11192,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 233,
-              "end_line": 240,
+              "line": 266,
+              "end_line": 273,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    \"save\",  # the public API\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 244,
-          "end_line": 260,
+          "line": 277,
+          "end_line": 293,
           "config": null,
           "blocks": [
             {
@@ -11141,8 +11209,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 244,
-              "end_line": 251,
+              "line": 277,
+              "end_line": 284,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    (\"save\")\n]\n# fmt: on\n"
             },
             {
@@ -11150,16 +11218,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 253,
-              "end_line": 260,
+              "line": 286,
+              "end_line": 293,
               "source": "# fmt: off\n__all__ = [\n    \"load\",\n    (\"save\"),\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 264,
-          "end_line": 276,
+          "line": 297,
+          "end_line": 309,
           "config": null,
           "blocks": [
             {
@@ -11167,8 +11235,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 264,
-              "end_line": 269,
+              "line": 297,
+              "end_line": 302,
               "source": "__all__ = (\n    \"load\",\n    \"save\",\n)\n"
             },
             {
@@ -11176,8 +11244,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 271,
-              "end_line": 276,
+              "line": 304,
+              "end_line": 309,
               "source": "__all__ = [\n    \"load\",\n    \"save\",\n]\n"
             }
           ]
