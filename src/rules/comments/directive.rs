@@ -4,36 +4,16 @@ use ruff_text_size::TextRange;
 
 use crate::lint::noqa::{after_tool, noqa_codes};
 
-// The suppression directives SMP003 and SMP004 read, as the table spells them, how each names its codes and what it
-// covers.
-const DIRECTIVES: [(&str, Codes, Scope); 12] = [
-    ("noqa", Codes::Colon, Scope::Line),
-    ("ruff: noqa", Codes::Colon, Scope::File),
-    ("flake8: noqa", Codes::Colon, Scope::File),
-    ("ruff: ignore", Codes::Bracket, Scope::Line),
-    ("ruff: file-ignore", Codes::Bracket, Scope::Module),
-    ("simplint: ignore", Codes::Bracket, Scope::Line),
-    ("type: ignore", Codes::Bracket, Scope::Line),
-    ("ty: ignore", Codes::Bracket, Scope::Line),
-    ("pyright: ignore", Codes::Bracket, Scope::Line),
-    ("pyrefly: ignore", Codes::Bracket, Scope::Line),
-    ("pragma: no cover", Codes::None, Scope::Line),
-    ("pragma: no branch", Codes::None, Scope::Line),
-];
-
-// Tools read these comment prefixes as directives, such as `# fmt: off`, beyond the pragmas Ruff knows.
-const TOOL_PREFIXES: [&str; 3] = ["fmt:", "mypy:", "simplint:"];
-
-// Whether a comment is a directive for a suppression or a tool, which a rule must not write or reflow, so its words are
-// not prose.
+// A rule must not reflow a directive, so its words are not prose.
 pub(crate) fn is_tool_directive(comment: &str) -> bool {
+    // Tools read these comment prefixes as directives, such as `# fmt: off`, beyond the pragmas Ruff knows.
+    const TOOL_PREFIXES: [&str; 3] = ["fmt:", "mypy:", "simplint:"];
     let text = comment.trim_start_matches('#').trim_start();
     is_pragma_comment(comment)
         || !Comment::parse(comment).directives.is_empty()
         || TOOL_PREFIXES.iter().any(|prefix| text.starts_with(prefix))
 }
 
-// The directives of one comment, and whether the comment says anything beyond them.
 pub(crate) struct Comment {
     pub(super) directives: Vec<Directive>,
     pub(super) has_reason: bool,
@@ -67,7 +47,6 @@ pub(super) enum Scope {
 }
 
 impl Comment {
-    // The comment at `range`, without the file-level directives its place keeps Ruff from applying.
     pub(crate) fn at(source: &str, range: TextRange) -> Self {
         let mut comment = Self::parse(&source[range]);
         let indentation = indentation_at_offset(range.start(), source);
@@ -114,8 +93,7 @@ impl Comment {
 }
 
 impl Directive {
-    // The directive as a user would write it with codes, for the message that asks for them. Only directives that take
-    // codes are reported, so `Codes::None` never reaches this.
+    // Only directives that take codes are reported, so `Codes::None` never reaches this.
     pub(super) fn example(&self) -> String {
         match self.codes {
             Codes::Colon => format!("{}: CODE", self.name),
@@ -124,15 +102,39 @@ impl Directive {
     }
 }
 
+// Ruff's `NoqaLexer` matches `noqa` in any case, so the start of a segment decides it.
+fn starts_with_noqa(text: &str) -> bool {
+    text.get(..4).is_some_and(|head| head.eq_ignore_ascii_case("noqa"))
+}
+
+// Ruff matches the tool name of a file-level `noqa` in lowercase only.
+fn is_file_noqa(text: &str) -> bool {
+    ["ruff", "flake8"].into_iter().any(|tool| after_tool(text, tool).is_some_and(starts_with_noqa))
+}
+
 // Every directive names a tool followed by a colon, or is `noqa`, so a segment with neither cannot be one. Checking
 // that first keeps the lowercasing of `parse_directive` off the segments most comments are made of.
 fn may_be_directive(text: &str) -> bool {
     text.contains(':') || text.as_bytes().windows(4).any(|window| window.eq_ignore_ascii_case(b"noqa"))
 }
 
-// The directive at the start of `text`, and the text after its codes. The match ignores case, so the codes are read
-// from `text` itself.
+// The directive at the start of `text`, and the text after its codes.
 fn parse_directive(text: &str) -> Option<(Directive, &str)> {
+    // The directives SMP003 and SMP004 read, with how each names its codes and what it covers.
+    const DIRECTIVES: [(&str, Codes, Scope); 12] = [
+        ("noqa", Codes::Colon, Scope::Line),
+        ("ruff: noqa", Codes::Colon, Scope::File),
+        ("flake8: noqa", Codes::Colon, Scope::File),
+        ("ruff: ignore", Codes::Bracket, Scope::Line),
+        ("ruff: file-ignore", Codes::Bracket, Scope::Module),
+        ("simplint: ignore", Codes::Bracket, Scope::Line),
+        ("type: ignore", Codes::Bracket, Scope::Line),
+        ("ty: ignore", Codes::Bracket, Scope::Line),
+        ("pyright: ignore", Codes::Bracket, Scope::Line),
+        ("pyrefly: ignore", Codes::Bracket, Scope::Line),
+        ("pragma: no cover", Codes::None, Scope::Line),
+        ("pragma: no branch", Codes::None, Scope::Line),
+    ];
     let lower = text.to_ascii_lowercase();
     DIRECTIVES.into_iter().find_map(|(name, codes, scope)| {
         let (tool, action) = name.split_once(": ").map_or((None, name), |(tool, action)| (Some(tool), action));
@@ -149,6 +151,7 @@ fn parse_directive(text: &str) -> Option<(Directive, &str)> {
         if rest.starts_with(|char: char| char.is_alphanumeric() || matches!(char, '-' | '_')) {
             return None;
         }
+        // `rest` is cut from the lowercase text, so the codes come from `text` to keep their case.
         let raw = &text[text.len() - rest.len()..];
         // Ruff's parser and mypy skip spaces before the brackets, so `ruff: ignore [CODE]` and `type: ignore [CODE]`
         // name codes for them.
@@ -162,18 +165,8 @@ fn parse_directive(text: &str) -> Option<(Directive, &str)> {
     })
 }
 
-// Ruff's `NoqaLexer` matches `noqa` in any case, so the start of a segment decides it.
-fn starts_with_noqa(text: &str) -> bool {
-    text.get(..4).is_some_and(|head| head.eq_ignore_ascii_case("noqa"))
-}
-
-// Whether a segment is a file-level `ruff: noqa` or `flake8: noqa`, whose tool name Ruff matches in lowercase only.
-fn is_file_noqa(text: &str) -> bool {
-    ["ruff", "flake8"].into_iter().any(|tool| after_tool(text, tool).is_some_and(starts_with_noqa))
-}
-
-// Whether PGH003 reads a segment as a blanket `type: ignore` or `pyright: ignore`: the colon follows the tool name
-// directly, and nothing but whitespace follows `ignore`, so a reason after it leaves the directive to SMP004.
+// PGH003 reads a blanket `type: ignore` only when nothing but whitespace follows `ignore`, so a reason leaves it to
+// SMP004.
 fn is_ruff_blanket_type_ignore(text: &str) -> bool {
     text.strip_prefix("type")
         .or_else(|| text.strip_prefix("pyright"))
@@ -183,8 +176,7 @@ fn is_ruff_blanket_type_ignore(text: &str) -> bool {
 }
 
 impl Codes {
-    // Whether the directive names codes, and the text after them. `None` for a `noqa` Ruff rejects, which is no
-    // directive.
+    // `None` for a `noqa` Ruff rejects, since that is no directive.
     fn split(self, rest: &str) -> Option<(bool, &str)> {
         match self {
             Self::Colon => noqa_codes(rest).map(|(codes, reason)| (!codes.is_empty(), reason)),

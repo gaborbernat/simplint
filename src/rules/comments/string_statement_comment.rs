@@ -19,17 +19,18 @@ pub fn string_statement_comment(checker: &Checker) {
             let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
                 continue;
             };
-            // Triple quotes mark a block of text; a short quoted string is more often a marker, such as a line a
-            // tracer or a test expects to run.
-            let is_text_block = value
-                .as_string_literal_expr()
-                .is_some_and(|literal| literal.value.iter().all(|part| part.flags.is_triple_quoted()));
-            if !is_text_block || is_docstring(index, owner) || is_attribute_docstring(body, index) {
+            let Some(literal) = value.as_string_literal_expr() else {
+                continue;
+            };
+            // Triple quotes mark a block of text; a short quoted string is more often a marker, such as a line a tracer
+            // or a test expects to run.
+            if !literal.value.iter().all(|part| part.flags.is_triple_quoted())
+                || is_docstring(index, owner)
+                || is_attribute_docstring(body, index)
+            {
                 continue;
             }
-            let fix = (!has_future_import)
-                .then(|| comment_replacement(checker, body, stmt, value.as_string_literal_expr()))
-                .flatten();
+            let fix = (!has_future_import).then(|| comment_replacement(checker, body, stmt, literal)).flatten();
             checker.report_fix(
                 Rule::StringStatementComment,
                 stmt.range(),
@@ -59,10 +60,9 @@ fn comment_replacement(
     checker: &Checker,
     body: &[Stmt],
     stmt: &Stmt,
-    literal: Option<&ast::ExprStringLiteral>,
+    literal: &ast::ExprStringLiteral,
 ) -> Option<Edit> {
-    let source = checker.source;
-    let [part] = literal?.value.as_slice() else {
+    let [part] = literal.value.as_slice() else {
         return None;
     };
     if body.iter().all(is_docstring_stmt)
@@ -76,15 +76,14 @@ fn comment_replacement(
         return None;
     }
     let indent = checker.indentation(stmt);
-    let width = checker.settings.from_ruff.comment_width.checked_sub(indent.chars().count() + 2)?;
     // The text after the opening quotes starts on the first line, so only the lines below it share an indentation.
     let lines: Vec<String> = match content.split_once('\n') {
         Some((first, rest)) => {
-            let rest = dedent(rest);
-            std::iter::once(first).chain(rest.split('\n')).map(|line| line.trim_end().to_owned()).collect()
+            std::iter::once(first).chain(dedent(rest).split('\n')).map(|line| line.trim_end().to_owned()).collect()
         }
         None => vec![content.trim_end().to_owned()],
     };
+    let width = checker.settings.from_ruff.comment_width.checked_sub(indent.chars().count() + 2)?;
     if lines
         .iter()
         .any(|line| line.starts_with('!') || line.chars().count() > width || is_tool_directive(&format!("# {line}")))
@@ -96,6 +95,6 @@ fn comment_replacement(
     let eol = checker.line_ending();
     Some(Edit::range_replacement(
         format!("{indent}{}{eol}", comments.join(&format!("{eol}{indent}"))),
-        source.full_lines_range(stmt.range()),
+        checker.source.full_lines_range(stmt.range()),
     ))
 }
