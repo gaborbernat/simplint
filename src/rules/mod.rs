@@ -237,11 +237,7 @@ impl<'a> FileState<'a> {
     }
 
     fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
-        self.debug_fields.get_or_init(|| {
-            let mut finder = edits::DebugFields::default();
-            finder.visit_body(checker.body());
-            finder
-        })
+        self.debug_fields.get_or_init(|| edits::DebugFields::of(checker.body()))
     }
 }
 

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::is_docstring_stmt;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -10,7 +12,7 @@ use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::future_import;
-use crate::syntax::previous_line_start;
+use crate::syntax::{Nesting, previous_line_start};
 
 pub fn delete_statement(source: &str, stmt: &Stmt, body: &[Stmt]) -> Edit {
     if body.len() == 1 {
@@ -142,24 +144,22 @@ pub fn keyword_removal(checker: &Checker, call: &ast::ExprCall, keyword: &ast::K
 // text in the template, or in a field nested in another one.
 pub fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec<Edit>> {
     let finder = checker.state().debug_fields(checker);
-    let mut groups: Vec<Vec<Edit>> = vec![Vec::new(); finder.fields.len()];
+    let mut groups: BTreeMap<usize, Vec<Edit>> = BTreeMap::new();
     let mut rewritten = Vec::new();
     for edit in edits {
-        if finder.blocked.iter().any(|range| range.contains_range(edit.range())) {
+        if finder.blocked.holders(edit.range()).next().is_some() {
             return None;
         }
-        let mut containing =
-            finder.fields.iter().enumerate().filter(|(_, field)| field.range.contains_range(edit.range()));
+        let mut containing = finder.field_ranges.holders(edit.range());
         match (containing.next(), containing.next()) {
             (None, _) => rewritten.push(edit),
-            (Some((index, _)), None) => groups[index].push(edit),
+            (Some(index), None) => groups.entry(index).or_default().push(edit),
             (Some(_), Some(_)) => return None,
         }
     }
-    for (field, edits) in finder.fields.iter().zip(groups) {
-        if !edits.is_empty() {
-            rewritten.push(Edit::range_replacement(debug_field(checker.source, field, &edits)?, field.range));
-        }
+    for (index, edits) in groups {
+        let field = &finder.fields[index];
+        rewritten.push(Edit::range_replacement(debug_field(checker.source, field, &edits)?, field.range));
     }
     Some(rewritten)
 }
@@ -299,8 +299,21 @@ fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
 #[derive(Default)]
 pub(super) struct DebugFields<'a> {
     fields: Vec<DebugField<'a>>,
+    // Where the fields lie, so that the edits of a field are found by a search.
+    field_ranges: Nesting,
     // The debug fields inside a t-string, which the rewrite cannot change.
-    blocked: Vec<TextRange>,
+    blocked_ranges: Vec<TextRange>,
+    blocked: Nesting,
+}
+
+impl<'a> DebugFields<'a> {
+    pub(super) fn of(body: &'a [Stmt]) -> Self {
+        let mut collected = Self::default();
+        collected.visit_body(body);
+        collected.field_ranges = Nesting::new(collected.fields.iter().map(|field| field.range).collect());
+        collected.blocked = Nesting::new(std::mem::take(&mut collected.blocked_ranges));
+        collected
+    }
 }
 
 struct DebugField<'a> {
@@ -316,7 +329,7 @@ impl<'a> Visitor<'a> for DebugFields<'a> {
     }
 
     fn visit_t_string(&mut self, t_string: &'a ast::TString) {
-        self.blocked.extend(t_string.elements.iter().filter_map(|element| match element {
+        self.blocked_ranges.extend(t_string.elements.iter().filter_map(|element| match element {
             ast::InterpolatedStringElement::Interpolation(interpolation) => {
                 interpolation.debug_text.as_ref().map(|_| interpolation.range)
             }
