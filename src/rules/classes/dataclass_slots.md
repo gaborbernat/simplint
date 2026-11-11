@@ -154,6 +154,43 @@ The fix sets `slots=True` on the decorator. No fix is offered for:
               name: str
   ```
 
+A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
+sets the class, not an instance, so neither keeps the fix off:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
 Otherwise the fix leaves out `slots` when checked code shows that a slotted instance breaks the class.
 
 ```mermaid
@@ -351,8 +388,10 @@ class Release:
       setattr(release, key, value)
   ```
 
-- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a
-  `__weakref__` slot the class does not have
+- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, or an instance a weak
+  container holds, the item added to a `weakref.WeakSet`, a key of a `WeakKeyDictionary`, a value of a
+  `WeakValueDictionary` or the object of a `WeakMethod`, in any checked file; each needs a `__weakref__` slot the class
+  does not have
 
   ```python report
   import weakref
@@ -384,6 +423,119 @@ class Release:
   reference = weakref.ref(release)
   proxy = weakref.proxy(release)
   finalizer = weakref.finalize(release, print, "released")
+  ```
+
+  ```python report
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+  ```python fixed
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+  ```
+
+  ```python context file=app/cache.py
+  import weakref
+
+  from app.models import Release
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+- the class has a field with a default that code reads or assigns through the class name, such as `Config.timeout`, or
+  through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor. The class name may be
+  an import alias, a name bound to the class, or a subclass of it; an access simplint cannot tie to one class, such as
+  `type(obj).timeout`, `obj.__class__.timeout`, `getattr(obj, "timeout")` or `setattr(obj, "timeout", value)` on an
+  object of unknown class, counts against every dataclass of the run with a default of that name
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  def default_timeout() -> int:
+      return Config.timeout
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  def default_timeout() -> int:
+      return Config.timeout
+  ```
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  class Sub(Config):
+      pass
+
+
+  def default_timeout() -> int:
+      return Sub.timeout
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  class Sub(Config):
+      pass
+
+
+  def default_timeout() -> int:
+      return Sub.timeout
   ```
 
 - a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which
@@ -467,8 +619,8 @@ class Release:
 An object is **known to be of the class** when it is:
 
 - `self` in a method of the class
-- a name bound to a call of the class
-- a name annotated with the class, `Optional[...]` and `... | None` included
+- a name bound to a call of the class, through its module as `models.Release(...)` too
+- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
 - an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
 
 An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,
@@ -587,6 +739,28 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
+- the class has a keyword, such as `metaclass=`, which runs again when `slots` builds the class a second time
+
+  ```python report
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
+  ```python fixed
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass(slots=True)
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
 - the class has base classes;
 
   ```python report
@@ -646,8 +820,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,
-  `__weakref__`, `__setattr__` or `__delattr__`.
+- the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
+  anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
+  `__setattr__` or `__delattr__`.
 
   ```python report
   from dataclasses import dataclass
@@ -673,6 +848,45 @@ The fix is safe only when nothing else in the checked files might notice the cha
   class Release:
       version: str
       settings.flag = True
+  ```
+
+  A class nested in the dataclass writes its own instances through the first parameter of its methods, which keeps the
+  fix offered; a closure writing the dataclass's instance does not:
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(slots=True)
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
   ```
 
   `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a class writes its own fields, so they do not

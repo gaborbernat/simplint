@@ -8,6 +8,7 @@ use crate::project::FileFacts;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
 use crate::project::facts::source_digest;
+use crate::project::receivers::UNRESOLVED_CLASS;
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
@@ -443,6 +444,14 @@ impl<'a> FileIndex<'a> {
     // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
     pub fn is_attribute_written(&self, name: &str) -> bool {
         self.project.writes.untyped.contains(name)
+    }
+
+    // Whether the run reads, sets or deletes the attribute `name` through the class with this qualified name, as
+    // `Config.timeout` does, through a subclass of it, or through an access simplint cannot tie to a class.
+    pub fn is_class_attribute_accessed(&self, class: &str, name: &str) -> bool {
+        let accessed =
+            |class: &str| self.project.writes.class_attributes.get(class).is_some_and(|names| names.contains(name));
+        accessed(class) || accessed(UNRESOLVED_CLASS)
     }
 
     // Whether a class of the run that a slotted base breaks inherits from the class with this qualified name.

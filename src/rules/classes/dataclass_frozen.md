@@ -211,6 +211,43 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
               name: str
   ```
 
+A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
+sets the class, not an instance, so neither keeps the fix off:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
 Otherwise the fix leaves out `frozen` when checked code shows that a frozen instance breaks it.
 
 ```mermaid
@@ -287,6 +324,38 @@ class Release:
       pass
   ```
 
+- any class in the checked files inherits from a class under its name in another module, whatever the import calls it,
+  such as `from app.models import Release as Base`, or through a module-level name bound to the class, such as
+  `Base = Release`
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+  ```
+
+  ```python context file=app/extra.py
+  from app.models import Release as Base
+
+
+  class Tagged(Base):
+      pass
+  ```
+
+  ```python context file=app/later.py
+  from app.models import Release
+
+
+  Alias = Release
+
+
+  class Tagged(Alias):
+      pass
+  ```
+
 - the class defines `__setattr__` or `__delattr__`
 
   ```python report
@@ -329,6 +398,24 @@ class Release:
 
   def run() -> None:
       result = Result("ok")
+      result.status = "done"
+  ```
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Result:
+      status: str
+  ```
+
+  ```python context file=app/run.py
+  import app.models
+
+
+  def run() -> None:
+      result = app.models.Result("ok")
       result.status = "done"
   ```
 
@@ -459,8 +546,8 @@ class Release:
 An object is **known to be of the class** when it is:
 
 - `self` in a method of the class
-- a name bound to a call of the class
-- a name annotated with the class, `Optional[...]` and `... | None` included
+- a name bound to a call of the class, through its module as `models.Release(...)` too
+- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
 - an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
 
 An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,
@@ -497,6 +584,38 @@ def record(result) -> None:
 
 
 record(Result("ok"))
+```
+
+An annotation that names no class the run defines, such as `Any`, `object`, a protocol, a type alias or a type variable,
+leaves the name unknown. A write through it to a field withholds `frozen=True`, as the object may be an instance of the
+class with that field:
+
+```python report
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Release:
+    version: str
+
+
+def bump(item: Any) -> None:
+    item.version = "2"
+```
+
+```python fixed
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Release:
+    version: str
+
+
+def bump(item: Any) -> None:
+    item.version = "2"
 ```
 
 A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such
@@ -636,8 +755,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,
-  `__weakref__`, `__setattr__` or `__delattr__`.
+- the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
+  anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
+  `__setattr__` or `__delattr__`.
 
   ```python report
   from dataclasses import dataclass
@@ -661,6 +781,45 @@ The fix is safe only when nothing else in the checked files might notice the cha
   class Release:
       version: str
       settings.flag = True
+  ```
+
+  A class nested in the dataclass writes its own instances through the first parameter of its methods, which keeps the
+  fix offered; a closure writing the dataclass's instance does not:
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
   ```
 
   `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a frozen class writes its own fields, so they

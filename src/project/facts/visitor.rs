@@ -407,6 +407,23 @@ impl<'a> FactVisitor<'a> {
         }
     }
 
+    // A module-level name a plain assignment sets to a class, as `Base = Release`, names that class from then on, so a
+    // base class written as `Base` is the class `Release`.
+    fn bind_class_alias(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let [Expr::Name(target)] = targets else {
+            return;
+        };
+        if !self.top_level {
+            return;
+        }
+        let Some((module, name)) = self.class_path(value) else {
+            return;
+        };
+        if name.starts_with(|first: char| first.is_ascii_uppercase()) {
+            self.aliases.insert(target.id.as_str(), format!("{module}.{name}"));
+        }
+    }
+
     // Binds each name a plain assignment sets to the globals its value returns, or unbinds it to unknown when another
     // value sets it.
     fn bind_globals(&mut self, targets: &'a [Expr], value: &'a Expr) {
@@ -775,6 +792,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             self.bind_loaded_module(targets, value);
             self.bind_globals(targets, value);
             self.bind_string_rows(targets, value);
+            self.bind_class_alias(targets, value);
         }
         self.bind_class_tuple(stmt);
         let top_level = self.top_level;
@@ -831,10 +849,8 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 visitor::walk_stmt(self, stmt);
             }
             Stmt::ClassDef(class) => {
-                self.base_classes.extend(class.bases().iter().filter_map(|base| {
-                    UnqualifiedName::from_expr(base)
-                        .and_then(|name| name.segments().last().map(|last| (*last).to_owned()))
-                }));
+                let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
+                self.base_classes.extend(bases);
                 self.walk_body(stmt, Body::Class);
             }
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
@@ -1173,6 +1189,13 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
 impl FactVisitor<'_> {
     fn qualified(&self, expr: &Expr) -> Option<String> {
         qualified(UnqualifiedName::from_expr(expr)?.segments(), &self.aliases)
+    }
+
+    // The name a base class is known by, `Release` for `Base` in `from models import Release as Base`.
+    fn base_class(&self, base: &Expr) -> Option<String> {
+        let written = UnqualifiedName::from_expr(base)?;
+        let bound = self.qualified(base).unwrap_or_else(|| written.segments().join("."));
+        bound.rsplit('.').next().map(str::to_owned)
     }
 
     // The module and name a class expression names: the qualified name an import gives, or a bare name no import binds,

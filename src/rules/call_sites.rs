@@ -23,7 +23,8 @@ pub(crate) fn module_uses<'a>(checker: &'a Checker) -> FxHashMap<&'a str, Vec<Us
     if owners.is_empty() {
         return FxHashMap::default();
     }
-    let mut walk = Uses::new(|expr: &Expr| owners.get(&expr.as_name_expr()?.range).copied());
+    let mut walk =
+        Uses::new(|expr: &Expr| owners.get(&expr.as_name_expr()?.range).copied()).with_source(checker.source);
     walk.visit_body(checker.body());
     let mut functions: FxHashMap<&str, Vec<Use>> = FxHashMap::default();
     for (name, found) in walk.found {
@@ -46,7 +47,7 @@ fn eligible(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
 
 // The uses of each candidate method of a class by its name, whether through `self`, found in one walk of the class.
 pub(crate) fn method_uses<'a>(
-    checker: &Checker,
+    checker: &Checker<'a>,
     class: &'a ast::StmtClassDef,
 ) -> FxHashMap<&'a str, Vec<(bool, Use<'a>)>> {
     let names: FxHashSet<&str> = class
@@ -64,7 +65,8 @@ pub(crate) fn method_uses<'a>(
         let name = names.get(attribute.attr.as_str())?;
         let is_self = attribute.value.as_name_expr().is_some_and(|value| value.id.as_str() == "self");
         Some((*name, is_self))
-    });
+    })
+    .with_source(checker.source);
     walk.visit_body(&class.body);
     let mut methods: FxHashMap<&str, Vec<(bool, Use)>> = FxHashMap::default();
     for ((name, is_self), found) in walk.found {

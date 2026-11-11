@@ -1,4 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -8,6 +9,7 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_parser::parse_string_annotation;
 use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
@@ -16,7 +18,9 @@ use super::computed_reads::ComputedReads;
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
-use crate::syntax::{ExprCollector, attribute_call, dataclass_decorator, keyword_is_true, module_statements};
+use crate::syntax::{
+    ExprCollector, attribute_call, dataclass_decorator, keyword_is_true, last_segment, module_statements,
+};
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
 // a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
@@ -169,7 +173,8 @@ impl Constructors {
             let full = qualify(expr)?;
             let (module, member) = full.rsplit_once('.')?;
             Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
-        });
+        })
+        .with_source(source);
         uses.visit_body(body);
         let mut dynamic = Uses::new(|expr: &Expr| {
             let ast::ExprAttribute { value, attr, .. } = expr.as_attribute_expr()?;
@@ -185,16 +190,18 @@ impl Constructors {
             .found
             .into_iter()
             .filter_map(|(name, found)| match found {
-                Use::Call(call) if CallKind::of(call) != CallKind::Keyword => Some(name),
+                Use::Call(call) if CallKind::of(&call) != CallKind::Keyword => Some(name),
                 _ => None,
             })
             .chain(getattr_names(body))
+            .chain(unparsed_annotation_names(body))
             .collect();
         let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
             let (kind, discarded, entry, span, call_comments) = match found {
                 Use::Call(call) => {
+                    let call: &ast::ExprCall = &call;
                     let (discarded, entry) = contexts.classify(call);
                     let (kind, call_comments) = match CallKind::of(call) {
                         CallKind::Unpacked => (UseKind::Opaque, Vec::new()),
@@ -354,6 +361,34 @@ fn getattr_names(body: &[Stmt]) -> Vec<String> {
     });
     reached.visit_body(body);
     reached.found
+}
+
+// The words of the implicitly concatenated string annotations of the module. Ruff parses such a string without the
+// offsets a rewrite of its calls needs, so a class one of the words spells is taken as used in no rewritable way.
+fn unparsed_annotation_names(body: &[Stmt]) -> Vec<String> {
+    let mut strings = Unparsed(Vec::new());
+    strings.visit_body(body);
+    strings.0
+}
+
+struct Unparsed(Vec<String>);
+
+impl<'a> Visitor<'a> for Unparsed {
+    fn visit_annotation(&mut self, annotation: &'a Expr) {
+        let mut strings = ExprCollector::new(|expr: &'a Expr| {
+            expr.as_string_literal_expr().filter(|literal| literal.as_single_part_string().is_none())
+        });
+        strings.visit_expr(annotation);
+        for literal in strings.found {
+            for part in &literal.value {
+                let words = part
+                    .value
+                    .split(|character: char| !(character.is_alphanumeric() || character == '_'))
+                    .filter(|word| !word.is_empty());
+                self.0.extend(words.map(str::to_owned));
+            }
+        }
+    }
 }
 
 fn comments_on_lines(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> Vec<String> {
@@ -698,21 +733,56 @@ impl CallKind {
 }
 
 pub(crate) enum Use<'a> {
-    Call(&'a ast::ExprCall),
+    // A call the file spells, or one a string annotation spells, which parsing owns.
+    Call(Cow<'a, ast::ExprCall>),
     Opaque,
+}
+
+impl Use<'_> {
+    fn into_owned<'b>(self) -> Use<'b> {
+        match self {
+            Self::Call(call) => Use::Call(Cow::Owned(call.into_owned())),
+            Self::Opaque => Use::Opaque,
+        }
+    }
 }
 
 // Every use of the names `matches` recognizes, keyed by what it returns. Annotations, `isinstance` and `issubclass`
 // checks, base classes, and attribute reads such as `Name.method` neither call the class nor hand it to code that
-// might, so they are not uses.
+// might, so they are not uses. A call in an annotation is a use, and so is one in a string annotation, which is parsed
+// when the walk has the source it is in.
 pub(crate) struct Uses<'a, K, F> {
     matches: F,
+    // Whether the walk is in an annotation, where a name is a type and not a value.
+    annotated: bool,
+    source: Option<&'a str>,
     pub(crate) found: Vec<(K, Use<'a>)>,
 }
 
 impl<'a, K, F: Fn(&Expr) -> Option<K>> Uses<'a, K, F> {
     pub(crate) fn new(matches: F) -> Self {
-        Self { matches, found: Vec::new() }
+        Self { matches, annotated: false, source: None, found: Vec::new() }
+    }
+
+    pub(crate) fn with_source(mut self, source: &'a str) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    // A string annotation is code the checker reads as an expression. Its ranges are the file's, since parsing starts
+    // at the string's contents, but the expression it parses is dropped with the walk, so its calls are owned.
+    fn visit_string_annotation(&mut self, literal: &ast::ExprStringLiteral) {
+        let (Some(source), Some(string)) = (self.source, literal.as_single_part_string()) else {
+            return;
+        };
+        let Ok(parsed) = parse_string_annotation(source, string) else {
+            return;
+        };
+        let matches: &dyn Fn(&Expr) -> Option<K> = &self.matches;
+        let mut inner = Uses { matches, annotated: true, source: self.source, found: Vec::new() };
+        inner.visit_expr(parsed.expr());
+        let found = inner.found;
+        self.found.extend(found.into_iter().map(|(key, found)| (key, found.into_owned())));
     }
 
     fn skip_or_visit(&mut self, expr: &'a Expr) {
@@ -739,18 +809,48 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Visitor<'a> for Uses<'a, K, F> {
         self.visit_body(&class.body);
     }
 
-    fn visit_annotation(&mut self, _: &'a Expr) {}
+    fn visit_annotation(&mut self, annotation: &'a Expr) {
+        self.annotated = true;
+        self.visit_expr(annotation);
+        self.annotated = false;
+    }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Some(key) = (self.matches)(expr) {
-            self.found.push((key, Use::Opaque));
+            if !self.annotated {
+                self.found.push((key, Use::Opaque));
+            }
+            return;
+        }
+        // A call in an annotation, as in `Annotated[str, Doc("...")]`, runs code, so its arguments are values.
+        if self.annotated
+            && let Expr::Call(_) = expr
+        {
+            self.annotated = false;
+            self.visit_expr(expr);
+            self.annotated = true;
             return;
         }
         match expr {
             Expr::Call(call) if let Some(key) = (self.matches)(&call.func) => {
-                self.found.push((key, Use::Call(call)));
+                self.found.push((key, Use::Call(Cow::Borrowed(call))));
                 self.visit_arguments(&call.arguments);
             }
+            // The metadata of `Annotated[int, ...]` is values, which a class can be passed as and called by position.
+            Expr::Subscript(ast::ExprSubscript { value, slice, .. })
+                if self.annotated && last_segment(value) == Some("Annotated") =>
+            {
+                let arguments = match slice.as_ref() {
+                    Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.as_slice(),
+                    single => std::slice::from_ref(single),
+                };
+                for (position, argument) in arguments.iter().enumerate() {
+                    self.annotated = position == 0;
+                    self.visit_expr(argument);
+                }
+                self.annotated = true;
+            }
+            Expr::StringLiteral(literal) if self.annotated => self.visit_string_annotation(literal),
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if let [subject, classes] = &*arguments.args
                     && func

@@ -255,6 +255,95 @@ class Release:
         return cls(name)
 ```
 
+A positional call inside an annotation, as `Doc("...")` in `Annotated[str, Doc("...")]`, runs with the others, and a
+positional walrus becomes the value of its keyword in parentheses:
+
+```python report
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass
+class Doc:
+    text: str
+
+
+def load(path: Annotated[str, Doc("where to read from")]) -> None:
+    print(path)
+```
+
+```python fixed
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass(kw_only=True)
+class Doc:
+    text: str
+
+
+def load(path: Annotated[str, Doc(text="where to read from")]) -> None:
+    print(path)
+```
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    name: str
+    version: str
+
+
+def build(raw: str) -> Release:
+    return Release(name := raw.strip(), version=raw)
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(kw_only=True)
+class Release:
+    name: str
+    version: str
+
+
+def build(raw: str) -> Release:
+    return Release(name=(name := raw.strip()), version=raw)
+```
+
+A call in a string annotation is rewritten like one in the code, as `Doc("where")` in `"Annotated[str, Doc('where')]"`:
+
+```python report
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass
+class Doc:
+    text: str
+
+
+def load(path: "Annotated[str, Doc('where')]") -> None:
+    print(path)
+```
+
+```python fixed
+from dataclasses import dataclass
+from typing import Annotated
+
+
+@dataclass(kw_only=True)
+class Doc:
+    text: str
+
+
+def load(path: "Annotated[str, Doc(text='where')]") -> None:
+    print(path)
+```
+
 The keywords follow the field order of the generated `__init__`:
 
 - inherited fields come first
@@ -333,7 +422,22 @@ No fix is offered while any use could still pass fields by position, or while a 
       return Release(*args)
   ```
 
-- the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;
+- the class used as a value, as in `functools.partial(Partition, topic)`, matched by position in a `case` pattern, or
+  named in the metadata of an `Annotated[...]` type, where a caller may call it by position later;
+
+  ```python report
+  from dataclasses import dataclass
+  from typing import Annotated
+
+
+  @dataclass
+  class Doc:
+      text: str
+
+
+  def load(path: Annotated[str, Doc]) -> None:
+      print(path)
+  ```
 
   ```python report
   from dataclasses import dataclass
@@ -418,6 +522,23 @@ No fix is offered while any use could still pass fields by position, or while a 
 
   def build(Release: type) -> object:
       return Release("simplint", "1.0.0")
+  ```
+
+- a class one of the implicitly concatenated parts of a string annotation spells, as `"Annotated[str, " "Doc('x')]"`:
+  Ruff parses such a string without the positions a rewrite needs
+
+  ```python report
+  from dataclasses import dataclass
+  from typing import Annotated
+
+
+  @dataclass
+  class Doc:
+      text: str
+
+
+  def load(path: "Annotated[str, Doc('where')]") -> None:
+      print(path)
   ```
 
 - a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;

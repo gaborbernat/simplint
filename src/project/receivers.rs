@@ -7,7 +7,9 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
 use crate::syntax::MOCK_CLASSES;
-use crate::syntax::{alias_binding, instance_writes, is_classmethod, is_name, last_segment, receiver};
+use crate::syntax::{
+    alias_binding, instance_writes, is_classmethod, is_name, last_segment, module_statements, receiver,
+};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
@@ -32,7 +34,25 @@ pub struct AttributeWrites {
     // Whether the file pickles with a protocol that may be 0 or 1, which cannot pickle a slotted class without its own
     // `__getstate__`, as a dataclass gets only when frozen.
     pub(super) pickles_low_protocol: bool,
+    // The writes through a name an annotation gives a class, as (qualified class, attribute). Whether the run defines
+    // that class is known only across the run, so the index decides which of these are typed.
+    pub(super) declared: Vec<(String, String)>,
+    // The qualified classes an annotated name stores `__dict__` on, which the index keeps when the run defines them.
+    pub(super) declared_dict_stores: Vec<String>,
+    // The classes the module defines at its top level, qualified, except protocols: an annotation naming any other
+    // class, a type alias or a type variable names no class the run defines.
+    pub(super) classes: Vec<String>,
+    // The attributes the file reads, sets or deletes through a class name, as (qualified class, attribute), which
+    // replace a class attribute a slotted class turns into a descriptor. A class the file cannot resolve is
+    // `UNRESOLVED_CLASS`, which counts against every class.
+    pub(super) class_attributes: Vec<(String, String)>,
+    // The classes the file defines with each base they name, as (qualified class, qualified base), so an access through
+    // a subclass reaches the base's attributes.
+    pub(super) class_bases: Vec<(String, String)>,
 }
+
+// The class of an access the file cannot tie to one class, such as `type(obj).timeout` on an `obj` of unknown class.
+pub(crate) const UNRESOLVED_CLASS: &str = "*";
 
 impl AttributeWrites {
     pub(super) fn collect(body: &[Stmt], aliases: &FxHashMap<&str, String>, module: &str) -> Self {
@@ -40,6 +60,7 @@ impl AttributeWrites {
         let bindings = collector.bindings(body, &[]);
         collector.scopes.push(Scope { kind: ScopeKind::Plain, bindings });
         collector.visit_body(body);
+        collector.writes.classes = module_classes(body, module);
         collector.writes
     }
 }
@@ -49,6 +70,8 @@ impl AttributeWrites {
 enum Receiver {
     // An instance of the class named as written here.
     Instance(String),
+    // An instance of the class an annotation names as written here, which is typed only when the run defines that class.
+    Declared(String),
     // `self`, an instance of the class around the method, by its qualified name, which no import can shadow.
     Own(String),
     Mock,
@@ -68,7 +91,7 @@ enum ScopeKind<'a> {
 
 // The attribute a write with a computed name is recorded under: the name is decided at run time, so the write may hit
 // any field or none, and no field is named `*`.
-const ANY_ATTRIBUTE: &str = "*";
+pub(crate) const ANY_ATTRIBUTE: &str = "*";
 
 struct Collector<'a, 'm> {
     aliases: &'m FxHashMap<&'a str, String>,
@@ -103,6 +126,8 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                         Some(self.qualified(&written))
                     })
                     .collect();
+                let qualified_class = format!("{}.{}", self.module, class.name);
+                self.writes.class_bases.extend(bases.iter().map(|base| (qualified_class.clone(), base.clone())));
                 let members = members(class);
                 if !members.is_empty() {
                     self.writes.stateful_bases.extend(bases.iter().cloned());
@@ -121,11 +146,18 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.visit_body(&class.body);
                 self.scopes.pop();
             }
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                self.weakly_stored_by_assign(targets, value);
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Some(access) = self.class_access(expr) {
+            self.writes.class_attributes.push(access);
+        }
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.record(value, attr.as_str());
@@ -137,6 +169,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.record(value, "__dict__");
             }
             Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
+                self.weakly_stored_by_call(call);
                 let builtin = func.as_name_expr().map(|name| name.id.as_str());
                 match (&*arguments.args, builtin) {
                     ([target, attribute, ..], Some("setattr" | "delattr")) => self.record_write(target, attribute),
@@ -175,8 +208,14 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
 
 impl<'a> Collector<'a, '_> {
     fn record(&mut self, receiver: &Expr, attribute: &str) {
-        match self.receiver(receiver) {
+        let receiver = self.receiver(receiver);
+        self.record_on(receiver, attribute);
+    }
+
+    fn record_on(&mut self, receiver: Receiver, attribute: &str) {
+        match receiver {
             Receiver::Instance(class) => self.writes.typed.push((self.qualified(&class), attribute.to_owned())),
+            Receiver::Declared(class) => self.writes.declared.push((self.qualified(&class), attribute.to_owned())),
             Receiver::Own(class) => self.writes.typed.push((class, attribute.to_owned())),
             Receiver::Mock => {}
             Receiver::Unknown => self.writes.untyped.push(attribute.to_owned()),
@@ -187,6 +226,10 @@ impl<'a> Collector<'a, '_> {
         let class = match self.receiver(receiver) {
             Receiver::Instance(class) => self.qualified(&class),
             Receiver::Own(class) => class,
+            Receiver::Declared(class) => {
+                self.writes.declared_dict_stores.push(self.qualified(&class));
+                return;
+            }
             Receiver::Mock | Receiver::Unknown => return,
         };
         self.writes.dict_stores.push(class);
@@ -208,7 +251,7 @@ impl<'a> Collector<'a, '_> {
     // Computed names are left out of an untyped receiver: the untyped list matches by field name, which a computed
     // name does not give.
     fn record_computed(&mut self, receiver: &Expr) {
-        if matches!(self.receiver(receiver), Receiver::Instance(_) | Receiver::Own(_)) {
+        if matches!(self.receiver(receiver), Receiver::Instance(_) | Receiver::Declared(_) | Receiver::Own(_)) {
             self.record(receiver, ANY_ATTRIBUTE);
         }
     }
@@ -237,6 +280,61 @@ impl<'a> Collector<'a, '_> {
                 "weakref.ref" | "weakref.proxy" | "weakref.finalize"
             )
         })
+    }
+
+    // The qualified name of what a call or a name refers to, such as `weakref.WeakSet` for `Live` after
+    // `from weakref import WeakSet as Live`.
+    fn qualified_name(&self, expr: &Expr) -> Option<String> {
+        UnqualifiedName::from_expr(expr).map(|written| self.qualified(&written.segments().join(".")))
+    }
+
+    // Whether the name an expression evaluates to is an instance of the class `class`, qualified.
+    fn is_instance_of(&self, expr: &Expr, class: &str) -> bool {
+        matches!(self.receiver(expr), Receiver::Instance(written) if self.qualified(&written) == class)
+    }
+
+    // A weak container holds the items put into it through `weakref.ref`, so the items need a `__weakref__` slot: the
+    // item a `WeakSet` gets through `add`, a `WeakMethod`'s object and a `WeakKeyDictionary` key.
+    fn weakly_stored_by_call(&mut self, call: &ast::ExprCall) {
+        let item = match (&*call.arguments.args, call.func.as_ref()) {
+            ([item, ..], Expr::Attribute(ast::ExprAttribute { value, attr, .. }))
+                if attr.as_str() == "add" && self.is_instance_of(value, "weakref.WeakSet") =>
+            {
+                Some(item)
+            }
+            ([Expr::Attribute(ast::ExprAttribute { value, .. }), ..], func)
+                if self.qualified_name(func).as_deref() == Some("weakref.WeakMethod") =>
+            {
+                Some(value.as_ref())
+            }
+            _ => None,
+        };
+        if let Some(item) = item {
+            let stored = self.stored(item);
+            self.record_on(stored, "__weakref__");
+        }
+    }
+
+    // What an item put into a container is: an instance a call builds, as `Release("1")`, or what its name is.
+    fn stored(&self, item: &Expr) -> Receiver {
+        if item.is_call_expr() { assigned(item) } else { self.receiver(item) }
+    }
+
+    // A `WeakKeyDictionary` holds the keys stored into it and a `WeakValueDictionary` the values.
+    fn weakly_stored_by_assign(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        for target in targets {
+            let Expr::Subscript(ast::ExprSubscript { value: container, slice, .. }) = target else {
+                continue;
+            };
+            if self.is_instance_of(container, "weakref.WeakKeyDictionary") {
+                let stored = self.stored(slice);
+                self.record_on(stored, "__weakref__");
+            }
+            if self.is_instance_of(container, "weakref.WeakValueDictionary") {
+                let stored = self.stored(value);
+                self.record_on(stored, "__weakref__");
+            }
+        }
     }
 
     // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a
@@ -268,7 +366,49 @@ impl<'a> Collector<'a, '_> {
         })
     }
 
-    // A class name as written here, qualified through the imports that bind its head, or else by this module.
+    // The class a name stands for, qualified through the imports and aliases that bind its head, or else by this
+    // module, when the qualified name is capitalized as a class is.
+    fn class_of(&self, expr: &Expr) -> Option<String> {
+        let written = UnqualifiedName::from_expr(expr)?.segments().join(".");
+        class_name(&self.qualified(&written))
+    }
+
+    // An attribute read, set or deleted through a class, and the attribute `getattr`, `setattr` and `delattr` name with
+    // a literal. `type(obj)` and `obj.__class__` name the class of `obj`, which counts against every class when it cannot
+    // be resolved.
+    fn class_access(&self, expr: &Expr) -> Option<(String, String)> {
+        match expr {
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+                let class = match value.as_ref() {
+                    Expr::Call(ast::ExprCall { func, arguments, .. })
+                        if is_name(func, "type") && arguments.args.len() == 1 =>
+                    {
+                        self.class_of(&arguments.args[0]).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned())
+                    }
+                    Expr::Attribute(ast::ExprAttribute { value: object, attr: dunder, .. })
+                        if dunder.as_str() == "__class__" =>
+                    {
+                        self.class_of(object).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned())
+                    }
+                    other => self.class_of(other)?,
+                };
+                Some((class, attr.to_string()))
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let [target, name, ..] = &*arguments.args else {
+                    return None;
+                };
+                let name = name.as_string_literal_expr()?.value.to_str();
+                let function = func.as_name_expr()?.id.as_str();
+                matches!(function, "getattr" | "setattr" | "delattr").then(|| {
+                    let class = self.class_of(target).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned());
+                    (class, name.to_owned())
+                })
+            }
+            _ => None,
+        }
+    }
+
     fn qualified(&self, written: &str) -> String {
         let segments: Vec<&str> = written.split('.').collect();
         qualified(&segments, self.aliases).unwrap_or_else(|| format!("{}.{written}", self.module))
@@ -280,7 +420,7 @@ impl<'a> Collector<'a, '_> {
             Expr::Name(name) => self.lookup(name.id.as_str()),
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => match self.receiver(value) {
                 Receiver::Mock => Receiver::Mock,
-                Receiver::Instance(class) | Receiver::Own(class) => {
+                Receiver::Instance(class) | Receiver::Declared(class) | Receiver::Own(class) => {
                     self.member(class.rsplit('.').next().unwrap_or_default(), attr.as_str())
                 }
                 Receiver::Unknown => Receiver::Unknown,
@@ -501,8 +641,7 @@ fn members(class: &ast::StmtClassDef) -> FxHashMap<&str, Receiver> {
     for stmt in &class.body {
         if let Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) = stmt
             && let Expr::Name(name) = target.as_ref()
-            && members.contains_key(name.id.as_str())
-            && let declared @ Receiver::Instance(_) = annotated(annotation)
+            && let declared @ Receiver::Declared(_) = annotated(annotation)
         {
             members.insert(name.id.as_str(), declared);
         }
@@ -523,7 +662,7 @@ fn assigned(value: &Expr) -> Receiver {
     if MOCK_CLASSES.contains(&last) || segments.starts_with(&["mocker", "patch"]) {
         Receiver::Mock
     } else {
-        instance(last)
+        instance(&segments.join("."))
     }
 }
 
@@ -540,9 +679,15 @@ fn annotated(annotation: &Expr) -> Receiver {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) if last_segment(value) == Some("Optional") => {
             annotated(slice)
         }
-        _ => match last_segment(annotation) {
-            Some(last) if MOCK_CLASSES.contains(&last) || last == "MockType" => Receiver::Mock,
-            Some(last) => instance(last),
+        _ => match UnqualifiedName::from_expr(annotation) {
+            Some(name) => {
+                let last = name.segments().last().copied().unwrap_or_default();
+                if MOCK_CLASSES.contains(&last) || last == "MockType" {
+                    Receiver::Mock
+                } else {
+                    class_name(&name.segments().join(".")).map_or(Receiver::Unknown, Receiver::Declared)
+                }
+            }
             None => Receiver::Unknown,
         },
     }
@@ -550,12 +695,33 @@ fn annotated(annotation: &Expr) -> Receiver {
 
 // Only a capitalized name is taken for a class; calling a lowercase factory says nothing about what it returns. A
 // private class is taken without its leading underscores, and an all-caps name such as `URL` is a class too, while a
-// one- or two-letter capital is more likely a type variable such as `T` or `KT`.
-fn instance(name: &str) -> Receiver {
-    let bare = name.trim_start_matches('_');
+// one- or two-letter capital is more likely a type variable such as `T` or `KT`. The name keeps its module, as
+// `models.Release`, so the import that binds the module qualifies it.
+fn instance(written: &str) -> Receiver {
+    class_name(written).map_or(Receiver::Unknown, Receiver::Instance)
+}
+
+fn class_name(written: &str) -> Option<String> {
+    let last = written.rsplit('.').next().unwrap_or_default();
+    let bare = last.trim_start_matches('_');
     let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())
         && (bare.chars().any(|character| character.is_ascii_lowercase()) || bare.len() >= 3);
-    if is_class { Receiver::Instance(name.to_owned()) } else { Receiver::Unknown }
+    is_class.then(|| written.to_owned())
+}
+
+// The classes a module defines at its top level, qualified by the module, which an annotation may name. A protocol is
+// not one: its instances are any object with the attributes it lists.
+fn module_classes(body: &[Stmt], module: &str) -> Vec<String> {
+    module_statements(body)
+        .filter_map(Stmt::as_class_def_stmt)
+        .filter(|class| {
+            !class.bases().iter().any(|base| {
+                let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
+                last_segment(base) == Some("Protocol")
+            })
+        })
+        .map(|class| format!("{module}.{}", class.name))
+        .collect()
 }
 
 // A patch helper writes an attribute of its first argument: `monkeypatch.setattr(obj, "name", value)`, or

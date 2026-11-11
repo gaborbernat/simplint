@@ -3,6 +3,7 @@ use std::cell::OnceCell;
 use ruff_diagnostics::{Applicability, Edit};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_parser::parse_string_annotation;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
@@ -26,7 +27,7 @@ pub fn dataclass_kw_only(checker: &Checker) {
         let name = class.name.as_str();
         // The report names every positional call of the class, here and in other files; the fix needs all of them in
         // this file, since a rewrite does not reach another file.
-        let mut related: Vec<Related> = positional_calls(module, class)
+        let mut related: Vec<Related> = positional_calls(checker.source, module, class)
             .into_iter()
             .map(|range| Related { path: checker.path.to_path_buf(), range, message: CALL_MESSAGE.to_owned() })
             .collect();
@@ -65,11 +66,11 @@ const CALL_MESSAGE: &str = "positional arguments pass the fields by position";
 
 // The calls in this module that pass the class fields by position: the class's own calls, and `cls(...)` in its
 // classmethods.
-fn positional_calls(module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<TextRange> {
+fn positional_calls(source: &str, module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<TextRange> {
     let module_uses = module.uses.get(class.name.as_str()).map_or(&[][..], Vec::as_slice);
     module_uses
         .iter()
-        .chain(&receiver_calls(class))
+        .chain(&receiver_calls(source, class))
         .filter_map(|found| match found {
             Use::Call(call) if !call.arguments.args.is_empty() => Some(call.range()),
             _ => None,
@@ -79,13 +80,13 @@ fn positional_calls(module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<Te
 
 // The calls a classmethod makes of its first parameter, which is the class. A method's first parameter is the instance
 // or something else, so a `cls` there is not the class.
-fn receiver_calls(class: &ast::StmtClassDef) -> Vec<Use<'_>> {
+fn receiver_calls<'a>(source: &'a str, class: &'a ast::StmtClassDef) -> Vec<Use<'a>> {
     let mut found = Vec::new();
     for method in class.body.iter().filter_map(Stmt::as_function_def_stmt).filter(|method| is_classmethod(method)) {
         let Some(cls) = receiver(method) else {
             continue;
         };
-        let mut calls = Uses::new(|expr: &Expr| is_name(expr, cls).then_some(()));
+        let mut calls = Uses::new(|expr: &Expr| is_name(expr, cls).then_some(())).with_source(source);
         calls.visit_body(&method.body);
         found.extend(calls.found.into_iter().map(|((), found)| found));
     }
@@ -108,13 +109,44 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
     let fields = positional_fields(checker, module, class)?;
     let module_uses = module.uses.get(name).map_or(&[][..], Vec::as_slice);
     let mut edits = Vec::new();
-    for found in module_uses.iter().chain(&receiver_calls(class)) {
+    for found in module_uses.iter().chain(&receiver_calls(checker.source, class)) {
         let Use::Call(call) = found else {
             return None;
         };
         edits.extend(keyword_edits(checker, call, &fields)?);
     }
     keep_debug_text(checker, edits)
+}
+
+// The module-level class names a string annotation spells, with where each is. Ruff resolves no reference to them, so
+// they are matched by name, as the string is read as an expression of the module.
+struct StringNames<'c, 'a> {
+    source: &'c str,
+    classes: &'c FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
+    found: Vec<(TextRange, &'a str)>,
+}
+
+impl<'a> Visitor<'a> for StringNames<'_, 'a> {
+    fn visit_annotation(&mut self, annotation: &'a Expr) {
+        let mut strings = ExprCollector::new(|expr: &'a Expr| expr.as_string_literal_expr());
+        strings.visit_expr(annotation);
+        for literal in strings.found {
+            let Some(string) = literal.as_single_part_string() else {
+                continue;
+            };
+            let Ok(parsed) = parse_string_annotation(self.source, string) else {
+                continue;
+            };
+            let classes = self.classes;
+            let mut names = ExprCollector::new(|expr: &Expr| {
+                let name = expr.as_name_expr()?;
+                let (class, _) = classes.get_key_value(name.id.as_str())?;
+                Some((name.range, *class))
+            });
+            names.visit_expr(parsed.expr());
+            self.found.extend(names.found);
+        }
+    }
 }
 
 // The module-level classes by name in source order, and every use of them in the module, found in one walk.
@@ -130,11 +162,15 @@ impl<'a> ModuleClasses<'a> {
             classes.entry(class.name.as_str()).or_default().push(class);
         }
         let semantic = checker.semantic();
-        let references: FxHashMap<TextRange, &str> = classes
+        let mut references: FxHashMap<TextRange, &str> = classes
             .keys()
             .flat_map(|name| semantic.references_to(name).iter().map(|reference| (reference.range, *name)))
             .collect();
-        let mut walk = Uses::new(|expr: &Expr| references.get(&expr.as_name_expr()?.range).copied());
+        let mut strings = StringNames { source: checker.source, classes: &classes, found: Vec::new() };
+        strings.visit_body(checker.body());
+        references.extend(strings.found);
+        let mut walk =
+            Uses::new(|expr: &Expr| references.get(&expr.as_name_expr()?.range).copied()).with_source(checker.source);
         walk.visit_body(checker.body());
         let mut uses: FxHashMap<&str, Vec<Use>> = FxHashMap::default();
         for (name, found) in walk.found {
@@ -173,7 +209,7 @@ fn positional_fields(checker: &Checker, module: &ModuleClasses, class: &ast::Stm
     init_fields(class, decorator, &base_fields)
 }
 
-// Each positional argument gets its field's name; a bare generator, the only argument, needs brackets once it has one.
+// Each positional argument gets its field's name; a bare generator or walrus needs brackets as a keyword's value.
 fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> Option<Vec<Edit>> {
     match CallKind::of(call) {
         CallKind::Unpacked => return None,
@@ -192,7 +228,12 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
     let mut edits = Vec::new();
     for (argument, field) in call.arguments.args.iter().zip(fields) {
         let range = checker.parenthesized_range(argument, (&call.arguments).into());
-        if argument.as_generator_expr().is_some_and(|generator| !generator.parenthesized) {
+        let needs_parentheses = match argument {
+            Expr::Generator(generator) => !generator.parenthesized,
+            Expr::Named(_) => range == argument.range(),
+            _ => false,
+        };
+        if needs_parentheses {
             edits.push(Edit::insertion(format!("{field}=("), range.start()));
             edits.push(Edit::insertion(")".to_owned(), range.end()));
         } else {
