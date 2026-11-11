@@ -245,6 +245,28 @@ signature reaches it:
   from config import Parser
   ```
 
+- **Names only tests import from a module production code loads as a value**: production code that passes a module on,
+  as `CONFIG = settings` does, may call any of its names through that value, so a name only tests import is still not
+  reported.
+
+  ```python ok file=config.py
+  class Parser:
+      pass
+
+
+  __all__ = []
+  ```
+
+  ```python context file=cli.py
+  import config as settings
+
+  CONFIG = settings
+  ```
+
+  ```python context file=test_config.py
+  from config import Parser
+  ```
+
 - **Names starting with `_`**: the underscore already marks them as internal.
 
   ```python ok file=config.py
