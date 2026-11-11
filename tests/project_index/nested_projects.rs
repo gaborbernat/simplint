@@ -186,10 +186,10 @@ fn nested_project_is_not_judged_for_docstrings_or_exports(directory: &str, repor
             "__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep() -> None:\n    pass\n\n\ndef unlisted() -> None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\ndef f(x: int) -> int:\n    return x\n",
         ),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP101,SMP102,SMP401,SMP403,SMP901,SMP903"]).1;
+    let stdout = check(root.path(), &["--select", "SMP101,SMP401,SMP403,SMP901,SMP903"]).1;
     assert!(stdout.contains(" SMP101 "), "{stdout}");
-    let judged = [" SMP901 ", " SMP403 ", " SMP903 ", " SMP102 "].map(|code| stdout.contains(code));
-    assert_eq!(judged, [reported; 4], "{stdout}");
+    let judged = [" SMP901 ", " SMP403 ", " SMP903 "].map(|code| stdout.contains(code));
+    assert_eq!(judged, [reported; 3], "{stdout}");
 }
 
 // Every rule that judges docstrings or the visibility of names leaves a nested test project alone, whatever the file

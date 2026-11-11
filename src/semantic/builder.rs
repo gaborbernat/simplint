@@ -38,6 +38,7 @@ pub struct Model<'a> {
     pub django_reports: FxHashSet<TextRange>,
     pub list_appends: FxHashSet<TextRange>,
     pub type_checking_stubs: FxHashSet<TextRange>,
+    pub module_stores: FxHashSet<TextRange>,
     pub comprehensions: Vec<(TextRange, TextRange)>,
 }
 
@@ -65,6 +66,7 @@ pub fn build<'a>(
         django_reports: FxHashSet::default(),
         list_appends: FxHashSet::default(),
         type_checking_stubs: FxHashSet::default(),
+        module_stores: FxHashSet::default(),
         comprehensions: Vec::new(),
     };
     builder.visit_body(body);
@@ -79,6 +81,7 @@ pub fn build<'a>(
         django_reports: builder.django_reports,
         list_appends: builder.list_appends,
         type_checking_stubs: builder.type_checking_stubs,
+        module_stores: builder.module_stores,
         comprehensions: builder.comprehensions,
     }
 }
@@ -94,6 +97,7 @@ struct Builder<'a> {
     django_reports: FxHashSet<TextRange>,
     list_appends: FxHashSet<TextRange>,
     type_checking_stubs: FxHashSet<TextRange>,
+    module_stores: FxHashSet<TextRange>,
     comprehensions: Vec<(TextRange, TextRange)>,
 }
 
@@ -259,6 +263,9 @@ impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
         if let Some(name) = pattern_capture(pattern) {
             self.add_binding(name, name.range(), BindingKind::Assignment);
+            if self.semantic.current_scope().kind.is_module() {
+                self.module_stores.insert(name.range());
+            }
         }
         visitor::walk_pattern(self, pattern);
     }
@@ -504,6 +511,9 @@ impl<'a> Builder<'a> {
             && self.semantic.flags.contains(SemanticModelFlags::TYPE_CHECKING_BLOCK)
         {
             self.type_checking_stubs.insert(name.range);
+        }
+        if self.semantic.current_scope().kind.is_module() {
+            self.module_stores.insert(name.range);
         }
         self.add_binding(&name.id, name.range, kind);
     }

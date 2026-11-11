@@ -237,7 +237,7 @@ fn module_variable_rename_checks_strings_of_other_files() {
     true
     ; "selected_extend_ignore_names_glob"
 )]
-#[test_case("[tool.ruff.lint]\nselect = []\n", true ; "unselected")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", false ; "unselected")]
 fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported: bool) {
     let root = common::project(&[
         ("pyproject.toml", &format!("[project]\nrequires-python = \">=3.12\"\n{ruff_settings}")),
@@ -245,6 +245,20 @@ fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP102"]).1;
     assert_eq!(stdout.contains("SMP102 Module-scope variable `myValue`"), reported, "{stdout}");
+}
+
+// Ruff's N816 reports a mixedCase name at each of its module-scope stores, so SMP102 leaves such a name to it when it
+// offers no rename, whether or not the run selects N816. A rename stays here, as does a name that N816 does not report:
+// an `except` target, or one N816 ignores.
+#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n", "", [false, false] ; "module_store_left_to_n816")]
+#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nfor myValue in range(2):\n    pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [false, false] ; "loop_target_left_to_n816")]
+#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmatch 1:\n    case myValue:\n        pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [false, false] ; "match_capture_left_to_n816")]
+#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\ntry:\n    pass\nexcept ValueError as myValue:\n    pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [true, true] ; "except_target_kept")]
+#[test_case("myValue = 3\nprint(myValue)\n", "", [true, true] ; "rename_kept")]
+#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n", "[tool.ruff.lint.pep8-naming]\nignore-names = [\"myValue\"]\n", [true, true] ; "ignored_name_kept")]
+fn module_variable_case_leaves_names_without_rename_to_n816(source: &str, settings: &str, expected: [bool; 2]) {
+    let case = common::RuffOverlap { settings, select: "SMP102", ruff_code: "N816", files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Module-scope variable `myValue`"), expected);
 }
 
 // A module named like a standard library module is imported from outside the run, so its names may be read unseen.

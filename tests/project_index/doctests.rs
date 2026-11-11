@@ -94,24 +94,16 @@ fn stdlib_module_reads_are_not_namesake_reads() {
     assert!(!stdout.contains("SMP506"), "{stdout}");
 }
 
-// Another module's write to a module variable keeps its naming report with no fix: the rename would leave the write
-// pointing at the old name.
+// Another module's write to a module variable withholds the rename, so SMP102 leaves a mixedCase store to Ruff's N816,
+// which reports it with no fix.
 #[test_case("cli.py", "from pkg import report\n\nreport.tableJson = 5\n" ; "assignment")]
 #[test_case("cli.py", "from pkg import report\n\nsetattr(report, \"tableJson\", 5)\n" ; "setattr")]
 #[test_case("test_report.py", "from unittest import mock\n\n\ndef test_it() -> None:\n    with mock.patch(\"pkg.report.tableJson\"):\n        pass\n" ; "dotted_patch")]
-fn stored_module_variable_keeps_report_without_fix(path: &str, body: &str) {
+fn stored_module_variable_left_to_n816_without_fix(path: &str, body: &str) {
     let report = "tableJson = 0\n\n\ndef read() -> int:\n    return tableJson\n";
     let root = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report), (path, body)]);
     let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
-    assert_eq!(
-        (stdout, common::read(root.path(), "pkg/report.py")),
-        (
-            common::native(
-                "pkg/report.py:1:1: SMP102 Module-scope variable `tableJson` should be named `TABLEJSON`\nFound 1 error.\n"
-            ),
-            report.to_owned()
-        )
-    );
+    assert_eq!((stdout, common::read(root.path(), "pkg/report.py")), (common::PASSED.to_owned(), report.to_owned()));
 }
 
 // A library directory whose name only starts with `test`, such as `testkit`, is not a nested test project, though its

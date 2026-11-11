@@ -43,6 +43,8 @@ pub struct Semantic<'a> {
     list_appends: FxHashSet<TextRange>,
     // The annotations alone, without a value, that `if TYPE_CHECKING:` declares, which a module's `__getattr__` serves.
     type_checking_stubs: FxHashSet<TextRange>,
+    // The names a module-scope store binds, which Ruff's N816 checks: an assignment, loop, `with`, walrus or `match` target.
+    module_stores: FxHashSet<TextRange>,
     // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
     comprehensions: Vec<(TextRange, TextRange)>,
     // The module-scope imports Ruff's F401 finds unused, by the range of the name each binds.
@@ -65,6 +67,7 @@ impl<'a> Semantic<'a> {
             django_reports,
             list_appends,
             type_checking_stubs,
+            module_stores,
             comprehensions,
         } = builder::build(path, body, target_version, settings, matches);
         let mut index = Index::default();
@@ -86,6 +89,7 @@ impl<'a> Semantic<'a> {
             django_reports,
             list_appends,
             type_checking_stubs,
+            module_stores,
             comprehensions,
             unused_imports,
         }
@@ -111,6 +115,11 @@ impl<'a> Semantic<'a> {
     // Whether the binding at `range` is an annotation without a value under `if TYPE_CHECKING:`, which only types a name.
     pub fn is_type_checking_stub(&self, range: TextRange) -> bool {
         self.type_checking_stubs.contains(&range)
+    }
+
+    // Whether the name at `range` is stored in the module scope, where Ruff's N816 reads it.
+    pub fn is_module_store(&self, range: TextRange) -> bool {
+        self.module_stores.contains(&range)
     }
 
     // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
