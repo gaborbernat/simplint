@@ -90,8 +90,11 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        let unused_imports =
-            if matches.unused_imports { unused_imports::unused_imports(&model, body) } else { FxHashSet::default() };
+        let unused_imports = if matches.unused_imports {
+            unused_imports::unused_imports(&model, body, &settings.pyflakes.extend_generics)
+        } else {
+            FxHashSet::default()
+        };
         Self {
             model,
             annotations_are_lazy,

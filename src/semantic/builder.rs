@@ -76,7 +76,7 @@ pub fn build<'a>(
     let annotations_are_lazy = builder.annotations_are_lazy();
     builder.visit_deferred();
     let private_imports = if builder.matches.private_imports {
-        private_import_reports(&builder.semantic, body, package)
+        private_import_reports(&builder.semantic, body, package, &settings.pyflakes.extend_generics)
     } else {
         FxHashSet::default()
     };
@@ -97,9 +97,14 @@ pub fn build<'a>(
 // Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT), which reads the
 // bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
 // makes, which is the alias of its import.
-fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Option<&Path>) -> FxHashSet<TextRange> {
+fn private_import_reports(
+    semantic: &SemanticModel,
+    body: &[Stmt],
+    package: Option<&Path>,
+    extend_generics: &[String],
+) -> FxHashSet<TextRange> {
     let exports = export_names(body);
-    let words = type_string_words(body);
+    let words = type_string_words(body, extend_generics);
     semantic
         .scopes
         .iter()

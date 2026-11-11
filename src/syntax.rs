@@ -674,8 +674,8 @@ pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
 // The identifier words of the strings Ruff parses as type expressions, the only strings that read a name: those in an
 // annotation or type parameter, in an argument of a typing call that takes types, in a generic subscript, and the type
 // of `Annotated`. A string anywhere else is data or prose.
-pub(crate) fn type_string_words(body: &[Stmt]) -> FxHashSet<&str> {
-    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false };
+pub(crate) fn type_string_words<'a>(body: &'a [Stmt], extend_generics: &'a [String]) -> FxHashSet<&'a str> {
+    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false, extend_generics };
     strings.visit_body(body);
     strings.words
 }
@@ -683,6 +683,7 @@ pub(crate) fn type_string_words(body: &[Stmt]) -> FxHashSet<&str> {
 struct TypeStrings<'a> {
     words: FxHashSet<&'a str>,
     in_type: bool,
+    extend_generics: &'a [String],
 }
 
 impl<'a> TypeStrings<'a> {
@@ -696,6 +697,12 @@ impl<'a> TypeStrings<'a> {
         for expr in type_param_exprs(type_params) {
             self.visit_in(expr, true);
         }
+    }
+
+    // Ruff matches the qualified name of a subscripted value against `extend-generics`; this walk has no resolution,
+    // so it matches the last name the value is written with, as it does for the typing generics.
+    fn is_extended_generic(&self, name: &str) -> bool {
+        self.extend_generics.iter().any(|target| target.rsplit('.').next() == Some(name))
     }
 }
 
@@ -766,7 +773,9 @@ impl<'a> Visitor<'a> for TypeStrings<'a> {
                         }
                         _ => self.visit_expr(slice),
                     },
-                    Some(name) if is_standard_library_generic_member(name) => self.visit_in(slice, true),
+                    Some(name) if is_standard_library_generic_member(name) || self.is_extended_generic(name) => {
+                        self.visit_in(slice, true);
+                    }
                     _ => self.visit_expr(slice),
                 }
             }

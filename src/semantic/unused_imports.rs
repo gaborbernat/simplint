@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 
 use crate::syntax::{annotated_names, export_names, type_string_words};
 
-pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRange> {
+pub fn unused_imports(model: &SemanticModel, body: &[Stmt], extend_generics: &[String]) -> FxHashSet<TextRange> {
     let scope = model.global_scope();
     if !scope.bindings().any(|(_, live)| is_import(model.binding(live))) {
         return FxHashSet::default();
@@ -22,7 +22,7 @@ pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRan
     let annotated = annotated_names(body);
     // Ruff reads the names a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
     // model does not resolve them, so a word of such a string counts as a read.
-    let words = type_string_words(body);
+    let words = type_string_words(body, extend_generics);
     let mut unused = FxHashSet::default();
     for (name, live) in scope.bindings() {
         let binding = model.binding(live);
