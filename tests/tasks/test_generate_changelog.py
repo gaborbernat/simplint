@@ -101,7 +101,7 @@ def test_link_rules_leaves_codes_plain_without_codes() -> None:
     )
 
 
-@pytest.mark.parametrize("prefix", ["", "../"])
+@pytest.mark.parametrize("prefix", ["", "../", "https://github.com/gaborbernat/simplint/blob/1.0.0/"])
 def test_link_rules_resolves_relative_source_links(prefix: str) -> None:
     markdown = f"[`all-format`]({prefix}src/rules/api/all_format.md) (SMP405)"
 
