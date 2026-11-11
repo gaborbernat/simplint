@@ -1,7 +1,8 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::FileId;
-use super::resolve::{ClassKey, ModuleFacts, class_home};
+use super::classes::Reexports;
+use super::resolve::{ClassKey, ModuleFacts};
 use crate::project::facts::ImportBinding;
 
 // The names a file of the run defines, each as a class (true) or a function (false). A name the file only imports, assigns
@@ -21,7 +22,7 @@ pub(super) struct RunImports {
 pub(super) fn run_import_kinds(
     modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
     bindings: &[(FileId, FileId, &ImportBinding)],
-    stars: &[(FileId, FileId)],
+    reexports: &Reexports,
 ) -> RunImports {
     let mut classes: FxHashSet<ClassKey> = FxHashSet::default();
     let mut functions: FxHashSet<ClassKey> = FxHashSet::default();
@@ -29,7 +30,7 @@ pub(super) fn run_import_kinds(
         classes.extend(module.classes.iter().map(|(name, _, _)| (*id, name.clone())));
         functions.extend(module.functions.iter().map(|name| (*id, name.clone())));
     }
-    let home = class_home(|key| classes.contains(key) || functions.contains(key), bindings, stars);
+    let home = reexports.home(|key| classes.contains(key) || functions.contains(key));
     let defined = |file: FileId, name: &str| home(file, name).map(|key| classes.contains(&key));
     let mut bound: FxHashMap<FileId, Vec<&str>> = FxHashMap::default();
     let mut names: FxHashMap<FileId, Members> = FxHashMap::default();

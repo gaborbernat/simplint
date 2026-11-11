@@ -1,4 +1,5 @@
 mod api;
+mod classes;
 mod cycles;
 mod duplicates;
 mod exceptions;
@@ -36,6 +37,7 @@ use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
 use self::api::module_uses;
+use self::classes::{ClassGraph, Reexports};
 use self::cycles::{Cycle, RuntimeGraph};
 use self::duplicates::DuplicateRun;
 use self::exceptions::exception_classes;
@@ -466,9 +468,11 @@ impl Project {
         external_uses(&indexed, external, &mut imported, &mut referenced, &mut stored_references, &mut from_others);
         let entry_only = entry_uses(&entry_names, &bare_names, &mut imported, &mut from_others);
         opaque_names.extend(external.opaque.iter().cloned());
-        let hook_classes = hatch_hook_classes(&resolver.modules, &bindings, &stars);
+        let reexports = Reexports::new(&bindings, &stars);
+        let graph = ClassGraph::of(&resolver.modules, &reexports);
+        let hook_classes = hatch_hook_classes(&graph);
         let RunImports { names: run_imports, modules: run_modules, members: run_members } =
-            run_import_kinds(&resolver.modules, &bindings, &stars);
+            run_import_kinds(&resolver.modules, &bindings, &reexports);
         let (
             ((uncaught_exceptions, exception_types), module_uses),
             (mut calls, library_api, (api_reached, library_reached)),
@@ -477,12 +481,12 @@ impl Project {
                 rayon::join(
                     || {
                         exception_classes(
-                            &indexed,
                             &resolver.modules,
                             resolver.python_version,
                             &test_modules,
+                            &graph,
+                            &reexports,
                             &bindings,
-                            &stars,
                         )
                     },
                     || module_uses(module_names, &sources, &stored_references, &computed_writes, ids_of),
@@ -510,7 +514,7 @@ impl Project {
                 (calls, library_api, signatures)
             },
         );
-        let inherited = inherit::inherited_api(&resolver.modules, &library_api, &library_reached, &bindings, &stars);
+        let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
         calls.set_test_support(test_support);
         Self {
             imported,

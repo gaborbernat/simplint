@@ -4,35 +4,28 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::FileId;
 use super::api::exposure;
-use super::resolve::{ClassBase, ClassKey, ModuleFacts, class_home};
-use crate::project::facts::ImportBinding;
+use super::classes::{ClassGraph, Reexports};
+use super::resolve::{ClassBase, ClassKey};
 use crate::syntax::Visibility;
 
 // The members a private class defines that a public class of a library inherits without overriding them, which users
 // reach through the public class, as `Unix` reaches the methods of its private base `XDGMixin`. Each file maps its
 // classes to their inherited members.
 pub(super) fn inherited_api(
-    modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
     library_reached: &FxHashMap<FileId, FxHashSet<String>>,
-    bindings: &[(FileId, FileId, &ImportBinding)],
-    stars: &[(FileId, FileId)],
+    graph: &ClassGraph,
+    reexports: &Reexports,
 ) -> FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>> {
-    let mut classes: FxHashMap<ClassKey, (&[ClassBase], &[String])> = FxHashMap::default();
-    for (id, module) in modules {
-        for (name, bases, methods) in &module.classes {
-            classes.insert((*id, name.clone()), (bases.as_slice(), methods.as_slice()));
-        }
-    }
-    let home = class_home(|key| classes.contains_key(key), bindings, stars);
+    let home = graph.home(reexports);
     let mut inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>> = FxHashMap::default();
-    for (key, (bases, methods)) in &classes {
+    for (key, (bases, methods)) in &graph.classes {
         if exposure(library_api.get(&key.0), library_reached.get(&key.0), &key.1).is_none() {
             continue;
         }
         let overridden: FxHashSet<&str> = methods.iter().map(String::as_str).collect();
         let mut visited: FxHashSet<ClassKey> = FxHashSet::default();
-        collect(&home, &classes, bases, &overridden, &mut visited, &mut inherited);
+        collect(&home, &graph.classes, bases, &overridden, &mut visited, &mut inherited);
     }
     inherited
 }
