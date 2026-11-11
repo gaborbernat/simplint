@@ -182,7 +182,7 @@ overrides = [ { module = [ "pypandoc", "sphinxcontrib.mermaid" ], follow_untyped
 show_error_codes = true
 
 [tool.coverage]
-run.omit = [ "docs/conf.py", "docs/simplint_cli.py" ]
+run.omit = [ "docs/_ext/*", "docs/conf.py", "docs/simplint_cli.py" ]
 run.parallel = true
 run.plugins = [
   "covdefaults",
