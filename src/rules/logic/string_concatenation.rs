@@ -63,11 +63,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 }
 
 // Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines, so this rule leaves those to Ruff.
+// lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from ISC003,
+// so this rule keeps it.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
-    let settings = &walker.checker.settings.from_ruff;
     is_logging_message(walker, expr)
-        || (settings.allow_multiline && starts_with_literal_pair_across_lines(walker.checker, expr))
+        || (walker.checker.settings.from_ruff.allow_multiline && ruff_fixes_literal_pair_at_start(walker.checker, expr))
 }
 
 // Whether `expr` is the message argument of a logging call, as G003 finds it: the `msg` keyword or the argument at
@@ -102,10 +102,10 @@ fn message_position(attribute: &str) -> Option<usize> {
     }
 }
 
-// Whether ISC003 reports a `+` that starts where `expr` starts, on the way down its first operands: the two operands
-// of such a `+` are the same kind of literal and a line break separates them. Its report and this rule's would land on
-// one location only then.
-fn starts_with_literal_pair_across_lines(checker: &Checker, expr: &Expr) -> bool {
+// Whether ISC003 reports a `+` that starts where `expr` starts, on the way down its first operands, and gives it a fix:
+// the two operands of such a `+` are the same kind of literal, a line break separates them, and neither is in
+// parentheses. Its report and this rule's would land on one location only then.
+fn ruff_fixes_literal_pair_at_start(checker: &Checker, expr: &Expr) -> bool {
     let mut current = expr;
     loop {
         current = match current {
@@ -121,7 +121,7 @@ fn starts_with_literal_pair_across_lines(checker: &Checker, expr: &Expr) -> bool
                     && current.start() == expr.start()
                     && checker.source.contains_line_break(TextRange::new(left.end(), right.start()))
                 {
-                    return true;
+                    return !is_parenthesized(checker, left, current) && !is_parenthesized(checker, right, current);
                 }
                 left
             }
@@ -132,6 +132,10 @@ fn starts_with_literal_pair_across_lines(checker: &Checker, expr: &Expr) -> bool
             _ => return false,
         };
     }
+}
+
+fn is_parenthesized(checker: &Checker, operand: &Expr, parent: &Expr) -> bool {
+    checker.parenthesized_range(operand, parent.into()) != operand.range()
 }
 
 fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {

@@ -32,16 +32,16 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         {
             return;
         }
-        variable(walker, current(walker), id.as_str(), *range);
+        check(walker, current(walker), id.as_str(), *range);
     }
 }
 
 pub fn scope<'a>(walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-    parameters(walker, scope, |_| false, variable);
+    parameters(walker, scope, |_| false, check);
 }
 
 pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-    except_name(walker, handler, variable);
+    except_name(walker, handler, check);
 }
 
 pub fn pattern<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
@@ -59,10 +59,6 @@ pub fn type_param<'a>(walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
 // letters are left to them. No Ruff rule checks imports, patterns or type parameters, which keep them.
 fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
     report(walker, scope, name, range, !matches!(name, "l" | "I" | "O"));
-}
-
-fn variable<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
-    check(walker, scope, name, range);
 }
 
 // Imports, patterns and type parameters, which no Ruff rule checks for these letters.

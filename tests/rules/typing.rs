@@ -173,3 +173,17 @@ fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, repor
     };
     assert_eq!(common::reported_without_and_with_ruff(&case, "`object` annotation"), [reported, reported]);
 }
+
+// Ruff's ANN401 skips the `def` that implements an `@overload` set, and reads a stub through the `if` bodies after it,
+// until a `def` or a class resets it. SMP602 follows, so the `def` of the first branch is reported on its line, and the
+// one after a branch with another `def` in it, or after a class, is left to ANN401.
+#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any:\n        return value\n", 9, 2 ; "branch_implementation")]
+#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nif __debug__:\n    def helper() -> None:\n        pass\n\n\ndef f(value: Any) -> Any:\n    return value\n", 0, 0 ; "branch_def_before_implementation")]
+#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nclass C:\n    pass\n\n\ndef f(value: Any) -> Any:\n    return value\n", 0, 0 ; "class_before_implementation")]
+fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, reported: usize) {
+    let root = common::project(&[("module.py", source)]);
+    let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
+    let reports = common::reports(&stdout, "SMP602");
+    assert_eq!(reports.len(), reported, "{stdout}");
+    assert!(reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:"))), "{stdout}");
+}

@@ -96,7 +96,7 @@ fn is_name_expr(expr: &Expr) -> bool {
 
 // The run of statements right after the literal that each add an entry, which the literal can hold instead.
 fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[Stmt]) {
-    if kind == Kind::List && ruff_repeats_append(checker, name, rest) {
+    if kind == Kind::List && ruff_fixes_appends(checker, name, rest) {
         return;
     }
     let entries: Vec<Entry> = rest.iter().map_while(|stmt| entry(stmt, name, kind)).collect();
@@ -128,15 +128,19 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
     );
 }
 
-// Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, so the literal leaves them to
-// it. The run counts every append to the list in the appends that follow the literal, not only the ones that enter it
-// here.
-fn ruff_repeats_append(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
-    rest.iter()
-        .take_while(|stmt| checker.semantic().is_list_append(stmt.range()))
-        .filter(|stmt| appends_to(stmt, name))
-        .count()
-        >= 2
+// Ruff's FURB113 fixes two or more appends to a list only while they are consecutive and no comment sits between them,
+// so the literal leaves such a run to it. The run counts every append in the appends that follow the literal, to any
+// list, not only the ones that enter it here.
+fn ruff_fixes_appends(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
+    let run: Vec<&Stmt> = rest.iter().take_while(|stmt| checker.semantic().is_list_append(stmt.range())).collect();
+    let positions: Vec<usize> =
+        run.iter().enumerate().filter(|(_, stmt)| appends_to(stmt, name)).map(|(index, _)| index).collect();
+    let (Some(&first), Some(&last)) = (positions.first(), positions.last()) else {
+        return false;
+    };
+    positions.len() >= 2
+        && positions.windows(2).all(|pair| pair[1] == pair[0] + 1)
+        && !checker.has_comment_in(TextRange::new(run[first].start(), run[last].end()))
 }
 
 fn appends_to(stmt: &Stmt, name: &str) -> bool {
