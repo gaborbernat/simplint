@@ -139,9 +139,9 @@ def build_fixture() -> dict[str, int]:
       assert fast.decode("1") == "1"
   ```
 
-  The same holds for a module reached as `app.fast` in `CODEC = app.fast`, and for a module that an import in a function
-  body binds to a name the file uses as a value, as `fast` in `return fast` does. A function that only calls
-  `fast.decode()` loads nothing as a value.
+  The same holds for a module reached as `app.fast` in `CODEC = app.fast`. A function body's import counts only when
+  that function loads the name it binds as a value, as `fast` in `return fast` does, so a function that only calls
+  `fast.decode()` leaves the module's other functions reported.
 
   ```python ok file=app/fast.py
   def decode(text: str) -> str:
@@ -161,6 +161,8 @@ def build_fixture() -> dict[str, int]:
   def test_decode() -> None:
       assert fast.decode("1") == "1"
   ```
+
+  A function that imports the module and loads its name as a value counts the same way:
 
   ```python ok file=app/fast.py
   def decode(text: str) -> str:

@@ -2394,6 +2394,16 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ;
     "dotted_import_alone"
 )]
+#[test_case(
+    "class Service:\n    import pkg.fast\n\n\ndef run(text: str) -> str:\n    return Service.pkg.fast.decode(text)\n",
+    "All checks passed!\n" ;
+    "dotted_import_in_class_read_through_the_class"
+)]
+#[test_case(
+    "def run(text: str) -> str:\n    from pkg import fast\n\n    return str(fast.OTHER)\n\n\ndef other(fast: object) -> object:\n    return fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ;
+    "function_attribute_while_another_parameter_is_named_the_module"
+)]
 fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service: &str, stdout: &str) {
     let root = project(&[
         ("pkg/__init__.py", ""),

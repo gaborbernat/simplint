@@ -183,6 +183,7 @@ impl FileFacts {
             constants(&parsed.syntax().body),
         );
         imports.visit_body(&parsed.syntax().body);
+        imports.finish_module();
         let functions = module_functions(&parsed.syntax().body);
         let classes = module_statements(&parsed.syntax().body)
             .filter_map(Stmt::as_class_def_stmt)
@@ -298,25 +299,19 @@ fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Ve
 }
 
 // The modules a file loads as a value: those among the names it binds that it loads as a value, as `fast` in
-// `codec = fast` does, and those a dotted name it loads as a value, as `app.fast` in `codec = app.fast`, names. An
-// import in a function body binds its name in the same way, and an import in a class body counts whatever its name is,
-// since other code reads the module through the class attribute.
+// `codec = fast` does, those a dotted name it loads as a value names, as `app.fast` in `codec = app.fast` does, and those
+// its class bodies and function bodies import and use, as the visitor works out.
 fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
     let dotted = imports
         .dotted_loads
         .iter()
         .filter_map(|dotted| visitor::qualified(&dotted.split('.').collect::<Vec<_>>(), &imports.aliases));
-    let nested = imports
-        .nested_modules
-        .iter()
-        .filter(|(bound, _, class_body)| *class_body || imports.value_loads.contains(bound.as_str()))
-        .map(|(_, module, _)| module.clone());
     module_names
         .iter()
         .filter(|(bound, _)| imports.value_loads.contains(bound.as_str()))
         .map(|(_, module)| module.clone())
         .chain(dotted)
-        .chain(nested)
+        .chain(imports.nested_modules.iter().cloned())
         .collect()
 }
 

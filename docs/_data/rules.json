@@ -11468,7 +11468,7 @@
     "name": "test-only-code",
     "summary": "Module-level functions and classes only test modules use",
     "fix": "None",
-    "explanation": "Flags module-level functions and classes that only test modules use, since they belong in the tests.\n\n## Why is this bad?\n\nCode that only tests call is test support, and it ships with the product. Readers take it for part of the package, and\nit outlives the tests that needed it. Moving it into the tests, or into a test helper module, keeps the package to what\nthe program runs.\n\n## Example\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python report file=app/builders.py\ndef build_fixture() -> dict[str, int]:  # only tests call it\n    return {\"id\": 1}\n```\n\nUse instead:\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python ok file=tests/helpers.py\ndef build_fixture() -> dict[str, int]:\n    return {\"id\": 1}\n```\n\n## What it does\n\n### Active on\n\n- **Module-level functions and classes** whose every reference in the run comes from a test module. A reference is an\n  import, a call, an attribute read through the module, or a dotted string the index records. Methods are not covered\n  yet, so a method used only by tests is not reported.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from app.builders import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **References through the module or a dotted string**: `module.name` in a test and a `\"pkg.module.name\"` string, such\n  as the target of `mock.patch`, count as references to `name`.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from unittest import mock\n\n  import app.builders as builders\n\n\n  def test_build() -> None:\n      assert builders.build_fixture() == 1\n      with mock.patch(\"app.builders.build_fixture\"):\n          pass\n  ```\n\n- **Classes**: a class with no reference outside the tests is reported under the same condition.\n\n  ```python report file=app/records.py\n  class Record:\n      pass\n  ```\n\n  ```python context file=tests/test_records.py\n  from app.records import Record\n\n\n  def test_record() -> None:\n      assert Record()\n  ```\n\n### Exceptions\n\n- **Names the run uses outside the tests**: a single use from application code keeps the name.\n\n  ```python ok file=app/shared.py\n  def shared() -> int:\n      return 1\n  ```\n\n  ```python context file=app/service.py\n  from app.shared import shared\n\n\n  def run() -> int:\n      return shared()\n  ```\n\n  ```python context file=tests/test_shared.py\n  from app.shared import shared\n\n\n  def test_shared() -> None:\n      assert shared() == 1\n  ```\n\n- **Modules the run loads as a value**: a module that production code binds and passes on, as `CODEC = fast` does, may\n  have each of its functions called through that value, so none of its names is reported.\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  from app import fast\n\n  CODEC = fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  The same holds for a module reached as `app.fast` in `CODEC = app.fast`, and for a module that an import in a function\n  body binds to a name the file uses as a value, as `fast` in `return fast` does. A function that only calls\n  `fast.decode()` loads nothing as a value.\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  import app.fast\n\n  CODEC = app.fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  def codec():\n      from app import fast\n\n      return fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  An import in a class body binds a class attribute, which other code reads as `Service.codec` without naming the\n  module, so it counts whatever the name is used for:\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  class Service:\n      from app import fast as codec\n\n\n  def run(text: str) -> str:\n      return Service.codec.decode(text)\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n- **A library's public API**: a name a public module offers, or that a user of the library may import, is public even\n  when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Names with no reference at all**: dead code is a different concern, so a function nothing calls is not reported\n  here.\n\n  ```python ok\n  def unused() -> int:\n      return 1\n  ```\n\n- **Entry points** named in `pyproject.toml`, which the program runs without any import.\n\n  ```toml config\n  [project]\n  name = \"tool\"\n\n  [project.scripts]\n  tool = \"app.cli:main\"\n  ```\n\n  ```python ok file=app/cli.py\n  def main() -> None:\n      pass\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      main()\n  ```\n\n- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source\n  directory when it starts, so a name those lines read is kept. A path line runs nothing.\n\n  ```python ok file=app/hook.py\n  def _run() -> None:\n      print(\"hook\")\n  ```\n\n  ```python context file=app.pth\n  # fmt: off\n  import app.hook; app.hook._run()\n  # fmt: on\n  ```\n\n  ```python context file=tests/test_hook.py\n  from app.hook import _run\n\n\n  def test_run() -> None:\n      _run()\n  ```\n\n- **Decorated definitions**: a decorator may register the definition with something outside the run, such as a plugin\n  list or a framework, so any decorated function or class is kept.\n\n  ```python ok file=app/registry.py\n  from functools import cache\n\n\n  @cache\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_registry.py\n  from app.registry import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Dunder names** such as `__getattr__`, which the interpreter reads without an import.\n\n  ```python ok file=app/lazy.py\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_lazy.py\n  from app.lazy import __getattr__\n\n\n  def test_lazy() -> None:\n      assert __getattr__(\"x\") == 1\n  ```\n\n- **Names the module uses itself**: a call from elsewhere in the module, or a name listed in `__all__`, keeps the\n  definition, since the module needs it whatever the tests do. A recursive call inside the definition does not count.\n\n  ```python ok file=app/tools.py\n  def normalize(text: str) -> str:\n      return text.strip()\n\n\n  def clean(text: str) -> str:\n      return normalize(text)\n  ```\n\n  ```python context file=tests/test_tools.py\n  from app.tools import normalize\n\n\n  def test_normalize() -> None:\n      assert normalize(\" a \") == \"a\"\n  ```\n\n- **Test modules**: a module that is itself a test module is not checked.\n\n  ```python ok file=tests/helpers.py\n  def make_user() -> str:\n      return \"alice\"\n  ```\n\nThe rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags module-level functions and classes that only test modules use, since they belong in the tests.\n\n## Why is this bad?\n\nCode that only tests call is test support, and it ships with the product. Readers take it for part of the package, and\nit outlives the tests that needed it. Moving it into the tests, or into a test helper module, keeps the package to what\nthe program runs.\n\n## Example\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python report file=app/builders.py\ndef build_fixture() -> dict[str, int]:  # only tests call it\n    return {\"id\": 1}\n```\n\nUse instead:\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python ok file=tests/helpers.py\ndef build_fixture() -> dict[str, int]:\n    return {\"id\": 1}\n```\n\n## What it does\n\n### Active on\n\n- **Module-level functions and classes** whose every reference in the run comes from a test module. A reference is an\n  import, a call, an attribute read through the module, or a dotted string the index records. Methods are not covered\n  yet, so a method used only by tests is not reported.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from app.builders import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **References through the module or a dotted string**: `module.name` in a test and a `\"pkg.module.name\"` string, such\n  as the target of `mock.patch`, count as references to `name`.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from unittest import mock\n\n  import app.builders as builders\n\n\n  def test_build() -> None:\n      assert builders.build_fixture() == 1\n      with mock.patch(\"app.builders.build_fixture\"):\n          pass\n  ```\n\n- **Classes**: a class with no reference outside the tests is reported under the same condition.\n\n  ```python report file=app/records.py\n  class Record:\n      pass\n  ```\n\n  ```python context file=tests/test_records.py\n  from app.records import Record\n\n\n  def test_record() -> None:\n      assert Record()\n  ```\n\n### Exceptions\n\n- **Names the run uses outside the tests**: a single use from application code keeps the name.\n\n  ```python ok file=app/shared.py\n  def shared() -> int:\n      return 1\n  ```\n\n  ```python context file=app/service.py\n  from app.shared import shared\n\n\n  def run() -> int:\n      return shared()\n  ```\n\n  ```python context file=tests/test_shared.py\n  from app.shared import shared\n\n\n  def test_shared() -> None:\n      assert shared() == 1\n  ```\n\n- **Modules the run loads as a value**: a module that production code binds and passes on, as `CODEC = fast` does, may\n  have each of its functions called through that value, so none of its names is reported.\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  from app import fast\n\n  CODEC = fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  The same holds for a module reached as `app.fast` in `CODEC = app.fast`. A function body's import counts only when\n  that function loads the name it binds as a value, as `fast` in `return fast` does, so a function that only calls\n  `fast.decode()` leaves the module's other functions reported.\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  import app.fast\n\n  CODEC = app.fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  A function that imports the module and loads its name as a value counts the same way:\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  def codec():\n      from app import fast\n\n      return fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n  An import in a class body binds a class attribute, which other code reads as `Service.codec` without naming the\n  module, so it counts whatever the name is used for:\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  class Service:\n      from app import fast as codec\n\n\n  def run(text: str) -> str:\n      return Service.codec.decode(text)\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n- **A library's public API**: a name a public module offers, or that a user of the library may import, is public even\n  when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Names with no reference at all**: dead code is a different concern, so a function nothing calls is not reported\n  here.\n\n  ```python ok\n  def unused() -> int:\n      return 1\n  ```\n\n- **Entry points** named in `pyproject.toml`, which the program runs without any import.\n\n  ```toml config\n  [project]\n  name = \"tool\"\n\n  [project.scripts]\n  tool = \"app.cli:main\"\n  ```\n\n  ```python ok file=app/cli.py\n  def main() -> None:\n      pass\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      main()\n  ```\n\n- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source\n  directory when it starts, so a name those lines read is kept. A path line runs nothing.\n\n  ```python ok file=app/hook.py\n  def _run() -> None:\n      print(\"hook\")\n  ```\n\n  ```python context file=app.pth\n  # fmt: off\n  import app.hook; app.hook._run()\n  # fmt: on\n  ```\n\n  ```python context file=tests/test_hook.py\n  from app.hook import _run\n\n\n  def test_run() -> None:\n      _run()\n  ```\n\n- **Decorated definitions**: a decorator may register the definition with something outside the run, such as a plugin\n  list or a framework, so any decorated function or class is kept.\n\n  ```python ok file=app/registry.py\n  from functools import cache\n\n\n  @cache\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_registry.py\n  from app.registry import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Dunder names** such as `__getattr__`, which the interpreter reads without an import.\n\n  ```python ok file=app/lazy.py\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_lazy.py\n  from app.lazy import __getattr__\n\n\n  def test_lazy() -> None:\n      assert __getattr__(\"x\") == 1\n  ```\n\n- **Names the module uses itself**: a call from elsewhere in the module, or a name listed in `__all__`, keeps the\n  definition, since the module needs it whatever the tests do. A recursive call inside the definition does not count.\n\n  ```python ok file=app/tools.py\n  def normalize(text: str) -> str:\n      return text.strip()\n\n\n  def clean(text: str) -> str:\n      return normalize(text)\n  ```\n\n  ```python context file=tests/test_tools.py\n  from app.tools import normalize\n\n\n  def test_normalize() -> None:\n      assert normalize(\" a \") == \"a\"\n  ```\n\n- **Test modules**: a module that is itself a test module is not checked.\n\n  ```python ok file=tests/helpers.py\n  def make_user() -> str:\n      return \"alice\"\n  ```\n\nThe rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -11674,7 +11674,7 @@
         {
           "section": "What it does",
           "line": 146,
-          "end_line": 183,
+          "end_line": 163,
           "config": null,
           "blocks": [
             {
@@ -11703,40 +11703,13 @@
               "line": 157,
               "end_line": 163,
               "source": "from app import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "app/fast.py",
-              "named": true,
-              "line": 165,
-              "end_line": 168,
-              "source": "def decode(text: str) -> str:\n    return text\n"
-            },
-            {
-              "role": "context",
-              "language": "python",
-              "file": "app/service.py",
-              "named": true,
-              "line": 170,
-              "end_line": 175,
-              "source": "def codec():\n    from app import fast\n\n    return fast\n"
-            },
-            {
-              "role": "context",
-              "language": "python",
-              "file": "tests/test_fast.py",
-              "named": true,
-              "line": 177,
-              "end_line": 183,
-              "source": "from app import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 188,
-          "end_line": 208,
+          "line": 167,
+          "end_line": 185,
           "config": null,
           "blocks": [
             {
@@ -11744,8 +11717,8 @@
               "language": "python",
               "file": "app/fast.py",
               "named": true,
-              "line": 188,
-              "end_line": 191,
+              "line": 167,
+              "end_line": 170,
               "source": "def decode(text: str) -> str:\n    return text\n"
             },
             {
@@ -11753,8 +11726,43 @@
               "language": "python",
               "file": "app/service.py",
               "named": true,
-              "line": 193,
-              "end_line": 200,
+              "line": 172,
+              "end_line": 177,
+              "source": "def codec():\n    from app import fast\n\n    return fast\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "tests/test_fast.py",
+              "named": true,
+              "line": 179,
+              "end_line": 185,
+              "source": "from app import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 190,
+          "end_line": 210,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "app/fast.py",
+              "named": true,
+              "line": 190,
+              "end_line": 193,
+              "source": "def decode(text: str) -> str:\n    return text\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "app/service.py",
+              "named": true,
+              "line": 195,
+              "end_line": 202,
               "source": "class Service:\n    from app import fast as codec\n\n\ndef run(text: str) -> str:\n    return Service.codec.decode(text)\n"
             },
             {
@@ -11762,19 +11770,19 @@
               "language": "python",
               "file": "tests/test_fast.py",
               "named": true,
-              "line": 202,
-              "end_line": 208,
+              "line": 204,
+              "end_line": 210,
               "source": "from app import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 213,
-          "end_line": 232,
+          "line": 215,
+          "end_line": 234,
           "config": {
-            "line": 213,
-            "end_line": 219,
+            "line": 215,
+            "end_line": 221,
             "source": "[build-system]\nrequires = [\"setuptools\"]\n\n[project]\nname = \"mylib\"\n"
           },
           "blocks": [
@@ -11783,8 +11791,8 @@
               "language": "python",
               "file": "mylib/api.py",
               "named": true,
-              "line": 221,
-              "end_line": 224,
+              "line": 223,
+              "end_line": 226,
               "source": "def build_fixture() -> int:\n    return 1\n"
             },
             {
@@ -11792,16 +11800,16 @@
               "language": "python",
               "file": "tests/test_api.py",
               "named": true,
-              "line": 226,
-              "end_line": 232,
+              "line": 228,
+              "end_line": 234,
               "source": "from mylib.api import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 237,
-          "end_line": 240,
+          "line": 239,
+          "end_line": 242,
           "config": null,
           "blocks": [
             {
@@ -11809,19 +11817,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 237,
-              "end_line": 240,
+              "line": 239,
+              "end_line": 242,
               "source": "def unused() -> int:\n    return 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 244,
-          "end_line": 263,
+          "line": 246,
+          "end_line": 265,
           "config": {
-            "line": 244,
-            "end_line": 250,
+            "line": 246,
+            "end_line": 252,
             "source": "[project]\nname = \"tool\"\n\n[project.scripts]\ntool = \"app.cli:main\"\n"
           },
           "blocks": [
@@ -11830,8 +11838,8 @@
               "language": "python",
               "file": "app/cli.py",
               "named": true,
-              "line": 252,
-              "end_line": 255,
+              "line": 254,
+              "end_line": 257,
               "source": "def main() -> None:\n    pass\n"
             },
             {
@@ -11839,16 +11847,16 @@
               "language": "python",
               "file": "tests/test_cli.py",
               "named": true,
-              "line": 257,
-              "end_line": 263,
+              "line": 259,
+              "end_line": 265,
               "source": "from app.cli import main\n\n\ndef test_main() -> None:\n    main()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 268,
-          "end_line": 285,
+          "line": 270,
+          "end_line": 287,
           "config": null,
           "blocks": [
             {
@@ -11856,8 +11864,8 @@
               "language": "python",
               "file": "app/hook.py",
               "named": true,
-              "line": 268,
-              "end_line": 271,
+              "line": 270,
+              "end_line": 273,
               "source": "def _run() -> None:\n    print(\"hook\")\n"
             },
             {
@@ -11865,8 +11873,8 @@
               "language": "python",
               "file": "app.pth",
               "named": true,
-              "line": 273,
-              "end_line": 277,
+              "line": 275,
+              "end_line": 279,
               "source": "# fmt: off\nimport app.hook; app.hook._run()\n# fmt: on\n"
             },
             {
@@ -11874,16 +11882,16 @@
               "language": "python",
               "file": "tests/test_hook.py",
               "named": true,
-              "line": 279,
-              "end_line": 285,
+              "line": 281,
+              "end_line": 287,
               "source": "from app.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 290,
-          "end_line": 305,
+          "line": 292,
+          "end_line": 307,
           "config": null,
           "blocks": [
             {
@@ -11891,8 +11899,8 @@
               "language": "python",
               "file": "app/registry.py",
               "named": true,
-              "line": 290,
-              "end_line": 297,
+              "line": 292,
+              "end_line": 299,
               "source": "from functools import cache\n\n\n@cache\ndef build_fixture() -> int:\n    return 1\n"
             },
             {
@@ -11900,16 +11908,16 @@
               "language": "python",
               "file": "tests/test_registry.py",
               "named": true,
-              "line": 299,
-              "end_line": 305,
+              "line": 301,
+              "end_line": 307,
               "source": "from app.registry import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 309,
-          "end_line": 320,
+          "line": 311,
+          "end_line": 322,
           "config": null,
           "blocks": [
             {
@@ -11917,8 +11925,8 @@
               "language": "python",
               "file": "app/lazy.py",
               "named": true,
-              "line": 309,
-              "end_line": 312,
+              "line": 311,
+              "end_line": 314,
               "source": "def __getattr__(name: str) -> int:\n    return 1\n"
             },
             {
@@ -11926,16 +11934,16 @@
               "language": "python",
               "file": "tests/test_lazy.py",
               "named": true,
-              "line": 314,
-              "end_line": 320,
+              "line": 316,
+              "end_line": 322,
               "source": "from app.lazy import __getattr__\n\n\ndef test_lazy() -> None:\n    assert __getattr__(\"x\") == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 325,
-          "end_line": 340,
+          "line": 327,
+          "end_line": 342,
           "config": null,
           "blocks": [
             {
@@ -11943,8 +11951,8 @@
               "language": "python",
               "file": "app/tools.py",
               "named": true,
-              "line": 325,
-              "end_line": 332,
+              "line": 327,
+              "end_line": 334,
               "source": "def normalize(text: str) -> str:\n    return text.strip()\n\n\ndef clean(text: str) -> str:\n    return normalize(text)\n"
             },
             {
@@ -11952,16 +11960,16 @@
               "language": "python",
               "file": "tests/test_tools.py",
               "named": true,
-              "line": 334,
-              "end_line": 340,
+              "line": 336,
+              "end_line": 342,
               "source": "from app.tools import normalize\n\n\ndef test_normalize() -> None:\n    assert normalize(\" a \") == \"a\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 344,
-          "end_line": 347,
+          "line": 346,
+          "end_line": 349,
           "config": null,
           "blocks": [
             {
@@ -11969,8 +11977,8 @@
               "language": "python",
               "file": "tests/helpers.py",
               "named": true,
-              "line": 344,
-              "end_line": 347,
+              "line": 346,
+              "end_line": 349,
               "source": "def make_user() -> str:\n    return \"alice\"\n"
             }
           ]
