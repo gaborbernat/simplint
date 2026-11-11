@@ -14,7 +14,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 94:9 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
 98:9 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
 102:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
---- fixed (7 applied, 5 remaining) ---
+107:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+--- fixed (7 applied, 6 remaining) ---
 import warnings
 from warnings import warn
 import warnings as w
@@ -118,4 +119,9 @@ class Settings:
 
 @w.deprecated("aliased_module() is deprecated")
 def aliased_module(host):
+    return host
+
+
+def trailing_comment(host):
+    warnings.warn("trailing_comment() is deprecated", DeprecationWarning)  # remove in 3.0
     return host

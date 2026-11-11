@@ -109,6 +109,31 @@ No fix is offered when the message is not a string literal on one line, since th
 function is defined, where an f-string could read a parameter that does not exist yet. None either when the warning has
 a comment, or when `warn` is imported by name, since the decorator needs the `warnings` module.
 
+A comment on the line of the call counts as well, since the fix would remove that line with it:
+
+```toml config
+[project]
+requires-python = ">=3.13"
+```
+
+```python report
+import warnings
+
+
+def connect(host):
+    warnings.warn("connect() is deprecated", DeprecationWarning)  # remove in 3.0
+    return host
+```
+
+```python fixed
+import warnings
+
+
+def connect(host):
+    warnings.warn("connect() is deprecated", DeprecationWarning)  # remove in 3.0
+    return host
+```
+
 ### Exceptions
 
 - **A warning that is not the first statement**: the function may do work before it, which the decorator would change.

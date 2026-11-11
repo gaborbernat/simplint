@@ -20250,7 +20250,7 @@
     "name": "up-warnings-deprecated",
     "summary": "Functions and classes that warn with `DeprecationWarning` where `@warnings.deprecated` marks them",
     "fix": "Sometimes",
-    "explanation": "Flags functions and classes that open with a `warnings.warn()` call of `DeprecationWarning`, which\n`@warnings.deprecated` replaces from Python 3.13.\n\n## Why is this bad?\n\n`warnings.deprecated()` is a decorator that marks a function, class or overload as deprecated. Type checkers report its\nuses, and the decorator emits the `DeprecationWarning` when the object is called, instantiated or subclassed. A\n`warnings.warn()` call in the body only warns at runtime, so a type checker cannot tell which code is deprecated, and\nthe warning's location is set by a `stacklevel` argument that each project has to get right.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated, use open()\", DeprecationWarning, stacklevel=2)\n    return host\n```\n\nUse instead:\n\n```python ok\nimport warnings\n\n\n@warnings.deprecated(\"connect() is deprecated, use open()\")\ndef connect(host):\n    return host\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() is deprecated, use open()\", DeprecationWarning)\n      return host\n  ```\n\n## What it does\n\n### Active on\n\n- **Functions, methods and classes whose first statement after the docstring calls `warnings.warn()` with\n  `DeprecationWarning`**, passed as the second argument or as `category=`. The report sits on the call. **Unsafe fix:**\n  the call is removed and a `@warnings.deprecated(...)` decorator takes its message, placed below any other decorator,\n  since `@warnings.deprecated` raises `TypeError` on the object `@property` or `@classmethod` returns.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import warnings\n\n\n  class Client:\n      \"\"\"A client for the old protocol.\"\"\"\n\n      warnings.warn(\"Client is deprecated\", DeprecationWarning, stacklevel=2)\n\n      def send(self, data):\n          return data\n  ```\n\n  ```python fixed\n  import warnings\n\n\n  @warnings.deprecated(\"Client is deprecated\")\n  class Client:\n      \"\"\"A client for the old protocol.\"\"\"\n\n      def send(self, data):\n          return data\n  ```\n\n### Fix\n\nThe fix is unsafe, because the decorator does not warn where the call did:\n\n- A class body warns when the class is defined. `@warnings.deprecated` on a class warns when an instance is created or a\n  subclass is defined, so the warning moves from import time to those uses.\n- A `stacklevel` of 2 points the warning at the caller in both forms. The default of 1 points it inside the function,\n  which the decorator no longer does, since it always reports the caller.\n- The decorator has its own `stacklevel`, so the call's `stacklevel` argument is dropped.\n\nNo fix is offered when the message is not a string literal on one line, since the decorator evaluates it where the\nfunction is defined, where an f-string could read a parameter that does not exist yet. None either when the warning has\na comment, or when `warn` is imported by name, since the decorator needs the `warnings` module.\n\n### Exceptions\n\n- **A warning that is not the first statement**: the function may do work before it, which the decorator would change.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      validate(host)\n      warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n      return host\n\n\n  def validate(host):\n      return host\n  ```\n\n- **Another category**: a `FutureWarning` or a user warning class is not a deprecation that the decorator marks.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() changes\", FutureWarning)\n      return host\n  ```\n\n- **Targets before Python 3.13**: `warnings.deprecated` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n      return host\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [B028](https://docs.astral.sh/ruff/rules/no-explicit-stacklevel/) reports the same call when it lacks `stacklevel` and\n  adds one; this rule replaces the call with the decorator.\n- [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports functions that call `warnings.warn` where\n  `warnings.deprecated` fits, as [FTP118](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp118), with no\n  fix.\n",
+    "explanation": "Flags functions and classes that open with a `warnings.warn()` call of `DeprecationWarning`, which\n`@warnings.deprecated` replaces from Python 3.13.\n\n## Why is this bad?\n\n`warnings.deprecated()` is a decorator that marks a function, class or overload as deprecated. Type checkers report its\nuses, and the decorator emits the `DeprecationWarning` when the object is called, instantiated or subclassed. A\n`warnings.warn()` call in the body only warns at runtime, so a type checker cannot tell which code is deprecated, and\nthe warning's location is set by a `stacklevel` argument that each project has to get right.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated, use open()\", DeprecationWarning, stacklevel=2)\n    return host\n```\n\nUse instead:\n\n```python ok\nimport warnings\n\n\n@warnings.deprecated(\"connect() is deprecated, use open()\")\ndef connect(host):\n    return host\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() is deprecated, use open()\", DeprecationWarning)\n      return host\n  ```\n\n## What it does\n\n### Active on\n\n- **Functions, methods and classes whose first statement after the docstring calls `warnings.warn()` with\n  `DeprecationWarning`**, passed as the second argument or as `category=`. The report sits on the call. **Unsafe fix:**\n  the call is removed and a `@warnings.deprecated(...)` decorator takes its message, placed below any other decorator,\n  since `@warnings.deprecated` raises `TypeError` on the object `@property` or `@classmethod` returns.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import warnings\n\n\n  class Client:\n      \"\"\"A client for the old protocol.\"\"\"\n\n      warnings.warn(\"Client is deprecated\", DeprecationWarning, stacklevel=2)\n\n      def send(self, data):\n          return data\n  ```\n\n  ```python fixed\n  import warnings\n\n\n  @warnings.deprecated(\"Client is deprecated\")\n  class Client:\n      \"\"\"A client for the old protocol.\"\"\"\n\n      def send(self, data):\n          return data\n  ```\n\n### Fix\n\nThe fix is unsafe, because the decorator does not warn where the call did:\n\n- A class body warns when the class is defined. `@warnings.deprecated` on a class warns when an instance is created or a\n  subclass is defined, so the warning moves from import time to those uses.\n- A `stacklevel` of 2 points the warning at the caller in both forms. The default of 1 points it inside the function,\n  which the decorator no longer does, since it always reports the caller.\n- The decorator has its own `stacklevel`, so the call's `stacklevel` argument is dropped.\n\nNo fix is offered when the message is not a string literal on one line, since the decorator evaluates it where the\nfunction is defined, where an f-string could read a parameter that does not exist yet. None either when the warning has\na comment, or when `warn` is imported by name, since the decorator needs the `warnings` module.\n\nA comment on the line of the call counts as well, since the fix would remove that line with it:\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)  # remove in 3.0\n    return host\n```\n\n```python fixed\nimport warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)  # remove in 3.0\n    return host\n```\n\n### Exceptions\n\n- **A warning that is not the first statement**: the function may do work before it, which the decorator would change.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      validate(host)\n      warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n      return host\n\n\n  def validate(host):\n      return host\n  ```\n\n- **Another category**: a `FutureWarning` or a user warning class is not a deprecation that the decorator marks.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() changes\", FutureWarning)\n      return host\n  ```\n\n- **Targets before Python 3.13**: `warnings.deprecated` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import warnings\n\n\n  def connect(host):\n      warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n      return host\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [B028](https://docs.astral.sh/ruff/rules/no-explicit-stacklevel/) reports the same call when it lacks `stacklevel` and\n  adds one; this rule replaces the call with the decorator.\n- [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports functions that call `warnings.warn` where\n  `warnings.deprecated` fits, as [FTP118](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp118), with no\n  fix.\n",
     "examples": {
       "parsed": [
         {
@@ -20348,11 +20348,41 @@
         },
         {
           "section": "What it does",
-          "line": 116,
-          "end_line": 133,
+          "line": 114,
+          "end_line": 135,
           "config": {
-            "line": 116,
-            "end_line": 119,
+            "line": 114,
+            "end_line": 117,
+            "source": "[project]\nrequires-python = \">=3.13\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 119,
+              "end_line": 126,
+              "source": "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)  # remove in 3.0\n    return host\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 128,
+              "end_line": 135,
+              "source": "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)  # remove in 3.0\n    return host\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 141,
+          "end_line": 158,
+          "config": {
+            "line": 141,
+            "end_line": 144,
             "source": "[project]\nrequires-python = \">=3.13\"\n"
           },
           "blocks": [
@@ -20361,19 +20391,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 121,
-              "end_line": 133,
+              "line": 146,
+              "end_line": 158,
               "source": "import warnings\n\n\ndef connect(host):\n    validate(host)\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n    return host\n\n\ndef validate(host):\n    return host\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 137,
-          "end_line": 149,
+          "line": 162,
+          "end_line": 174,
           "config": {
-            "line": 137,
-            "end_line": 140,
+            "line": 162,
+            "end_line": 165,
             "source": "[project]\nrequires-python = \">=3.13\"\n"
           },
           "blocks": [
@@ -20382,19 +20412,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 142,
-              "end_line": 149,
+              "line": 167,
+              "end_line": 174,
               "source": "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() changes\", FutureWarning)\n    return host\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 153,
-          "end_line": 165,
+          "line": 178,
+          "end_line": 190,
           "config": {
-            "line": 153,
-            "end_line": 156,
+            "line": 178,
+            "end_line": 181,
             "source": "[tool.ruff]\ntarget-version = \"py312\"\n"
           },
           "blocks": [
@@ -20403,8 +20433,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 158,
-              "end_line": 165,
+              "line": 183,
+              "end_line": 190,
               "source": "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning)\n    return host\n"
             }
           ]
