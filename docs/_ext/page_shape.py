@@ -47,7 +47,7 @@ def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
         table.replace_self(nodes.raw("", f"{table.astext()}{script}", format="html"))
     examples = list(doctree.findall(dropdown_main))
     badges = next((node for node in raws if '<div class="badges">' in node.astext()), None)
-    if examples and badges is not None:
+    if badges is not None and any("example-static" not in example["classes"] for example in examples):
         switch = '<button type="button" class="badge example-switch" aria-expanded="false">Expand all examples</button>'
         badges.replace_self(nodes.raw("", badges.astext().replace("</div>", f"{switch}</div>"), format="html"))
     count = 0
@@ -55,6 +55,8 @@ def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
         classes = example["classes"]
         if "example-fix" in classes or "example-pair" in classes:
             _add_measures(example)
+        if "example-static" in classes:
+            continue
         kind = next((name for name in _EXAMPLE_TOGGLES if name in classes), None)
         item = next((parent for parent in _ancestors(example) if isinstance(parent, nodes.list_item)), None)
         paragraph = (

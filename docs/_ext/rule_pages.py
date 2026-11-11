@@ -155,7 +155,7 @@ def _rule_page(rule: RuleEntry) -> str:
 
 def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> list[str]:
     if heading != "Example":
-        return [_examples(lines, start, stop, by_line, settings=heading == "Configuration").strip(), ""]
+        return [_examples(lines, start, stop, by_line, heading).strip(), ""]
     if (marker := next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)) is not None:
         flagged, preferred = _numbered(lines, start, marker, by_line), _numbered(lines, marker + 1, stop, by_line)
     else:
@@ -183,9 +183,12 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
     return [*body, "::::", ""]
 
 
-def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, settings: bool) -> str:
+def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], heading: str) -> str:
     # Examples with no prose between them form a run, rendered together so a reported one can sit beside its accepted
     # one. Only the Active on cases pair a reported example with its accepted one.
+    settings = heading == "Configuration"
+    # only the cases under What it does fold away; the examples of every other section stay open
+    folds = heading == "What it does"
     out: list[str] = []
     run: list[Example] = []
     index = start
@@ -198,7 +201,7 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
             continue
         line = lines[index]
         if line.strip():
-            out.extend(_render(run, lines, settings=settings, pair=active))
+            out.extend(_render(run, lines, settings=settings, pair=active, folds=folds))
             run = []
         if line.startswith("### "):
             active = line == "### Active on"
@@ -207,7 +210,7 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
     # a section ends with the newline that precedes the next heading, so the text after its last line is an empty line
     if stop < len(lines):
         out.append("")
-    out.extend(_render(run, lines, settings=settings, pair=active))
+    out.extend(_render(run, lines, settings=settings, pair=active, folds=folds))
     return "\n".join(out)
 
 
@@ -227,15 +230,15 @@ def _own_config(example: Example) -> Fence | None:
     return config if config is not None and config["line"] == example["line"] else None
 
 
-def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool) -> list[str]:
+def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool, folds: bool) -> list[str]:
     out: list[str] = []
     index = 0
     while index < len(run):
         if pair and index + 1 < len(run) and _pairs(run[index], run[index + 1]):
-            out.extend(_pair(run[index], run[index + 1], lines))
+            out.extend(_pair(run[index], run[index + 1], lines, folds=folds))
             index += 2
         else:
-            out.extend(_dropdown(run[index], lines, settings=settings))
+            out.extend(_dropdown(run[index], lines, settings=settings, folds=folds))
             index += 1
     return out
 
@@ -250,12 +253,11 @@ def _config_source(example: Example) -> str | None:
     return None if (config := example["config"]) is None else config["source"]
 
 
-def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
+def _pair(reported: Example, accepted: Example, lines: list[str], *, folds: bool) -> list[str]:
     indent = _indent(lines, reported)
     out = [
         f"{indent}::::{{dropdown}} Example: reported and not",
-        f"{indent}:class-container: example example-pair",
-        "",
+        *_dropdown_options(indent, "pair", folds=folds),
     ]
     if (config := reported["config"]) is not None:
         out.extend(_code_block(indent, "toml", "`pyproject.toml`", _body(lines, config)))
@@ -266,6 +268,13 @@ def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
             out.extend(_code_block(indent, block["language"], label, _body(lines, block)))
         out.extend([f"{indent}:::", ""])
     return [*out, f"{indent}::::", ""]
+
+
+# an example that does not fold opens with its page and drops its title bar, so nothing closes it
+def _dropdown_options(indent: str, kind: str, *, folds: bool) -> list[str]:
+    if folds:
+        return [f"{indent}:class-container: example example-{kind}", ""]
+    return [f"{indent}:open:", f"{indent}:class-container: example example-{kind} example-static", ""]
 
 
 def _indent(lines: list[str], example: Example) -> str:
@@ -294,7 +303,7 @@ def _caption(block: Block, side: str) -> str:
     return f"`{block['file']}` {side}" if block["named"] else side.capitalize()
 
 
-def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str]:
+def _dropdown(example: Example, lines: list[str], *, settings: bool, folds: bool) -> list[str]:
     roles = {block["role"] for block in example["blocks"]}
     config = example["config"]
     # an example elsewhere may need a setting to run, as the rst rules do, yet it shows a case, not the setting
@@ -309,7 +318,7 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str
     indent = _indent(lines, example)
     # the role class lets the stylesheet and rules.js find each example and tell its kind apart
     kind = title.replace(" ", "-")
-    out = [f"{indent}::::{{dropdown}} Example: {title}", f"{indent}:class-container: example example-{kind}", ""]
+    out = [f"{indent}::::{{dropdown}} Example: {title}", *_dropdown_options(indent, kind, folds=folds)]
     if config is not None:
         out.extend(_code_block(indent, "toml", "`pyproject.toml`", _body(lines, config)))
     for block in example["blocks"]:

@@ -106,7 +106,7 @@ function linkExampleSwitch() {
   if (!button) {
     return;
   }
-  const examples = [...document.querySelectorAll("details.example")];
+  const examples = [...document.querySelectorAll("details.example:not(.example-static)")];
   const update = () => {
     const allOpen = examples.every((example) => example.open);
     button.textContent = allOpen ? "Collapse all examples" : "Expand all examples";
