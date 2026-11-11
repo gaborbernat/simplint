@@ -106,7 +106,7 @@ def render(table: dict[str, Span]) -> str:
     # :returns: the Rust source of the table
     rows = "".join(
         f'    Submodule {{ name: "{name}", added: {span.added}, '
-        f'removed: {"None" if span.removed is None else f"Some({span.removed})"} }},\n'
+        f"removed: {'None' if span.removed is None else f'Some({span.removed})'} }},\n"
         for name, span in sorted(table.items())
     )
     return (
