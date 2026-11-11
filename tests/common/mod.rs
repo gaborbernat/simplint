@@ -58,7 +58,7 @@ pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
 }
 
 pub fn fix_safe(root: &Path, select: &str) -> (i32, String, String) {
-    check(root, &["--fix", "--select", select])
+    check(root, &["--no-cache", "--fix", "--select", select])
 }
 
 // The fix run keeps the report of `select` on `file` and leaves the file as it is.

@@ -128,11 +128,11 @@ def _settle_page(
 
 def _point_generated_pages_at_their_source(pagename: str, context: _PageContext) -> None:
     # Generated pages have no file under docs/, so the theme's view and edit icons would point nowhere: a rule page
-    # comes from its explanation in the crate, the group pages from this configuration.
+    # comes from its explanation in the crate, the group pages from the generator.
     if pagename.startswith("rules/"):
         source = context["rule_sources"][pagename.rsplit("/", 1)[1]]
     elif pagename.startswith("groups/"):
-        source = "docs/conf.py"
+        source = "docs/_ext/rule_pages.py"
     else:
         return
     context["theme_source_edit_link"] = f"https://github.com/gaborbernat/simplint/edit/main/{source}"

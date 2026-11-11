@@ -681,6 +681,10 @@ fn warm_run_after_change_matches_a_fresh_run(files: &[(&str, &str)], change: Cha
 #[test_case(&[("helpers.py", HELPER)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_added")]
 #[test_case(&[("helpers.py", HELPER), ("client.py", CLIENT)], Change::Remove("client.py"), "SMP401", &["."] ; "importer_removed")]
 #[test_case(
+    &[("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"), ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")],
+    Change::Write("pkg/__init__.py", ""), "SMP302", &["."] ; "namespace_package_gains_an_init_module"
+)]
+#[test_case(
     &[("lib/helpers.py", HELPER), ("client.py", CLIENT)],
     Change::Write("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"), "SMP401", &["."] ; "source_root_changed"
 )]
@@ -840,7 +844,7 @@ fn full_text_follows_the_working_directory() {
     let file = root.path().join("module.py");
     let file = file.to_str().expect("utf-8 path");
     let full_in = |dir: &Path, args: &[&str]| {
-        let args = [&["check", "--output-format", "full", "--select", "SMP001,SMP901", "--exit-zero"], args].concat();
+        let args = [&["--output-format", "full", "--select", "SMP001,SMP901", "--exit-zero"], args].concat();
         check_in(root.path(), dir, &args).1
     };
     full_in(root.path(), &[file]);
