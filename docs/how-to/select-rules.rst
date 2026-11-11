@@ -40,8 +40,9 @@ Each entry is a rule code (``SMP601``), a code prefix (``SMP1``) or a rule name 
 
     An entry that matches no rule stops the run with an error, and so does a key the table does not know.
 
-When ``select`` and ``ignore`` both match a rule, the **more specific entry wins**, as in Ruff, and ``ignore`` wins a
-tie. So ``select = ["SMP6"]`` with ``ignore = ["SMP601"]`` enables every ``SMP6`` rule but ``SMP601``.
+When ``select`` and ``ignore`` both match a rule, the **more specific entry wins**, as in `Ruff
+<https://docs.astral.sh/ruff/>`__, and ``ignore`` wins a tie. So ``select = ["SMP6"]`` with ``ignore = ["SMP601"]``
+enables every ``SMP6`` rule but ``SMP601``.
 
 On the command line:
 
