@@ -652,3 +652,16 @@ fn class_passed_to_a_call_in_an_annotation_keeps_its_positional_calls() {
     common::fix_unsafe(root.path(), "dataclass-kw-only");
     assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
 }
+
+// A `__dict__` store through a name an annotation types as a class of the run withholds `frozen`, as a frozen instance
+// rejects it; through a name the run does not define, it is no store on the class.
+#[test_case("Counter", false ; "annotated_dict_store")]
+#[test_case("Any", true ; "unknown_class_dict_store")]
+fn annotated_dict_store_keeps_frozen_unset(annotation: &str, fixed: bool) {
+    let source = format!(
+        "from dataclasses import dataclass\nfrom typing import Any\n\n\n@dataclass\nclass Counter:\n    count: int\n\n\ndef reset(counter: {annotation}) -> None:\n    counter.__dict__ = {{\"count\": 0}}\n"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Counter:"), fixed);
+}
