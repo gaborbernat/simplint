@@ -154,22 +154,32 @@ def _rule_page(rule: RuleEntry) -> str:
 
 
 def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> list[str]:
-    marker = next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)
-    if heading != "Example" or marker is None:
+    if heading != "Example":
         return [_examples(lines, start, stop, by_line, settings=heading == "Configuration").strip(), ""]
+    if (marker := next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)) is not None:
+        flagged, preferred = _numbered(lines, start, marker, by_line), _numbered(lines, marker + 1, stop, by_line)
+    else:
+        # without a "Use instead:" line, the fixed code of a reported example and whatever follows the last reported
+        # example show what to write instead
+        reported = [
+            example
+            for line, example in by_line.items()
+            if start < line <= stop and any(block["role"] == "report" for block in example["blocks"])
+        ]
+        split = max(example["end_line"] for example in reported)
+        fixed = [
+            "\n".join(
+                _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
+            )
+            for example in reported
+            for block in example["blocks"]
+            if block["role"] == "fixed"
+        ]
+        flagged = _numbered(lines, start, split, by_line, hidden="fixed")
+        preferred = "\n\n".join(part for part in (*fixed, _numbered(lines, split, stop, by_line)) if part)
     body = ["::::{grid} 1", ":gutter: 2", ""]
-    for label, css, (begin, finish) in (
-        ("Flagged", "bad", (start, marker)),
-        ("Preferred", "good", (marker + 1, stop)),
-    ):
-        body.extend([
-            f":::{{grid-item-card}} {label}",
-            f":class-card: example {css}",
-            "",
-            _numbered(lines, begin, finish, by_line),
-            ":::",
-            "",
-        ])
+    for label, css, content in (("Flagged", "bad", flagged), ("Preferred", "good", preferred)):
+        body.extend([f":::{{grid-item-card}} {label}", f":class-card: example {css}", "", content, ":::", ""])
     return [*body, "::::", ""]
 
 
@@ -317,13 +327,13 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str
 
 
 # an Example section shows each example as a card: its config is not numbered, and context files are left out
-def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> str:
+def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, hidden: str = "context") -> str:
     out: list[str] = []
     skip_blank = False
     index = start
     while index < stop:
         if (example := by_line.get(index + 1)) is not None:
-            cards, skip_blank = _cards(lines, example, skip_blank=skip_blank)
+            cards, skip_blank = _cards(lines, example, skip_blank=skip_blank, hidden=hidden)
             out.extend(cards)
             index = example["end_line"]
             continue
@@ -337,7 +347,7 @@ def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
 
 # A context file only sets up its example for the test, so the card leaves it out with the blank lines after it. The
 # returned flag says whether the blank lines after the example still belong to such a file.
-def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[list[str], bool]:
+def _cards(lines: list[str], example: Example, *, skip_blank: bool, hidden: str) -> tuple[list[str], bool]:
     out: list[str] = []
     previous = example["line"] - 1
     if (config := _own_config(example)) is not None:
@@ -348,7 +358,7 @@ def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[lis
         if not skip_blank:
             out.extend(lines[previous : block["line"] - 1])
         previous = block["end_line"]
-        skip_blank = block["role"] == "context"
+        skip_blank = block["role"] in {"context", hidden}
         if not skip_blank:
             out.extend(
                 _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
