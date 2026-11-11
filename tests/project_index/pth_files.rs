@@ -12,6 +12,12 @@ fn startup_pth_under_src_keeps_the_name() {
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
+    let without_pth = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/hook.py", HOOK_PROJECT),
+        ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
+    ]);
+    assert!(check(without_pth.path(), &["--select", "SMP408"]).1.contains("`_run` is used only by tests"));
 }
 
 // A production module that passes another module on as a value calls that module's functions through the value, which

@@ -133,6 +133,12 @@ fn name_read_by_the_outer_project_is_used_in_a_nested_project() {
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
     assert!(!stdout.contains(&common::native("roots/test-a/support.py")), "{stdout}");
+    let unread = project(&[
+        ("pyproject.toml", DEMO),
+        ("roots/test-a/conf.py", ""),
+        ("roots/test-a/support.py", "def helper() -> None:\n    pass\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP409"]).1.contains(&common::native("roots/test-a/support.py")));
 }
 
 // A name a nested project reads does not count as used in the run's project, which does not see the nested project.
@@ -244,6 +250,14 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
     ]);
     let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
     assert_eq!(stdout, common::PASSED);
+    let outside = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\nversion = \"0\"\n\n[tool.simplint]\nproject-kind = \"library\"\n",
+        ),
+        ("roots/fixtures/mod.py", "def _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n"),
+    ]);
+    assert!(check(outside.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
@@ -302,6 +316,19 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
     assert_eq!(stdout, common::PASSED);
     assert_eq!(
         common::read(root.path(), "tools/bench/report.py"),
+        "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n"
+    );
+    let unpatched = project(&[
+        ("tools/bench/__init__.py", ""),
+        ("tools/bench/operations.py", "OPERATIONS = {}\n\n\ndef run() -> dict:\n    return OPERATIONS\n"),
+        (
+            "tools/bench/report.py",
+            "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n",
+        ),
+    ]);
+    check(unpatched.path(), &["--select", "SMP304", "--unsafe-fixes", "--fix"]);
+    assert_ne!(
+        common::read(unpatched.path(), "tools/bench/report.py"),
         "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n"
     );
 }
@@ -419,6 +446,19 @@ fn autodoc_names_a_package_function_by_its_package() {
     ]);
     let stdout = check(root.path(), &["--select", "SMP901,SMP409"]).1;
     assert_eq!(stdout, common::PASSED);
+    let undocumented = project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
+        (
+            "app/__init__.py",
+            concat!(
+                "def helper() -> int:\n",
+                "    \"\"\"Compute the helper value from the environment and return it to the caller.\"\"\"\n",
+                "    return 2\n"
+            ),
+        ),
+        ("docs/conf.py", ""),
+    ]);
+    assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // An autodoc directive names a method by its class, so the method's docstring is documented rather than internal.
@@ -437,6 +477,24 @@ fn autodoc_names_a_method_by_its_class() {
     ]);
     let stdout = check(root.path(), &["--select", "SMP901"]).1;
     assert_eq!(stdout, common::PASSED);
+    let undocumented = project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
+        ("app/__init__.py", ""),
+        (
+            "app/mod.py",
+            concat!(
+                "__all__ = [\"Foo\"]\n",
+                "\n",
+                "\n",
+                "class Foo:\n",
+                "    def run(self) -> int:\n",
+                "        \"\"\"Run the thing and give back the exit status of the subprocess it starts.\"\"\"\n",
+                "        return 1\n"
+            ),
+        ),
+        ("docs/conf.py", ""),
+    ]);
+    assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // A nested project's files are test input, so the rules it leaves out do not run there. Its results are cached apart
@@ -472,4 +530,10 @@ fn coverage_plugin_init_is_used(all: &str) {
         ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
+    let unconfigured = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\n"),
+        ("tasks/__init__.py", ""),
+        ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
+    ]);
+    assert!(check(unconfigured.path(), &["--select", "SMP402,SMP403,SMP409"]).1.contains("`coverage_init`"));
 }

@@ -101,6 +101,29 @@ fn bare_module_future_import_is_not_public_api() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    let imported = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"pkg\"\nentry-points.pytest11.demo = \"pkg.plugin\"\n[build-system]\nrequires = []\n",
+        ),
+        ("pkg/__init__.py", ""),
+        (
+            "pkg/plugin.py",
+            concat!(
+                "__all__ = [\"pytest_addoption\"]\n",
+                "\n",
+                "\n",
+                "def pytest_addoption(parser: object) -> None:\n",
+                "    print(parser)\n",
+                "\n",
+                "\n",
+                "def helper() -> None:\n",
+                "    pass\n"
+            ),
+        ),
+        ("pkg/other.py", "from pkg.plugin import helper\n\nhelper()\n"),
+    ]);
+    assert!(check(imported.path(), &["--select", "SMP401"]).1.contains("`helper` is imported by other modules"));
 }
 
 const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
@@ -260,6 +283,12 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
         ("b.py", consumer),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unread = project(&[
+        ("pyproject.toml", DEMO),
+        ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
+        ("b.py", "print(1)\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`X`"));
 }
 
 #[test_case(
@@ -354,4 +383,10 @@ fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
         ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unused = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
+    ]);
+    assert!(check(unused.path(), &["--select", "SMP402"]).1.contains(&format!("`{name}`")));
 }

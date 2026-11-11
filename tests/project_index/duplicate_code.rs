@@ -97,6 +97,10 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
 )]
 fn nested_test_projects_are_not_compared(files: &[(&str, &str)]) {
     assert_eq!(duplicate_code_reports(files), Vec::<String>::new());
+    assert_eq!(
+        duplicate_code_reports(&[("roots/test-a/parser.py", REPEATED), ("roots/test-a/other.py", REPEATED)]),
+        ["roots/test-a/other.py", "roots/test-a/parser.py"]
+    );
 }
 
 fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {

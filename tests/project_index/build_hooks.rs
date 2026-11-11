@@ -11,6 +11,12 @@ fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
         ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let disabled = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.pytest.ini_options]\naddopts = \"-p no:pkg._plugin\"\n")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert!(check(disabled.path(), &["--select", "SMP402"]).1.contains("`pytest_configure`"));
 }
 
 #[test]
@@ -37,6 +43,20 @@ fn pdm_build_hooks_count_as_used(config: &str, file: &str) {
         (file, "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize(context: object) -> None: ...\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unhooked = project(&[
+        (
+            "pyproject.toml",
+            concat!(
+                "[project]\n",
+                "name = \"pkg\"\n",
+                "[build-system]\n",
+                "build-backend = \"pdm.backend\"\n",
+                "requires = [\"pdm-backend\"]\n"
+            ),
+        ),
+        ("build.py", "__all__ = []\n\n\ndef helper() -> None: ...\n"),
+    ]);
+    assert!(check(unhooked.path(), &["--select", "SMP409"]).1.contains("`helper`"));
 }
 
 #[test]
@@ -124,6 +144,18 @@ fn listed_build_hooks_are_not_unused_exports() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unlisted_helper = project(&[
+        ("pyproject.toml", BACKEND),
+        ("demo/__init__.py", ""),
+        (
+            "build_backend.py",
+            concat!(
+                "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n",
+                "def helper() -> None: ...\n\n\n__all__ = [\"build_wheel\", \"helper\"]\n"
+            ),
+        ),
+    ]);
+    assert!(check(unlisted_helper.path(), &["--select", "SMP402"]).1.contains("`helper`"));
 }
 
 #[test]
@@ -159,6 +191,11 @@ fn build_backend_object_is_used() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP403,SMP409"]).1, common::PASSED);
+    let unexported = project(&[
+        ("pyproject.toml", "[build-system]\nbuild-backend = \"backend:Backend\"\nrequires = []\n"),
+        ("backend.py", "class Backend:\n    pass\n\n\ndef helper() -> None: ...\n\n\n__all__ = []\n"),
+    ]);
+    assert!(check(unexported.path(), &["--select", "SMP403,SMP409"]).1.contains("`helper`"));
 }
 
 // Only the backend's hooks count as used, so a helper the backend does not call is still reported.
@@ -192,6 +229,14 @@ fn build_backend_by_dotted_name(backend: &str, file: &str) {
         (file, "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n__all__ = []\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let other = project(&[
+        ("pyproject.toml", "[build-system]\nbuild-backend = \"pkg.backend\"\nrequires = []\n"),
+        (
+            "pkg/other.py",
+            "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n__all__ = []\n",
+        ),
+    ]);
+    assert!(check(other.path(), &["--select", "SMP409"]).1.contains("`build_wheel`"));
 }
 
 #[test]
@@ -247,6 +292,9 @@ fn configured_hatch_hook_class_is_used(hatch: &str, file: &str, source: &str) {
         (file, source),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let unconfigured =
+        project(&[("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"), ("hatch_build.py", BUILD_HOOK)]);
+    assert!(check(unconfigured.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 #[test_case("[tool.hatch]\nbuild.hooks.custom = { path = \"other.py\" }\n" ; "other_path")]
@@ -289,6 +337,9 @@ fn hatch_toml_configures_the_hook(hatch: &str, file: &str, source: &str) {
         (file, source),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let without_hatch_toml =
+        project(&[("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"), (file, source)]);
+    assert!(check(without_hatch_toml.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 // A `hatch.toml` that cannot be parsed configures no hook, with a warning, rather than stopping the run.
@@ -369,6 +420,14 @@ fn hatch_hook_path_is_normalized(path: &str) {
         ("hooks/h.py", BUILD_HOOK),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let other_path = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\nversion = \"1\"\n[tool.hatch.build.hooks.custom]\npath = \"other/h.py\"\n",
+        ),
+        ("hooks/h.py", BUILD_HOOK),
+    ]);
+    assert!(check(other_path.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 // hatchling uses `issubclass` over the names of the hook file, so a class that subclasses a class of the run which

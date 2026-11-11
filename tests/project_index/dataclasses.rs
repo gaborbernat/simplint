@@ -102,6 +102,12 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP703"]).1, common::PASSED);
+    let unsuppressed = project(&[
+        ("pyproject.toml", DEMO_BUILD),
+        ("models.py", &format!("__all__ = []\n\n{PARTITION}")),
+        ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
+    ]);
+    assert!(check(unsuppressed.path(), &["--select", "SMP703"]).1.contains("SMP703"));
 }
 
 // A library's public dataclass keeps its positional calls, which its users make: one defined in a public module's
@@ -207,6 +213,9 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP901"]).1, common::PASSED);
+    let unread =
+        project(&[("pkg/__init__.py", ""), ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n")]);
+    assert!(check(unread.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 #[test]

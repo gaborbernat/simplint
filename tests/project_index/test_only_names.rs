@@ -333,4 +333,9 @@ fn startup_pth_reads_are_not_unused(prefix: &str, name: &str, rule: &str) {
         ("pkg/hook.py", &format!("{prefix}def {name}() -> None:\n    print(\"hook\")\n")),
     ]);
     assert_eq!(check(root.path(), &["--select", rule]).1, common::PASSED);
+    let without_pth = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/hook.py", &format!("{prefix}def {name}() -> None:\n    print(\"hook\")\n")),
+    ]);
+    assert!(check(without_pth.path(), &["--select", rule]).1.contains(&format!("`{name}`")));
 }

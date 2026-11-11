@@ -40,6 +40,12 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
         ("tests/test_docs.py", &test),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
+        ("tests/test_docs.py", "from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    pass\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`engine` is in `__all__`"));
 }
 
 // A loop over anything but string rows of the same width, whose items the run cannot know, names no attribute, and
@@ -271,6 +277,14 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
         common::read(root.path(), "docs/tutorial.py"),
         "__all__ = []\n\nLIMIT: int | None = None\n\n\ndef limit() -> int | None:\n    return LIMIT or 3\n"
     );
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        (
+            "docs/tutorial.py",
+            "__all__ = []\n\nLIMIT: int | None = None\n\n\ndef limit() -> int | None:\n    return LIMIT or 3\n",
+        ),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`LIMIT` is used by one function only"));
 }
 
 // A test that sets a module variable through a `MonkeyPatch` writes it, whatever the object is named and however it is
@@ -306,6 +320,12 @@ fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[("docs/__init__.py", ""), ("docs/tutorial.py", "LIMIT = 3\n"), ("tests/test_docs.py", &test)]);
     assert_eq!(check(root.path(), &["--select", "SMP601"]).1, common::native(common::PASSED));
+    let unpatched = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "LIMIT = 3\n"),
+        ("tests/test_docs.py", "from docs import tutorial\n\n\ndef test_app() -> None:\n    assert tutorial.LIMIT\n"),
+    ]);
+    assert!(check(unpatched.path(), &["--select", "SMP601"]).1.contains("`LIMIT` is never reassigned"));
 }
 
 // A `setattr` on an object that is not a module of the run writes no module variable, so the variable stays `Final`.

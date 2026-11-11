@@ -62,6 +62,12 @@ fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
 fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
     let root = project(files);
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    let production = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
+        ("app.py", "from pkg.helpers import helper\n"),
+    ]);
+    assert!(check(production.path(), &["--select", "SMP401"]).1.contains("`helper` is imported by other modules"));
 }
 
 // An entry point names a module in the directory its `pyproject.toml` is in, which a flat layout keeps its modules in,
@@ -118,6 +124,12 @@ fn flat_layout_module_entry_point_uses_its_public_names() {
         ("plugin.py", "__all__ = []\n\n\ndef activate() -> None:\n    pass\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1, common::PASSED);
+    let unlisted = project(&[
+        ("pyproject.toml", "[project]\n[tool.ruff]\nsrc = [\"src\"]\n"),
+        ("src/pkg/__init__.py", ""),
+        ("plugin.py", "__all__ = []\n\n\ndef activate() -> None:\n    pass\n"),
+    ]);
+    assert!(check(unlisted.path(), &["--select", "SMP409"]).1.contains("`activate`"));
 }
 
 // A local module named after a standard-library one is the module the run imports, not the standard-library one.
@@ -196,6 +208,12 @@ fn stub_only_module_attribute_is_not_reported() {
         ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP304"]).1, common::PASSED);
+    let module = project(&[
+        ("writers/__init__.py", ""),
+        ("writers/findings.py", "def save() -> None:\n    pass\n"),
+        ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
+    ]);
+    assert!(check(module.path(), &["--select", "SMP304"]).1.contains("SMP304"));
 }
 
 #[test_case("backend.pyi", common::PASSED ; "stub_of_the_module")]
@@ -230,6 +248,12 @@ fn module_import_is_not_an_export(reference: &str) {
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    let production = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/files.py", "def cwd() -> str:\n    return \"\"\n"),
+        ("app.py", "from pkg.files import cwd\n"),
+    ]);
+    assert!(check(production.path(), &["--select", "SMP401"]).1.contains("`cwd` is imported by other modules"));
 }
 
 #[test_case("pkg.manager._load", common::PASSED ; "patched")]
@@ -289,6 +313,9 @@ fn stored_module_variable_stays_module_level(store: &str) {
     ]);
     let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202,SMP404"]);
     assert_eq!((stdout, common::read(root.path(), "pkg/report.py")), (common::PASSED.to_owned(), report.to_owned()));
+    let unwritten = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report)]);
+    check(unwritten.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202,SMP404"]);
+    assert_ne!(common::read(unwritten.path(), "pkg/report.py"), report);
 }
 
 // A name imported from a package counts in the module its `__init__.py` star-imports it from, where an `__all__` would

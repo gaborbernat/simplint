@@ -87,6 +87,23 @@ fn variable_reused_for_each_loaded_module_reads_each_module() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::PASSED);
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "client = object()\n"),
+        ("docs/other.py", "engine = object()\n"),
+        (
+            "tests/test_docs.py",
+            concat!(
+                "import pytest\n",
+                "\n",
+                "\n",
+                "def test_engine() -> None:\n",
+                "    mod = pytest.importorskip(\"docs.other\")\n",
+                "    assert mod.engine\n"
+            ),
+        ),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP404"]).1.contains("`client`"));
 }
 
 // `__import__` returns the top package of a dotted name, so the names read off its result are the package's, and a
@@ -300,6 +317,12 @@ fn spec_loaded_module_read_keeps_name_listed() {
         ("tests/test_docs.py", &spec_loading_test("Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "__all__ = [\"client\"]\n\n\nclient = object()\n"),
+        ("tests/test_docs.py", "def test_app() -> None:\n    pass\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`client` is in `__all__`"));
 }
 
 // A test module that loads `docs/tutorial.py` from `path` and reads its names off the module, once directly and once

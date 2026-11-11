@@ -102,6 +102,14 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
         ("p/doc.py", "\"\"\"Docs.\n\n>>> import p.util\n>>> p.util.helper()\n1\n\"\"\"\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401,SMP409"]).1, common::PASSED);
+    let without_doc = project(&[
+        ("p/__init__.py", ""),
+        (
+            "p/util.py",
+            "__all__ = [\"other\"]\n\n\ndef other():\n    return helper()\n\n\ndef helper():\n    return 1\n",
+        ),
+    ]);
+    assert!(check(without_doc.path(), &["--select", "SMP402"]).1.contains("`other`"));
 }
 
 // A constant a doctest of its module reads is kept, as inlining it would leave the example reading a name that is gone.
@@ -113,6 +121,8 @@ fn constant_read_by_its_own_module_doctest_is_kept() {
         _TIMEOUT\n",
     )]);
     assert_eq!(check(root.path(), &["--select", "SMP202"]).1, common::PASSED);
+    let unread = project(&[("pkg/consts.py", "_TIMEOUT = 30\n\n\ndef wait():\n    return _TIMEOUT\n")]);
+    assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`_TIMEOUT` is used by one function only"));
 }
 
 // The stdlib's `json` is a module of its own, so a `json.loads` value a file of the run reads is not a read of the
@@ -133,6 +143,11 @@ fn stdlib_module_reads_are_not_namesake_reads() {
     let stdout = check(root.path(), &["--select", "SMP411,SMP506"]).1;
     assert!(stdout.contains(&common::native("app/codec/json.py:1:5: SMP411")), "{stdout}");
     assert!(!stdout.contains("SMP506"), "{stdout}");
+    let defaults = project(&[
+        ("app/__init__.py", ""),
+        ("app/tool.py", "def helper(host, timeout=30):\n    return host, timeout\n\n\nhelper(\"a\", 30)\n"),
+    ]);
+    assert!(check(defaults.path(), &["--select", "SMP506"]).1.contains("Every call to"));
 }
 
 // Another module's write to a module variable withholds the rename, so SMP102 leaves a mixedCase store to Ruff's N816,
@@ -155,6 +170,9 @@ fn stored_module_variable_left_to_n816_without_fix(path: &str, body: &str) {
     let root = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report), (path, body)]);
     let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
     assert_eq!((stdout, common::read(root.path(), "pkg/report.py")), (common::PASSED.to_owned(), report.to_owned()));
+    let unwritten = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report)]);
+    check(unwritten.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
+    assert_ne!(common::read(unwritten.path(), "pkg/report.py"), report);
 }
 
 // A library directory whose name only starts with `test`, such as `testkit`, is not a nested test project, though its
