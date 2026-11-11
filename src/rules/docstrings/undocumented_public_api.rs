@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::is_documented_variable;
+use crate::rules::docstrings::{is_documented_variable, ruff_ignores_function};
 use crate::rules::public_api::{ApiItem, ApiKind};
 use crate::syntax::{alias_binding, docstring, for_each_child_body, is_name};
 
@@ -24,7 +24,8 @@ pub fn undocumented_public_api(checker: &Checker) {
         };
         // Ruff's D100 to D107 report the rest of the undocumented functions, classes and methods at the same name, and
         // this rule leaves each to the code that reports it while that code runs.
-        let left_to_ruff = ruff.reported_by(item).is_some_and(|rule| checker.settings.from_ruff.ruff_runs(rule));
+        let left_to_ruff =
+            ruff.reported_by(checker, item).is_some_and(|rule| checker.settings.from_ruff.ruff_runs(rule));
         if documented || left_to_ruff {
             continue;
         }
@@ -94,7 +95,7 @@ impl<'a> RuffPublic<'a> {
 
     // The Ruff rule that reports the item as undocumented, when Ruff considers it public and does not exempt it as an
     // overload or an override. Every undocumented item this rule reads is one of those, or a variable Ruff never reports.
-    fn reported_by(&self, item: &ApiItem) -> Option<RuffRule> {
+    fn reported_by(&self, checker: &Checker, item: &ApiItem) -> Option<RuffRule> {
         if !self.module_public {
             return None;
         }
@@ -110,6 +111,9 @@ impl<'a> RuffPublic<'a> {
         let Stmt::FunctionDef(function) = item.stmt else {
             return Some(rule);
         };
+        if ruff_ignores_function(checker, &function.decorator_list) {
+            return None;
+        }
         let exempt: &[&str] = match item.kind {
             ApiKind::Function => &["overload"],
             _ => &["overload", "override"],

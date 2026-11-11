@@ -485,6 +485,24 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
     assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
+// Ruff's pydocstyle skips a function that `ignore-decorators` lists, so it reports no D103 for it, and SMP903 keeps it.
+#[test_case("@route", "app.route", [true, true] ; "listed_decorator")]
+#[test_case("@route(\"/run\")", "app.route", [true, true] ; "listed_call")]
+#[test_case("@route", "app.other", [true, false] ; "unlisted_decorator")]
+fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, listed: &str, reported: [bool; 2]) {
+    let source = format!("from app import route\n\n\n{decorator}\ndef run() -> None:\n    pass\n");
+    let settings = format!(
+        "[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"{listed}\"]\n"
+    );
+    let case = common::RuffOverlap {
+        settings: &settings,
+        select: "SMP903",
+        ruff_code: "D103",
+        files: &[("module.py", source.as_str())],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
+}
+
 // Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
 // the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
 #[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "empty_function")]
