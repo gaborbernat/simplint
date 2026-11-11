@@ -436,8 +436,8 @@ fn collapsible_if_project(source: &str) -> TempDir {
 #[test_case("py39", "registry[0]", "@decorate", Some("@registry[0]") ; "subscript_from_python39")]
 fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Option<&str>) {
     let source = format!(
-        "def run(registry):\n    decorate = {value}\n    {decorator}\n    def inner():\n        return 1\n    return in\
-            ner\n"
+        "def run(registry):\n    decorate = {value}\n    {decorator}\n    def inner():\n        return 1\n    return \
+            inner\n"
     );
     let root = single_use_project(target, &source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
@@ -860,8 +860,8 @@ fn error_message_matching_leaves_unresolved_names_alone(body: &str, reports: usi
 #[test_case("\"int\"", 1 ; "string_names_builtin_without_exception")]
 fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str, reports: usize) {
     let source = format!(
-        "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError a\
-            s exc:\n        return str(exc) == str(other)\n"
+        "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError \
+            as exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -889,8 +889,8 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
 #[test_case("class MyError(Exception):\n    pass\n", 0 ; "imported_exception_class")]
 #[test_case("class MyError:\n    pass\n", 1 ; "imported_class_is_not_an_exception")]
 fn error_message_matching_reads_imported_exceptions(definition: &str, reports: usize) {
-    let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except OSErro\
-        r as exc:\n        return str(exc) == str(other)\n";
+    let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except \
+        OSError as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("errors.py", definition), ("module.py", module)]);
     common::assert_report_count(root.path(), "SMP507", reports);
 }
@@ -902,8 +902,8 @@ fn error_message_matching_reads_imported_exceptions(definition: &str, reports: u
 fn error_message_matching_reads_nested_exception_classes(annotation: &str, reports: usize) {
     let source = format!(
         "def outer():\n    class Local(Exception):\n        pass\n\n    def inner(f, other: {annotation}):\n        try\
-            :\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return i\
-            nner\n"
+            :\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return \
+            inner\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -926,8 +926,8 @@ fn error_message_matching_stops_at_rebound_class_cycles() {
 fn error_message_matching_reads_exception_classes_of_the_file() {
     let root = common::project(&[(
         "module.py",
-        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    ex\
-            cept Offset as replay_error:\n        return replay_error.args == error.args\n",
+        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    \
+            except Offset as replay_error:\n        return replay_error.args == error.args\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
@@ -937,8 +937,8 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
 #[test_case("class AppError(Exception):\n    pass\n", 0 ; "star_imported_exception_class")]
 #[test_case("class AppError:\n    pass\n", 1 ; "star_imported_class_is_not_an_exception")]
 fn error_message_matching_reads_star_imported_exceptions(definition: &str, reports: usize) {
-    let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as e\
-        xc:\n        return str(exc) == str(other)\n";
+    let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as \
+        exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("mod_a.py", definition), ("module.py", module)]);
     common::assert_report_count(root.path(), "SMP507", reports);
 }
@@ -1258,8 +1258,8 @@ fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) 
 #[test_case("tags.Thing(\"x\")", 0 ; "external_module_capwords")]
 #[test_case("tags.thing(\"x\")", 1 ; "external_module_lowercase")]
 fn string_concatenation_imported_callee(call: &str, reported: usize) {
-    let shapes = "class Badge(str):\n    pass\n\n\nclass badge(str):\n    pass\n\n\ndef Label(text: str) -> str:\n    r\
-        eturn text\n";
+    let shapes = "class Badge(str):\n    pass\n\n\nclass badge(str):\n    pass\n\n\ndef Label(text: str) -> str:\n    \
+        return text\n";
     let source = format!(
         "import re\nimport shapes\nimport tags\n\nfrom markupsafe import Markup\nfrom shapes import Badge, Label, badge\
             \nfrom tags import _Hidden, minify\n\n\ndef f() -> list[str]:\n    return [{call} + \"!\"]\n"
@@ -1455,8 +1455,8 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
     assert_eq!(
         stdout,
-        "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 unsa\
-            fe \
+        "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 \
+            unsafe \
          fix available with `--fix --unsafe-fixes`.\n"
     );
 }
@@ -1494,8 +1494,8 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
 #[test_case(
     "SMP512",
     "py314",
-    "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_\
-        id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n",
+    "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = \
+        request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n",
     "",
     "state.py:5:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\
         \n" ;
@@ -1504,8 +1504,8 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
 #[test_case(
     "SMP513",
     "py311",
-    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    o\
-        s.chdir(old)\n",
+    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    \
+        os.chdir(old)\n",
     "from state import old\n",
     "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
     "chdir_imported"
@@ -1523,8 +1523,8 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
 #[test_case(
     "SMP513",
     "py311",
-    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    o\
-        s.chdir(old)\n",
+    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    \
+        os.chdir(old)\n",
     "from state import *\nprint(old)\n",
     "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
     "chdir_star_imported"
@@ -1553,8 +1553,8 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
         (
             "state.py",
-            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    tok\
-                en = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    \
+                token = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
         ),
         ("user.py", "from state import token\n"),
     ]);
@@ -1564,8 +1564,9 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         (
             0,
             common::ONE_FIXED,
-            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    wit\
-                h request_id.set(value):\n        run()\n".to_owned()
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    \
+                with request_id.set(value):\n        run()\n"
+                .to_owned()
         )
     );
 }
@@ -1575,8 +1576,8 @@ const PY311: &str = "[tool.ruff]\ntarget-version = \"py311\"\n";
 // A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before
 // it.
 #[test_case(
-    "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.c\
-        hdir(old)\n",
+    "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.\
+        chdir(old)\n",
     "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
     "backslash_joined_line"
 )]
@@ -1597,18 +1598,18 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
     "mod.py",
     "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\
         \nfinally:\n    os.chdir(old)\n",
-    "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), s\
-        tarted)\n" ;
+    "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), \
+        started)\n" ;
     "comment_ending_in_backslash"
 )]
 // The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
 #[test_case(
     "block.py",
-    "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = o\
-        s.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chd\
-        ir(old)\n",
-    "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(ta\
-        rget):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ;
+    "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = \
+        os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.\
+        chdir(old)\n",
+    "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(\
+        target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ;
     "import_above_comment"
 )]
 // A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the
@@ -1624,20 +1625,20 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
 // A comment on the first line is a header of the file, which the import stays below.
 #[test_case(
     "first.py",
-    "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcw\
-        d()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
-    "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import o\
-        s\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
+    "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.\
+        getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+    "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import \
+        os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
     "header_comment_on_first_line"
 )]
 // A class attribute named like the module is not seen by the methods of the class, so their fix stays.
 #[test_case(
     "mod.py",
     "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\
-        \n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chd\
-        ir(old)\n",
-    "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        wit\
-        h contextlib.chdir(target):\n            return os.listdir()\n" ;
+        \n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.\
+        chdir(old)\n",
+    "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        \
+        with contextlib.chdir(target):\n            return os.listdir()\n" ;
     "class_attribute_takes_module_name"
 )]
 fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
@@ -1652,8 +1653,8 @@ fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
     "SMP516",
     "py314",
     "import asyncio; print(asyncio.iscoroutinefunction(print))\n",
-    "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy co\
-        routine marker\nFound 1 error.\n" ;
+    "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy \
+        coroutine marker\nFound 1 error.\n" ;
     "asyncio_shared_line"
 )]
 #[test_case(
@@ -1690,8 +1691,9 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         (
             0,
             common::ONE_FIXED,
-            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.isc\
-                oroutinefunction(task)\n".to_owned()
+            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.\
+                iscoroutinefunction(task)\n"
+                .to_owned()
         )
     );
 }

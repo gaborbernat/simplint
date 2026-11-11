@@ -196,24 +196,24 @@ fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, repor
 // until a `def` or a class resets it. SMP602 follows, so the `def` of the first branch is reported on its line, and the
 // one after a branch with another `def` in it, or after a class, is left to ANN401.
 #[test_case(
-    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
-        r: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any\
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> \
+        str: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any\
         :\n        return value\n",
     9,
     2 ;
     "branch_implementation"
 )]
 #[test_case(
-    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
-        r: ...\nif __debug__:\n    def helper() -> None:\n        pass\n\n\ndef f(value: Any) -> Any:\n    return value\
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> \
+        str: ...\nif __debug__:\n    def helper() -> None:\n        pass\n\n\ndef f(value: Any) -> Any:\n    return value\
         \n",
     0,
     0 ;
     "branch_def_before_implementation"
 )]
 #[test_case(
-    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
-        r: ...\nclass C:\n    pass\n\n\ndef f(value: Any) -> Any:\n    return value\n",
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> \
+        str: ...\nclass C:\n    pass\n\n\ndef f(value: Any) -> Any:\n    return value\n",
     0,
     0 ;
     "class_before_implementation"

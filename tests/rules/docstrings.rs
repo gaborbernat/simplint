@@ -89,8 +89,8 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
 // with the docstring's line.
 #[test_case(
     "module.py",
-    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    retur\
-        n 1\n",
+    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    \
+        return 1\n",
     "SMP901",
     "def _acquire() -> int:\n    # callers must already hold the registry mutex\n    return 1\n" ;
     "function"
@@ -166,8 +166,8 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
     "method_default_reads_it"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @sh\
-        ow(__doc__)\n    def run(self):\n        return 1\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @\
+        show(__doc__)\n    def run(self):\n        return 1\n",
     common::PASSED ;
     "decorator_reads_it"
 )]
@@ -192,8 +192,8 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
     "nested_class_body_reads_module_doc"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @sh\
-        ow(__doc__)\n    class Inner:\n        pass\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @\
+        show(__doc__)\n    class Inner:\n        pass\n",
     common::PASSED ;
     "nested_class_decorator_reads_it"
 )]
@@ -202,8 +202,8 @@ fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP901"]).1, stdout);
 }
 
-const CLASS_DOCSTRING_REPORT: &str = "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature a\
-    nd types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n";
+const CLASS_DOCSTRING_REPORT: &str = "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature \
+    and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n";
 
 // The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
 // so a body indented by two spaces wraps the same.
@@ -228,8 +228,8 @@ fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
     assert_eq!(
         common::read(root.path(), "module.py"),
         format!(
-            "def _run() -> None:\n{indent}# Retry once, as the first\n{indent}# call after a restart\n{indent}# times o\
-                ut.\n{indent}print()\n"
+            "def _run() -> None:\n{indent}# Retry once, as the first\n{indent}# call after a restart\n{indent}# times \
+                out.\n{indent}print()\n"
         )
     );
 }
@@ -272,8 +272,8 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
         ("pyproject.toml", ""),
         (
             "test_module.py",
-            "def test_probe() -> None:\n    \"\"\"Check that adding one more test keeps the run stable.\"\"\"\n    asse\
-                rt True\n",
+            "def test_probe() -> None:\n    \"\"\"Check that adding one more test keeps the run stable.\"\"\"\n    \
+                assert True\n",
         ),
     ]);
     common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901,SMP804"]);
@@ -306,8 +306,8 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 #[test_case(
     "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \
         \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
-    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix availabl\
-        e with `--fix --unsafe-fixes`.\n" ;
+    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix \
+        available with `--fix --unsafe-fixes`.\n" ;
     "attrs_alias_replaces_name"
 )]
 #[test_case(
@@ -333,8 +333,8 @@ fn attrs_private_field_is_a_documented_parameter() {
         ),
         (
             "model.py",
-            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the hor\
-                izontal axis.\"\"\"\n\n    _x: int\n",
+            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the \
+                horizontal axis.\"\"\"\n\n    _x: int\n",
         ),
     ]);
     assert_eq!(
@@ -346,8 +346,8 @@ fn attrs_private_field_is_a_documented_parameter() {
 // A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not
 // asked for the fields of a value it has not written. A body with code is held to the same rules.
 #[test_case(
-    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: E\
-        ach row.\n    \"\"\"\n    ...\n",
+    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: \
+        Each row.\n    \"\"\"\n    ...\n",
     common::PASSED ;
     "placeholder_yields"
 )]
@@ -363,8 +363,8 @@ fn attrs_private_field_is_a_documented_parameter() {
 )]
 #[test_case(
     "def rows() -> list[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    return []\n",
-    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 `row\
-        s` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `\
+    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 \
+        `rows` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `\
         --fix --unsafe-fixes`.\n" ;
     "computed_yields"
 )]
@@ -382,9 +382,9 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
 // The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents
 // them.
 #[test_case(
-    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entr\
-        y point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @pr\
-        operty\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\
+    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The \
+        entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @\
+        property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\
         \n            pass\n\n    for size in (1, 2):\n        pass\n",
     common::PASSED ;
     "members_in_blocks_and_loops"
@@ -420,23 +420,23 @@ fn rst_rules_need_the_docstring_style() {
 #[test_case(
     "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\
         \"\"\n    print(path, mode)\n",
-    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix avai\
-        lable with `--fix --unsafe-fixes`.\n" ;
+    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix \
+        available with `--fix --unsafe-fixes`.\n" ;
     "kwarg"
 )]
 #[test_case(
     "def load(mode: str) -> None:\n    \"\"\"Load.\n\n    :param mode: How.\n    :paramtype mode: str\n    \"\"\"\n    \
         print(mode)\n",
-    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe f\
-        ix available with `--fix --unsafe-fixes`.\n" ;
+    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe \
+        fix available with `--fix --unsafe-fixes`.\n" ;
     "paramtype"
 )]
 #[test_case(
     "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwargs mode: How.\n    \
         \"\"\"\n    print(path, mode)\n",
-    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: SMP\
-        910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype\
-        ` and their aliases\nFound 2 errors.\n" ;
+    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: \
+        SMP910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, \
+        `vartype` and their aliases\nFound 2 errors.\n" ;
     "misspelled"
 )]
 fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str) {
@@ -452,8 +452,8 @@ fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str)
 
 // Dropping the type of a parameter keeps the stars that mark `*args` and `**kwargs`, which the name is written with.
 #[test_case(
-    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :pa\
-        ram str \\*\\*kwargs: The options.\n    \"\"\"\n",
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :\
+        param str \\*\\*kwargs: The options.\n    \"\"\"\n",
     "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    :param \
         \\*\\*kwargs: The options.\n    \"\"\"\n" ;
     "star_parameters"
@@ -486,8 +486,9 @@ fn alias_rename_is_an_unsafe_fix() {
     assert_eq!(
         (stdout, common::read(root.path(), "demo.py")),
         (
-            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix a\
-                vailable with `--fix --unsafe-fixes`.\n".to_owned(),
+            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix \
+                available with `--fix --unsafe-fixes`.\n"
+                .to_owned(),
             source.to_owned()
         )
     );
@@ -495,16 +496,16 @@ fn alias_rename_is_an_unsafe_fix() {
 
 // Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.
 #[test_case(
-    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    p\
-        rint(path)\n",
+    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    \
+        print(path)\n",
     "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    \"\"\"\n    print(path)\n" ;
     "removed_field"
 )]
 #[test_case(
-    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :return: Each number.\n    \"\"\"\n    yie\
-        ld from range(count)\n",
-    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :yields: Each number.\n    \"\"\"\n    yie\
-        ld from range(count)\n" ;
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :return: Each number.\n    \"\"\"\n    \
+        yield from range(count)\n",
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :yields: Each number.\n    \"\"\"\n    \
+        yield from range(count)\n" ;
     "renamed_field"
 )]
 fn alias_fix_composes(source: &str, fixed: &str) {
@@ -580,8 +581,8 @@ fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, lis
 )]
 #[test_case(
     "D418",
-    "from typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@overlo\
-        ad\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n",
+    "from typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@\
+        overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n",
     [true, true] ;
     "fixable_overload"
 )]
@@ -676,8 +677,8 @@ fn inherited_members_of_a_private_base_are_public_api() {
         stdout,
         common::native(
             "pkg/_xdg.py:7:9: SMP903 Public method `XDGMixin.site_dir` has no docstring; document it for its users\n\
-             pkg/_xdg.py:11:9: SMP901 Function docstring on internal code; let the name, signature and types document i\
-             t\n\
+             pkg/_xdg.py:11:9: SMP901 Function docstring on internal code; let the name, signature and types document \
+             it\n\
              Found 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );

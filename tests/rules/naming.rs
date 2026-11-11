@@ -66,8 +66,8 @@ fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: 
     let root = common::project(&[(
         "command.py",
         &format!(
-            "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pa\
-                ss\n\n\n{trailing}\n"
+            "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    \
+                pass\n\n\n{trailing}\n"
         ),
     )]);
     common::assert_report_count(root.path(), "SMP106", expected);
@@ -324,22 +324,22 @@ fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported
     "module_store_left_to_n816"
 )]
 #[test_case(
-    "def setup():\n    global myValue\n    myValue = 1\n\n\nfor myValue in range(2):\n    pass\nMYVALUE = 4\nprint(MYVA\
-        LUE, setup)\n",
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nfor myValue in range(2):\n    pass\nMYVALUE = 4\nprint(\
+        MYVALUE, setup)\n",
     "",
     [false, false] ;
     "loop_target_left_to_n816"
 )]
 #[test_case(
-    "def setup():\n    global myValue\n    myValue = 1\n\n\nmatch 1:\n    case myValue:\n        pass\nMYVALUE = 4\npri\
-        nt(MYVALUE, setup)\n",
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nmatch 1:\n    case myValue:\n        pass\nMYVALUE = 4\n\
+        print(MYVALUE, setup)\n",
     "",
     [false, false] ;
     "match_capture_left_to_n816"
 )]
 #[test_case(
-    "def setup():\n    global myValue\n    myValue = 1\n\n\ntry:\n    pass\nexcept ValueError as myValue:\n    pass\nMY\
-        VALUE = 4\nprint(MYVALUE, setup)\n",
+    "def setup():\n    global myValue\n    myValue = 1\n\n\ntry:\n    pass\nexcept ValueError as myValue:\n    pass\n\
+        MYVALUE = 4\nprint(MYVALUE, setup)\n",
     "",
     [true, true] ;
     "except_target_kept"

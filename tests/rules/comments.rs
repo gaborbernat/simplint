@@ -152,8 +152,8 @@ fn unused_ignore_reports_and_fixes_each_selector() {
 )]
 #[test_case("[tool.ruff.lint]\nselect = []\n", true ; "comment_keeps_report_silent")]
 fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
-    let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> s\
-        tr:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
+    let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> \
+        str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
     let root = common::project(&[("pyproject.toml", config), ("module.py", source)]);
     let (status, output, _) = common::check(root.path(), &["--select", "SMP202,SMP009"]);
     assert_eq!(output.contains("unused simplint ignore selector"), removed, "{output}");

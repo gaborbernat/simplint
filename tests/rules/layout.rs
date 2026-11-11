@@ -21,15 +21,15 @@ use crate::common;
     "definition-before-use", "definition_before_use_annotations.py", None ; "definition_before_use_lazy_annotations"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_annotations.py", Some("py310") ; "definition_before_use_eager_annot\
-        ations"
+    "definition-before-use", "definition_before_use_annotations.py", Some("py310") ; "\
+        definition_before_use_eager_annotations"
 )]
 #[test_case(
     "definition-before-use", "definition_before_use_decorated.py", None ; "definition_before_use_decorated_lazy"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_decorated.py", Some("py310") ; "definition_before_use_decorated_eag\
-        er"
+    "definition-before-use", "definition_before_use_decorated.py", Some("py310") ; "\
+        definition_before_use_decorated_eager"
 )]
 #[test_case(
     "definition-before-use", "definition_before_use_import_time.py", None ; "definition_before_use_import_time"
@@ -159,14 +159,14 @@ fn single_user_constant_respects_ruff_local_limit(config: &str, reports: usize) 
 fn definition_before_use_fixes_after_first_report_is_suppressed() {
     let root = common::project(&[(
         "module.py",
-        "def main():\n    return helper()\n\n\ndef late():  # noqa: SMP201\n    return 1\n\n\ndef helper():\n    retur\
-            n late()\n",
+        "def main():\n    return helper()\n\n\ndef late():  # noqa: SMP201\n    return 1\n\n\ndef helper():\n    \
+            return late()\n",
     )]);
     common::fix_safe(root.path(), "SMP201");
     assert_eq!(
         common::read(root.path(), "module.py"),
-        "def main():\n    return helper()\n\n\ndef helper():\n    return late()\n\n\ndef late():  # noqa: SMP201\n    r\
-            eturn 1\n"
+        "def main():\n    return helper()\n\n\ndef helper():\n    return late()\n\n\ndef late():  # noqa: SMP201\n    \
+            return 1\n"
     );
 }
 
@@ -230,28 +230,28 @@ fn class_member_order_leaves_dj012_statements_to_ruff(source: &str, reports: usi
 const DJANGO_MODEL_SAVE_BEFORE_META: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    name \
     = models.CharField(max_length=10)\n\n    def save(self, *args: object, **kwargs: object) -> None:\n        pass\n\
     \n    class Meta:\n        ordering = [\"name\"]\n";
-const DJANGO_MODEL_PROPERTY_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    n\
-    ame = models.CharField(max_length=10)\n\n    def helper(self) -> str:\n        return self.name\n\n    @property\
+const DJANGO_MODEL_PROPERTY_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \
+    name = models.CharField(max_length=10)\n\n    def helper(self) -> str:\n        return self.name\n\n    @property\
     \n    def full(self) -> str:\n        return self.name\n";
-const DJANGO_MODEL_WITHOUT_IMPORT: &str = "from orm import models\n\n\nclass Article(models.Model):\n    def __str__(se\
-    lf) -> str:\n        return \"\"\n\n    name = models.CharField(max_length=10)\n\n    def helper(self) -> None:\
+const DJANGO_MODEL_WITHOUT_IMPORT: &str = "from orm import models\n\n\nclass Article(models.Model):\n    def __str__(\
+    self) -> str:\n        return \"\"\n\n    name = models.CharField(max_length=10)\n\n    def helper(self) -> None:\
     \n        pass\n\n    @property\n    def full(self) -> str:\n        return self.name\n";
-const DJANGO_MODEL_INIT_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def h\
-    elper(self) -> None:\n        pass\n\n    def __init__(self) -> None:\n        super().__init__()\n";
-const DJANGO_MODEL_MANAGER_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    de\
-    f helper(self) -> None:\n        pass\n\n    objects = models.Manager()\n\n    @property\n    def full(self) -> str\
+const DJANGO_MODEL_INIT_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def \
+    helper(self) -> None:\n        pass\n\n    def __init__(self) -> None:\n        super().__init__()\n";
+const DJANGO_MODEL_MANAGER_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \
+    def helper(self) -> None:\n        pass\n\n    objects = models.Manager()\n\n    @property\n    def full(self) -> str\
     :\n        return \"\"\n";
-const DJANGO_MODEL_URL_BEFORE_PROPERTY: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    de\
-    f get_absolute_url(self) -> str:\n        return \"/\"\n\n    @property\n    def full(self) -> str:\n        retur\
-    n \"\"\n";
-const DJANGO_MODEL_PLAIN_ATTRIBUTE: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def hel\
-    per(self) -> None:\n        pass\n\n    LIMIT = 3\n\n    @property\n    def full(self) -> str:\n        return \"\"\
+const DJANGO_MODEL_URL_BEFORE_PROPERTY: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \
+    def get_absolute_url(self) -> str:\n        return \"/\"\n\n    @property\n    def full(self) -> str:\n        \
+    return \"\"\n";
+const DJANGO_MODEL_PLAIN_ATTRIBUTE: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def \
+    helper(self) -> None:\n        pass\n\n    LIMIT = 3\n\n    @property\n    def full(self) -> str:\n        return \"\"\
     \n";
 const DJANGO_MODEL_NESTED_CLASS: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper\
     (self) -> None:\n        pass\n\n    class Config:\n        pass\n";
 const DJANGO_MODEL_DOCSTRING_BEFORE_META: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \
-    \"\"\"An article.\"\"\"\n\n    def helper(self) -> None:\n        pass\n\n    class Meta:\n        ordering = [\"na\
-    me\"]\n";
+    \"\"\"An article.\"\"\"\n\n    def helper(self) -> None:\n        pass\n\n    class Meta:\n        ordering = [\"\
+    name\"]\n";
 const DJANGO_MODEL_INIT_AND_META_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\
     \n    def helper(self) -> None:\n        pass\n\n    def __init__(self) -> None:\n        super().__init__()\n\
     \n    class Meta:\n        ordering = [\"name\"]\n";
