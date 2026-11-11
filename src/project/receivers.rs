@@ -121,10 +121,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 let bases: Vec<String> = class
                     .bases()
                     .iter()
-                    .filter_map(|base| {
-                        let written = UnqualifiedName::from_expr(base)?.segments().join(".");
-                        Some(self.qualified(&written))
-                    })
+                    .filter_map(|base| Some(self.qualified_segments(UnqualifiedName::from_expr(base)?.segments())))
                     .collect();
                 let qualified_class = format!("{}.{}", self.module, class.name);
                 self.writes.class_bases.extend(bases.iter().map(|base| (qualified_class.clone(), base.clone())));
@@ -276,7 +273,7 @@ impl<'a> Collector<'a, '_> {
     fn weakly_references(&self, func: &Expr) -> bool {
         UnqualifiedName::from_expr(func).is_some_and(|written| {
             matches!(
-                self.qualified(&written.segments().join(".")).as_str(),
+                self.qualified_segments(written.segments()).as_str(),
                 "weakref.ref" | "weakref.proxy" | "weakref.finalize"
             )
         })
@@ -285,7 +282,7 @@ impl<'a> Collector<'a, '_> {
     // The qualified name of what a call or a name refers to, such as `weakref.WeakSet` for `Live` after
     // `from weakref import WeakSet as Live`.
     fn qualified_name(&self, expr: &Expr) -> Option<String> {
-        UnqualifiedName::from_expr(expr).map(|written| self.qualified(&written.segments().join(".")))
+        UnqualifiedName::from_expr(expr).map(|written| self.qualified_segments(written.segments()))
     }
 
     // Whether the name an expression evaluates to is an instance of the class `class`, qualified.
@@ -352,7 +349,7 @@ impl<'a> Collector<'a, '_> {
         if !matches!(last, "dumps" | "dump" | "Pickler") {
             return false;
         }
-        let position = match self.qualified(&written.segments().join(".")).as_str() {
+        let position = match self.qualified_segments(written.segments()).as_str() {
             "pickle.dumps" | "pickle.Pickler" => 1,
             "pickle.dump" => 2,
             _ => return false,
@@ -369,8 +366,7 @@ impl<'a> Collector<'a, '_> {
     // The class a name stands for, qualified through the imports and aliases that bind its head, or else by this
     // module, when the qualified name is capitalized as a class is.
     fn class_of(&self, expr: &Expr) -> Option<String> {
-        let written = UnqualifiedName::from_expr(expr)?.segments().join(".");
-        class_name(&self.qualified(&written))
+        class_name(&self.qualified_segments(UnqualifiedName::from_expr(expr)?.segments()))
     }
 
     // An attribute read, set or deleted through a class, and the attribute `getattr`, `setattr` and `delattr` name with
@@ -410,8 +406,11 @@ impl<'a> Collector<'a, '_> {
     }
 
     fn qualified(&self, written: &str) -> String {
-        let segments: Vec<&str> = written.split('.').collect();
-        qualified(&segments, self.aliases).unwrap_or_else(|| format!("{}.{written}", self.module))
+        self.qualified_segments(&written.split('.').collect::<Vec<_>>())
+    }
+
+    fn qualified_segments(&self, segments: &[&str]) -> String {
+        qualified(segments, self.aliases).unwrap_or_else(|| format!("{}.{}", self.module, segments.join(".")))
     }
 
     // Anything reached from a mock, such as `client.return_value.session`, is a mock too.

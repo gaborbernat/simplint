@@ -181,6 +181,11 @@ impl Project {
             .chain(indexed.iter().filter(|(_, facts)| facts.main_guard).map(|(id, _)| *id))
             .collect();
         let test_support = test_support(&importers(&indexed, resolver), &test_modules, &entries);
+        let production: FxHashSet<FileId> = indexed
+            .iter()
+            .map(|(id, _)| *id)
+            .filter(|id| !test_modules.contains(id) && !test_support.contains(id))
+            .collect();
         let Gathered {
             mut uses,
             stars,
@@ -193,9 +198,8 @@ impl Project {
             opaque_names,
             computed_writes,
             written,
-            module_values,
             read_whole,
-        } = Gathered::of(&indexed, resolver, &test_modules, &test_support);
+        } = Gathered::of(&indexed, resolver, &test_modules, &production);
         for (file, name) in plugin_names {
             uses.read(file, &[name], Origin::Other);
         }
@@ -228,11 +232,6 @@ impl Project {
             },
         );
         let (cycle_reports, duplicate_reports, reads) = aside;
-        let production: FxHashSet<FileId> = indexed
-            .iter()
-            .map(|(id, _)| *id)
-            .filter(|id| !test_modules.contains(id) && !test_support.contains(id))
-            .collect();
         let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files, &production);
         let mut wide = run_names(&indexed, &test_modules, reads, opaque_names, &external.assigned);
@@ -297,11 +296,11 @@ impl Project {
             star_imported,
             package_star_imported,
             star_sources,
-            read_whole: read_whole.into_iter().chain(package_bound).collect(),
+            read_whole: read_whole.iter().copied().chain(package_bound).collect(),
             roles,
             library_api,
             test_only: only_tests(from_tests, &from_others),
-            loaded_as_value: module_values,
+            loaded_as_value: read_whole,
             uncaught_exceptions,
             exception_types,
             hook_classes,
@@ -436,7 +435,6 @@ struct Gathered<'r> {
     runtime: RuntimeGraph,
     computed_writes: FxHashSet<FileId>,
     written: FxHashMap<FileId, FxHashSet<String>>,
-    module_values: FxHashSet<FileId>,
     read_whole: FxHashSet<FileId>,
 }
 
@@ -445,7 +443,7 @@ impl<'r> Gathered<'r> {
         indexed: &[(FileId, &FileFacts)],
         resolver: &'r ImportResolver,
         test_modules: &FxHashSet<FileId>,
-        test_support: &FxHashSet<FileId>,
+        production: &FxHashSet<FileId>,
     ) -> Self {
         let mut gathered = Self { opaque_names: every(indexed, |facts| &facts.doctest_names), ..Self::default() };
         for (id, facts, module) in indexed.iter().map(|(id, facts)| (*id, *facts, &resolver.modules[id])) {
@@ -458,9 +456,8 @@ impl<'r> Gathered<'r> {
                 gathered.written.entry(*file).or_default().extend(names.iter().cloned());
             }
             let uses = module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect();
-            let production = !test_modules.contains(&id) && !test_support.contains(&id);
+            let production = production.contains(&id);
             if production {
-                gathered.module_values.extend(module.values.iter().copied());
                 gathered.read_whole.extend(module.values.iter().copied());
             }
             gathered.constructor_uses.push(FileUses {

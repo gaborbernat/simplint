@@ -4,6 +4,8 @@ use crate::syntax::has_decorator;
 
 use super::visitor::FactVisitor;
 
+pub(crate) const PYTEST_PLUGINS_REQUEST: &str = "pytest_plugins";
+
 pub(super) fn is_pytest_plugins(target: &Expr) -> bool {
     target.as_name_expr().is_some_and(|name| name.id.as_str() == "pytest_plugins")
 }
@@ -33,7 +35,7 @@ impl FactVisitor<'_> {
             })
         };
         if !plugins.iter().all(builtin) {
-            self.fixture_requests.insert("pytest_plugins".to_owned());
+            self.fixture_requests.insert(PYTEST_PLUGINS_REQUEST.to_owned());
         }
     }
 }

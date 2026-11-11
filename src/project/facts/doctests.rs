@@ -18,7 +18,7 @@ pub(super) fn doctest_names(text: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 // The level, module and names a `from module import name, other as alias` example imports.
-pub(crate) fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
+fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
     let (module, names) = code.trim_start().strip_prefix("from ")?.split_once(" import ")?;
     let module = module.trim();
     let name = module.trim_start_matches('.');

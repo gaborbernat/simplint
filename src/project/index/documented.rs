@@ -5,7 +5,6 @@ use crate::project::{DocReferences, FileFacts};
 use super::files::FileId;
 use super::resolve::ImportResolver;
 
-// An entry point runs without any import, so its name counts as used by code outside the tests.
 // The names the members of each module `automodule` documents with `:members:` add to the references, as Sphinx renders
 // them: the module's `__all__` if it has one, else its public names. The directive's `:exclude-members:` leaves names out,
 // and its `:private-members:` and `:special-members:` take in the underscore and dunder names.

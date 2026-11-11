@@ -189,3 +189,10 @@ fn attribute_load(expr: &Expr) -> Option<&str> {
         _ => attribute_call(expr, &["getattr"])?.1.as_string_literal_expr().map(|name| name.value.to_str()),
     }
 }
+
+// The words a file's string literals hold, sorted and one per line, which the cache reads back in one allocation.
+pub(super) fn string_words(words: FxHashSet<String>) -> String {
+    let mut words: Vec<String> = words.into_iter().collect();
+    words.sort_unstable();
+    words.join("\n")
+}

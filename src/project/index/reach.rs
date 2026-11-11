@@ -115,10 +115,7 @@ pub(super) fn library_api(
             (*source, exported)
         })
         .collect();
-    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        by_importer.entry(*importer).or_default().push(*source);
-    }
+    let by_importer = starred_by_importer(stars);
     let mut loaded: FxHashMap<FileId, FxHashSet<&str>> = FxHashMap::default();
     for (file, name) in entries {
         loaded.entry(*file).or_default().insert(name.as_str());
@@ -194,6 +191,14 @@ pub(super) fn library_api(
     }
 }
 
+pub(super) fn starred_by_importer(stars: &[(FileId, FileId)]) -> FxHashMap<FileId, Vec<FileId>> {
+    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        by_importer.entry(*importer).or_default().push(*source);
+    }
+    by_importer
+}
+
 // A name another module takes from a module that star-imports it, as `from pkg import Name` where `pkg/__init__.py` has
 // `from ._types import *`, comes from the star-imported module, so it counts there too, through any chain of star
 // re-exports, unless that module's `__all__` leaves it out of the `import *`. Names only spread, so this settles.
@@ -209,10 +214,7 @@ pub(super) fn reexport(
             Some((*source, exports.iter().map(String::as_str).collect()))
         })
         .collect();
-    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        by_importer.entry(*importer).or_default().push(*source);
-    }
+    let by_importer = starred_by_importer(stars);
     let mut pending: Vec<FileId> = by_importer.keys().copied().collect();
     while let Some(importer) = pending.pop() {
         for source in by_importer.get(&importer).into_iter().flatten() {

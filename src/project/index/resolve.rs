@@ -441,7 +441,12 @@ impl ModuleFacts<PathBuf> {
             class_tuples,
             classes,
             functions: facts.functions.clone(),
-            plain_modules: named_modules(&facts.plain_modules, &resolved, &own),
+            plain_modules: facts
+                .plain_modules
+                .iter()
+                .filter_map(|root| Some((root.clone(), root.clone(), resolved(root)?)))
+                .filter(|(_, _, file)| file != &own)
+                .collect(),
             runtime,
             computed_writes,
             written,
@@ -449,8 +454,6 @@ impl ModuleFacts<PathBuf> {
     }
 }
 
-// The source file a module name imports: the `.py` file even when a stub sits next to it, since that is where its names
-// are defined; a module with only a stub counts as its `.py` path, which the stub declarations also use.
 // Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
 // with Python, whose stub has no file on disk. The newest Python's standard library decides, so a module older Pythons
 // ship and the newest lacks, such as `distutils`, is one a run file of its name may shadow.
@@ -478,6 +481,8 @@ fn locate<'db>(
     }
 }
 
+// The source file a module name imports: the `.py` file even when a stub sits next to it, since that is where its names
+// are defined; a module with only a stub counts as its `.py` path, which the stub declarations also use.
 pub(super) fn resolve<'db>(
     db: &'db ModuleDb,
     environment: ResolverEnvironment<'db>,

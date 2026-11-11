@@ -18,7 +18,7 @@ use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
 use crate::syntax::{
-    ExprCollector, attribute_call, dataclass_decorator, keyword_is_true, last_segment, module_statements,
+    ExprCollector, alias_binding, attribute_call, dataclass_decorator, keyword_is_true, last_segment, module_statements,
 };
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
@@ -220,7 +220,7 @@ impl Constructors {
         }
         for FromImport { module, names, .. } in from_imports {
             for alias in *names {
-                let written = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
+                let written = alias_binding(alias).to_owned();
                 let name = alias.name.to_string();
                 grouped.entry(module.clone()).or_default().insert(NameUse {
                     name,

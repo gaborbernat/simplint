@@ -18,7 +18,7 @@ use super::loaded::{Globals, lexically_normalized};
 use super::patches::named_attribute_call;
 use super::runtime::{Constants, Runs, catches_import_error};
 use super::{Channel, Channels, ImportSite, ModuleNames, Parts};
-use crate::syntax::{attribute_call, last_segment};
+use crate::syntax::{alias_binding, attribute_call, last_segment, target_names};
 
 // A name a `from module import name as bound` statement binds; `redundant` marks `name as name`, which the typing spec
 // reads as a re-export.
@@ -39,7 +39,7 @@ pub(super) fn top_level_bindings(from_imports: &[FromImport]) -> Vec<ImportBindi
             import.names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| ImportBinding {
                 module: import.module.clone(),
                 name: alias.name.to_string(),
-                bound: alias.asname.as_ref().unwrap_or(&alias.name).to_string(),
+                bound: alias_binding(alias).to_owned(),
                 redundant: alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str()),
             })
         })
@@ -124,24 +124,24 @@ pub(super) struct FactVisitor<'a> {
     pub(super) reflected_names: BTreeSet<String>,
     // `import pkg.module as name` at the top level, as the name and the dotted module.
     pub(super) module_aliases: Vec<(String, String)>,
-    // `import pkg.module` at the top level, as the root name it binds and the module of that name.
-    pub(super) plain_modules: Vec<(String, String)>,
+    // `import pkg.module` at the top level, by the root name it binds, which is the module that name stands for too.
+    pub(super) plain_modules: Vec<String>,
     // The module the file is, so a bare class name it uses that no import binds names one of its own classes.
-    pub(super) own_module: String,
+    own_module: String,
     pub(super) caught: Vec<(String, String)>,
     // The module-level names bound to a tuple, with the classes each of its elements names, as (module, name).
     pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
     pub(super) fixture_requests: BTreeSet<String>,
     pub(super) pytest_requests: BTreeSet<String>,
     // The strings that name a fixture in its own decorator.
-    pub(super) fixture_names: FxHashSet<TextRange>,
+    fixture_names: FxHashSet<TextRange>,
     pub(super) doctest_names: BTreeSet<String>,
     // How many exception handlers the visit is inside.
-    pub(super) handler_depth: usize,
+    handler_depth: usize,
     // Whether the statement visited runs when the module loads. It does not inside a function, a lazy import, a branch
     // whose test is false at run time, such as `if TYPE_CHECKING:` or a `__main__` guard, or an `except ImportError:`
     // fallback, which runs only when the import it stands in for fails.
-    pub(super) runtime: Runs,
+    runtime: Runs,
     // The names bound to a spec, as `spec_from_file_location(name, path)` builds, mapped to the module its path names,
     // which `module_from_spec` loads.
     pub(super) specs: FxHashMap<&'a str, Option<String>>,
@@ -343,12 +343,10 @@ impl<'a> FactVisitor<'a> {
                     self.fixture_requests.insert(alias.name.to_string());
                 }
                 self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
-                let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
-                self.aliases.insert(bound, format!("{resolved}.{}", alias.name.as_str()));
+                self.aliases.insert(alias_binding(alias), format!("{resolved}.{}", alias.name.as_str()));
             }
             for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                let bound = alias.asname.as_ref().unwrap_or(&alias.name);
-                self.record_nested(top_level, bound.as_str(), &format!("{resolved}.{}", alias.name.as_str()));
+                self.record_nested(top_level, alias_binding(alias), &format!("{resolved}.{}", alias.name.as_str()));
             }
             self.from_statements.push(FromImport { module: resolved, names, top_level });
         }
@@ -513,7 +511,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     } else {
                         let root = full.split('.').next().unwrap_or_default();
                         if top_level {
-                            self.plain_modules.push((root.to_owned(), root.to_owned()));
+                            self.plain_modules.push(root.to_owned());
                         }
                         self.record_nested(top_level, root, full);
                         self.aliases.insert(root, root.to_owned())
@@ -757,18 +755,14 @@ fn restore_bindings<'a>(bindings: &mut FxHashMap<&'a str, Vec<String>>, previous
 // The names a statement binds in its own scope, which end a loop's mapping of a module under the name.
 fn bound_names(stmt: &Stmt) -> Vec<&str> {
     match stmt {
-        Stmt::Assign(ast::StmtAssign { targets, .. }) => {
-            targets.iter().flat_map(|target| stored_names(target)).collect()
-        }
+        Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().flat_map(target_names).collect(),
         Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) | Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => {
-            stored_names(target)
+            target_names(target)
         }
-        Stmt::For(ast::StmtFor { target, .. }) => stored_names(target),
-        Stmt::With(ast::StmtWith { items, .. }) => items
-            .iter()
-            .filter_map(|item| item.optional_vars.as_deref())
-            .flat_map(|target| stored_names(target))
-            .collect(),
+        Stmt::For(ast::StmtFor { target, .. }) => target_names(target),
+        Stmt::With(ast::StmtWith { items, .. }) => {
+            items.iter().filter_map(|item| item.optional_vars.as_deref()).flat_map(target_names).collect()
+        }
         Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names
             .iter()
             .filter_map(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str().split('.').next())
@@ -776,17 +770,6 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
             vec![name.as_str()]
         }
-        _ => Vec::new(),
-    }
-}
-
-fn stored_names(target: &Expr) -> Vec<&str> {
-    match target {
-        Expr::Name(name) => vec![name.id.as_str()],
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().flat_map(|elt| stored_names(elt)).collect()
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => stored_names(value),
         _ => Vec::new(),
     }
 }

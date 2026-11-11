@@ -129,7 +129,7 @@ pub(super) struct Constants<'a> {
 pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     let mut bindings = Bindings::default();
     bindings.visit_body(body);
-    let mut globals = Globals::default();
+    let mut globals = GlobalNames::default();
     globals.visit_body(body);
     for name in globals.names {
         bindings.bind(name, None);
@@ -233,11 +233,11 @@ impl<'a> Visitor<'a> for Bindings<'a> {
 
 // The names some function declares `global`, which rebinds them while the module runs.
 #[derive(Default)]
-struct Globals<'a> {
+struct GlobalNames<'a> {
     names: FxHashSet<&'a str>,
 }
 
-impl<'a> Visitor<'a> for Globals<'a> {
+impl<'a> Visitor<'a> for GlobalNames<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if let Stmt::Global(ast::StmtGlobal { names, .. }) = stmt {
             self.names.extend(names.iter().map(ast::Identifier::as_str));

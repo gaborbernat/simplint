@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::FileId;
+use super::reach::starred_by_importer;
 use super::resolve::{ClassBase, ClassKey, ModuleFacts};
 use crate::project::facts::ImportBinding;
 
@@ -30,10 +31,7 @@ impl<'b> Reexports<'b> {
                 .or_default()
                 .push((*source, binding.name.as_str()));
         }
-        let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-        for (importer, source) in stars {
-            starred.entry(*importer).or_default().push(*source);
-        }
+        let starred = starred_by_importer(stars);
         let acyclic = acyclic_order(
             bindings.iter().map(|(importer, source, _)| (*importer, *source)).chain(stars.iter().copied()),
         )

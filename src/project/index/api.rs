@@ -7,7 +7,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use crate::project::FileFacts;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
-use crate::project::facts::source_digest;
+use crate::project::facts::{PYTEST_PLUGINS_REQUEST, source_digest};
 use crate::project::receivers::UNRESOLVED_CLASS;
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
@@ -418,7 +418,7 @@ impl<'a> FileIndex<'a> {
     // Whether a test module sets `pytest_plugins`, whose fixtures may request a fixture of the run that overrides one of
     // theirs.
     pub fn loads_pytest_plugins(&self) -> bool {
-        self.project.wide.fixture_requests.contains("pytest_plugins")
+        self.project.wide.fixture_requests.contains(PYTEST_PLUGINS_REQUEST)
     }
 
     pub fn reads_docstrings(&self) -> bool {
