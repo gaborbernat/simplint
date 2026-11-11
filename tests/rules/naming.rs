@@ -2,16 +2,48 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("pkg/main.py", "[project.scripts]\ncli = \"pkg.main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "console_script")]
+#[test_case(
+    "pkg/main.py", "[project.scripts]\ncli = \"pkg.main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "console_script"
+)]
 #[test_case("main.py", "[project.scripts]\ncli = \"main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "flat_script")]
-#[test_case("src/app/main.py", "[project.scripts]\ncli = \"app.main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "namespace_script")]
-#[test_case("pkg/_main.py", "[project.gui-scripts]\ncli = \"pkg._main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "gui_script")]
-#[test_case("pkg/main.py", "[project.entry-points.example]\nplugin = \"pkg.main:run\"\n", "def run() -> None:\n    pass\n", 0 ; "plugin_not_main")]
+#[test_case(
+    "src/app/main.py",
+    "[project.scripts]\ncli = \"app.main:run\"\n",
+    "def run() -> None:\n    pass\n",
+    1 ;
+    "namespace_script"
+)]
+#[test_case(
+    "pkg/_main.py",
+    "[project.gui-scripts]\ncli = \"pkg._main:run\"\n",
+    "def run() -> None:\n    pass\n",
+    1 ;
+    "gui_script"
+)]
+#[test_case(
+    "pkg/main.py",
+    "[project.entry-points.example]\nplugin = \"pkg.main:run\"\n",
+    "def run() -> None:\n    pass\n",
+    0 ;
+    "plugin_not_main"
+)]
 #[test_case("pkg/main.py", "", "def run() -> None:\n    pass\n", 0 ; "ordinary_module")]
 #[test_case("pkg/main.py", "", "if __name__ == \"__main__\":\n    run()\n", 1 ; "direct_script")]
 #[test_case("pkg/_main.py", "", "if \"__main__\" == __name__:\n    run()\n", 1 ; "reversed_guard")]
-#[test_case("pkg/__main__.py", "[project.scripts]\ncli = \"pkg.__main__:run\"\n", "def run() -> None:\n    pass\n", 0 ; "preferred_name")]
-#[test_case("pkg/_main.py", "[project.scripts]\ncli = \"pkg.__main__:run\"\n", "def run() -> None:\n    pass\n", 0 ; "implementation_module")]
+#[test_case(
+    "pkg/__main__.py",
+    "[project.scripts]\ncli = \"pkg.__main__:run\"\n",
+    "def run() -> None:\n    pass\n",
+    0 ;
+    "preferred_name"
+)]
+#[test_case(
+    "pkg/_main.py",
+    "[project.scripts]\ncli = \"pkg.__main__:run\"\n",
+    "def run() -> None:\n    pass\n",
+    0 ;
+    "implementation_module"
+)]
 fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: usize) {
     let pyproject = format!("[project]\nname = \"pkg\"\nversion = \"1\"\n{metadata}");
     let root = common::project(&[("pyproject.toml", &pyproject), ("pkg/__init__.py", ""), (file, source)]);
@@ -34,7 +66,8 @@ fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: 
     let root = common::project(&[(
         "command.py",
         &format!(
-            "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pass\n\n\n{trailing}\n"
+            "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pa\
+                ss\n\n\n{trailing}\n"
         ),
     )]);
     common::assert_report_count(root.path(), "SMP106", expected);
@@ -58,7 +91,9 @@ fn non_utf8_script_path_has_no_target() {
 #[test_case("main()\n", "if __name__ == \"__main__\":\n    main()\n" ; "main")]
 #[test_case("run()\n", "if __name__ == \"__main__\":\n    run()\n" ; "run")]
 #[test_case("sys.exit(run())\n", "if __name__ == \"__main__\":\n    sys.exit(run())\n" ; "exit_wrapper")]
-#[test_case("raise SystemExit(main())\n", "if __name__ == \"__main__\":\n    raise SystemExit(main())\n" ; "raise_wrapper")]
+#[test_case(
+    "raise SystemExit(main())\n", "if __name__ == \"__main__\":\n    raise SystemExit(main())\n" ; "raise_wrapper"
+)]
 #[test_case("run()  # launch\n", "if __name__ == \"__main__\":\n    run()  # launch\n" ; "inline_comment")]
 #[test_case("run()\r\n", "if __name__ == \"__main__\":\r\n    run()\r\n" ; "crlf")]
 #[test_case("run()", "if __name__ == \"__main__\":\n    run()" ; "no_final_newline")]
@@ -159,7 +194,9 @@ fn executable_script_requires_guard() {
 #[test_case("module-variable-case", "_module_variable_case.py", None ; "module_variable_case")]
 #[test_case("module-variable-case", "_module_variable_case_noall.py", None ; "module_variable_case_without_all")]
 #[test_case("module-variable-case", "module_variable_case_scopes.py", None ; "module_variable_case_shadowed")]
-#[test_case("module-variable-case", "_module_variable_case_rename.py", None ; "module_variable_case_rename_across_scopes")]
+#[test_case(
+    "module-variable-case", "_module_variable_case_rename.py", None ; "module_variable_case_rename_across_scopes"
+)]
 #[test_case("module-variable-case", "module_variable_case_debug.py", None ; "module_variable_case_debug")]
 #[test_case("module-variable-case", "module_variable_case_call.py", None ; "module_variable_case_dynamic_all")]
 #[test_case("module-variable-case", "_module_variable_case_ann.py", None ; "module_variable_case_annotated_all")]
@@ -168,8 +205,12 @@ fn executable_script_requires_guard() {
 #[test_case("module-variable-case", "module_variable_case_strings.py", None ; "module_variable_case_named_in_strings")]
 #[test_case("module-variable-case", "_module_variable_case_alembic.py", None ; "module_variable_case_alembic_revision")]
 #[test_case("module-variable-case", "module_variable_case_gunicorn.py", None ; "module_variable_case_gunicorn_named")]
-#[test_case("module-variable-case", "_module_variable_case_frameworks.py", None ; "module_variable_case_framework_names")]
-#[test_case("module-variable-case", "_module_variable_case_lookalikes.py", None ; "module_variable_case_framework_lookalikes")]
+#[test_case(
+    "module-variable-case", "_module_variable_case_frameworks.py", None ; "module_variable_case_framework_names"
+)]
+#[test_case(
+    "module-variable-case", "_module_variable_case_lookalikes.py", None ; "module_variable_case_framework_lookalikes"
+)]
 #[test_case("module-variable-case", "_module_variable_case_source_text.py", None ; "module_variable_case_source_text")]
 #[test_case("module-variable-case", "_module_variable_case_version.py", None ; "module_variable_case_version_file")]
 #[test_case("module-variable-case", "_module_variable_case_ply.py", None ; "module_variable_case_ply_grammar")]
@@ -178,14 +219,40 @@ fn executable_script_requires_guard() {
 #[test_case("module-variable-case", "_module_variable_case_typer.py", None ; "module_variable_case_typer_app")]
 #[test_case("module-variable-case", "module_variable_case_type_alias.py", None ; "module_variable_case_type_alias")]
 #[test_case("module-variable-case", "_module_variable_case_ruff.py", None ; "module_variable_case_ruff_overlap")]
-#[test_case("module-variable-case", "module_variable_case_function_alias.py", None ; "module_variable_case_function_alias")]
+#[test_case(
+    "module-variable-case", "module_variable_case_function_alias.py", None ; "module_variable_case_function_alias"
+)]
 #[test_case("module-variable-case", "_module_variable_case_block_local.py", None ; "module_variable_case_block_local")]
-#[test_case("module-variable-case", "module_variable_case_computed_setattr.py", None ; "module_variable_case_computed_setattr")]
-#[test_case("module-variable-case", "module_variable_case_computed_fstring.py", None ; "module_variable_case_computed_fstring")]
-#[test_case("module-variable-case", "module_variable_case_computed_patch_object.py", None ; "module_variable_case_computed_patch_object")]
-#[test_case("module-variable-case", "_module_variable_case_computed_control.py", None ; "module_variable_case_computed_other_module")]
-#[test_case("module-variable-case", "_module_variable_case_read_in_two_blocks.py", None ; "module_variable_case_read_in_two_blocks")]
-#[test_case("module-variable-case", "module_variable_case_type_checking_stubs.py", None ; "module_variable_case_type_checking_stubs")]
+#[test_case(
+    "module-variable-case", "module_variable_case_computed_setattr.py", None ; "module_variable_case_computed_setattr"
+)]
+#[test_case(
+    "module-variable-case", "module_variable_case_computed_fstring.py", None ; "module_variable_case_computed_fstring"
+)]
+#[test_case(
+    "module-variable-case",
+    "module_variable_case_computed_patch_object.py",
+    None ;
+    "module_variable_case_computed_patch_object"
+)]
+#[test_case(
+    "module-variable-case",
+    "_module_variable_case_computed_control.py",
+    None ;
+    "module_variable_case_computed_other_module"
+)]
+#[test_case(
+    "module-variable-case",
+    "_module_variable_case_read_in_two_blocks.py",
+    None ;
+    "module_variable_case_read_in_two_blocks"
+)]
+#[test_case(
+    "module-variable-case",
+    "module_variable_case_type_checking_stubs.py",
+    None ;
+    "module_variable_case_type_checking_stubs"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -250,12 +317,40 @@ fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported
 // Ruff's N816 reports a mixedCase name at each of its module-scope stores, so SMP102 leaves such a name to it when it
 // offers no rename, whether or not the run selects N816. A rename stays here, as does a name that N816 does not report:
 // an `except` target, or one N816 ignores.
-#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n", "", [false, false] ; "module_store_left_to_n816")]
-#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nfor myValue in range(2):\n    pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [false, false] ; "loop_target_left_to_n816")]
-#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmatch 1:\n    case myValue:\n        pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [false, false] ; "match_capture_left_to_n816")]
-#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\ntry:\n    pass\nexcept ValueError as myValue:\n    pass\nMYVALUE = 4\nprint(MYVALUE, setup)\n", "", [true, true] ; "except_target_kept")]
+#[test_case(
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n",
+    "",
+    [false, false] ;
+    "module_store_left_to_n816"
+)]
+#[test_case(
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nfor myValue in range(2):\n    pass\nMYVALUE = 4\nprint(MYVA\
+        LUE, setup)\n",
+    "",
+    [false, false] ;
+    "loop_target_left_to_n816"
+)]
+#[test_case(
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nmatch 1:\n    case myValue:\n        pass\nMYVALUE = 4\npri\
+        nt(MYVALUE, setup)\n",
+    "",
+    [false, false] ;
+    "match_capture_left_to_n816"
+)]
+#[test_case(
+    "def setup():\n    global myValue\n    myValue = 1\n\n\ntry:\n    pass\nexcept ValueError as myValue:\n    pass\nMY\
+        VALUE = 4\nprint(MYVALUE, setup)\n",
+    "",
+    [true, true] ;
+    "except_target_kept"
+)]
 #[test_case("myValue = 3\nprint(myValue)\n", "", [true, true] ; "rename_kept")]
-#[test_case("def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n", "[tool.ruff.lint.pep8-naming]\nignore-names = [\"myValue\"]\n", [true, true] ; "ignored_name_kept")]
+#[test_case(
+    "def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n",
+    "[tool.ruff.lint.pep8-naming]\nignore-names = [\"myValue\"]\n",
+    [true, true] ;
+    "ignored_name_kept"
+)]
 fn module_variable_case_leaves_names_without_rename_to_n816(source: &str, settings: &str, expected: [bool; 2]) {
     let case = common::RuffOverlap { settings, select: "SMP102", ruff_code: "N816", files: &[("module.py", source)] };
     assert_eq!(common::reported_without_and_with_ruff(&case, "Module-scope variable `myValue`"), expected);

@@ -93,7 +93,8 @@ fn callable_ellipsis_in_test_parameter_depends_on_use(body: &str, reports: usize
     let root = common::project(&[(
         "tests/test_callbacks.py",
         &format!(
-            "from collections.abc import Callable\nimport inspect\n\n\ndef test_callback(callback: Callable[..., int]) -> None:\n    {body}\n"
+            "from collections.abc import Callable\nimport inspect\n\n\ndef test_callback(callback: Callable[..., int]) \
+                -> None:\n    {body}\n"
         ),
     )]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP603"]);
@@ -143,10 +144,22 @@ fn imprecise_annotation_leaves_optional_any_to_ann401(source: &str, reported: bo
 // ANN401 skips `*args` and `**kwargs` under `allow-star-arg-any`, the `self` or `cls` of a method, and `@override`
 // signatures, so SMP602 reports those whether or not ANN401 is selected.
 #[test_case("", "def f(*args: Any) -> None:\n    print(args)\n", false ; "star_args")]
-#[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(*args: Any) -> None:\n    print(args)\n", true ; "star_args_allowed")]
-#[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(**kwargs: Optional[Any]) -> None:\n    print(kwargs)\n", true ; "star_kwargs_allowed")]
+#[test_case(
+    "[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n",
+    "def f(*args: Any) -> None:\n    print(args)\n",
+    true ;
+    "star_args_allowed"
+)]
+#[test_case(
+    "[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n",
+    "def f(**kwargs: Optional[Any]) -> None:\n    print(kwargs)\n",
+    true ;
+    "star_kwargs_allowed"
+)]
 #[test_case("", "class C:\n    def m(self: Any) -> None:\n        pass\n", true ; "receiver")]
-#[test_case("", "class C(Base):\n    @override\n    def m(self, value: Any) -> None:\n        print(value)\n", true ; "override")]
+#[test_case(
+    "", "class C(Base):\n    @override\n    def m(self, value: Any) -> None:\n        print(value)\n", true ; "override"
+)]
 fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, reported: bool) {
     let root = common::project(&[
         ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = []\n{extra}")),
@@ -160,7 +173,12 @@ fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, repor
 // `object` alone whether or not ANN401 runs. A nested `object` or one on a regular parameter stays reported.
 #[test_case("", "def f(*args: object) -> None:\n    print(args)\n", false ; "star_args")]
 #[test_case("", "def f(**kwargs: object) -> None:\n    print(kwargs)\n", false ; "star_kwargs")]
-#[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(**kwargs: builtins.object) -> None:\n    print(kwargs)\n", false ; "star_kwargs_qualified")]
+#[test_case(
+    "[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n",
+    "def f(**kwargs: builtins.object) -> None:\n    print(kwargs)\n",
+    false ;
+    "star_kwargs_qualified"
+)]
 #[test_case("", "def f(*args: list[object]) -> None:\n    print(args)\n", true ; "nested_in_variadic")]
 #[test_case("", "def f(value: object) -> None:\n    print(value)\n", true ; "parameter")]
 fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, reported: bool) {
@@ -177,9 +195,29 @@ fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, repor
 // Ruff's ANN401 skips the `def` that implements an `@overload` set, and reads a stub through the `if` bodies after it,
 // until a `def` or a class resets it. SMP602 follows, so the `def` of the first branch is reported on its line, and the
 // one after a branch with another `def` in it, or after a class, is left to ANN401.
-#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any:\n        return value\n", 9, 2 ; "branch_implementation")]
-#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nif __debug__:\n    def helper() -> None:\n        pass\n\n\ndef f(value: Any) -> Any:\n    return value\n", 0, 0 ; "branch_def_before_implementation")]
-#[test_case("from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> str: ...\nclass C:\n    pass\n\n\ndef f(value: Any) -> Any:\n    return value\n", 0, 0 ; "class_before_implementation")]
+#[test_case(
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
+        r: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any\
+        :\n        return value\n",
+    9,
+    2 ;
+    "branch_implementation"
+)]
+#[test_case(
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
+        r: ...\nif __debug__:\n    def helper() -> None:\n        pass\n\n\ndef f(value: Any) -> Any:\n    return value\
+        \n",
+    0,
+    0 ;
+    "branch_def_before_implementation"
+)]
+#[test_case(
+    "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> st\
+        r: ...\nclass C:\n    pass\n\n\ndef f(value: Any) -> Any:\n    return value\n",
+    0,
+    0 ;
+    "class_before_implementation"
+)]
 fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, reported: usize) {
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
