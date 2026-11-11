@@ -10,8 +10,8 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstring;
-use crate::rules::docstrings::Need;
 use crate::rules::docstrings::comment_text::{cleaned_lines, drop_fields};
+use crate::rules::public_api::Need;
 use edit::{block_levels, comment_replacement, removal};
 
 pub fn function_docstring(checker: &Checker) {

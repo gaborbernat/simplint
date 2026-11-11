@@ -6,7 +6,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstring;
-use crate::rules::docstrings::{ApiItem, ApiKind, is_documented_variable};
+use crate::rules::docstrings::is_documented_variable;
+use crate::rules::public_api::{ApiItem, ApiKind};
 use crate::syntax::{alias_binding, for_each_child_body, is_name};
 
 pub fn undocumented_public_api(checker: &Checker) {

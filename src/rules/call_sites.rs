@@ -5,7 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::constructors::{CallContexts, CallSites, Use, Uses};
-use crate::rules::docstrings::Need;
+use crate::rules::public_api::Need;
 use crate::syntax::Visibility;
 
 // The uses of every candidate function by its name, found in one walk of the module rather than one per function.

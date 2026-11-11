@@ -9,6 +9,7 @@ pub(crate) mod layout;
 pub(crate) mod logic;
 pub(crate) mod module_variable;
 pub(crate) mod naming;
+mod public_api;
 mod rename;
 pub(crate) mod testing;
 pub(crate) mod typing;
@@ -28,12 +29,12 @@ use crate::lint::checker::Checker;
 use crate::lint::noqa;
 use crate::project::doctest_code;
 use crate::rules::comments::Comment;
-use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rst::{Target, collect_targets};
 use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
+use crate::rules::public_api::PublicApi;
 use crate::syntax::{
     Nesting, all_literal, code_string_values, identifier_words, is_name, is_type_checking_name, last_segment,
 };

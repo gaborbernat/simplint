@@ -2,7 +2,8 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
-use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
+use crate::rules::docstrings::is_documented_variable;
+use crate::rules::public_api::module_statements_with_next;
 use crate::syntax::{instance_writes, is_classmethod, is_name, last_segment, target_names};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.

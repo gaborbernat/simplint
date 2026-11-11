@@ -9,7 +9,7 @@ use super::attributes::{Attribute, annotation_name, attributes, is_field_call, s
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::docstring;
-use crate::rules::docstrings::Need;
+use crate::rules::public_api::Need;
 use crate::settings::DocstringStyle;
 use crate::syntax::{Visibility, is_overload, last_segment, module_statements, receiver};
 

@@ -11,8 +11,8 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{definitions, names_are_followed, references_outside};
-use crate::rules::docstrings::Need;
 use crate::rules::is_named_by_doctest;
+use crate::rules::public_api::Need;
 use crate::semantic::Evaluation;
 use crate::syntax::{Visibility, identifier_words, module_statements};
 

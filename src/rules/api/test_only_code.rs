@@ -3,7 +3,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::api::{definitions, names_are_followed, references_outside};
-use crate::rules::docstrings::Need;
+use crate::rules::public_api::Need;
 use crate::syntax::{Visibility, module_statements};
 
 pub fn test_only_code(checker: &Checker) {
