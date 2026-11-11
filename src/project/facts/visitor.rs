@@ -272,14 +272,12 @@ impl<'a> FactVisitor<'a> {
     fn import_from(&mut self, stmt: &'a Stmt, import: &'a ast::StmtImportFrom, top_level: bool) {
         let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
         let runtime = self.runtime;
-        let runs = runtime != Runs::Never;
         let module = module.as_ref().map(ast::Identifier::as_str);
         if let Some(resolved) = resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned) {
-            let star = names.iter().any(|alias| alias.name.as_str() == "*");
-            if star {
+            if names.iter().any(|alias| alias.name.as_str() == "*") {
                 self.stars.insert(resolved.clone());
             }
-            if runs && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
+            if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
                 let submodules = names
                     .iter()
                     .filter(|alias| alias.name.as_str() != "*")
