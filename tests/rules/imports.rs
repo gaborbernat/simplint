@@ -659,13 +659,15 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
     }
 }
 
-// The builtins define these names, so their import goes, unless another module takes the name from this one or
-// `__all__` lists it: the backport is reported either way.
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", true ; "imported_by_another_module")]
-#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", true ; "listed_in_all")]
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", false ; "imported_from_another_module")]
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", false ; "module_imported")]
-fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consumer: &str, kept: bool) {
+// The builtins define these names, so their import goes. Ruff's A004 reports an unaliased import of a builtin that
+// another module takes from this one or `__all__` lists, which has no fix here, so this rule leaves it to A004. The
+// other imports keep their report, and the fix removes the statement only when no other module takes the name.
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", false, false ; "imported_by_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", false, false ; "listed_in_all")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", true, true ; "imported_from_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", true, true ; "module_imported")]
+#[test_case("from exceptiongroup import ExceptionGroup as group\n", "from pkg.compat import ExceptionGroup\n", true, false ; "aliased_name")]
+fn backport_import_follows_builtin_import_shadowing(compat: &str, consumer: &str, reported: bool, removed: bool) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n"),
         ("pkg/__init__.py", ""),
@@ -673,10 +675,26 @@ fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consume
         ("pkg/other.py", "ExceptionGroup = object()\n"),
         ("pkg/run.py", consumer),
     ]);
-    let reported = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
-    assert!(reported.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{reported}");
+    let stdout = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert_eq!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), reported, "{stdout}");
     common::fix_unsafe(root.path(), "SMP305");
-    assert_eq!(common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), kept);
+    assert_eq!(!common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), removed);
+}
+
+// The builtins ignorelist names a builtin that Ruff's A004 lets an import shadow, so the import keeps this rule's report.
+#[test]
+fn backport_import_keeps_report_for_a_builtin_the_ignorelist_allows() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n\n[tool.ruff.lint.flake8-builtins]\nignorelist = [\"ExceptionGroup\"]\n",
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/compat.py", "from exceptiongroup import ExceptionGroup\n"),
+        ("pkg/run.py", "from pkg.compat import ExceptionGroup\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{stdout}");
 }
 
 // A listed import that the list keeps lazy stays eager once the list goes, so the list stays. CPython compiles the body

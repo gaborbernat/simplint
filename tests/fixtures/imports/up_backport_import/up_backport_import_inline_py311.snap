@@ -2,4 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-1:12 SMP305 `exceptiongroup` names are builtins in every supported Python version; drop the import
+
