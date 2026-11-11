@@ -312,14 +312,18 @@ For a constant that is not a tuple, no fix is offered when:
 flowchart TD
     assertion["assert on a<br/>truthy constant"] --> tuple{"a tuple?"}
     tuple -->|yes| pair{"two elements,<br/>no message?"}
-    pair -->|yes| unwrap["unsafe: assert check, message"]
-    pair -->|no| left["left to Ruff"]
+    pair -->|yes| starred{"a starred element<br/>or a comment?"}
+    starred -->|yes| left["left to Ruff"]
+    starred -->|no| unwrap["unsafe: assert check, message"]
+    pair -->|no| left
     tuple -->|no| generator{"a generator?"}
     generator -->|yes| asynchronous{"asynchronous, or<br/>all rebound?"}
     asynchronous -->|yes| none
     asynchronous -->|no| wrap["unsafe: assert all(...)"]
     generator -->|no| blocked{"shares a line or<br/>calls something?"}
-    blocked -->|yes| none
+    blocked -->|yes| literal{"a string, bytes or<br/>f-string literal?"}
+    literal -->|yes| left
+    literal -->|no| none
     blocked -->|no| template{"a format or<br/>% template?"}
     template -->|yes| unsafe["unsafe: delete it"]
     template -->|no| delete["safe: delete it"]
@@ -329,7 +333,7 @@ flowchart TD
     classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
     classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class assertion blue
-    class blocked,tuple,pair,generator,asynchronous,template yellow
+    class blocked,tuple,pair,starred,generator,asynchronous,literal,template yellow
     class delete green
     class unsafe orange
     class unwrap,wrap teal

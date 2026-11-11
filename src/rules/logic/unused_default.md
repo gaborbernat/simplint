@@ -311,10 +311,9 @@ pair(1, 2)
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#1512](https://github.com/astral-sh/ruff/issues/1512).
-- **[Ruff](https://github.com/astral-sh/ruff):**
-  [PT028](https://docs.astral.sh/ruff/rules/pytest-parameter-with-default-argument/) reports the default of a pytest
-  test function with a display-only fix. This rule leaves the default it cannot fix to it, as described under
+- **[Ruff](https://github.com/astral-sh/ruff):** an open issue, [#1512](https://github.com/astral-sh/ruff/issues/1512),
+  and [PT028](https://docs.astral.sh/ruff/rules/pytest-parameter-with-default-argument/), which reports the default of a
+  pytest test function with a display-only fix. This rule leaves the default it cannot fix to PT028, as described under
   Exceptions, and reports the defaults it can fix.
 - [refurb](https://github.com/dosisod/refurb) reports call arguments that equal the default as
   [FURB120](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default). This rule

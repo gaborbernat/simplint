@@ -235,12 +235,6 @@ it belongs.
   or Ruff's preview mode is on. Ruff allows imports, dunder assignments and `if TYPE_CHECKING` blocks, unless
   `strictly-empty-init-modules` is set.
 
-  ```toml config
-  [tool.ruff.lint]
-  preview = true
-  select = ["RUF067"]
-  ```
-
   ```python ok file=pkg/__init__.py
   """HTTP client."""
 
