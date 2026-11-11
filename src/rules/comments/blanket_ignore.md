@@ -4,8 +4,7 @@ hides every error on its line or in its file, including errors that appear there
 
 ## Why is this bad?
 
-A blanket suppression hides every error on its line, or in its file, including errors that appear there later. A real
-bug that lands on the same line passes unnoticed, and the comment never says which error it was meant for.
+A real bug that lands on the same line passes unnoticed, and the comment never says which error it was meant for.
 
 ## Example
 

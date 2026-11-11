@@ -24,8 +24,8 @@ file.close()
 ### Active on
 
 - **Own-line comments above code**: every word of the comment appears among the identifiers and keywords of the next
-  line. Words compare without case, and a name matches only as a whole, so `# create user` does not restate
-  `create_user()`, which the comment would have to spell out as `create` and `user` on their own.
+  line. Words compare without case, and a name matches only as a whole: `# create user` does not restate
+  `create_user()`, since `create` and `user` are not words of the code.
 
   Consecutive own-line comments form one block, which is judged as a whole and removed whole.
 

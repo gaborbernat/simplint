@@ -1,5 +1,4 @@
-Flags own-line comments used as dividers or section headers. Such a comment groups code by its position in the file, and
-nothing keeps that grouping accurate as code moves.
+Flags own-line comments used as dividers or section headers.
 
 ## Why is this bad?
 

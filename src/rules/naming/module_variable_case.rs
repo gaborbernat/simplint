@@ -55,8 +55,8 @@ fn is_mixed_case(name: &str) -> bool {
     name.contains(char::is_uppercase) && name.strip_prefix('_').unwrap_or(name).starts_with(char::is_lowercase)
 }
 
-// The names bound by an assignment that calls `namedtuple` or `NamedTuple`, which N816 skips. The assignment may sit in
-// a block of the module body, but not in a function or class body, which binds its names in its own scope.
+// N816 skips names bound by a `namedtuple` or `NamedTuple` call. A function or class body binds in its own scope, so
+// only the blocks of the module body are walked.
 fn collect_named_tuples(checker: &Checker, body: &[Stmt], targets: &mut FxHashSet<TextRange>) {
     for stmt in body {
         match stmt {
