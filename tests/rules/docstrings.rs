@@ -485,6 +485,79 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
     assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
+// Ruff's pydocstyle skips a function that `ignore-decorators` lists, so it reports no D103 for it, and SMP903 keeps it.
+#[test_case("@route", "app.route", [true, true] ; "listed_decorator")]
+#[test_case("@route(\"/run\")", "app.route", [true, true] ; "listed_call")]
+#[test_case("@route", "app.other", [true, false] ; "unlisted_decorator")]
+fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, listed: &str, reported: [bool; 2]) {
+    let source = format!("from app import route\n\n\n{decorator}\ndef run() -> None:\n    pass\n");
+    let settings = format!(
+        "[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"{listed}\"]\n"
+    );
+    let case = common::RuffOverlap {
+        settings: &settings,
+        select: "SMP903",
+        ruff_code: "D103",
+        files: &[("module.py", source.as_str())],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
+}
+
+// Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
+// the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "empty_function")]
+#[test_case("D419", "# ruff: noqa: E501\nclass Config:\n    \"\"\"\"\"\"\n    VALUE = 1\n", [false, false] ; "empty_class")]
+#[test_case("D419", "def run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [true, true] ; "fixable_empty_function")]
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\" \"\"\n    print()\n", [true, true] ; "implicit_concatenation")]
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n", [true, true] ; "not_empty")]
+#[test_case("D418", "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [false, false] ; "overload")]
+#[test_case("D418", "from typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [true, true] ; "fixable_overload")]
+#[test_case("D419", "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [false, false] ; "empty_overload")]
+#[test_case("D418", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run it.\"\"\"\n    print()\n", [true, true] ; "not_overload")]
+#[test_case("D419", "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "decorator_not_listed")]
+fn function_docstring_is_left_to_ruff_d418_d419(ruff_code: &str, source: &str, reported: [bool; 2]) {
+    let case = common::RuffOverlap { settings: "", select: "SMP901", ruff_code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), reported);
+}
+
+// A decorator that `ignore-decorators` lists makes Ruff skip the function, so SMP901 keeps its docstring.
+#[test]
+fn function_docstring_keeps_ignored_decorator_docstring() {
+    let case = common::RuffOverlap {
+        settings: "[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"pytest.fixture\"]\n",
+        select: "SMP901",
+        ruff_code: "D419",
+        files: &[(
+            "module.py",
+            "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print()\n",
+        )],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), [true, true]);
+}
+
+// Ruff's D418 does not report a stub, so SMP901 keeps the overload docstring of a stub read from standard input.
+#[test]
+fn function_docstring_keeps_overload_docstring_in_a_stub() {
+    let root = common::project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D418\"]\n")]);
+    let source = "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n";
+    let (_, stdout, _) =
+        common::check_with_stdin(root.path(), &["--select", "SMP901", "--stdin-filename", "stub.pyi", "-"], source);
+    assert!(stdout.contains("docstring on internal code"), "{stdout}");
+}
+
+// Ruff's D419 reports an empty docstring of a single string, which SMP902 can remove only with its fix. A file-level
+// `noqa` withdraws that fix, and then SMP902 leaves the docstring to Ruff whether or not the project selects D419.
+#[test_case("# ruff: noqa: E501\n\"\"\"\"\"\"\n\nimport os\n", [false, false] ; "empty_with_file_noqa")]
+#[test_case("\"\"\"\"\"\"\n\nimport os\n", [true, true] ; "fixable_empty")]
+#[test_case("# ruff: noqa: E501\n\"\" \"\"\n\nimport os\n", [true, true] ; "implicit_concatenation")]
+#[test_case("# ruff: noqa: E501\n\"\"\"\\x20\"\"\"\n\nimport os\n", [true, true] ; "escape_is_text")]
+#[test_case("# ruff: noqa: E501\n\"\"\"Tests.\"\"\"\n\nimport os\n", [true, true] ; "not_empty")]
+fn test_module_docstring_is_left_to_ruff_d419(source: &str, reported: [bool; 2]) {
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP902", ruff_code: "D419", files: &[("test_module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Test module carries a docstring"), reported);
+}
+
 // A public class of a library inherits the members of its private base without overriding them, so users reach them
 // through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
 // the public class's own, so the base's docstring of it stays internal.

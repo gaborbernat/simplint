@@ -15,6 +15,21 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
+// Ruff's E266 and E265 report a plain comment of prose after its hashes, with the text SMP001's fix keeps, so SMP001
+// leaves such a comment to them whether or not the project selects them. A decorated comment or a short heading is not
+// the same text as Ruff's fix, so SMP001 keeps it.
+#[test_case("E266", "## Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "spaced_hashes")]
+#[test_case("E265", "##Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "unspaced_hashes")]
+#[test_case("E265", "##\tRemove this return to update the cron job\nVALUE = 1\n", [false, false] ; "tab_after_hashes")]
+#[test_case("E266", "VALUES = [\n    1,\n    ## Remove this return to update the cron job\n    2,\n]\n", [false, false] ; "inside_brackets")]
+#[test_case("E266", "## --- Remove this return to update the cron job ---\nVALUE = 1\n", [true, true] ; "decorated_prose")]
+#[test_case("E266", "#### Remove this return to update the cron job ####\nVALUE = 1\n", [true, true] ; "decorated_hashes")]
+#[test_case("E266", "## Setup\nVALUE = 1\n", [true, true] ; "short_heading")]
+fn section_comment_prose_is_left_to_ruff_e265_and_e266(ruff_code: &str, source: &str, reported: [bool; 2]) {
+    let case = common::RuffOverlap { settings: "", select: "SMP001", ruff_code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "SMP001"), reported);
+}
+
 #[test]
 fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
     let source = "x = 1  # simplint: ignore[SMP101, imprecise-annotation, SMP999] # external name\n";
@@ -34,19 +49,28 @@ fn named_ignore_needs_no_migration() {
     assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, common::PASSED);
 }
 
-// Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them while the project's Ruff
-// configuration runs them.
-#[test_case("import os  # noqa\n", "PGH004", "`# noqa` suppresses every error" ; "noqa")]
-#[test_case("import os  # type: ignore\n", "PGH003", "`# type: ignore` suppresses every error" ; "type_ignore")]
-#[test_case("# ruff: noqa\nimport os\n", "PGH004", "`# ruff: noqa` suppresses every error in the file" ; "file_noqa")]
-#[test_case("VALUE = 1  # ruff: ignore\n", "RUF103", "`# ruff: ignore` suppresses every error on the line" ; "ruff_ignore")]
-#[test_case("VALUE = 1  # ruff: ignore[]\n", "RUF103", "`# ruff: ignore` suppresses every error" ; "ruff_ignore_empty")]
-#[test_case("VALUE = 1  # ruff: ignore[E501\n", "RUF103", "`# ruff: ignore` suppresses every error" ; "ruff_ignore_unclosed")]
-#[test_case("# ruff: file-ignore\nimport os\n", "RUF103", "`# ruff: file-ignore` suppresses every error in the file" ; "ruff_file_ignore")]
-#[test_case("VALUE = 1  # ruff: ignore [ ]\n", "RUF103", "`# ruff: ignore` suppresses every error" ; "ruff_ignore_spaced_empty")]
-fn blanket_ignore_follows_ruff_blanket_rules(source: &str, code: &str, fragment: &str) {
+// Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them whether or not the project
+// selects them. A `type: ignore` followed by a reason is no blanket for PGH003, so SMP004 keeps it.
+#[test_case("import os  # noqa\n", "PGH004", "`# noqa` suppresses every error", [false, false] ; "noqa")]
+#[test_case("import os  # type: ignore\n", "PGH003", "`# type: ignore` suppresses every error", [false, false] ; "type_ignore")]
+#[test_case("# ruff: noqa\nimport os\n", "PGH004", "`# ruff: noqa` suppresses every error in the file", [false, false] ; "file_noqa")]
+#[test_case("VALUE = 1  # ruff: ignore\n", "RUF103", "`# ruff: ignore` suppresses every error on the line", [false, false] ; "ruff_ignore")]
+#[test_case("VALUE = 1  # ruff: ignore[]\n", "RUF103", "`# ruff: ignore` suppresses every error", [false, false] ; "ruff_ignore_empty")]
+#[test_case("VALUE = 1  # ruff: ignore[E501\n", "RUF103", "`# ruff: ignore` suppresses every error", [false, false] ; "ruff_ignore_unclosed")]
+#[test_case("# ruff: file-ignore\nimport os\n", "RUF103", "`# ruff: file-ignore` suppresses every error in the file", [false, false] ; "ruff_file_ignore")]
+#[test_case("VALUE = 1  # ruff: ignore [ ]\n", "RUF103", "`# ruff: ignore` suppresses every error", [false, false] ; "ruff_ignore_spaced_empty")]
+#[test_case("import os  # type: ignore  reason\n", "PGH003", "`# type: ignore` suppresses every error", [true, true] ; "type_ignore_with_reason")]
+fn blanket_ignore_is_left_to_ruff_blanket_rules(source: &str, code: &str, fragment: &str, reported: [bool; 2]) {
     let case = common::RuffOverlap { settings: "", select: "SMP004", ruff_code: code, files: &[("module.py", source)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), reported);
+}
+
+#[test_case("A = 1  # type: ignore  [attr-defined]\n" ; "type_ignore_spaced_codes")]
+#[test_case("A = 1  # pyright: ignore  [reportAttributeAccessIssue]\n" ; "pyright_ignore_spaced_codes")]
+#[test_case("A = 1  # type: ignore [attr-defined]\n" ; "type_ignore_codes")]
+fn named_type_ignore_after_spaces_is_not_blanket(source: &str) {
+    let root = common::project(&[("module.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP004"]).1, common::PASSED);
 }
 
 #[test]

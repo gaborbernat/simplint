@@ -5,11 +5,12 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::Fix;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
+use ruff_python_ast::{self as ast, Decorator, Expr, ExprContext, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::docstrings::{ruff_ignores_function, ruff_reports_empty_docstring};
 use crate::rules::public_api::Need;
 use crate::syntax::docstring;
 use edit::{block_levels, comment_replacement, removal};
@@ -75,6 +76,9 @@ pub fn function_docstring(checker: &Checker) {
                 "Turn the docstring into a comment",
             )
         };
+        if fix.is_none() && left_to_ruff(checker, decorators, kind == "Function", literal) {
+            continue;
+        }
         checker.report_fix(
             Rule::FunctionDocstring,
             stmt.range(),
@@ -83,6 +87,27 @@ pub fn function_docstring(checker: &Checker) {
             title,
         );
     }
+}
+
+// Ruff's D418 and D419 report the docstring of a definition this rule has no fix for, while the project's Ruff
+// configuration runs them. Ruff skips a definition that `ignore-decorators` lists, and it leaves a stub's `@overload`
+// docstrings alone.
+fn left_to_ruff(
+    checker: &Checker,
+    decorators: &[Decorator],
+    is_function: bool,
+    literal: &ast::ExprStringLiteral,
+) -> bool {
+    if is_function && ruff_ignores_function(checker, decorators) {
+        return false;
+    }
+    if ruff_reports_empty_docstring(checker, literal) {
+        return true;
+    }
+    is_function
+        && checker.path.extension().is_none_or(|extension| extension != "pyi")
+        && literal.as_single_part_string().is_some_and(|part| !checker.text(part.content_range()).trim().is_empty())
+        && decorators.iter().any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "overload"))
 }
 
 // A class body that names `__doc__` reads its own docstring, which the compiler binds in the class namespace before the

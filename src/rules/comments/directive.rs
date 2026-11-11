@@ -46,8 +46,7 @@ pub(super) struct Directive {
     pub(super) codes: Codes,
     pub(super) scope: Scope,
     pub(super) missing_codes: bool,
-    // The Ruff rule, PGH003, PGH004 or RUF103, that reports this blanket directive, which SMP004 leaves to Ruff when it
-    // runs.
+    // The Ruff rule, PGH003, PGH004 or RUF103, that reports this blanket directive, which SMP004 leaves to Ruff.
     pub(super) ruff_rule: Option<RuffRule>,
 }
 
@@ -151,9 +150,11 @@ fn parse_directive(text: &str) -> Option<(Directive, &str)> {
             return None;
         }
         let raw = &text[text.len() - rest.len()..];
-        // Ruff's parser skips spaces before the brackets, so `ruff: ignore [CODE]` names codes for it.
+        // Ruff's parser and mypy skip spaces before the brackets, so `ruff: ignore [CODE]` and `type: ignore [CODE]`
+        // name codes for them.
         let ruff_ignore = matches!(name, "ruff: ignore" | "ruff: file-ignore");
-        let (named, reason) = codes.split(if ruff_ignore { raw.trim_start() } else { raw })?;
+        let skips_spaces = ruff_ignore || matches!(name, "type: ignore" | "pyright: ignore");
+        let (named, reason) = codes.split(if skips_spaces { raw.trim_start() } else { raw })?;
         let missing_codes = !named && !matches!(codes, Codes::None);
         // Ruff's RUF103 reports a `ruff: ignore` whose brackets it finds no code in.
         let ruff_rule = (missing_codes && ruff_ignore).then_some(RuffRule::InvalidSuppressionComment);

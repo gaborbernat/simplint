@@ -36,6 +36,12 @@ docstring this rule removes, since a test module is public unless its name start
 simplint stops with an error before linting while either applies to a test module. Turn them off for test files with
 [`per-file-ignores`](https://docs.astral.sh/ruff/settings/#lint_per-file-ignores), or turn this rule off.
 
+## Ruff overlap
+
+Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) reports an empty docstring of a
+single string. This rule removes such a docstring with a fix, unless a file-level `# ruff: noqa` withdraws the fix; then
+it leaves the docstring to D419, whether or not the project selects that rule.
+
 ## What it does
 
 Checks for a module docstring in a test module.

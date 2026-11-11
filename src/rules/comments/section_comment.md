@@ -139,13 +139,15 @@ longer.
 
 ## Ruff overlap
 
-Ruff's
-[multiple-leading-hashes-for-block-comment](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/)
-also reports the `## Setup` form.
+[E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and
+[E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a plain comment of more
+than three words, such as `## Remove this return to update the cron job`, with its text kept. This rule leaves such a
+comment to them whether or not the project enables preview. E266 also reports `## Setup` and decorated comments; this
+rule keeps those, since its fixes differ from Ruff's.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rules
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules
   [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/) and
-  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) reformat some of the same
-  comments, such as `## Setup` or `#---`, but keep them.
+  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/), which reformat some of the same
+  comments, such as `## Setup` or `#---`; this rule leaves the plain prose ones to them (see Ruff overlap).
