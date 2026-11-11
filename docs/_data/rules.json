@@ -7233,7 +7233,7 @@
     "name": "import-cycle",
     "summary": "Runtime imports that close a cycle between modules",
     "fix": "None",
-    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its\nfirst eight, then how many it leaves out, before the module it closes on.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n  A module that binds `TYPE_CHECKING` to a true constant runs the block, so the name is an ordinary flag and the import\n  counts:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  TYPE_CHECKING = True\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read. A second\n  binding of the name, in any block of the module or in a `global` declaration in a function, makes it an ordinary flag.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n  A second binding in a `try` makes the same name an ordinary flag, so the import under it counts:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  HAS_JSON = False\n  try:\n      import json\n\n      HAS_JSON = True\n  except ImportError:\n      pass\n\n  if HAS_JSON:\n      import a\n  ```\n\n  A `from module import *` rebinds the public module-level names, so it makes every such public constant an ordinary\n  flag. A name starting with an underscore is not bound by it, so it stays a constant:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python context file=flags.py\n  FLAG = True\n  ```\n\n  ```python report file=b.py\n  FLAG = False\n  from flags import *\n\n  if FLAG:\n      import a\n  ```\n\n  With an underscore in the name, the same flag stays a constant:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python context file=flags.py\n  FLAG = True\n  ```\n\n  ```python ok file=b.py\n  _FLAG = False\n  from flags import *\n\n  if _FLAG:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n  The `else` of a check of the first item that holds on Python 3, the only major a supported Python has, never runs:\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info[0] == 3:\n      VALUE = 1\n  else:\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
+    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its\nfirst eight, then how many it leaves out, before the module it closes on.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n  A module that binds `TYPE_CHECKING` to a true constant runs the block, so the name is an ordinary flag and the import\n  counts:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  TYPE_CHECKING = True\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read. A second\n  binding of the name, in any block of the module or in a `global` declaration in a function, makes it an ordinary flag.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n  A second binding in a `try` makes the same name an ordinary flag, so the import under it counts:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  HAS_JSON = False\n  try:\n      import json\n\n      HAS_JSON = True\n  except ImportError:\n      pass\n\n  if HAS_JSON:\n      import a\n  ```\n\n  A `from module import *` rebinds the public module-level names, so it makes every such public constant an ordinary\n  flag. A name starting with an underscore is never treated as rebound, even when the star-imported module's `__all__`\n  lists it, so it stays a constant:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python context file=flags.py\n  FLAG = True\n  ```\n\n  ```python report file=b.py\n  FLAG = False\n  from flags import *\n\n  if FLAG:\n      import a\n  ```\n\n  With an underscore in the name, the same flag stays a constant:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python context file=flags.py\n  FLAG = True\n  ```\n\n  ```python ok file=b.py\n  _FLAG = False\n  from flags import *\n\n  if _FLAG:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n  The `else` of a check of the first item that holds on Python 3, the only major a supported Python has, never runs:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info[0] == 3:\n      VALUE = 1\n  else:\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -7524,8 +7524,8 @@
         },
         {
           "section": "What it does",
-          "line": 203,
-          "end_line": 217,
+          "line": 204,
+          "end_line": 218,
           "config": null,
           "blocks": [
             {
@@ -7533,8 +7533,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 203,
-              "end_line": 205,
+              "line": 204,
+              "end_line": 206,
               "source": "import b\n"
             },
             {
@@ -7542,8 +7542,8 @@
               "language": "python",
               "file": "flags.py",
               "named": true,
-              "line": 207,
-              "end_line": 209,
+              "line": 208,
+              "end_line": 210,
               "source": "FLAG = True\n"
             },
             {
@@ -7551,16 +7551,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 211,
-              "end_line": 217,
+              "line": 212,
+              "end_line": 218,
               "source": "FLAG = False\nfrom flags import *\n\nif FLAG:\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 221,
-          "end_line": 235,
+          "line": 222,
+          "end_line": 236,
           "config": null,
           "blocks": [
             {
@@ -7568,8 +7568,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 221,
-              "end_line": 223,
+              "line": 222,
+              "end_line": 224,
               "source": "import b\n"
             },
             {
@@ -7577,8 +7577,8 @@
               "language": "python",
               "file": "flags.py",
               "named": true,
-              "line": 225,
-              "end_line": 227,
+              "line": 226,
+              "end_line": 228,
               "source": "FLAG = True\n"
             },
             {
@@ -7586,16 +7586,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 229,
-              "end_line": 235,
+              "line": 230,
+              "end_line": 236,
               "source": "_FLAG = False\nfrom flags import *\n\nif _FLAG:\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 242,
-          "end_line": 251,
+          "line": 243,
+          "end_line": 252,
           "config": null,
           "blocks": [
             {
@@ -7603,8 +7603,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 242,
-              "end_line": 244,
+              "line": 243,
+              "end_line": 245,
               "source": "import b\n"
             },
             {
@@ -7612,33 +7612,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 246,
-              "end_line": 251,
+              "line": 247,
+              "end_line": 252,
               "source": "import sys\n\nif sys.version_info < (3, 8):\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 255,
-          "end_line": 262,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "b.py",
-              "named": true,
-              "line": 255,
-              "end_line": 262,
-              "source": "import sys\n\nif sys.version_info[0] == 3:\n    VALUE = 1\nelse:\n    import a\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 267,
-          "end_line": 276,
+          "line": 256,
+          "end_line": 267,
           "config": null,
           "blocks": [
             {
@@ -7646,8 +7629,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 267,
-              "end_line": 269,
+              "line": 256,
+              "end_line": 258,
               "source": "import b\n"
             },
             {
@@ -7655,16 +7638,42 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 271,
-              "end_line": 276,
+              "line": 260,
+              "end_line": 267,
+              "source": "import sys\n\nif sys.version_info[0] == 3:\n    VALUE = 1\nelse:\n    import a\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 272,
+          "end_line": 281,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "a.py",
+              "named": true,
+              "line": 272,
+              "end_line": 274,
+              "source": "import b\n"
+            },
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "b.py",
+              "named": true,
+              "line": 276,
+              "end_line": 281,
               "source": "try:\n    from _speedups import parse\nexcept ImportError:\n    from a import parse\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 281,
-          "end_line": 287,
+          "line": 286,
+          "end_line": 292,
           "config": null,
           "blocks": [
             {
@@ -7672,8 +7681,8 @@
               "language": "python",
               "file": "tests/helpers.py",
               "named": true,
-              "line": 281,
-              "end_line": 283,
+              "line": 286,
+              "end_line": 288,
               "source": "import tests.test_load\n"
             },
             {
@@ -7681,19 +7690,19 @@
               "language": "python",
               "file": "tests/test_load.py",
               "named": true,
-              "line": 285,
-              "end_line": 287,
+              "line": 290,
+              "end_line": 292,
               "source": "import tests.helpers\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 291,
-          "end_line": 303,
+          "line": 296,
+          "end_line": 308,
           "config": {
-            "line": 291,
-            "end_line": 295,
+            "line": 296,
+            "end_line": 300,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -7702,8 +7711,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 297,
-              "end_line": 299,
+              "line": 302,
+              "end_line": 304,
               "source": "import b\n"
             },
             {
@@ -7711,8 +7720,8 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 301,
-              "end_line": 303,
+              "line": 306,
+              "end_line": 308,
               "source": "lazy import a\n"
             }
           ]

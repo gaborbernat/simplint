@@ -198,7 +198,8 @@ first eight, then how many it leaves out, before the module it closes on.
   ```
 
   A `from module import *` rebinds the public module-level names, so it makes every such public constant an ordinary
-  flag. A name starting with an underscore is not bound by it, so it stays a constant:
+  flag. A name starting with an underscore is never treated as rebound, even when the star-imported module's `__all__`
+  lists it, so it stays a constant:
 
   ```python context file=a.py
   import b
@@ -251,6 +252,10 @@ first eight, then how many it leaves out, before the module it closes on.
   ```
 
   The `else` of a check of the first item that holds on Python 3, the only major a supported Python has, never runs:
+
+  ```python context file=a.py
+  import b
+  ```
 
   ```python ok file=b.py
   import sys
