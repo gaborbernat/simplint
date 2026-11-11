@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+24:9 SMP501 `_get` only forwards to `self.client.get`; call `self.client.get` at its call sites instead

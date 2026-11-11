@@ -12964,7 +12964,7 @@
     "name": "forwarding-function",
     "summary": "Private functions that only forward to another call",
     "fix": "None",
-    "explanation": "Flags private functions and methods whose body only forwards their parameters to another call. The wrapper adds a name\nand an extra hop without adding behavior, so a reader has to open it to learn that it calls something else.\n\n## Why is this bad?\n\nThe wrapper adds a name and an extra hop without adding behavior, and a reader has to open it to learn that it calls\nsomething else. Calling the target directly removes the indirection.\n\n## Example\n\n```python report\ndef config_path() -> Path:\n    return _make_path(\"config.toml\").resolve()\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n```\n\nUse instead:\n\n```python ok\ndef config_path() -> Path:\n    return Path(\"config.toml\").resolve()\n```\n\n## What it does\n\nNo fix is offered, since inlining needs each call site's arguments mapped onto the target's parameters.\n\n### Active on\n\nA function is reported when its body, apart from a docstring, is a single call that is returned or used as an expression\nstatement, and every argument of the call is one of the function's own parameters, passed as is, as `*args` or\n`**kwargs` ([arbitrary argument lists](https://docs.python.org/3/tutorial/controlflow.html#arbitrary-argument-lists)),\nor as `keyword=parameter`. The call target must be a name or a dotted name such as `self.client.get`.\n\n- **Module-level functions whose name starts with `_`**: their callers are all in the file, so each can call the target\n  directly.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Methods with such names in module-level classes without base classes**: matched through `self.name`, `cls.name` or\n  `ClassName.name`.\n\n  ```python report\n  class Store:\n      def load(self, name: str) -> Path:\n          return self._make_path(name)\n\n      def _make_path(self, name: str) -> Path:\n          return Path(name)\n  ```\n\n- **A call whose `(` starts a later line**: the callee is the name the call reads, whatever line the `(` is on, so the\n  call is reported like one on a single line.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n### Exceptions\n\n- **[Dunder](https://docs.python.org/3/reference/datamodel.html#special-method-names) functions**: Python calls them by\n  name, so there is no call site to rewrite.\n\n  ```python ok\n  def __repr__(value: object) -> str:\n      return str(value)\n  ```\n\n- **Decorated functions**: the decorator wraps or registers the function, so it does more than forward.\n\n  ```python ok\n  import functools\n\n\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  @functools.cache\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Functions the file never refers to, or refers to anywhere without calling**, for example when passing one as a\n  callback: such a reference needs the function itself, which a direct call to the target cannot replace.\n\n  ```python ok\n  def load(names: list[str]) -> list[Path]:\n      return list(map(_make_path, names))\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the name is only read there\n  and not called.\n\n  ```python ok\n  def load(name: str) -> Path:\n      callback = _make_path\n      (callback)(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Wrappers that add their own values**: they configure the call, so they are not a pure forward. These additions\n  count:\n\n  - `check=True`: a keyword argument the wrapper sets itself.\n\n    ```python ok\n    def load(text: str) -> str:\n        return _run(text)\n\n\n    def _run(text: str) -> str:\n        return subprocess.run(text, check=True)\n    ```\n\n  - a computed argument: a value the wrapper works out before the call.\n\n  - a parameter default: a default on a parameter of the wrapped function, which the wrapper does not pass.\n\n    ```python ok\n    def load(name: str) -> IO[str]:\n        return _open(name)\n\n\n    def _open(name: str, mode: str = \"r\") -> IO[str]:\n        return open(name, mode)\n    ```\n\n- **Functions another file in the run patches by name**, such as with `mocker.patch(\"pkg.module._load\")`: tests replace\n  them, so they must keep existing.\n\n  ```python ok file=service.py\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n  ```python context file=test_service.py\n  from unittest import mock\n\n  from service import load\n\n\n  def test_load() -> None:\n      with mock.patch(\"service._make_path\"):\n          assert load(\"a\")\n  ```\n\n- **Calls on a computed value**, such as `make(name).strip()`: this is a call on the result of another call, not a\n  forward to a named function.\n\n  ```python ok\n  def load(name: str) -> str:\n      return _clean(name)\n\n\n  def _clean(name: str) -> str:\n      return make(name).strip()\n  ```\n\n- **Calls whose target starts with one of the function's own parameters**, such as `fn` in\n  `def _apply(fn, x): return fn(x)`: the call runs whatever the caller passed in, so there is no fixed target to call\n  instead.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _apply(str.strip, text)\n\n\n  def _apply(fn: Callable[[str], str], text: str) -> str:\n      return fn(text)\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [PLW0108](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) reports the same forward written as a lambda.\n",
+    "explanation": "Flags private functions and methods whose body only forwards their parameters to another call. The wrapper adds a name\nand an extra hop without adding behavior, so a reader has to open it to learn that it calls something else.\n\n## Why is this bad?\n\nThe wrapper adds a name and an extra hop without adding behavior, and a reader has to open it to learn that it calls\nsomething else. Calling the target directly removes the indirection.\n\n## Example\n\n```python report\ndef config_path() -> Path:\n    return _make_path(\"config.toml\").resolve()\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n```\n\nUse instead:\n\n```python ok\ndef config_path() -> Path:\n    return Path(\"config.toml\").resolve()\n```\n\n## What it does\n\nNo fix is offered, since inlining needs each call site's arguments mapped onto the target's parameters.\n\n### Active on\n\nA function is reported when its body, apart from a docstring, is a single call that is returned or used as an expression\nstatement, and every argument of the call is one of the function's own parameters, passed as is, as `*args` or\n`**kwargs` ([arbitrary argument lists](https://docs.python.org/3/tutorial/controlflow.html#arbitrary-argument-lists)),\nor as `keyword=parameter`. The call target must be a name or a dotted name such as `self.client.get`.\n\n- **Module-level functions whose name starts with `_`**: their callers are all in the file, so each can call the target\n  directly.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Methods with such names in module-level classes without base classes**: matched through `self.name`, `cls.name` or\n  `ClassName.name`.\n\n  ```python report\n  class Store:\n      def load(self, name: str) -> Path:\n          return self._make_path(name)\n\n      def _make_path(self, name: str) -> Path:\n          return Path(name)\n  ```\n\n- **A call whose `(` starts a later line**: the callee is the name the call reads, whatever line the `(` is on, so the\n  call is reported like one on a single line.\n\n  ```python report\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n### Exceptions\n\n- **[Dunder](https://docs.python.org/3/reference/datamodel.html#special-method-names) functions**: Python calls them by\n  name, so there is no call site to rewrite.\n\n  ```python ok\n  def __repr__(value: object) -> str:\n      return str(value)\n  ```\n\n- **Decorated functions**: the decorator wraps or registers the function, so it does more than forward.\n\n  ```python ok\n  import functools\n\n\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  @functools.cache\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Functions the file never refers to, or refers to anywhere without calling**, for example when passing one as a\n  callback: such a reference needs the function itself, which a direct call to the target cannot replace.\n\n  ```python ok\n  def load(names: list[str]) -> list[Path]:\n      return list(map(_make_path, names))\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **Methods of a class another class derives from**: a subclass may override the method, and a call through the base\n  class would then reach the override rather than the target.\n\n  ```python ok\n  class Store:\n      def load(self, name: str) -> Path:\n          return self._make_path(name)\n\n      def _make_path(self, name: str) -> Path:\n          return Path(name)\n\n\n  class RemoteStore(Store):\n      def _make_path(self, name: str) -> Path:\n          return Path(\"remote\") / name\n  ```\n\n- **A reference that ends its line**: a line that starts with `(` begins a new statement, so the name is only read there\n  and not called.\n\n  ```python ok\n  def load(name: str) -> Path:\n      callback = _make_path\n      (callback)(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n- **The receiver itself**: a method that calls its receiver, such as `self(name)`, forwards to the object the method\n  belongs to, and no call site can name that object in place of the method.\n\n  ```python ok\n  class Cache:\n      def fetch(self, name: str) -> object:\n          return self._own(name)\n\n      def _own(self, name: str) -> object:\n          return self(name)\n  ```\n\n- **Wrappers that add their own values**: they configure the call, so they are not a pure forward. These additions\n  count:\n\n  - `check=True`: a keyword argument the wrapper sets itself.\n\n    ```python ok\n    def load(text: str) -> str:\n        return _run(text)\n\n\n    def _run(text: str) -> str:\n        return subprocess.run(text, check=True)\n    ```\n\n  - a computed argument: a value the wrapper works out before the call.\n\n  - a parameter default: a default on a parameter of the wrapped function, which the wrapper does not pass.\n\n    ```python ok\n    def load(name: str) -> IO[str]:\n        return _open(name)\n\n\n    def _open(name: str, mode: str = \"r\") -> IO[str]:\n        return open(name, mode)\n    ```\n\n- **Functions another file in the run patches by name**, such as with `mocker.patch(\"pkg.module._load\")`: tests replace\n  them, so they must keep existing.\n\n  ```python ok file=service.py\n  def load(name: str) -> Path:\n      return _make_path(name)\n\n\n  def _make_path(name: str) -> Path:\n      return Path(name)\n  ```\n\n  ```python context file=test_service.py\n  from unittest import mock\n\n  from service import load\n\n\n  def test_load() -> None:\n      with mock.patch(\"service._make_path\"):\n          assert load(\"a\")\n  ```\n\n- **Calls on a computed value**, such as `make(name).strip()`: this is a call on the result of another call, not a\n  forward to a named function.\n\n  ```python ok\n  def load(name: str) -> str:\n      return _clean(name)\n\n\n  def _clean(name: str) -> str:\n      return make(name).strip()\n  ```\n\n- **Methods whose target goes through the receiver**, such as `self.client.get`: the receiver is the object the method\n  is called on, so the target called there is the same one.\n\n  ```python report\n  class Cache:\n      def __init__(self, client):\n          self.client = client\n\n      def fetch(self, name: str) -> bytes:\n          return self._get(name)\n\n      def _get(self, name: str) -> bytes:\n          return self.client.get(name)\n  ```\n\n- **Calls whose target starts with one of the function's own parameters**, such as `fn` in\n  `def _apply(fn, x): return fn(x)`: the call runs whatever the caller passed in, so there is no fixed target to call\n  instead.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _apply(str.strip, text)\n\n\n  def _apply(fn: Callable[[str], str], text: str) -> str:\n      return fn(text)\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [PLW0108](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) reports the same forward written as a lambda.\n",
     "examples": {
       "parsed": [
         {
@@ -13106,7 +13106,7 @@
         {
           "section": "What it does",
           "line": 114,
-          "end_line": 122,
+          "end_line": 126,
           "config": null,
           "blocks": [
             {
@@ -13115,15 +13115,32 @@
               "file": "example.py",
               "named": false,
               "line": 114,
-              "end_line": 122,
+              "end_line": 126,
+              "source": "class Store:\n    def load(self, name: str) -> Path:\n        return self._make_path(name)\n\n    def _make_path(self, name: str) -> Path:\n        return Path(name)\n\n\nclass RemoteStore(Store):\n    def _make_path(self, name: str) -> Path:\n        return Path(\"remote\") / name\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 131,
+          "end_line": 139,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 131,
+              "end_line": 139,
               "source": "def load(name: str) -> Path:\n    callback = _make_path\n    (callback)(name)\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 129,
-          "end_line": 136,
+          "line": 144,
+          "end_line": 151,
           "config": null,
           "blocks": [
             {
@@ -13131,16 +13148,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 129,
-              "end_line": 136,
+              "line": 144,
+              "end_line": 151,
+              "source": "class Cache:\n    def fetch(self, name: str) -> object:\n        return self._own(name)\n\n    def _own(self, name: str) -> object:\n        return self(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 158,
+          "end_line": 165,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 158,
+              "end_line": 165,
               "source": "def load(text: str) -> str:\n    return _run(text)\n\n\ndef _run(text: str) -> str:\n    return subprocess.run(text, check=True)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 142,
-          "end_line": 149,
+          "line": 171,
+          "end_line": 178,
           "config": null,
           "blocks": [
             {
@@ -13148,16 +13182,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 142,
-              "end_line": 149,
+              "line": 171,
+              "end_line": 178,
               "source": "def load(name: str) -> IO[str]:\n    return _open(name)\n\n\ndef _open(name: str, mode: str = \"r\") -> IO[str]:\n    return open(name, mode)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 154,
-          "end_line": 172,
+          "line": 183,
+          "end_line": 201,
           "config": null,
           "blocks": [
             {
@@ -13165,8 +13199,8 @@
               "language": "python",
               "file": "service.py",
               "named": true,
-              "line": 154,
-              "end_line": 161,
+              "line": 183,
+              "end_line": 190,
               "source": "def load(name: str) -> Path:\n    return _make_path(name)\n\n\ndef _make_path(name: str) -> Path:\n    return Path(name)\n"
             },
             {
@@ -13174,16 +13208,16 @@
               "language": "python",
               "file": "test_service.py",
               "named": true,
-              "line": 163,
-              "end_line": 172,
+              "line": 192,
+              "end_line": 201,
               "source": "from unittest import mock\n\nfrom service import load\n\n\ndef test_load() -> None:\n    with mock.patch(\"service._make_path\"):\n        assert load(\"a\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 177,
-          "end_line": 184,
+          "line": 206,
+          "end_line": 213,
           "config": null,
           "blocks": [
             {
@@ -13191,16 +13225,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 177,
-              "end_line": 184,
+              "line": 206,
+              "end_line": 213,
               "source": "def load(name: str) -> str:\n    return _clean(name)\n\n\ndef _clean(name: str) -> str:\n    return make(name).strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 190,
-          "end_line": 197,
+          "line": 218,
+          "end_line": 228,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 218,
+              "end_line": 228,
+              "source": "class Cache:\n    def __init__(self, client):\n        self.client = client\n\n    def fetch(self, name: str) -> bytes:\n        return self._get(name)\n\n    def _get(self, name: str) -> bytes:\n        return self.client.get(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 234,
+          "end_line": 241,
           "config": null,
           "blocks": [
             {
@@ -13208,8 +13259,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 190,
-              "end_line": 197,
+              "line": 234,
+              "end_line": 241,
               "source": "def load(text: str) -> str:\n    return _apply(str.strip, text)\n\n\ndef _apply(fn: Callable[[str], str], text: str) -> str:\n    return fn(text)\n"
             }
           ]

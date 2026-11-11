@@ -17,12 +17,16 @@ pub fn forwarding_function(checker: &Checker) {
                     .iter()
                     .map(|reference| reference.range)
                     .collect();
-                check_forwarding(checker, function, &calls);
+                check_forwarding(checker, function, &calls, None);
             }
-            Stmt::ClassDef(class) if class.arguments.as_ref().is_none_or(|arguments| arguments.args.is_empty()) => {
+            Stmt::ClassDef(class)
+                if class.arguments.as_ref().is_none_or(|arguments| arguments.args.is_empty())
+                    && !checker.project().is_base_class(class.name.as_str()) =>
+            {
                 for function in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
                     let calls = checker.semantic().member_references(class.range, function.name.as_str());
-                    check_forwarding(checker, function, calls);
+                    let receiver = function.parameters.posonlyargs.iter().chain(&function.parameters.args).next();
+                    check_forwarding(checker, function, calls, receiver.map(|parameter| parameter.name().as_str()));
                 }
             }
             _ => {}
@@ -30,8 +34,13 @@ pub fn forwarding_function(checker: &Checker) {
     }
 }
 
-fn check_forwarding(checker: &Checker, function: &ast::StmtFunctionDef, references: &[TextRange]) {
-    if let Some(target) = forward_target(checker, function, references) {
+fn check_forwarding(
+    checker: &Checker,
+    function: &ast::StmtFunctionDef,
+    references: &[TextRange],
+    receiver: Option<&str>,
+) {
+    if let Some(target) = forward_target(checker, function, references, receiver) {
         let name = function.name.as_str();
         let target = checker.text(target.range());
         checker.report(
@@ -48,6 +57,7 @@ pub(super) fn forward_target<'a>(
     checker: &Checker,
     function: &'a ast::StmtFunctionDef,
     references: &[TextRange],
+    receiver: Option<&str>,
 ) -> Option<&'a ast::Expr> {
     let name = function.name.as_str();
     // A function other code patches by name is a seam the tests replace, so it must keep existing.
@@ -80,9 +90,15 @@ pub(super) fn forward_target<'a>(
     };
     // `make(x).strip()` is a call on a computed value, not a forward to a named function.
     let target = UnqualifiedName::from_expr(&call.func);
-    // `fn(x)` calls whatever the caller passed in, so there is no fixed target to call instead.
-    if target.as_ref().is_none_or(|target| target.segments().first().is_some_and(|root| parameters.contains(root)))
-        || !call.arguments.args.iter().all(is_parameter)
+    // `fn(x)` calls whatever the caller passed in, so there is no fixed target to call instead. A method's receiver is
+    // the object it is called on, so a target through its attributes, such as `self.client.get`, is a fixed one, while
+    // the receiver itself is the method's own object and is not a target to call instead.
+    if target.as_ref().is_none_or(|target| {
+        let segments = target.segments();
+        segments
+            .first()
+            .is_some_and(|root| parameters.contains(root) && (Some(*root) != receiver || segments.len() == 1))
+    }) || !call.arguments.args.iter().all(is_parameter)
         || !call.arguments.keywords.iter().all(|keyword| is_parameter(&keyword.value))
     {
         return None;

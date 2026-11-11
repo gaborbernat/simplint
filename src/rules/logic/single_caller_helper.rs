@@ -48,7 +48,7 @@ fn check_helper<'a>(
         return;
     }
     // A helper that only forwards its arguments is forwarding-function's (SMP501), which asks to call the target instead.
-    if forward_target(checker, helper, &[reference.range]).is_some() {
+    if forward_target(checker, helper, &[reference.range], None).is_some() {
         return;
     }
     let defs =

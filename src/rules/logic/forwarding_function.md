@@ -108,6 +108,23 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
       return Path(name)
   ```
 
+- **Methods of a class another class derives from**: a subclass may override the method, and a call through the base
+  class would then reach the override rather than the target.
+
+  ```python ok
+  class Store:
+      def load(self, name: str) -> Path:
+          return self._make_path(name)
+
+      def _make_path(self, name: str) -> Path:
+          return Path(name)
+
+
+  class RemoteStore(Store):
+      def _make_path(self, name: str) -> Path:
+          return Path("remote") / name
+  ```
+
 - **A reference that ends its line**: a line that starts with `(` begins a new statement, so the name is only read there
   and not called.
 
@@ -119,6 +136,18 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
 
   def _make_path(name: str) -> Path:
       return Path(name)
+  ```
+
+- **The receiver itself**: a method that calls its receiver, such as `self(name)`, forwards to the object the method
+  belongs to, and no call site can name that object in place of the method.
+
+  ```python ok
+  class Cache:
+      def fetch(self, name: str) -> object:
+          return self._own(name)
+
+      def _own(self, name: str) -> object:
+          return self(name)
   ```
 
 - **Wrappers that add their own values**: they configure the call, so they are not a pure forward. These additions
@@ -181,6 +210,21 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
 
   def _clean(name: str) -> str:
       return make(name).strip()
+  ```
+
+- **Methods whose target goes through the receiver**, such as `self.client.get`: the receiver is the object the method
+  is called on, so the target called there is the same one.
+
+  ```python report
+  class Cache:
+      def __init__(self, client):
+          self.client = client
+
+      def fetch(self, name: str) -> bytes:
+          return self._get(name)
+
+      def _get(self, name: str) -> bytes:
+          return self.client.get(name)
   ```
 
 - **Calls whose target starts with one of the function's own parameters**, such as `fn` in
