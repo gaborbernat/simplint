@@ -4,8 +4,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
-use crate::lint::checker::Checker;
-use crate::lint::checker::counts_ruff_appends;
+use crate::lint::checker::{Checker, counts_ruff_appends};
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{is_constant, is_hashable};
 use crate::syntax::{expr_mentions, for_each_body, is_name, sole_argument};

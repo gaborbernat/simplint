@@ -4,7 +4,7 @@ use crate::syntax::has_decorator;
 
 use super::visitor::FactVisitor;
 
-pub(crate) const PYTEST_PLUGINS_REQUEST: &str = "pytest_plugins";
+pub(in crate::project) const PYTEST_PLUGINS_REQUEST: &str = "pytest_plugins";
 
 pub(super) fn is_pytest_plugins(target: &Expr) -> bool {
     target.as_name_expr().is_some_and(|name| name.id.as_str() == "pytest_plugins")

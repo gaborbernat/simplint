@@ -586,7 +586,7 @@ pub fn target_names(target: &Expr) -> Vec<&str> {
 }
 
 // The pieces of a text split at each character that is not a letter, digit or underscore, so an identifier comes out as
-// one piece. Adjacent separators also yield empty pieces, which a caller that needs only words skips.
+// one piece. A separator at either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
 pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
     text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }

@@ -4,8 +4,7 @@ use ruff_text_size::Ranged;
 
 use super::class_order::{Arrangement, ClassOrder, Inversion, Section};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
-use crate::lint::checker::Checker;
-use crate::lint::checker::leaves_django_order_to_ruff;
+use crate::lint::checker::{Checker, leaves_django_order_to_ruff};
 use crate::lint::registry::Rule;
 
 pub fn class_member_order(checker: &Checker) {

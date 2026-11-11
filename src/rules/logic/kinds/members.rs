@@ -33,7 +33,8 @@ pub(super) struct Members<'a> {
 }
 
 impl<'a> Members<'a> {
-    pub(super) fn declare(&mut self, kind: Option<Kind>) {
+    // As for a binding: an annotation the code shows no kind for, or two that disagree, leave the member unknown.
+    fn declare(&mut self, kind: Option<Kind>) {
         match kind {
             Some(kind) if self.declared.is_none_or(|declared| declared == kind) => self.declared = Some(kind),
             _ => self.opaque = true,

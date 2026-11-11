@@ -6,8 +6,7 @@ use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::layout::fits_line;
-use crate::layout::joined_width;
+use crate::layout::{fits_line, joined_width};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_deletion};

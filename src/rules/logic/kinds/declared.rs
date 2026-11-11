@@ -27,7 +27,7 @@ pub(super) fn attribute_root(expr: &Expr) -> &Expr {
     head
 }
 
-pub(super) fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
+fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
     match &decorator.expression {
         Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
         expr => expr,

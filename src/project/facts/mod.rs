@@ -11,7 +11,7 @@ mod statements;
 mod visitor;
 
 pub(crate) use doctests::doctest_code;
-pub(crate) use fixtures::PYTEST_PLUGINS_REQUEST;
+pub(in crate::project) use fixtures::PYTEST_PLUGINS_REQUEST;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::syntax::is_main_guard;
