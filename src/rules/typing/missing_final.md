@@ -531,7 +531,7 @@ import os; LIMIT = 3
 ```
 
 When a comment sits directly above the statement the import goes before, the import goes above the comment, unless the
-comment starts the file, where a shebang or a licence header stays put:
+comment starts the file, where a shebang or a license header stays put:
 
 ```toml config
 [project]

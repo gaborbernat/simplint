@@ -298,7 +298,7 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
 }
 
 // The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file, where a
-// shebang, encoding or licence header stays put.
+// shebang, encoding or license header stays put.
 fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
     let source = checker.source;
     let mut line_start = source.line_start(stmt.start());
