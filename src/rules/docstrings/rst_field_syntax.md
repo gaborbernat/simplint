@@ -1,5 +1,5 @@
 Flags malformed and misplaced fields in reStructuredText docstrings, such as a misspelled field name or a Google-style
-section. Sphinx renders such a field as plain text or prose, so the reference loses the formatted parameter list.
+section.
 
 ## Why is this bad?
 
@@ -146,7 +146,7 @@ meant.
       return path
   ```
 
-- **Fields after prose**: a field after prose that follows the field list, reported once per docstring.
+- **Fields after prose**: a field that follows prose which came after an earlier field, reported once per docstring.
 
   ```toml config
   [tool.simplint]

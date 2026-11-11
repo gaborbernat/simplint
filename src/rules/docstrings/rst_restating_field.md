@@ -1,5 +1,5 @@
 Flags `:param:`, `:ivar:`, `:cvar:` and `:var:` fields in reStructuredText docstrings whose description only repeats the
-name, as `:param user_id: The user ID.`. Such a description tells readers nothing the signature does not.
+name, as `:param user_id: The user ID.`.
 
 ## Why is this bad?
 

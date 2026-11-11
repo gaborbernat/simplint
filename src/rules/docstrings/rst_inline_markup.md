@@ -1,5 +1,4 @@
-Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings. Such
-markup renders as plain text, or turns the rest of the paragraph into code.
+Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings.
 
 ## Why is this bad?
 

@@ -8,18 +8,24 @@ use crate::syntax::module_statements;
 
 pub fn rst_unknown_attribute(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
-        // A base class may define the attribute a field documents.
         let Owner::Class(class) = target.owner else {
             continue;
         };
+        // A base class may define the attribute a field documents.
         if has_attribute_bases(class) {
             continue;
         }
-        // A field may document a property, which autodoc renders as an attribute.
-        let methods =
-            module_statements(&class.body).filter_map(Stmt::as_function_def_stmt).map(|method| method.name.as_str());
-        let known: FxHashSet<&str> =
-            target.attributes(checker).iter().map(|attribute| attribute.name).chain(methods).collect();
+        let known: FxHashSet<&str> = target
+            .attributes(checker)
+            .iter()
+            .map(|attribute| attribute.name)
+            // A field may document a property, which autodoc renders as an attribute.
+            .chain(
+                module_statements(&class.body)
+                    .filter_map(Stmt::as_function_def_stmt)
+                    .map(|method| method.name.as_str()),
+            )
+            .collect();
         for field in target.docstring.fields(&[FieldKind::Var, FieldKind::VarType]) {
             let Some(subject) = field.subject().filter(|subject| !known.contains(subject)) else {
                 continue;

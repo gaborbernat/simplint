@@ -1,6 +1,4 @@
 Flags `:param:` fields in a reStructuredText docstring that are in a different order from the signature's parameters.
-Readers match the fields against the signature from left to right, so a different order slows them down and hides a
-missing field.
 
 ## Why is this bad?
 
