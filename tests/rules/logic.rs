@@ -84,6 +84,7 @@ use crate::common::{self, check, read};
 #[test_case("up-chdir-restore", "up_chdir_restore_name.py", "py311" ; "chdir_restore_contextlib_name_taken")]
 #[test_case("up-chdir-restore", "up_chdir_restore.py", "py310" ; "chdir_restore_before_python311")]
 #[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", "py311" ; "chdir_restore_shared_line")]
+#[test_case("up-chdir-restore", "up_chdir_restore_shadow.py", "py311" ; "chdir_restore_shadow")]
 #[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", "py314" ; "context_var_token_reset_shared_line")]
 #[test_case("up-strptime-date", "up_strptime_date.py", "py314" ; "strptime_date")]
 #[test_case("up-strptime-date", "up_strptime_date_name.py", "py314" ; "strptime_date_class_name")]
@@ -101,9 +102,13 @@ use crate::common::{self, check, read};
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_sorted.py", "py314" ; "asyncio_iscoroutinefunction_sorted")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_guarded.py", "py314" ; "asyncio_iscoroutinefunction_guarded")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_name.py", "py314" ; "asyncio_iscoroutinefunction_name")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_parameter.py", "py314" ; "asyncio_iscoroutinefunction_parameter")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_shadow.py", "py314" ; "asyncio_iscoroutinefunction_shadow")]
+#[test_case("up-codecs-open", "up_codecs_open_comprehension.py", "py314" ; "codecs_open_comprehension")]
 #[test_case("up-codecs-open", "up_codecs_open.py", "py314" ; "codecs_open")]
 #[test_case("up-codecs-open", "up_codecs_open_shadowed.py", "py314" ; "codecs_open_renamed")]
 #[test_case("up-codecs-open", "up_codecs_open_builtin.py", "py314" ; "codecs_open_builtin")]
+#[test_case("up-codecs-open", "up_codecs_open_parameter.py", "py314" ; "codecs_open_parameter")]
 #[test_case("up-re-error-alias", "up_re_error_alias.py", "py314" ; "re_error_alias")]
 #[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", "py314" ; "re_error_alias_fallback_import")]
 #[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", "py314" ; "re_error_alias_deleted_name")]
@@ -113,6 +118,7 @@ use crate::common::{self, check, read};
 #[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", "py315" ; "argparse_suggest_on_error_commented")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node.py", "py314" ; "removed_ast_node")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", "py314" ; "removed_ast_node_shadowed")]
+#[test_case("up-removed-ast-node", "up_removed_ast_node_parameter.py", "py314" ; "removed_ast_node_parameter")]
 #[test_case("early-assignment", "early_assignment.py", "py314" ; "early_assignment")]
 #[test_case("early-assignment", "early_assignment_blocked.py", "py314" ; "early_assignment_blocked")]
 #[test_case("early-assignment", "early_assignment_comment.py", "py314" ; "early_assignment_comment")]
@@ -1276,6 +1282,43 @@ fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
             0,
             "Found 1 error (1 fixed, 0 remaining).\n",
             "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
+        )
+    );
+}
+
+// A parameter named like the module hides it in the function, even when the module imports it too.
+#[test]
+fn chdir_restore_keeps_report_without_fix_when_a_parameter_takes_the_module_name() {
+    let source = "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n";
+    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            1,
+            "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
+            source.to_owned()
+        )
+    );
+}
+
+// A class attribute named like the module is not seen by the methods of the class, so their fix stays.
+#[test]
+fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "mod.py",
+            "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n".to_owned()
         )
     );
 }

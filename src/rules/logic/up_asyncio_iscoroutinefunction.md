@@ -114,7 +114,8 @@ def check(task):
 
 No fix is offered when:
 
-- `inspect` is already bound to something else in the module, which the import would shadow;
+- `inspect` is already bound to something else in the module, or by a parameter, local or loop variable of a function,
+  lambda, class body or comprehension that encloses the call, which the import or the call would pick up;
 
   ```toml config
   [project]
@@ -127,6 +128,27 @@ No fix is offered when:
 
 
   def check(task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  import asyncio
+
+
+  def check(inspect, task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
+  ```python fixed
+  import asyncio
+
+
+  def check(inspect, task):
       return asyncio.iscoroutinefunction(task)
   ```
 

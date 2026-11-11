@@ -5,6 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::edits::is_bound_around;
 
 // `codecs.open(filename, mode, encoding, errors, buffering)`, in the order of its parameters.
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];
@@ -36,7 +37,10 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
         return None;
     }
     // A name the rewrite would call `open` could be something else.
-    if checker.semantic().is_bound("open") || checker.has_comment_in(call.range()) {
+    if checker.semantic().is_bound("open")
+        || is_bound_around(checker, "open", call.range())
+        || checker.has_comment_in(call.range())
+    {
         return None;
     }
     let argument = |index: usize| {

@@ -63,11 +63,13 @@ pub fn missing_final(checker: &Checker) {
         // `(LIMIT: Final[int]) = 3` is not valid Python, so a parenthesized name gets no annotation of its own.
         let parenthesized = annotation.is_none()
             && parenthesized_range(target.into(), stmt.into(), checker.comment_ranges(), checker.source).is_some();
+        // Every target is a statement of the module body, where no scope encloses the import, so the file's start
+        // stands for all of them and one answer serves every target.
         let fix = (!parenthesized)
             .then(|| {
-                spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
-                    final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
-                })
+                spelling.get_or_init(|| final_qualifier(checker, TextRange::default())).as_ref().and_then(
+                    |(qualifier, import)| final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value),
+                )
             })
             .flatten();
         checker.report_fix(
@@ -301,7 +303,7 @@ fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<
 }
 
 // The name a fix annotates with, and the import it adds; `None` when the import cannot be added without shadowing.
-fn final_qualifier(checker: &Checker) -> Option<(String, Option<Edit>)> {
+fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Option<Edit>)> {
     let body = checker.body();
     // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
     let lazy = checker.semantic().annotations_are_lazy();
@@ -337,7 +339,7 @@ fn final_qualifier(checker: &Checker) -> Option<(String, Option<Edit>)> {
             Some(alias) => Some(Edit::insertion("Final, ".to_owned(), alias.start())),
             None => Some(Edit::insertion(", Final".to_owned(), names.last().expect("an import names something").end())),
         },
-        None => ensure_import(checker, "typing", Some("Final"))?.1,
+        None => ensure_import(checker, "typing", Some("Final"), at)?.1,
     };
     Some(("Final".to_owned(), edit))
 }

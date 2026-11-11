@@ -125,7 +125,29 @@ No fix is offered when:
 - a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123
   (`builtin-open`) under the default settings, so simplint withdraws the fix;
 
-- an argument is unpacked with `*` or `**`, or `open` is bound in the module, which the new call would pick up;
+- an argument is unpacked with `*` or `**`, or `open` is bound in the module, or by a parameter, local or loop variable
+  of a function, lambda, class body or comprehension that encloses the call, which the new call would pick up;
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  import codecs
+
+
+  def read(path, open=None):
+      return codecs.open(path, "r", "utf-8").read()
+  ```
+
+  ```python fixed
+  import codecs
+
+
+  def read(path, open=None):
+      return codecs.open(path, "r", "utf-8").read()
+  ```
 
 - the call has a comment inside it, which the rewrite would drop.
 

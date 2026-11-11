@@ -159,6 +159,30 @@ No fix is offered when:
       return isinstance(nodes[0], ast.Str)
   ```
 
+- `isinstance` is bound in the module, or by a parameter, local or loop variable of a function, lambda, class body or
+  comprehension that encloses the test, so the rewrite would not call the builtin;
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  import ast
+
+
+  def is_text(node, isinstance=None):
+      return isinstance(node, ast.Str)
+  ```
+
+  ```python fixed
+  import ast
+
+
+  def is_text(node, isinstance=None):
+      return isinstance(node, ast.Str)
+  ```
+
 - the constructor takes positional arguments or more than one keyword, or the keyword is not the value's name;
 
 - the call has a comment, which the rewrite would drop.

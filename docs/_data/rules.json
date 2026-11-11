@@ -18205,7 +18205,7 @@
     "name": "up-chdir-restore",
     "summary": "Working directories restored in a `finally` block",
     "fix": "Sometimes",
-    "explanation": "Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python\n3.11.\n\n## Why is this bad?\n\nSaving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,\nwhere `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\nUse instead:\n\n```python ok\nimport contextlib\n\n\ndef build(target):\n    with contextlib.chdir(target):\n        return compile_project()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def build(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          return compile_project()\n      finally:\n          os.chdir(old)\n  ```\n\n## What it does\n\nReports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose\nonly clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear\nnowhere else in its function, or in the module at module level.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport contextlib\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        step()\n```\n\n### Exceptions\n\n- **The saved directory read after the block**: the name has another use.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n      print(old)\n  ```\n\n- **A `finally` that changes the directory to another place**: the restore does not return to the saved directory.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(target)\n  ```\n\n- **Target versions before 3.11**: `contextlib.chdir` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n  ```\n\n### Fix\n\nThe fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module\nimports `contextlib` already. When another binding holds the name `contextlib`, the rule reports without a fix. It also\nreports without a fix when a comment sits in the lines it would remove, when the assignment shares its line with an\nearlier statement, or when the line before it ends with a backslash that joins the two lines. A module-level `old` that\nanother module of the run imports, or `__all__` lists, keeps its report without a fix, since removing the assignment\nwould break those importers.\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\nA module docstring that shares its line with code keeps the report without a fix, since an import above it would leave\n`__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import above it\nis a syntax error.\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\n# fmt: off\n\"\"\"Build helpers.\"\"\"; import os\n# fmt: on\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\n# fmt: off\n\"\"\"Build helpers.\"\"\"; import os\n# fmt: on\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    # fmt: off\n    started = True; \\\n    old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport os\n\n\ndef run(target):\n    # fmt: off\n    started = True; \\\n    old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python context file=user.py\nfrom state import old\n```\n\n```python report file=state.py\nimport contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n```\n\n```python fixed file=state.py\nimport contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n```\n\nThe import goes above the comment lines that sit directly over the import it precedes, so the comment stays with its\nstatement:\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport abc\n\n# os: the build runs in the target directory\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, os.listdir()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport abc\nimport contextlib\n\n# os: the build runs in the target directory\nimport os\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, os.listdir()\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python\n3.11.\n\n## Why is this bad?\n\nSaving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,\nwhere `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\nUse instead:\n\n```python ok\nimport contextlib\n\n\ndef build(target):\n    with contextlib.chdir(target):\n        return compile_project()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def build(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          return compile_project()\n      finally:\n          os.chdir(old)\n  ```\n\n## What it does\n\nReports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose\nonly clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear\nnowhere else in its function, or in the module at module level.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport contextlib\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        step()\n```\n\n### Exceptions\n\n- **The saved directory read after the block**: the name has another use.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n      print(old)\n  ```\n\n- **A `finally` that changes the directory to another place**: the restore does not return to the saved directory.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(target)\n  ```\n\n- **Target versions before 3.11**: `contextlib.chdir` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n  ```\n\n### Fix\n\nThe fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module\nimports `contextlib` already. When another binding holds the name `contextlib`, in the module or in a function or class\naround the assignment, the rule reports without a fix. It also reports without a fix when a comment sits in the lines it\nwould remove, when the assignment shares its line with an earlier statement, or when the line before it ends with a\nbackslash that joins the two lines. A module-level `old` that another module of the run imports, or `__all__` lists,\nkeeps its report without a fix, since removing the assignment would break those importers.\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\nA module docstring that shares its line with code keeps the report without a fix, since an import above it would leave\n`__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import above it\nis a syntax error.\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\n# fmt: off\n\"\"\"Build helpers.\"\"\"; import os\n# fmt: on\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\n# fmt: off\n\"\"\"Build helpers.\"\"\"; import os\n# fmt: on\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    # fmt: off\n    started = True; \\\n    old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport os\n\n\ndef run(target):\n    # fmt: off\n    started = True; \\\n    old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python context file=user.py\nfrom state import old\n```\n\n```python report file=state.py\nimport contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n```\n\n```python fixed file=state.py\nimport contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n```\n\nThe import goes above the comment lines that sit directly over the import it precedes, so the comment stays with its\nstatement:\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport abc\n\n# os: the build runs in the target directory\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, os.listdir()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport abc\nimport contextlib\n\n# os: the build runs in the target directory\nimport os\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, os.listdir()\n```\n\nA parameter named `contextlib` keeps the report without a fix, even where the module imports `contextlib`:\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -18520,6 +18520,36 @@
               "line": 340,
               "end_line": 351,
               "source": "import abc\nimport contextlib\n\n# os: the build runs in the target directory\nimport os\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, os.listdir()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 355,
+          "end_line": 386,
+          "config": {
+            "line": 355,
+            "end_line": 358,
+            "source": "[project]\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 360,
+              "end_line": 372,
+              "source": "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 374,
+              "end_line": 386,
+              "source": "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n"
             }
           ]
         }
@@ -18876,7 +18906,7 @@
     "name": "up-asyncio-iscoroutinefunction",
     "summary": "`asyncio.iscoroutinefunction()` calls",
     "fix": "Sometimes",
-    "explanation": "Flags `asyncio.iscoroutinefunction()` calls, which `inspect.iscoroutinefunction()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `asyncio.iscoroutinefunction()`. It also accepts functions marked with the `_is_coroutine` marker\nthat the `asyncio.coroutine` decorator set, a decorator removed in Python 3.11. `inspect.iscoroutinefunction()` checks\nonly the function itself, so the two answer differently for such functions.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport asyncio\n\n\nasync def run(task):\n    await asyncio.sleep(0)\n    if asyncio.iscoroutinefunction(task):\n        return await task()\n    return task()\n```\n\nUse instead:\n\n```python ok\nimport asyncio\nimport inspect\n\n\nasync def run(task):\n    await asyncio.sleep(0)\n    if inspect.iscoroutinefunction(task):\n        return await task()\n    return task()\n```\n\n## Configuration\n\nNo setting changes the report. Every target version has `inspect.iscoroutinefunction()`, so the rule reports on every\ntarget.\n\n## What it does\n\n### Active on\n\n- **Calls of `asyncio.iscoroutinefunction`**, by its qualified name or by a name imported from `asyncio`. **Unsafe\n  fix:** the call becomes `inspect.iscoroutinefunction(...)`, which changes the answer for a function marked with the\n  legacy `_is_coroutine` marker. The fix adds `import inspect` when the module does not import it yet.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import asyncio\n\n\n  async def run(task):\n      await asyncio.sleep(0)\n      if asyncio.iscoroutinefunction(task):\n          return await task()\n      return task()\n  ```\n\n  ```python fixed\n  import asyncio\n  import inspect\n\n\n  async def run(task):\n      await asyncio.sleep(0)\n      if inspect.iscoroutinefunction(task):\n          return await task()\n      return task()\n  ```\n\n### Fix\n\nThe import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. No fix\nis offered when:\n\n- `inspect` is already bound to something else in the module, which the import would shadow;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import asyncio\n  from tools import inspect\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n- the module docstring shares its line with code, since an import above it would leave `__doc__` as `None`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  # fmt: off\n  \"\"\"Task checks.\"\"\"; import sys\n  # fmt: on\n  import asyncio\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n  ```python fixed\n  # fmt: off\n  \"\"\"Task checks.\"\"\"; import sys\n  # fmt: on\n  import asyncio\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n- a `from __future__` import shares its line with code, since an import above it is a syntax error.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `asyncio.iscoroutinefunction()` calls, which `inspect.iscoroutinefunction()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `asyncio.iscoroutinefunction()`. It also accepts functions marked with the `_is_coroutine` marker\nthat the `asyncio.coroutine` decorator set, a decorator removed in Python 3.11. `inspect.iscoroutinefunction()` checks\nonly the function itself, so the two answer differently for such functions.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport asyncio\n\n\nasync def run(task):\n    await asyncio.sleep(0)\n    if asyncio.iscoroutinefunction(task):\n        return await task()\n    return task()\n```\n\nUse instead:\n\n```python ok\nimport asyncio\nimport inspect\n\n\nasync def run(task):\n    await asyncio.sleep(0)\n    if inspect.iscoroutinefunction(task):\n        return await task()\n    return task()\n```\n\n## Configuration\n\nNo setting changes the report. Every target version has `inspect.iscoroutinefunction()`, so the rule reports on every\ntarget.\n\n## What it does\n\n### Active on\n\n- **Calls of `asyncio.iscoroutinefunction`**, by its qualified name or by a name imported from `asyncio`. **Unsafe\n  fix:** the call becomes `inspect.iscoroutinefunction(...)`, which changes the answer for a function marked with the\n  legacy `_is_coroutine` marker. The fix adds `import inspect` when the module does not import it yet.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import asyncio\n\n\n  async def run(task):\n      await asyncio.sleep(0)\n      if asyncio.iscoroutinefunction(task):\n          return await task()\n      return task()\n  ```\n\n  ```python fixed\n  import asyncio\n  import inspect\n\n\n  async def run(task):\n      await asyncio.sleep(0)\n      if inspect.iscoroutinefunction(task):\n          return await task()\n      return task()\n  ```\n\n### Fix\n\nThe import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. No fix\nis offered when:\n\n- `inspect` is already bound to something else in the module, or in a function or class around the call, which the\n  import or the call would pick up;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import asyncio\n  from tools import inspect\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import asyncio\n\n\n  def check(inspect, task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n  ```python fixed\n  import asyncio\n\n\n  def check(inspect, task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n- the module docstring shares its line with code, since an import above it would leave `__doc__` as `None`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  # fmt: off\n  \"\"\"Task checks.\"\"\"; import sys\n  # fmt: on\n  import asyncio\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n  ```python fixed\n  # fmt: off\n  \"\"\"Task checks.\"\"\"; import sys\n  # fmt: on\n  import asyncio\n\n\n  def check(task):\n      return asyncio.iscoroutinefunction(task)\n  ```\n\n- a `from __future__` import shares its line with code, since an import above it is a syntax error.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -18953,11 +18983,11 @@
         },
         {
           "section": "What it does",
-          "line": 89,
-          "end_line": 101,
+          "line": 90,
+          "end_line": 102,
           "config": {
-            "line": 89,
-            "end_line": 92,
+            "line": 90,
+            "end_line": 93,
             "source": "[project]\nrequires-python = \">=3.10\"\n"
           },
           "blocks": [
@@ -18966,19 +18996,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 94,
-              "end_line": 101,
+              "line": 95,
+              "end_line": 102,
               "source": "import asyncio\nfrom tools import inspect\n\n\ndef check(task):\n    return asyncio.iscoroutinefunction(task)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 105,
-          "end_line": 130,
+          "line": 104,
+          "end_line": 123,
           "config": {
-            "line": 105,
-            "end_line": 108,
+            "line": 104,
+            "end_line": 107,
             "source": "[project]\nrequires-python = \">=3.10\"\n"
           },
           "blocks": [
@@ -18987,8 +19017,38 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 110,
-              "end_line": 119,
+              "line": 109,
+              "end_line": 115,
+              "source": "import asyncio\n\n\ndef check(inspect, task):\n    return asyncio.iscoroutinefunction(task)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 117,
+              "end_line": 123,
+              "source": "import asyncio\n\n\ndef check(inspect, task):\n    return asyncio.iscoroutinefunction(task)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 127,
+          "end_line": 152,
+          "config": {
+            "line": 127,
+            "end_line": 130,
+            "source": "[project]\nrequires-python = \">=3.10\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 132,
+              "end_line": 141,
               "source": "# fmt: off\n\"\"\"Task checks.\"\"\"; import sys\n# fmt: on\nimport asyncio\n\n\ndef check(task):\n    return asyncio.iscoroutinefunction(task)\n"
             },
             {
@@ -18996,8 +19056,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 121,
-              "end_line": 130,
+              "line": 143,
+              "end_line": 152,
               "source": "# fmt: off\n\"\"\"Task checks.\"\"\"; import sys\n# fmt: on\nimport asyncio\n\n\ndef check(task):\n    return asyncio.iscoroutinefunction(task)\n"
             }
           ]
@@ -19014,7 +19074,7 @@
     "name": "up-codecs-open",
     "summary": "`codecs.open()` calls",
     "fix": "Sometimes",
-    "explanation": "Flags `codecs.open()` calls, which the builtin `open()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,\n`codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the\ncharacters `str.splitlines()` honors, such as form feeds and U+2028, where `open()` splits only at line endings. With\n`newline=\"\"`, `open()` also keeps the line endings as they are, as `codecs.open()` does.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport codecs\n\n\ndef read_config(path):\n    with codecs.open(path, \"r\", \"utf-8\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\nUse instead:\n\n```python ok\nimport codecs\n\n\ndef read_config(path):\n    with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n## Configuration\n\nNo setting changes the report. The rule reports on every target version, since `open()` takes the arguments in each of\nthem.\n\n## What it does\n\n### Active on\n\n- **Calls of `codecs.open`**, by its qualified name or by a name imported from `codecs`. **Unsafe fix:** the call\n  becomes `open(...)` with `encoding=` and `newline=\"\"`. Reading and writing whole files give the same text and bytes,\n  but iterating over lines does not for text with a form feed, U+2028, U+001C or U+0085: `codecs.open()` yields a line\n  at each of them, and `open()` does not.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      with codecs.open(path, \"r\", \"utf-8\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read_config(path):\n      with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n### Fix\n\nNo fix is offered when:\n\n- no encoding is given, or it is `None`: `codecs.open()` then returns the builtin text file and ignores `errors`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_text(path):\n      return codecs.open(path).read()\n  ```\n\n- the mode is not a string literal, or it has a `b`: a binary mode with an encoding returns a stream that `open()`\n  rejects;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_bytes(path):\n      return codecs.open(path, \"rb\", \"utf-8\").read()\n  ```\n\n- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123\n  (`builtin-open`) under the default settings, so simplint withdraws the fix;\n\n- an argument is unpacked with `*` or `**`, or `open` is bound in the module, which the new call would pick up;\n\n- the call has a comment inside it, which the rewrite would drop.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      return codecs.open(\n          path,  # the config file\n          \"r\",\n          \"utf-8\",\n      ).read()\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule\n  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,\n  asking for one rather than for `open()`.\n",
+    "explanation": "Flags `codecs.open()` calls, which the builtin `open()` replaces.\n\n## Why is this bad?\n\nPython 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,\n`codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the\ncharacters `str.splitlines()` honors, such as form feeds and U+2028, where `open()` splits only at line endings. With\n`newline=\"\"`, `open()` also keeps the line endings as they are, as `codecs.open()` does.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport codecs\n\n\ndef read_config(path):\n    with codecs.open(path, \"r\", \"utf-8\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\nUse instead:\n\n```python ok\nimport codecs\n\n\ndef read_config(path):\n    with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n        return handle.read()\n\n\ndef encoding_name():\n    return codecs.lookup(\"utf-8\").name\n```\n\n## Configuration\n\nNo setting changes the report. The rule reports on every target version, since `open()` takes the arguments in each of\nthem.\n\n## What it does\n\n### Active on\n\n- **Calls of `codecs.open`**, by its qualified name or by a name imported from `codecs`. **Unsafe fix:** the call\n  becomes `open(...)` with `encoding=` and `newline=\"\"`. Reading and writing whole files give the same text and bytes,\n  but iterating over lines does not for text with a form feed, U+2028, U+001C or U+0085: `codecs.open()` yields a line\n  at each of them, and `open()` does not.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      with codecs.open(path, \"r\", \"utf-8\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read_config(path):\n      with open(path, \"r\", encoding=\"utf-8\", newline=\"\") as handle:\n          return handle.read()\n\n\n  def encoding_name():\n      return codecs.lookup(\"utf-8\").name\n  ```\n\n### Fix\n\nNo fix is offered when:\n\n- no encoding is given, or it is `None`: `codecs.open()` then returns the builtin text file and ignores `errors`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_text(path):\n      return codecs.open(path).read()\n  ```\n\n- the mode is not a string literal, or it has a `b`: a binary mode with an encoding returns a stream that `open()`\n  rejects;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_bytes(path):\n      return codecs.open(path, \"rb\", \"utf-8\").read()\n  ```\n\n- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123\n  (`builtin-open`) under the default settings, so simplint withdraws the fix;\n\n- an argument is unpacked with `*` or `**`, or `open` is bound in the module or in a function or class around the call,\n  which the new call would pick up;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n  ```python fixed\n  import codecs\n\n\n  def read(path, open=None):\n      return codecs.open(path, \"r\", \"utf-8\").read()\n  ```\n\n- the call has a comment inside it, which the rewrite would drop.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import codecs\n\n\n  def read_config(path):\n      return codecs.open(\n          path,  # the config file\n          \"r\",\n          \"utf-8\",\n      ).read()\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule\n  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,\n  asking for one rather than for `open()`.\n",
     "examples": {
       "parsed": [
         {
@@ -19133,11 +19193,11 @@
         },
         {
           "section": "What it does",
-          "line": 132,
-          "end_line": 147,
+          "line": 131,
+          "end_line": 150,
           "config": {
-            "line": 132,
-            "end_line": 135,
+            "line": 131,
+            "end_line": 134,
             "source": "[project]\nrequires-python = \">=3.10\"\n"
           },
           "blocks": [
@@ -19146,8 +19206,38 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 137,
-              "end_line": 147,
+              "line": 136,
+              "end_line": 142,
+              "source": "import codecs\n\n\ndef read(path, open=None):\n    return codecs.open(path, \"r\", \"utf-8\").read()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 144,
+              "end_line": 150,
+              "source": "import codecs\n\n\ndef read(path, open=None):\n    return codecs.open(path, \"r\", \"utf-8\").read()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 154,
+          "end_line": 169,
+          "config": {
+            "line": 154,
+            "end_line": 157,
+            "source": "[project]\nrequires-python = \">=3.10\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 159,
+              "end_line": 169,
               "source": "import codecs\n\n\ndef read_config(path):\n    return codecs.open(\n        path,  # the config file\n        \"r\",\n        \"utf-8\",\n    ).read()\n"
             }
           ]
@@ -19536,7 +19626,7 @@
     "name": "up-removed-ast-node",
     "summary": "`ast` node aliases and visitor methods Python 3.14 removed",
     "fix": "Sometimes",
-    "explanation": "Flags references to the `ast` node aliases that Python 3.14 removed, and to `visit_` methods that no longer run.\n\n## Why is this bad?\n\n`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis` have been aliases of `ast.Constant` since\nPython 3.8, and Python 3.14 removes them, so code that names them fails there with `AttributeError`. A visitor method\nnamed after one of them is no longer called, because `ast.NodeVisitor` hands a constant only to `visit_Constant`.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport ast\n\n\ndef is_text(node):\n    return isinstance(node, ast.Str)\n\n\ndef make_number():\n    return ast.Num(n=1)\n```\n\nUse instead:\n\n```python ok\nimport ast\n\n\ndef is_text(node):\n    return isinstance(node, ast.Constant) and isinstance(node.value, str)\n\n\ndef make_number():\n    return ast.Constant(value=1)\n```\n\n## Configuration\n\nNo setting changes the report. The aliases are gone from Python 3.14, and their deprecation covers every version\nsimplint supports, so the rule reports on every target version.\n\n## What it does\n\n### Active on\n\n- **References to `ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis`**, by their qualified names.\n  The fixes cover two forms:\n\n  - **Safe fix:** `isinstance(name, ast.Str)` and `isinstance(name, ast.Bytes)` become\n    `isinstance(name, ast.Constant) and isinstance(name.value, str)`, or `bytes`. Inside a larger expression the new\n    test is wrapped in parentheses.\n  - **Safe fix:** `ast.Num(n=...)`, `ast.Str(s=...)`, `ast.Bytes(s=...)` and `ast.NameConstant(value=...)` with that one\n    keyword become `ast.Constant(value=...)`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_text(node):\n      return isinstance(node, ast.Str)\n  ```\n\n  ```python fixed\n  import ast\n\n\n  def is_text(node):\n      return isinstance(node, ast.Constant) and isinstance(node.value, str)\n  ```\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def make_number():\n      return ast.Num(n=1)\n  ```\n\n  ```python fixed\n  import ast\n\n\n  def make_number():\n      return ast.Constant(value=1)\n  ```\n\n- **`visit_Num`, `visit_Str`, `visit_Bytes`, `visit_NameConstant` and `visit_Ellipsis` methods** of a class that\n  directly subclasses `ast.NodeVisitor` or `ast.NodeTransformer`. No fix is offered: the method has to become\n  `visit_Constant`, which takes over the values of every one of those classes.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  class Counter(ast.NodeVisitor):\n      def visit_Num(self, node):\n          self.count += 1\n  ```\n\n### Exceptions\n\n- **Names imported from `ast`**, such as `from ast import Str`: the fix would need a new import, so these are not\n  reported.\n- **Classes that subclass a visitor indirectly**: only the class that names `ast.NodeVisitor` or `ast.NodeTransformer`\n  as a base is checked.\n\n### Fix\n\nNo fix is offered when:\n\n- the `isinstance` test names `Num`, `NameConstant` or `Ellipsis`, whose checks go beyond the value's type: `Num` leaves\n  out `bool`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_number(node):\n      return isinstance(node, ast.Num)\n  ```\n\n- the subject of the `isinstance` test is not a name, because the rewrite repeats it;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_text(nodes):\n      return isinstance(nodes[0], ast.Str)\n  ```\n\n- the constructor takes positional arguments or more than one keyword, or the keyword is not the value's name;\n\n- the call has a comment, which the rewrite would drop.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags references to the `ast` node aliases that Python 3.14 removed, and to `visit_` methods that no longer run.\n\n## Why is this bad?\n\n`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis` have been aliases of `ast.Constant` since\nPython 3.8, and Python 3.14 removes them, so code that names them fails there with `AttributeError`. A visitor method\nnamed after one of them is no longer called, because `ast.NodeVisitor` hands a constant only to `visit_Constant`.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport ast\n\n\ndef is_text(node):\n    return isinstance(node, ast.Str)\n\n\ndef make_number():\n    return ast.Num(n=1)\n```\n\nUse instead:\n\n```python ok\nimport ast\n\n\ndef is_text(node):\n    return isinstance(node, ast.Constant) and isinstance(node.value, str)\n\n\ndef make_number():\n    return ast.Constant(value=1)\n```\n\n## Configuration\n\nNo setting changes the report. The aliases are gone from Python 3.14, and their deprecation covers every version\nsimplint supports, so the rule reports on every target version.\n\n## What it does\n\n### Active on\n\n- **References to `ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis`**, by their qualified names.\n  The fixes cover two forms:\n\n  - **Safe fix:** `isinstance(name, ast.Str)` and `isinstance(name, ast.Bytes)` become\n    `isinstance(name, ast.Constant) and isinstance(name.value, str)`, or `bytes`. Inside a larger expression the new\n    test is wrapped in parentheses.\n  - **Safe fix:** `ast.Num(n=...)`, `ast.Str(s=...)`, `ast.Bytes(s=...)` and `ast.NameConstant(value=...)` with that one\n    keyword become `ast.Constant(value=...)`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_text(node):\n      return isinstance(node, ast.Str)\n  ```\n\n  ```python fixed\n  import ast\n\n\n  def is_text(node):\n      return isinstance(node, ast.Constant) and isinstance(node.value, str)\n  ```\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def make_number():\n      return ast.Num(n=1)\n  ```\n\n  ```python fixed\n  import ast\n\n\n  def make_number():\n      return ast.Constant(value=1)\n  ```\n\n- **`visit_Num`, `visit_Str`, `visit_Bytes`, `visit_NameConstant` and `visit_Ellipsis` methods** of a class that\n  directly subclasses `ast.NodeVisitor` or `ast.NodeTransformer`. No fix is offered: the method has to become\n  `visit_Constant`, which takes over the values of every one of those classes.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  class Counter(ast.NodeVisitor):\n      def visit_Num(self, node):\n          self.count += 1\n  ```\n\n### Exceptions\n\n- **Names imported from `ast`**, such as `from ast import Str`: the fix would need a new import, so these are not\n  reported.\n- **Classes that subclass a visitor indirectly**: only the class that names `ast.NodeVisitor` or `ast.NodeTransformer`\n  as a base is checked.\n\n### Fix\n\nNo fix is offered when:\n\n- the `isinstance` test names `Num`, `NameConstant` or `Ellipsis`, whose checks go beyond the value's type: `Num` leaves\n  out `bool`;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_number(node):\n      return isinstance(node, ast.Num)\n  ```\n\n- the subject of the `isinstance` test is not a name, because the rewrite repeats it;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_text(nodes):\n      return isinstance(nodes[0], ast.Str)\n  ```\n\n- `isinstance` is bound in the module or in a function or class around the test, so the rewrite would not call the\n  builtin;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import ast\n\n\n  def is_text(node, isinstance=None):\n      return isinstance(node, ast.Str)\n  ```\n\n- the constructor takes positional arguments or more than one keyword, or the keyword is not the value's name;\n\n- the call has a comment, which the rewrite would drop.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -19701,6 +19791,27 @@
               "line": 154,
               "end_line": 160,
               "source": "import ast\n\n\ndef is_text(nodes):\n    return isinstance(nodes[0], ast.Str)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 165,
+          "end_line": 176,
+          "config": {
+            "line": 165,
+            "end_line": 168,
+            "source": "[project]\nrequires-python = \">=3.10\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 170,
+              "end_line": 176,
+              "source": "import ast\n\n\ndef is_text(node, isinstance=None):\n    return isinstance(node, ast.Str)\n"
             }
           ]
         }

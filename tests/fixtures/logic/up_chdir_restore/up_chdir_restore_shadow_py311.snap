@@ -1,0 +1,40 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does
+16:9 SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does
+30:5 SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does [fix: Enter the directory with `contextlib.chdir`]
+--- fixed (1 applied, 2 remaining) ---
+import contextlib
+import os
+
+
+class K:
+    contextlib = 1
+    old = os.getcwd()
+    os.chdir("..")
+    try:
+        pass
+    finally:
+        os.chdir(old)
+
+
+def outer(contextlib):
+    def run(target):
+        old = os.getcwd()
+        os.chdir(target)
+        try:
+            return os.listdir()
+        finally:
+            os.chdir(old)
+
+    return run
+
+
+def run(target):
+    def helper(contextlib):
+        return contextlib
+
+    with contextlib.chdir(target):
+        return os.listdir()

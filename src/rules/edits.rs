@@ -210,9 +210,17 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
 }
 
 // The name a fix uses for `member` of `module`, or for `module` itself, and the edit that adds the import when the file
-// lacks it. `None` when another binding holds the name, which leaves the fix off.
-pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> Option<(String, Option<Edit>)> {
+// lacks it. `None` when another binding holds the name at `at`, the place the fix writes it, which leaves the fix off.
+pub fn ensure_import(
+    checker: &Checker,
+    module: &str,
+    member: Option<&str>,
+    at: TextRange,
+) -> Option<(String, Option<Edit>)> {
     let binding = member.unwrap_or(module);
+    if is_bound_around(checker, binding, at) {
+        return None;
+    }
     if has_import(checker.body(), module, member) {
         return Some((binding.to_owned(), None));
     }
@@ -220,6 +228,11 @@ pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> O
         return None;
     }
     Some((binding.to_owned(), Some(import_insertion(checker, module, member)?)))
+}
+
+// Whether a scope around `at` binds the name, which hides the module-level binding or the builtin a fix writes there.
+pub fn is_bound_around(checker: &Checker, name: &str, at: TextRange) -> bool {
+    checker.semantic().is_bound_around(name, at, checker.state().comprehensions(checker))
 }
 
 // Whether a top-level import already brings the module, or the member, in under its own name.
