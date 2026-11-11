@@ -253,6 +253,7 @@ impl<'a> Checker<'a> {
                 list_appends: counts_ruff_appends(self.settings),
                 django_reports: leaves_django_order_to_ruff(self.settings),
                 private_imports: self.settings.rules.contains(Rule::PrivateImportPath),
+                unused_imports: self.is_init_module() && self.settings.rules.contains(Rule::InitModuleContent),
             };
             Semantic::new(
                 self.path,

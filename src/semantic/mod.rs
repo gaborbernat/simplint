@@ -26,6 +26,7 @@ use crate::syntax::{first_positional, is_name, receiver, statement_index};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
+#[expect(clippy::struct_excessive_bools, reason = "each flag asks for one Ruff rule's matches")]
 pub struct RuffMatches {
     // The appends on a list that Ruff's FURB113 counts.
     pub list_appends: bool,
@@ -33,6 +34,8 @@ pub struct RuffMatches {
     pub django_reports: bool,
     // The import bindings that Ruff's PLC2701 reports.
     pub private_imports: bool,
+    // The module-scope imports that Ruff's F401 finds unused, which SMP407 reads in an `__init__.py`.
+    pub unused_imports: bool,
 }
 
 pub struct Semantic<'a> {
@@ -87,7 +90,8 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        let unused_imports = unused_imports::unused_imports(&model, body);
+        let unused_imports =
+            if matches.unused_imports { unused_imports::unused_imports(&model, body) } else { FxHashSet::default() };
         Self {
             model,
             annotations_are_lazy,
