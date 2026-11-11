@@ -27,7 +27,9 @@ depends on the names other files use from that file, so editing an importer chec
 only per-file rules check keeps its cached result. A file whose fixes cannot be written is not cached, because whether
 its directory lets it be written is not part of its key. A ``--diff`` run caches nothing computed from a fix it keeps in
 memory, neither for the file it fixes nor for another file linted after that fix, because those reports describe the
-fixed source, not the disk.
+fixed source, not the disk. With :doc:`private-import-path </_generated/rules/SMP310>` enabled, the directory listing under
+the project root and under ``src/``, and the ``.py`` and ``.pyi`` links in it, are part of the key, so adding, removing
+or renaming a module checks the tests again, while editing a module's content does not.
 
 Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
 error too, so a warm run reports it again without building the project index. A read error that is only logged, because

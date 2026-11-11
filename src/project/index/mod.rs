@@ -66,9 +66,36 @@ impl SearchRoots {
     // is added, removed or renamed. Below those it walks only directories an import can name, `name-stubs` providing
     // `name`, and follows links as the resolver does, each directory once.
     pub fn layout_key<'a>(&self, files: impl Iterator<Item = &'a Path>, hasher: &mut CacheKeyHasher) {
-        let mut level: Vec<PathBuf> = self.roots.clone();
+        Self::hash_directories(&Self::walk(&self.roots, files), hasher);
+    }
+
+    // The layout `private-import-path` probes beside a project: the sources it looks for sit under the project's root
+    // and under its `src` directory, which the search roots need not cover, so the cache keys those trees too, and
+    // the links among their module files, whose targets `is_file` follows.
+    pub fn probed_layout(root: &Path, hasher: &mut CacheKeyHasher) {
+        let directories = Self::walk(&[root.to_path_buf(), root.join("src")], std::iter::empty());
+        Self::hash_directories(&directories, hasher);
+        let mut links: Vec<PathBuf> =
+            directories.par_iter().flat_map_iter(|directory| module_links(directory)).collect();
+        links.sort_unstable();
+        for link in links {
+            link.cache_key(hasher);
+            link.is_file().cache_key(hasher);
+        }
+    }
+
+    fn hash_directories(directories: &[PathBuf], hasher: &mut CacheKeyHasher) {
+        let stats: Vec<Option<Stat>> = directories.par_iter().map(|directory| stat(directory)).collect();
+        for (directory, stat) in directories.iter().zip(stats) {
+            directory.cache_key(hasher);
+            stat.cache_key(hasher);
+        }
+    }
+
+    fn walk<'a>(roots: &[PathBuf], files: impl Iterator<Item = &'a Path>) -> Vec<PathBuf> {
+        let mut level: Vec<PathBuf> = roots.to_vec();
         level.extend(files.filter_map(Path::parent).flat_map(|directory| {
-            let root = self.roots.iter().find(|root| directory.starts_with(root));
+            let root = roots.iter().find(|root| directory.starts_with(root));
             directory
                 .ancestors()
                 .take_while(move |ancestor| root.is_some_and(|root| ancestor.starts_with(root)))
@@ -89,11 +116,7 @@ impl SearchRoots {
         }
         let mut walked: Vec<PathBuf> = walked.into_iter().collect();
         walked.sort_unstable();
-        let stats: Vec<Option<Stat>> = walked.par_iter().map(|directory| stat(directory)).collect();
-        for (directory, stat) in walked.iter().zip(stats) {
-            directory.cache_key(hasher);
-            stat.cache_key(hasher);
-        }
+        walked
     }
 
     pub fn new<'a>(settings: &ruff_workspace::Settings, packages: impl IntoIterator<Item = PackageRoot<'a>>) -> Self {
@@ -134,6 +157,19 @@ impl SearchRoots {
             })
             .collect()
     }
+}
+
+// The links to a `.py` or `.pyi` file in a directory. A link's target can go away without changing any entry of the
+// directory, so each link is keyed by whether it still leads to a file.
+fn module_links(directory: &Path) -> Vec<PathBuf> {
+    fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
+        .map(|entry| entry.path())
+        .filter(|path| matches!(path.extension().and_then(|extension| extension.to_str()), Some("py" | "pyi")))
+        .collect()
 }
 
 // The directories in `directory` an import can name, `name-stubs` providing `name`, each with the target it resolves
@@ -266,6 +302,8 @@ pub struct Project {
     // What the files of the run read in common, which every file's answers depend on.
     pub(super) reads: RunReads,
     pub(super) digest: u64,
+    // The layout `private-import-path` probes beside the run's projects, when a file of the run checks for it.
+    pub(super) probed: Option<u64>,
     pub(super) files: Arc<FileIds>,
 }
 
@@ -300,6 +338,8 @@ pub struct IndexInputs<'a> {
     pub docs: &'a DocReferences,
     // The fewest statements a duplicate block of any file of the run spans, when a file checks for duplicate code.
     pub duplicate_statements: Option<usize>,
+    // The layout `private-import-path` probes beside the run's projects, when a file of the run checks for it.
+    pub probed: Option<u64>,
     // What another project of the run reads, which counts as use in these files as an entry point's names do.
     pub external: &'a External,
 }
@@ -327,6 +367,7 @@ impl Project {
             duplicate_statements,
             distribution_roots,
             external,
+            probed,
             ..
         } = *inputs;
         let ids = resolver.resolve(files);
@@ -489,6 +530,7 @@ impl Project {
             calls,
             reads,
             digest,
+            probed,
             files: Arc::clone(&resolver.files),
         }
     }

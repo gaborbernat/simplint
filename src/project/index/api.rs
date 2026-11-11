@@ -148,6 +148,7 @@ impl FileIndex<'_> {
 impl CacheKey for FileIndex<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.project.digest.cache_key(state);
+        self.project.probed.cache_key(state);
         self.imported.cache_key(state);
         self.entry_only.cache_key(state);
         self.referenced.cache_key(state);

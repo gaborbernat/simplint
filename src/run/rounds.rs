@@ -382,6 +382,7 @@ struct ProjectInputs<'f> {
     coverage_plugins: Vec<(PathBuf, String)>,
     coverage_paths: Vec<(PathBuf, PathBuf)>,
     duplicate_statements: Option<usize>,
+    probed: Option<u64>,
     roles: FxHashMap<&'f Path, ModuleRole>,
     test_modules: FxHashSet<&'f Path>,
     distribution_roots: FxHashMap<&'f Path, &'f Path>,
@@ -431,6 +432,7 @@ impl<'f> ProjectInputs<'f> {
                 .dedup()
                 .collect(),
             duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
+            probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
             test_modules: files
                 .iter()
@@ -480,6 +482,7 @@ fn run_digest(
         project.coverage_plugins.cache_key(&mut hasher);
         project.coverage_paths.cache_key(&mut hasher);
         project.duplicate_statements.cache_key(&mut hasher);
+        project.probed.cache_key(&mut hasher);
         let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
         test_modules.sort_unstable();
         test_modules.cache_key(&mut hasher);
@@ -600,6 +603,7 @@ fn index_and_lint<'f, T: Send>(
         distribution_roots: &project.distribution_roots,
         docs,
         duplicate_statements: project.duplicate_statements,
+        probed: project.probed,
         external,
     };
     let mut imports = ImportResolver::new(
@@ -628,6 +632,26 @@ fn rules_of(files: &[&RunFile]) -> RuleSet {
 // The facts the run's rules read, which only those rules' runs need collected.
 fn wanted_parts(rules: RuleSet) -> Parts {
     rules.iter().fold(Parts::default(), |parts, rule| parts.with(rule.fact_parts()))
+}
+
+// The layout beside each project whose files check for `private-import-path`, which that rule's paired-test lookup reads.
+// `None` when no linted file checks for it.
+fn probed_layout_key(files: &[&RunFile]) -> Option<u64> {
+    let mut roots: Vec<&Path> = files
+        .iter()
+        .filter(|file| file.settings.rules.contains(Rule::PrivateImportPath))
+        .map(|file| file.settings.project.root.as_path())
+        .unique()
+        .collect();
+    if roots.is_empty() {
+        return None;
+    }
+    roots.sort_unstable();
+    let mut hasher = CacheKeyHasher::new();
+    for root in roots {
+        SearchRoots::probed_layout(root, &mut hasher);
+    }
+    Some(hasher.finish())
 }
 
 // The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index finds
