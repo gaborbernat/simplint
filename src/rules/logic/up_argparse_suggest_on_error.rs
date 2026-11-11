@@ -6,11 +6,10 @@ use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::report_redundant_keyword;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
-    // Python 3.15 turns `suggest_on_error` on by default, so the keyword set to `True` changes nothing from there.
     let Expr::Call(call) = expr else {
         return;
     };
+    // Python 3.15 turns `suggest_on_error` on by default, so the keyword set to `True` changes nothing from there.
     let Some(keyword) = call
         .arguments
         .find_keyword("suggest_on_error")
@@ -18,6 +17,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     else {
         return;
     };
+    let checker = walker.checker;
     if !checker.semantic().resolves_to(&call.func, &["argparse", "ArgumentParser"]) {
         return;
     }
