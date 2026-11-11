@@ -246,13 +246,22 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **A class whose body reads `__doc__`**: in a class body the bare name is the class's own docstring, so the class keeps
-  it. A method's `__doc__` is the module's, so a method reading it does not count.
+  it. A method's `__doc__` is the module's, so a method reading it does not count. The decorators, defaults and bases in
+  the header of a method, lambda or nested class run in the class body, so reading `__doc__` there counts too.
 
   ```python ok
   class Sync:
       """Synchronise the mirror."""
 
       help = __doc__
+  ```
+
+  ```python ok file=header.py
+  class Sync:
+      """Synchronise the mirror."""
+
+      def run(self, text=__doc__):
+          return text
   ```
 
 Decorators known to leave the docstring unread still let the rule report:

@@ -104,7 +104,8 @@ fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
 }
 
 // A class body that names `__doc__` reads its own docstring, which the compiler binds in the class namespace before the
-// body runs. Methods do not see the class namespace, so their bodies are left out.
+// body runs. The headers of methods, lambdas and nested classes run in that body, as their decorators, defaults and
+// bases do, while their bodies have a namespace of their own.
 fn reads_own_docstring(class: &ast::StmtClassDef) -> bool {
     if docstring(&class.body).is_none() {
         return false;
@@ -119,7 +120,23 @@ struct ClassDocstringReads(bool);
 impl<'a> Visitor<'a> for ClassDocstringReads {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, parameters, returns, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                self.visit_parameters(parameters);
+                if let Some(returns) = returns {
+                    self.visit_annotation(returns);
+                }
+            }
+            Stmt::ClassDef(ast::StmtClassDef { decorator_list, arguments, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(arguments) = arguments {
+                    self.visit_arguments(arguments);
+                }
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
@@ -127,7 +144,11 @@ impl<'a> Visitor<'a> for ClassDocstringReads {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, .. }) => self.0 |= id.as_str() == "__doc__",
-            Expr::Lambda(_) => {}
+            Expr::Lambda(ast::ExprLambda { parameters, .. }) => {
+                if let Some(parameters) = parameters {
+                    self.visit_parameters(parameters);
+                }
+            }
             _ => visitor::walk_expr(self, expr),
         }
     }
