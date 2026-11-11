@@ -12,7 +12,7 @@ use common::{
 #[test]
 fn check_clean_project_passes() {
     let root = project(&[("module.py", "_VALUE: Final[int] = 1\n")]);
-    assert_eq!(check(root.path(), &["--select", "SMP001"]), (0, common::PASSED.to_owned(), String::new()));
+    assert_eq!(check(root.path(), &["--select", "SMP001"]), (0, PASSED.to_owned(), String::new()));
 }
 
 #[test]
@@ -48,7 +48,7 @@ fn check_accepts_several_paths() {
     );
 }
 
-#[test_case(&["--select", "SMP101"], common::PASSED ; "check")]
+#[test_case(&["--select", "SMP101"], PASSED ; "check")]
 #[test_case(&["--show-files"], "" ; "show_files")]
 fn check_without_python_files_warns(flags: &[&str], stdout: &str) {
     let root = project(&[("notes.txt", "x = 1\n")]);
@@ -68,8 +68,8 @@ fn check_lints_a_file_named_on_the_command_line_whatever_its_extension() {
 fn show_files_lists_the_files_to_check() {
     let root = project(&[("pkg/b.py", ""), ("a.py", ""), ("stub.pyi", ""), ("notes.txt", "")]);
     let (code, stdout, _) = check(root.path(), &["--show-files"]);
-    let (a, b) = (root.path().join("a.py"), root.path().join("pkg").join("b.py"));
-    assert_eq!((code, stdout), (0, format!("{}\n{}\n", a.display(), b.display())));
+    let (top, nested) = (root.path().join("a.py"), root.path().join("pkg").join("b.py"));
+    assert_eq!((code, stdout), (0, format!("{}\n{}\n", top.display(), nested.display())));
 }
 
 #[test_case(&["--exclude", "module.py"], 0 ; "exclude")]
@@ -163,7 +163,11 @@ fn per_file_ignores_flag_needs_a_pattern_and_code() {
 #[test_case(&["--config", "extend-unfixable = [\"SMP99\"]"], "`SMP99` in `extend-unfixable`" ; "inline_extend_unfixable")]
 #[test_case(&["--config", "extend-safe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-safe-fixes`" ; "inline_extend_safe_fixes")]
 #[test_case(&["--config", "extend-unsafe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-unsafe-fixes`" ; "inline_extend_unsafe_fixes")]
-#[test_case(&["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP99\"] }"], "`SMP99` in `extend-per-file-ignores`" ; "inline_extend_per_file_ignores")]
+#[test_case(
+    &["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP99\"] }"],
+    "`SMP99` in `extend-per-file-ignores`" ;
+    "inline_extend_per_file_ignores"
+)]
 fn check_unknown_selector_names_the_cli(flags: &[&str], selector: &str) {
     let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(
@@ -273,7 +277,7 @@ fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
     let (code, stdout, stderr) = check(root.path(), &[]);
     assert_eq!(
         (code, stdout, stderr.contains("Failed to lint module.py: Permission denied")),
-        (0, common::PASSED.to_owned(), true)
+        (0, PASSED.to_owned(), true)
     );
 }
 
@@ -316,25 +320,19 @@ fn check_reads_stdin() {
     );
 }
 
-#[test_case(
-    "--fix", common::SECTIONED, 0, common::CLEAN_MODULE, common::ONE_FIXED ;
-    "fix_writes_the_fixed_source"
-)]
-#[test_case("--fix", common::CLEAN_MODULE, 0, common::CLEAN_MODULE, common::PASSED ; "fix_keeps_source_with_nothing_to_fix")]
+#[test_case("--fix", common::SECTIONED, (0, common::CLEAN_MODULE, common::ONE_FIXED) ; "fix_writes_the_fixed_source")]
+#[test_case("--fix", common::CLEAN_MODULE, (0, common::CLEAN_MODULE, PASSED) ; "fix_keeps_source_with_nothing_to_fix")]
 #[test_case(
     "--diff",
     common::SECTIONED,
-    1,
-    "--- module.py\n+++ module.py\n@@ -1,2 +1 @@\n-# --- helpers ---\n VALUE = 1\n\n",
-    "Would fix 1 error.\n" ;
+    (1, "--- module.py\n+++ module.py\n@@ -1,2 +1 @@\n-# --- helpers ---\n VALUE = 1\n\n", "Would fix 1 error.\n") ;
     "diff_prints_the_diff"
 )]
-fn check_fix_from_stdin(flag: &str, stdin: &str, code: i32, stdout: &str, stderr: &str) {
+fn check_fix_from_stdin(flag: &str, stdin: &str, expected: (i32, &str, &str)) {
     let root = empty_project();
-    assert_eq!(
-        check_with_stdin(root.path(), &[flag, "--select", "SMP001", "--stdin-filename", "module.py"], stdin),
-        (code, stdout.to_owned(), stderr.to_owned())
-    );
+    let (code, stdout, stderr) =
+        check_with_stdin(root.path(), &[flag, "--select", "SMP001", "--stdin-filename", "module.py"], stdin);
+    assert_eq!((code, stdout.as_str(), stderr.as_str()), expected);
 }
 
 #[test]
@@ -381,7 +379,7 @@ fn check_stdin_lints_like_the_file_it_stands_for(files: &[(&str, &str)], name: &
 
 // Standard input is judged by the path it stands for, so a helper read from a test directory is a test module's and
 // its SMP409 is left out, as it is when the file is checked by path.
-#[test_case("tests", common::PASSED ; "test_directory")]
+#[test_case("tests", PASSED ; "test_directory")]
 #[test_case(
     "lib",
     "helpers.py:1:5: SMP409 `helper` is never used in the run; remove it or give it a caller\nFound 1 error.\n" ;
@@ -419,10 +417,6 @@ fn check_warns_about_a_missing_path_while_io_error_is_off() {
     let (code, stdout, stderr) = check(root.path(), &["--select", "SMP101", "typo.py", "real.py"]);
     assert_eq!(
         (code, stdout, stderr),
-        (
-            0,
-            common::PASSED.to_owned(),
-            "warning: Encountered error: No such file or directory (os error 2)\n".to_owned()
-        )
+        (0, PASSED.to_owned(), "warning: Encountered error: No such file or directory (os error 2)\n".to_owned())
     );
 }
