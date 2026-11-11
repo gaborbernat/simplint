@@ -102,7 +102,8 @@ fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
     assert_eq!((code, stderr.contains("Failed to parse")), (2, true), "{stderr}");
 }
 
-// A run from a directory whose name is not UTF-8 cannot resolve its imports, whether it checks a file or standard input.
+// A run from a directory whose name is not UTF-8 cannot resolve its imports, whether it checks a file or standard
+// input.
 #[cfg(unix)]
 #[test_case(false ; "linted_file")]
 #[test_case(true ; "standard_input")]
@@ -156,10 +157,14 @@ fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
     &format!("__all__ = [\"public\"]\n\n\n{FUNCTIONS}"),
     ".. automodule:: pkg.api\n   :members:\n", &["_hidden", "other"] ; "members_are_the_names_of_all"
 )]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :private-members:\n", &[] ; "private_members_are_taken_in")]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :exclude-members: other\n", &["_hidden", "other"] ; "excluded_members_are_left_out")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   :members:\n", &["_hidden"] ; "special_names_are_not_reported_without_the_flag")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   :members:\n   :special-members:\n", &["_hidden"] ; "special_names_are_not_reported_with_the_flag")]
+#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   \
+    :private-members:\n", &[] ; "private_members_are_taken_in")]
+#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :exclude-members: \
+    other\n", &["_hidden", "other"] ; "excluded_members_are_left_out")]
+#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   \
+    :members:\n", &["_hidden"] ; "special_names_are_not_reported_without_the_flag")]
+#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   \
+    :members:\n   :special-members:\n", &["_hidden"] ; "special_names_are_not_reported_with_the_flag")]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members: public\n", &["_hidden", "other"] ; "listed_members_only")]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n", &["_hidden", "other", "public"] ; "module_without_members")]
 fn automodule_members_are_used_as_sphinx_renders_them(source: &str, directive: &str, expected: &[&str]) {
@@ -183,7 +188,9 @@ fn nested_project_is_not_judged_for_docstrings_or_exports(directory: &str, repor
         (&format!("{directory}/conf.py"), ""),
         (
             &format!("{directory}/mod.py"),
-            "__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep() -> None:\n    pass\n\n\ndef unlisted() -> None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\ndef f(x: int) -> int:\n    return x\n",
+            "__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep() -> None:\n    pass\n\n\ndef unlisted() -> None:\n    \
+            pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\ndef f(x: int) -> int:\n    return \
+            x\n",
         ),
     ]);
     let stdout = check(root.path(), &["--select", "SMP101,SMP401,SMP403,SMP901,SMP903"]).1;
@@ -192,8 +199,6 @@ fn nested_project_is_not_judged_for_docstrings_or_exports(directory: &str, repor
     assert_eq!(judged, [reported; 3], "{stdout}");
 }
 
-// Every rule that judges docstrings or the visibility of names leaves a nested test project alone, whatever the file
-// holds.
 #[test]
 fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
     let root = project(&[
@@ -204,7 +209,10 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
         ("roots/test-a/conf.py", ""),
         (
             "roots/test-a/mod.py",
-            "\"\"\"Module.\"\"\"\n\n__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep(x: int) -> int:\n    \"\"\"Keep `x`.\n\n    :param y: missing.\n    :returns: nothing.\n    \"\"\"\n    return x\n\n\ndef unlisted() -> None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\nclass Holder:\n    \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
+            "\"\"\"Module.\"\"\"\n\n__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep(x: int) -> int:\n    \"\"\"Keep \
+            `x`.\n\n    :param y: missing.\n    :returns: nothing.\n    \"\"\"\n    return x\n\n\ndef unlisted() -> \
+            None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\nclass Holder:\n    \
+            \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
         ),
     ]);
     let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
@@ -213,10 +221,14 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
 
 // A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
 // the patch, so SMP304 offers no fix for any of the patch forms.
-#[test_case("from unittest import mock\n\n\ndef test_run() -> None:\n    with mock.patch(\"bench.operations.OPERATIONS\"):\n        pass\n" ; "dotted_string")]
-#[test_case("from bench import operations\n\n\ndef test_run() -> None:\n    setattr(operations, \"OPERATIONS\", {})\n" ; "setattr")]
-#[test_case("from bench import operations\n\n\ndef test_run(monkeypatch) -> None:\n    monkeypatch.setattr(operations, \"OPERATIONS\", {})\n" ; "monkeypatch")]
-#[test_case("from unittest import mock\n\nfrom bench import operations\n\n\ndef test_run() -> None:\n    with mock.patch.object(operations, \"OPERATIONS\"):\n        pass\n" ; "patch_object")]
+#[test_case("from unittest import mock\n\n\ndef test_run() -> None:\n    with \
+    mock.patch(\"bench.operations.OPERATIONS\"):\n        pass\n" ; "dotted_string")]
+#[test_case("from bench import operations\n\n\ndef test_run() -> None:\n    setattr(operations, \"OPERATIONS\", \
+    {})\n" ; "setattr")]
+#[test_case("from bench import operations\n\n\ndef test_run(monkeypatch) -> None:\n    monkeypatch.setattr(operations, \
+    \"OPERATIONS\", {})\n" ; "monkeypatch")]
+#[test_case("from unittest import mock\n\nfrom bench import operations\n\n\ndef test_run() -> None:\n    with \
+    mock.patch.object(operations, \"OPERATIONS\"):\n        pass\n" ; "patch_object")]
 fn patched_module_attribute_keeps_module_reads(test: &str) {
     let root = project(&[
         ("tools/bench/__init__.py", ""),
@@ -241,12 +253,14 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
     "pkg/setup.py",
     "from pkg import exc\n\nexc._version_token = 1\n",
     "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\npkg/use.py:5:23: \
-     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "store"
+     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n1 unsafe fix \
+     available with `--fix --unsafe-fixes`.\n" ; "store"
 )]
 #[test_case(
     "pkg/test_use.py",
     "from unittest import mock\n\n\ndef test_it() -> None:\n    with mock.patch(\"pkg.exc.Error\"):\n        pass\n",
-    "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 1 error.\n" ; "patched"
+    "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 1 \
+    error.\n" ; "patched"
 )]
 fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, expected: &str) {
     let root = project(&[
@@ -266,7 +280,8 @@ fn doctest_read_does_not_patch_module() {
         ("tools/bench/__init__.py", ""),
         (
             "tools/bench/operations.py",
-            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
+            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import \
+            operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
         ),
         (
             "tools/bench/report.py",
@@ -276,7 +291,8 @@ fn doctest_read_does_not_patch_module() {
     assert_eq!(
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
-            "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it through \
+            "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it \
+            through \
              the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -296,7 +312,6 @@ fn nested_project_pages_do_not_name_the_run_projects_definitions() {
     assert!(stdout.contains(&common::native("support.py")), "{stdout}");
 }
 
-// SARIF gives the file of a related location as a file URI, as it gives the primary location of the same result.
 #[test]
 fn sarif_related_location_is_a_file_uri() {
     let root = project(&[
@@ -321,7 +336,8 @@ fn autodoc_names_a_package_function_by_its_package() {
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         (
             "app/__init__.py",
-            "def helper() -> int:\n    \"\"\"Compute the helper value from the environment and return it to the caller.\"\"\"\n    return 2\n",
+            "def helper() -> int:\n    \"\"\"Compute the helper value from the environment and return it to the \
+            caller.\"\"\"\n    return 2\n",
         ),
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autofunction:: app.helper\n"),
@@ -338,7 +354,8 @@ fn autodoc_names_a_method_by_its_class() {
         ("app/__init__.py", ""),
         (
             "app/mod.py",
-            "__all__ = [\"Foo\"]\n\n\nclass Foo:\n    def run(self) -> int:\n        \"\"\"Run the thing and give back the exit status of the subprocess it starts.\"\"\"\n        return 1\n",
+            "__all__ = [\"Foo\"]\n\n\nclass Foo:\n    def run(self) -> int:\n        \"\"\"Run the thing and give back \
+            the exit status of the subprocess it starts.\"\"\"\n        return 1\n",
         ),
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autoclass:: app.mod.Foo\n   :members:\n"),

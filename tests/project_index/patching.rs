@@ -4,10 +4,14 @@ use test_case::test_case;
 
 // A test that names the attribute it sets, deletes or patches with a loop over string literals uses each of them, as a
 // literal name does.
-#[test_case("for name in (\"client\", \"engine\"):\n        monkeypatch.setattr(tutorial, name, None)\n" ; "setattr_loop_over_tuple")]
-#[test_case("for name, value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n        monkeypatch.setattr(tutorial, name, value)\n" ; "setattr_loop_over_pairs")]
-#[test_case("NAMES = [\"client\", \"engine\"]\n\n    for name in NAMES:\n        monkeypatch.delattr(tutorial, name)\n" ; "delattr_loop_over_bound_list")]
-#[test_case("for name in {\"client\", \"engine\"}:\n        mock.patch.object(tutorial, name).start()\n" ; "patch_object_loop_over_set")]
+#[test_case("for name in (\"client\", \"engine\"):\n        monkeypatch.setattr(tutorial, name, \
+    None)\n" ; "setattr_loop_over_tuple")]
+#[test_case("for name, value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n        monkeypatch.setattr(tutorial, \
+    name, value)\n" ; "setattr_loop_over_pairs")]
+#[test_case("NAMES = [\"client\", \"engine\"]\n\n    for name in NAMES:\n        monkeypatch.delattr(tutorial, \
+    name)\n" ; "delattr_loop_over_bound_list")]
+#[test_case("for name in {\"client\", \"engine\"}:\n        mock.patch.object(tutorial, \
+    name).start()\n" ; "patch_object_loop_over_set")]
 fn names_read_in_loops_over_string_literals_are_used(body: &str) {
     let test = format!(
         "from unittest import mock\n\nfrom docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    {body}"
@@ -25,12 +29,15 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
 #[test_case("for name in names():\n        monkeypatch.setattr(tutorial, name, None)\n" ; "call")]
 #[test_case("for name in dir(tutorial):\n        monkeypatch.setattr(tutorial, name, None)\n" ; "dir")]
 #[test_case("for name in (\"client\", 1):\n        monkeypatch.setattr(tutorial, name, None)\n" ; "mixed_items")]
-#[test_case("for name, value in ((\"client\",), (\"engine\", \"b\")):\n        monkeypatch.setattr(tutorial, name, value)\n" ; "ragged_pairs")]
-#[test_case("NAMES = [\"client\", \"engine\"]\n    NAMES = names()\n    for name in NAMES:\n        monkeypatch.setattr(tutorial, name, None)\n" ; "rebound_name")]
+#[test_case("for name, value in ((\"client\",), (\"engine\", \"b\")):\n        monkeypatch.setattr(tutorial, name, \
+    value)\n" ; "ragged_pairs")]
+#[test_case("NAMES = [\"client\", \"engine\"]\n    NAMES = names()\n    for name in NAMES:\n        \
+    monkeypatch.setattr(tutorial, name, None)\n" ; "rebound_name")]
 #[test_case("monkeypatch.setattr(tutorial, names()[0], None)\n" ; "computed_name")]
 fn loops_over_unknown_iterables_name_no_attribute(body: &str) {
     let test = format!(
-        "from docs import tutorial\n\n\ndef names() -> list[str]:\n    return []\n\n\ndef test_app(monkeypatch) -> None:\n    {body}"
+        "from docs import tutorial\n\n\ndef names() -> list[str]:\n    return []\n\n\ndef test_app(monkeypatch) -> \
+        None:\n    {body}"
     );
     let root = project(&[
         ("docs/__init__.py", ""),
@@ -40,7 +47,8 @@ fn loops_over_unknown_iterables_name_no_attribute(body: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
-            "docs/tutorial.py:1:12: SMP402 [*] `client` is in `__all__`, yet no other module imports it; list only what \
+            "docs/tutorial.py:1:12: SMP402 [*] `client` is in `__all__`, yet no other module imports it; list only \
+            what \
              other modules use\ndocs/tutorial.py:1:22: SMP402 `engine` is in `__all__`, yet no other module imports \
              it; list only what other modules use\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n"
         )
@@ -64,7 +72,8 @@ fn setattr_loop_over_modules_writes_each_module(items: &str) {
         ("docs/engine.py", "SHARED = {}\n"),
         (
             "docs/app.py",
-            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, other.SHARED, engine.SHARED\n",
+            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, \
+            other.SHARED, engine.SHARED\n",
         ),
         ("tests/test_docs.py", &test),
     ]);
@@ -79,9 +88,12 @@ fn setattr_loop_over_modules_writes_each_module(items: &str) {
 
 // A loop that rebinds its module's name, or a function or lambda whose parameter shadows it, patches neither module it
 // loops over.
-#[test_case("    for module in (tutorial, other):\n        module = engine\n        monkeypatch.setattr(module, \"SHARED\", {})\n" ; "rebound")]
-#[test_case("    for module in (tutorial, other):\n        (lambda module: monkeypatch.setattr(module, \"SHARED\", {}))(engine)\n" ; "shadowed_by_lambda")]
-#[test_case("    for module in (tutorial, other):\n        def helper(module: object) -> None:\n            monkeypatch.setattr(module, \"SHARED\", {})\n\n        helper(engine)\n" ; "shadowed_by_parameter")]
+#[test_case("    for module in (tutorial, other):\n        module = engine\n        monkeypatch.setattr(module, \
+    \"SHARED\", {})\n" ; "rebound")]
+#[test_case("    for module in (tutorial, other):\n        (lambda module: monkeypatch.setattr(module, \"SHARED\", \
+    {}))(engine)\n" ; "shadowed_by_lambda")]
+#[test_case("    for module in (tutorial, other):\n        def helper(module: object) -> None:\n            \
+    monkeypatch.setattr(module, \"SHARED\", {})\n\n        helper(engine)\n" ; "shadowed_by_parameter")]
 fn loops_that_rebind_or_shadow_their_module_patch_neither(body: &str) {
     let test = format!("from docs import engine, other, tutorial\n\n\ndef test_app(monkeypatch) -> None:\n{body}");
     let root = project(&[
@@ -91,7 +103,8 @@ fn loops_that_rebind_or_shadow_their_module_patch_neither(body: &str) {
         ("docs/engine.py", "SHARED = {}\n"),
         (
             "docs/app.py",
-            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, other.SHARED, engine.SHARED\n",
+            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, \
+            other.SHARED, engine.SHARED\n",
         ),
         ("tests/test_docs.py", &test),
     ]);
@@ -113,7 +126,9 @@ fn loops_that_rebind_or_shadow_their_module_patch_neither(body: &str) {
 #[test_case("importlib.import_module(MODULE)" ; "non_literal_argument")]
 fn import_module_without_a_literal_name_writes_no_module(item: &str) {
     let test = format!(
-        "import importlib\n\nfrom docs import engine, other, tutorial\n\nMODULE = \"docs.other\"\n\n\ndef test_app(monkeypatch) -> None:\n    for module in (tutorial, {item}):\n        monkeypatch.setattr(module, \"SHARED\", {{}})\n"
+        "import importlib\n\nfrom docs import engine, other, tutorial\n\nMODULE = \"docs.other\"\n\n\ndef \
+        test_app(monkeypatch) -> None:\n    for module in (tutorial, {item}):\n        monkeypatch.setattr(module, \
+        \"SHARED\", {{}})\n"
     );
     let root = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"),
@@ -123,7 +138,8 @@ fn import_module_without_a_literal_name_writes_no_module(item: &str) {
         ("docs/engine.py", "SHARED = {}\n"),
         (
             "docs/app.py",
-            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, other.SHARED, engine.SHARED\n",
+            "from docs import engine, other, tutorial\n\n\ndef run() -> object:\n    return tutorial.SHARED, \
+            other.SHARED, engine.SHARED\n",
         ),
         ("tests/test_docs.py", &test),
     ]);
@@ -148,13 +164,16 @@ fn nested_loops_restore_the_outer_name() {
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
         (
             "tests/test_docs.py",
-            "from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    for name in (\"client\",):\n        for name in (\"engine\",):\n            assert name\n        monkeypatch.setattr(tutorial, name, None)\n",
+            "from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    for name in \
+            (\"client\",):\n        for name in (\"engine\",):\n            assert name\n        \
+            monkeypatch.setattr(tutorial, name, None)\n",
         ),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
-            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only what \
+            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
+            what \
              other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
@@ -162,9 +181,12 @@ fn nested_loops_restore_the_outer_name() {
 
 // A constant a string in the run spells, as a dotted path a test patches or a parametrized name, keeps its module-level
 // definition, which inlining it into the one function that reads it would bypass.
-#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with unittest.mock.patch(\"docs.tutorial.LIMIT\"):\n        pass\n" ; "mock_patch_string")]
-#[test_case("from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    monkeypatch.setattr(tutorial, \"LIMIT\", 5)\n" ; "setattr_module")]
-#[test_case("import pytest\n\n\n@pytest.mark.parametrize(\"name\", [\"LIMIT\"])\ndef test_app(name: str) -> None:\n    assert name\n" ; "parametrized_name")]
+#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with \
+    unittest.mock.patch(\"docs.tutorial.LIMIT\"):\n        pass\n" ; "mock_patch_string")]
+#[test_case("from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    monkeypatch.setattr(tutorial, \
+    \"LIMIT\", 5)\n" ; "setattr_module")]
+#[test_case("import pytest\n\n\n@pytest.mark.parametrize(\"name\", [\"LIMIT\"])\ndef test_app(name: str) -> None:\n    \
+    assert name\n" ; "parametrized_name")]
 fn constants_a_string_spells_are_not_inlined(test: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),
@@ -184,11 +206,15 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
 
 // A test that sets a module variable through a `MonkeyPatch` writes it, whatever the object is named and however it is
 // reached, so the variable is not `Final`.
-#[test_case("def test_app(monkeypatch) -> None:\n    with monkeypatch.context() as scoped:\n        scoped.setattr(tutorial, \"LIMIT\", 5)\n" ; "context_target")]
+#[test_case("def test_app(monkeypatch) -> None:\n    with monkeypatch.context() as scoped:\n        \
+    scoped.setattr(tutorial, \"LIMIT\", 5)\n" ; "context_target")]
 #[test_case("def test_app(patches) -> None:\n    patches.setattr(tutorial, \"LIMIT\", 5)\n" ; "fixture_returned")]
-#[test_case("def test_app(request) -> None:\n    request.config.patches.setattr(tutorial, \"LIMIT\", 5)\n" ; "attribute_receiver")]
-#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.LIMIT\", 5)\n" ; "dotted_string")]
-#[test_case("def test_app(monkeypatch) -> None:\n    for name, value in ((\"LIMIT\", \"5\"),):\n        monkeypatch.setattr(tutorial, name, value)\n" ; "loop_over_string_literals")]
+#[test_case("def test_app(request) -> None:\n    request.config.patches.setattr(tutorial, \"LIMIT\", \
+    5)\n" ; "attribute_receiver")]
+#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.LIMIT\", \
+    5)\n" ; "dotted_string")]
+#[test_case("def test_app(monkeypatch) -> None:\n    for name, value in ((\"LIMIT\", \"5\"),):\n        \
+    monkeypatch.setattr(tutorial, name, value)\n" ; "loop_over_string_literals")]
 fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[("docs/__init__.py", ""), ("docs/tutorial.py", "LIMIT = 3\n"), ("tests/test_docs.py", &test)]);
@@ -196,9 +222,12 @@ fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
 }
 
 // A `setattr` on an object that is not a module of the run writes no module variable, so the variable stays `Final`.
-#[test_case("from docs.tutorial import Settings\n\n\ndef test_app(monkeypatch) -> None:\n    monkeypatch.setattr(Settings, \"LIMIT\", 5)\n" ; "class_of_module")]
-#[test_case("from unittest import mock\n\nfrom docs.tutorial import Settings\n\n\ndef test_app() -> None:\n    with mock.patch.object(Settings, \"LIMIT\", 5):\n        pass\n" ; "class_of_module_patch_object")]
-#[test_case("def test_app(monkeypatch, settings) -> None:\n    monkeypatch.setattr(settings, \"LIMIT\", 5)\n" ; "parameter")]
+#[test_case("from docs.tutorial import Settings\n\n\ndef test_app(monkeypatch) -> None:\n    \
+    monkeypatch.setattr(Settings, \"LIMIT\", 5)\n" ; "class_of_module")]
+#[test_case("from unittest import mock\n\nfrom docs.tutorial import Settings\n\n\ndef test_app() -> None:\n    with \
+    mock.patch.object(Settings, \"LIMIT\", 5):\n        pass\n" ; "class_of_module_patch_object")]
+#[test_case("def test_app(monkeypatch, settings) -> None:\n    monkeypatch.setattr(settings, \"LIMIT\", \
+    5)\n" ; "parameter")]
 fn setattr_on_a_non_module_writes_no_module_variable(test: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),
@@ -208,21 +237,28 @@ fn setattr_on_a_non_module_writes_no_module_variable(test: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP601"]).1,
         common::native(
-            "docs/tutorial.py:1:1: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:1:1: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
 
 // A write sets the name of the module it is made on, so another module's variable of the same name stays `Final`.
-#[test_case("def test_app(monkeypatch) -> None:\n    with monkeypatch.context() as scoped:\n        scoped.setattr(tutorial, \"LIMIT\", 5)\n" ; "context_target")]
+#[test_case("def test_app(monkeypatch) -> None:\n    with monkeypatch.context() as scoped:\n        \
+    scoped.setattr(tutorial, \"LIMIT\", 5)\n" ; "context_target")]
 #[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(tutorial, \"LIMIT\", 5)\n" ; "setattr_module")]
-#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.LIMIT\", 5)\n" ; "dotted_string")]
+#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.LIMIT\", \
+    5)\n" ; "dotted_string")]
 #[test_case("def test_app(mocker) -> None:\n    mocker.patch.object(tutorial, \"LIMIT\", 5)\n" ; "mocker_patch_object")]
-#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    with mock.patch.object(tutorial, \"LIMIT\", 5):\n        pass\n" ; "mock_patch_object_context")]
-#[test_case("from unittest import mock\n\n\n@mock.patch.object(tutorial, \"LIMIT\", 5)\ndef test_app() -> None:\n    pass\n" ; "mock_patch_object_decorator")]
-#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    with mock.patch(\"docs.tutorial.LIMIT\", 5):\n        pass\n" ; "mock_patch_dotted_string")]
-#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    for name in (\"LIMIT\",):\n        mock.patch.object(tutorial, name, 5).start()\n" ; "patch_object_loop")]
+#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    with mock.patch.object(tutorial, \"LIMIT\", \
+    5):\n        pass\n" ; "mock_patch_object_context")]
+#[test_case("from unittest import mock\n\n\n@mock.patch.object(tutorial, \"LIMIT\", 5)\ndef test_app() -> None:\n    \
+    pass\n" ; "mock_patch_object_decorator")]
+#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    with mock.patch(\"docs.tutorial.LIMIT\", \
+    5):\n        pass\n" ; "mock_patch_dotted_string")]
+#[test_case("from unittest import mock\n\n\ndef test_app() -> None:\n    for name in (\"LIMIT\",):\n        \
+    mock.patch.object(tutorial, name, 5).start()\n" ; "patch_object_loop")]
 fn module_write_quiets_only_the_module_it_writes(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[
@@ -242,9 +278,12 @@ fn module_write_quiets_only_the_module_it_writes(test: &str) {
 
 // A computed write may set any name of the module it reaches, so that module's variables are not `Final`, while another
 // module's variable of the same name still is.
-#[test_case("def test_app(monkeypatch, name: str) -> None:\n    monkeypatch.setattr(tutorial, name, 5)\n" ; "parameter_name")]
-#[test_case("def names() -> list[str]:\n    return []\n\n\ndef test_app(monkeypatch) -> None:\n    for name in names():\n        monkeypatch.setattr(tutorial, name, None)\n" ; "loop_over_call")]
-#[test_case("from unittest import mock\n\n\ndef test_app(name: str) -> None:\n    with mock.patch.object(tutorial, name, 5):\n        pass\n" ; "patch_object_parameter")]
+#[test_case("def test_app(monkeypatch, name: str) -> None:\n    monkeypatch.setattr(tutorial, name, \
+    5)\n" ; "parameter_name")]
+#[test_case("def names() -> list[str]:\n    return []\n\n\ndef test_app(monkeypatch) -> None:\n    for name in \
+    names():\n        monkeypatch.setattr(tutorial, name, None)\n" ; "loop_over_call")]
+#[test_case("from unittest import mock\n\n\ndef test_app(name: str) -> None:\n    with mock.patch.object(tutorial, \
+    name, 5):\n        pass\n" ; "patch_object_parameter")]
 fn computed_module_write_quiets_only_the_module_it_reaches(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[
@@ -262,18 +301,20 @@ fn computed_module_write_quiets_only_the_module_it_reaches(test: &str) {
     );
 }
 
-// A docstring that mentions a constant is prose, which neither patches nor looks it up, so the constant still moves into
-// the one function that reads it.
+// A docstring that mentions a constant is prose, which neither patches nor looks it up, so the constant still moves
+// into the one function that reads it.
 #[test]
 fn docstring_mention_does_not_keep_a_constant() {
     let root = project(&[(
         "pkg/helpers.py",
-        "_LIMIT = 3\n\n\ndef check(value):\n    \"\"\"Compare with the limit.\n\n    The ``_LIMIT`` constant sets the bound.\n    \"\"\"\n    return value < _LIMIT\n",
+        "_LIMIT = 3\n\n\ndef check(value):\n    \"\"\"Compare with the limit.\n\n    The ``_LIMIT`` constant sets the \
+        bound.\n    \"\"\"\n    return value < _LIMIT\n",
     )]);
     assert_eq!(
         check(root.path(), &["--select", "SMP202"]).1,
         common::native(
-            "pkg/helpers.py:1:1: SMP202 `_LIMIT` is used by one function only; define it there\nFound 1 error.\n1 unsafe fix \
+            "pkg/helpers.py:1:1: SMP202 `_LIMIT` is used by one function only; define it there\nFound 1 error.\n1 \
+            unsafe fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -281,10 +322,14 @@ fn docstring_mention_does_not_keep_a_constant() {
 
 // A computed write reaches the module its target names, so the module's variables keep their names. An f-string names a
 // module only through the literal dotted text before its first interpolation.
-#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with unittest.mock.patch(f\"docs.tutorial.{name}\"):\n        pass\n", false ; "dotted_prefix_names_the_module")]
-#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with unittest.mock.patch(f\"{name}\"):\n        pass\n", true ; "leading_interpolation_names_no_module")]
-#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with unittest.mock.patch(f\"docs.tutorial\"):\n        pass\n", true ; "no_interpolation_writes_nothing")]
-#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with unittest.mock.patch(f\"docs{name}\"):\n        pass\n", true ; "no_dot_before_interpolation")]
+#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with \
+    unittest.mock.patch(f\"docs.tutorial.{name}\"):\n        pass\n", false ; "dotted_prefix_names_the_module")]
+#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with \
+    unittest.mock.patch(f\"{name}\"):\n        pass\n", true ; "leading_interpolation_names_no_module")]
+#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with \
+    unittest.mock.patch(f\"docs.tutorial\"):\n        pass\n", true ; "no_interpolation_writes_nothing")]
+#[test_case("import unittest.mock\n\n\ndef test_app(name: str) -> None:\n    with \
+    unittest.mock.patch(f\"docs{name}\"):\n        pass\n", true ; "no_dot_before_interpolation")]
 fn computed_patch_targets_name_the_module_they_write(test: &str, renamable: bool) {
     let root = project(&[
         ("docs/__init__.py", ""),

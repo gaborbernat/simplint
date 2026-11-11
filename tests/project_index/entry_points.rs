@@ -2,6 +2,13 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
+const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
+    print(parser)\n\n\n__all__ = [\"Formatter\"]\n\n\nclass Formatter:\n    \"\"\"Format messages.\"\"\"\n";
+
+const DOCSTRINGED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
+    \"\"\"Register the flag.\"\"\"\n    print(parser)\n\n\n__all__ = [\"Formatter\"]\n\n\nclass Formatter:\n    \
+    \"\"\"Format messages.\"\"\"\n";
+
 // A bare module entry point is loaded whole by its host, which finds the hooks and fixtures it defines by name, so its
 // public names are public API whatever `__all__` lists. An entry point naming an attribute makes only that one public.
 #[test_case(
@@ -74,13 +81,15 @@ fn bare_module_future_import_is_not_public_api() {
         ("pkg/__init__.py", ""),
         (
             "pkg/plugin.py",
-            "\"\"\"Plugin.\"\"\"\n\nfrom __future__ import annotations\n\n__all__ = [\"pytest_addoption\"]\n\n\ndef pytest_addoption(parser: object) -> None:\n    \"\"\"Register the flag.\"\"\"\n    print(parser)\n",
+            "\"\"\"Plugin.\"\"\"\n\nfrom __future__ import annotations\n\n__all__ = [\"pytest_addoption\"]\n\n\ndef \
+            pytest_addoption(parser: object) -> None:\n    \"\"\"Register the flag.\"\"\"\n    print(parser)\n",
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
-const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    print(parser)\n\n\ndef helper() -> None:\n    print(\"helper\")\n\n\n__all__ = [\"pytest_addoption\"]\n";
+const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
+    print(parser)\n\n\ndef helper() -> None:\n    print(\"helper\")\n\n\n__all__ = [\"pytest_addoption\"]\n";
 
 // The host of a bare module entry point uses every public name of it, so none of them is unused, and an `__all__` entry
 // it does not import is not a stale export.
@@ -109,7 +118,8 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
 // re-export is. Without the entry point, a plain import in a module without `__all__` keeps the name internal.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg\"\n",
-    "pkg/_core.py:1:5: SMP903 Public function `plugin_hook` has no docstring; document it for its users; `pkg/__init__.py` \
+    "pkg/_core.py:1:5: SMP903 Public function `plugin_hook` has no docstring; document it for its users; \
+    `pkg/__init__.py` \
      re-exports it\nFound 1 error.\n" ; "package_imports_are_public"
 )]
 #[test_case("", common::PASSED ; "unlisted_package_imports_stay_internal")]
@@ -152,7 +162,8 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
 #[test_case("from app import *\n\nprint(config.LIMIT)\n", common::PASSED ; "star_bound_by_package_all")]
 #[test_case(
     "from app import config\n\nprint(config.LIMIT)\n",
-    "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules \
+    "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other \
+    modules \
      use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n" ;
     "module_attribute"
 )]
@@ -182,14 +193,15 @@ fn star_import_in_a_test_exempts_no_submodule_name() {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
-        "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other modules \
+        "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other \
+        modules \
          use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
             .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
     );
 }
 
-// A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a module
-// the run defines.
+// A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a
+// module the run defines.
 #[test]
 fn all_read_off_an_unnamed_module_keeps_other_modules_checked() {
     let root = project(&[
@@ -198,12 +210,14 @@ fn all_read_off_an_unnamed_module_keeps_other_modules_checked() {
         ("b.py", "from a import LIMIT\n\nprint(LIMIT)\n"),
         (
             "tests/test_json.py",
-            "import sys\n\n\ndef test_json_lists_names() -> None:\n    module = sys.modules[\"json\"]\n    assert \"dumps\" in module.__all__\n",
+            "import sys\n\n\ndef test_json_lists_names() -> None:\n    module = sys.modules[\"json\"]\n    assert \
+            \"dumps\" in module.__all__\n",
         ),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
-        "a.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules use\n\
+        "a.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules \
+        use\n\
          Found 1 error.\n[*] 1 fixable with `--fix`.\n"
     );
 }
@@ -220,13 +234,19 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
-#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
-#[test_case("from pkgutil import resolve_name\n\nHANDLER = resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
-#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
+#[test_case("import pkgutil\n\nHANDLER = \
+    pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
+#[test_case("from pkgutil import resolve_name\n\nHANDLER = \
+    resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
+#[test_case("def build_parser(parser):\n    \
+    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
 #[test_case("HANDLER = \"pkg._cli._validate:run\"\n", false ; "unresolved_string")]
-#[test_case("def build_parser(parser):\n    parser.set_defaults(description=\"pkg._cli._validate:run\")\n", false ; "other_default")]
-#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n", false ; "invalid_attribute")]
-#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate.run\")\n", true ; "dotted_resolve_name")]
+#[test_case("def build_parser(parser):\n    \
+    parser.set_defaults(description=\"pkg._cli._validate:run\")\n", false ; "other_default")]
+#[test_case("def build_parser(parser):\n    \
+    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n", false ; "invalid_attribute")]
+#[test_case("import pkgutil\n\nHANDLER = \
+    pkgutil.resolve_name(\"pkg._cli._validate.run\")\n", true ; "dotted_resolve_name")]
 fn string_named_handlers_count_as_imported(consumer: &str, imported: bool) {
     let root = project(&[
         ("pyproject.toml", LIBRARY),
@@ -254,7 +274,8 @@ fn string_named_handler_requires_an_export() {
     assert!(check(root.path(), &["--select", "SMP401"]).1.contains("`run` is imported by other modules"));
 }
 
-#[test_case("[tool.setuptools.dynamic]\nversion = { attr = \"pkg._plugin.version\" }\n", "version" ; "setuptools_dynamic_attribute")]
+#[test_case("[tool.setuptools.dynamic]\nversion = { attr = \"pkg._plugin.version\" \
+    }\n", "version" ; "setuptools_dynamic_attribute")]
 #[test_case("[tool.setuptools.cmdclass]\nbuild_py = \"pkg._plugin.Build\"\n", "Build" ; "setuptools_command_class")]
 #[test_case("[tool.mypy]\nplugins = [\"pkg._plugin\"]\n", "plugin" ; "mypy_plugin")]
 #[test_case("[tool.mypy]\nplugins = [\"pkg._plugin:custom\"]\n", "custom" ; "mypy_custom_plugin")]

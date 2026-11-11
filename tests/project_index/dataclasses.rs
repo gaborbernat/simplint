@@ -50,7 +50,10 @@ fn dataclass_kw_only_points_at_cross_file_calls() {
         common::simplint(root.path(), &["check", "--select", "SMP703", "--output-format", "full"]).1,
         common::native(
             "SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs \
-             keyword arguments by hand\n --> models.py:6:2\n  |\n6 | @dataclass\n  |  ^^^^^^^^^\n7 | class Partition:\n8 |     topic: str\n  |\n ::: caller.py:3:1\n  |\n1 | from models import Partition\n2 |\n3 | Partition(\"a\", 1)\n  | ----------------- positional arguments pass the fields by position\n\nFound 1 error.\n"
+             keyword arguments by hand\n --> models.py:6:2\n  |\n6 | @dataclass\n  |  ^^^^^^^^^\n7 | class \
+             Partition:\n8 |     topic: str\n  |\n ::: caller.py:3:1\n  |\n1 | from models import Partition\n2 |\n3 | \
+             Partition(\"a\", 1)\n  | ----------------- positional arguments pass the fields by position\n\nFound 1 \
+             error.\n"
         )
     );
 }
@@ -80,7 +83,6 @@ fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
     assert_eq!((first == second, location.is_some_and(|uri| uri.ends_with("caller.py"))), (true, true));
 }
 
-// Positional calls in the class's own file are covered by the fix, so one report rewrites the class and them all.
 #[test]
 fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     let root = project(&[("models.py", &format!("{PARTITION}\nPartition(\"a\", 1)\n"))]);
@@ -104,14 +106,16 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
 // A library's public dataclass keeps its positional calls, which its users make: one defined in a public module's
 // `__all__`, or re-exported from one. A dataclass that only a sibling module imports stays internal, so its class and
 // its positional calls are reported and rewritten.
-#[test_case(&[("models.py", "__all__ = [\"Partition\"]\n\n")], "from models import Partition\n\nPartition(\"a\", 1)\n", false ; "defined_public")]
+#[test_case(&[("models.py", "__all__ = [\"Partition\"]\n\n")], "from models import Partition\n\nPartition(\"a\", \
+    1)\n", false ; "defined_public")]
 #[test_case(
     &[("models.py", "__all__ = []\n\n"), ("relay.py", "from models import Partition\n\n__all__ = [\"Partition\"]\n")],
     "from relay import Partition\n\nPartition(\"a\", 1)\n",
     false
     ; "reexported_public"
 )]
-#[test_case(&[("models.py", "__all__ = []\n\n")], "from models import Partition\n\nPartition(\"a\", 1)\n", true ; "imported_by_sibling")]
+#[test_case(&[("models.py", "__all__ = []\n\n")], "from models import Partition\n\nPartition(\"a\", \
+    1)\n", true ; "imported_by_sibling")]
 fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &str, reported: bool) {
     let mut models = String::new();
     let mut others = Vec::new();
@@ -125,29 +129,33 @@ fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &st
     let mut all = vec![("pyproject.toml", DEMO_BUILD), ("caller.py", caller), ("models.py", models.as_str())];
     all.extend(others);
     let root = project(&all);
-    // A library's public class is not reported at all; an internal one is, with no fix while a caller is in another file.
+    // A library's public class is not reported at all; an internal one is, with no fix while a caller is in another
+    // file.
     let stdout = check(root.path(), &["--select", "SMP703"]).1;
     assert_eq!(stdout.contains("Found 1 error."), reported, "{stdout}");
     assert_eq!(common::read(root.path(), "caller.py"), caller);
 }
 
-// A use no rewrite can follow keeps the decorator as it is, however often the fixes run.
 #[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
-#[test_case(&[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \"a\")\nPartition(\"b\", 2)\n")] ; "partial")]
+#[test_case(&[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \
+    \"a\")\nPartition(\"b\", 2)\n")] ; "partial")]
 #[test_case(&[("caller.py", "from models import Partition\n\nrow = (\"a\", 1)\nPartition(*row)\n")] ; "unpacked")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1, 2)\n")] ; "too_many")]
 #[test_case(
-    &[("relay.py", "from models import Partition\n"), ("caller.py", "from relay import Partition\n\nPartition(topic=\"a\", number=1)\n")]
+    &[("relay.py", "from models import Partition\n"), ("caller.py", "from relay import \
+    Partition\n\nPartition(topic=\"a\", number=1)\n")]
     ; "reexported"
 )]
 #[test_case(
-    &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", 1)\n")]
+    &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", \
+    1)\n")]
     ; "shadowed"
 )]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: SMP703\n")] ; "suppressed")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa\n")] ; "suppressed_blanket")]
 #[test_case(
-    &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP703] paper\n    1,\n)\n")]
+    &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP703] paper\n    \
+    1,\n)\n")]
     ; "ignored_inside"
 )]
 #[test_case(
@@ -244,7 +252,8 @@ fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );

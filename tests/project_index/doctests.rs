@@ -2,11 +2,15 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// A module no file of the run resolves, such as `distutils.log` for a tree that shims its own `log`, reads the run's file of
-// the same last name when the call's value is used, and only then, so the function returning that value is not reported.
-#[test_case("from distutils import log\n\n\ndef run() -> int:\n    saved = log.set_threshold(1)\n    return saved\n", false ; "value_used_through_namesake")]
-#[test_case("from distutils import log\n\n\ndef run() -> None:\n    log.set_threshold(1)\n", true ; "value_dropped_through_namesake")]
-#[test_case("from elsewhere import tools\n\n\ndef run() -> int:\n    return tools.set_threshold(1)\n", true ; "unrelated_module_reads_nothing")]
+// A module no file of the run resolves, such as `distutils.log` for a tree that shims its own `log`, reads the run's
+// file of the same last name when the call's value is used, and only then, so the function returning that value is not
+// reported.
+#[test_case("from distutils import log\n\n\ndef run() -> int:\n    saved = log.set_threshold(1)\n    return \
+    saved\n", false ; "value_used_through_namesake")]
+#[test_case("from distutils import log\n\n\ndef run() -> None:\n    \
+    log.set_threshold(1)\n", true ; "value_dropped_through_namesake")]
+#[test_case("from elsewhere import tools\n\n\ndef run() -> int:\n    return \
+    tools.set_threshold(1)\n", true ; "unrelated_module_reads_nothing")]
 fn namesake_module_reads_count_only_with_their_value(caller: &str, reported: bool) {
     let root = project(&[
         ("pkg/__init__.py", ""),
@@ -20,20 +24,22 @@ fn namesake_module_reads_count_only_with_their_value(caller: &str, reported: boo
 
 // A doctest in a module runs in the module's globals, so an example that names a class of the module uses it without
 // importing it, while a docstring that only describes the class leaves it unused.
-#[test_case("    \"\"\"A release.\n\n    >>> _Trimmed(\"1.0.0\").release\n    '1'\n    \"\"\"\n", false ; "doctest_names_it")]
+#[test_case("    \"\"\"A release.\n\n    >>> _Trimmed(\"1.0.0\").release\n    '1'\n    \
+    \"\"\"\n", false ; "doctest_names_it")]
 #[test_case("    \"\"\"A release.\"\"\"\n", true ; "docstring_only_describes_it")]
 fn class_named_by_its_own_module_doctest_is_used(docstring: &str, reported: bool) {
     let source = format!(
-        "class _Trimmed:\n{docstring}\n    def __init__(self, release: str) -> None:\n        self.release = release.split(\".\")[0]\n"
+        "class _Trimmed:\n{docstring}\n    def __init__(self, release: str) -> None:\n        self.release = \
+        release.split(\".\")[0]\n"
     );
     let root = project(&[("pkg/version.py", source.as_str())]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
     assert_eq!(stdout.contains(&common::native("pkg/version.py:1:7: SMP409 `_Trimmed`")), reported, "{stdout}");
 }
 
-// A doctest reads a name off a module, which the call-site rules must see as a use, yet it imports nothing for the other
-// modules: a function only a doctest calls is not reported as unread, and a name a doctest reads is not imported by
-// the others.
+// A doctest reads a name off a module, which the call-site rules must see as a use, yet it imports nothing for the
+// other modules: a function only a doctest calls is not reported as unread, and a name a doctest reads is not imported
+// by the others.
 #[test]
 fn doctest_reads_are_opaque_to_call_sites_but_not_imports() {
     let root = project(&[
@@ -70,13 +76,14 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
 fn constant_read_by_its_own_module_doctest_is_kept() {
     let root = project(&[(
         "pkg/consts.py",
-        "_TIMEOUT = 30\n\n\ndef wait():\n    \"\"\"Wait.\n\n    >>> _TIMEOUT\n    30\n    \"\"\"\n    return _TIMEOUT\n",
+        "_TIMEOUT = 30\n\n\ndef wait():\n    \"\"\"Wait.\n\n    >>> _TIMEOUT\n    30\n    \"\"\"\n    return \
+        _TIMEOUT\n",
     )]);
     assert_eq!(check(root.path(), &["--select", "SMP202"]).1, common::PASSED);
 }
 
-// The stdlib's `json` is a module of its own, so a `json.loads` value a file of the run reads is not a read of the run's
-// `codec/json.py`, and a `json.dumps` call with its own `indent` is not a call of the run's `dumps`.
+// The stdlib's `json` is a module of its own, so a `json.loads` value a file of the run reads is not a read of the
+// run's `codec/json.py`, and a `json.dumps` call with its own `indent` is not a call of the run's `dumps`.
 #[test]
 fn stdlib_module_reads_are_not_namesake_reads() {
     let root = project(&[
@@ -84,7 +91,8 @@ fn stdlib_module_reads_are_not_namesake_reads() {
         ("app/codec/__init__.py", ""),
         (
             "app/codec/json.py",
-            "def loads(text):\n    return text.strip()\n\n\ndef dumps(obj, indent=None):\n    return f\"{obj}{indent}\"\n",
+            "def loads(text):\n    return text.strip()\n\n\ndef dumps(obj, indent=None):\n    return \
+            f\"{obj}{indent}\"\n",
         ),
         ("app/web.py", "import json\n\n\ndef handle(body):\n    return json.loads(body), json.dumps(body, indent=2)\n"),
         ("app/main.py", "from app.codec import json\n\n\ndef run():\n    json.loads(\" x \")\n"),
@@ -98,7 +106,8 @@ fn stdlib_module_reads_are_not_namesake_reads() {
 // which reports it with no fix.
 #[test_case("cli.py", "from pkg import report\n\nreport.tableJson = 5\n" ; "assignment")]
 #[test_case("cli.py", "from pkg import report\n\nsetattr(report, \"tableJson\", 5)\n" ; "setattr")]
-#[test_case("test_report.py", "from unittest import mock\n\n\ndef test_it() -> None:\n    with mock.patch(\"pkg.report.tableJson\"):\n        pass\n" ; "dotted_patch")]
+#[test_case("test_report.py", "from unittest import mock\n\n\ndef test_it() -> None:\n    with \
+    mock.patch(\"pkg.report.tableJson\"):\n        pass\n" ; "dotted_patch")]
 fn stored_module_variable_left_to_n816_without_fix(path: &str, body: &str) {
     let report = "tableJson = 0\n\n\ndef read() -> int:\n    return tableJson\n";
     let root = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report), (path, body)]);

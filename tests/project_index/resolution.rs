@@ -42,13 +42,25 @@ fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
     ));
 }
 
-#[test]
-fn src_layout_test_imports_do_not_require_exports() {
-    let root = project(&[
+// A test imports a module under `src` by its dotted path, which lists no export, whether the package has an
+// `__init__.py` or is a namespace package with none at any level.
+#[test_case(
+    &[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
         ("tests/test_helpers.py", "from pkg.helpers import helper\n"),
-    ]);
+    ]
+    ; "regular_package"
+)]
+#[test_case(
+    &[
+        ("src/outer/inner/helpers.py", "def helper() -> None:\n    pass\n"),
+        ("tests/test_helpers.py", "from outer.inner.helpers import helper\n"),
+    ]
+    ; "namespace_package"
+)]
+fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
+    let root = project(files);
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
@@ -80,7 +92,8 @@ fn entry_point_module_resolves_from_its_project(name: &str, pyproject: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1,
         common::native(&format!(
-            "{name}:4:5: SMP401 [*] `run` is imported by other modules; list it in `__all__`\nFound 1 error.\n[*] 1 fixable \
+            "{name}:4:5: SMP401 [*] `run` is imported by other modules; list it in `__all__`\nFound 1 error.\n[*] 1 \
+            fixable \
              with `--fix`.\n"
         ))
     );
@@ -120,8 +133,10 @@ fn local_module_shadowing_the_standard_library_resolves_to_the_run() {
 // the names its `__all__` lists stay reported when no other module of the run imports them.
 #[test]
 fn stdlib_import_of_own_stem_does_not_import_own_names() {
-    let tomllib = "import sys\n\nif sys.version_info >= (3, 11):\n    from tomllib import TOMLDecodeError, load, loads\n\
-                   else:\n    from tomli import TOMLDecodeError, load, loads\n\n__all__ = [\"TOMLDecodeError\", \"load\", \
+    let tomllib = "import sys\n\nif sys.version_info >= (3, 11):\n    from tomllib import TOMLDecodeError, load, \
+    loads\n\
+                   else:\n    from tomli import TOMLDecodeError, load, loads\n\n__all__ = [\"TOMLDecodeError\", \
+                   \"load\", \
                    \"loads\"]\n";
     let root = project(&[
         ("pkg/__init__.py", ""),
@@ -132,15 +147,17 @@ fn stdlib_import_of_own_stem_does_not_import_own_names() {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
-            "pkg/_compat/tomllib.py:8:12: SMP402 `TOMLDecodeError` is in `__all__`, yet no other module imports it; list \
-             only what other modules use\npkg/_compat/tomllib.py:8:39: SMP402 `loads` is in `__all__`, yet no other module \
+            "pkg/_compat/tomllib.py:8:12: SMP402 `TOMLDecodeError` is in `__all__`, yet no other module imports it; \
+            list \
+             only what other modules use\npkg/_compat/tomllib.py:8:39: SMP402 `loads` is in `__all__`, yet no other \
+             module \
              imports it; list only what other modules use\nFound 2 errors.\n"
         )
     );
 }
 
-// A doctest in a module that shares its package's name reads `tz.gettz`, which names the module it is in. That name is no
-// patch of the package's `__init__.py`, so `tz.tzstr` in another module of the run is still an import to offer.
+// A doctest in a module that shares its package's name reads `tz.gettz`, which names the module it is in. That name is
+// no patch of the package's `__init__.py`, so `tz.tzstr` in another module of the run is still an import to offer.
 #[test]
 fn doctest_naming_its_own_module_does_not_patch_the_package() {
     let root = project(&[
@@ -156,7 +173,8 @@ fn doctest_naming_its_own_module_does_not_patch_the_package() {
     assert_eq!(
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
-            "pkg/parser/_parser.py:5:12: SMP304 Import `tzstr` from `..tz` instead of reaching it through the module\nFound \
+            "pkg/parser/_parser.py:5:12: SMP304 Import `tzstr` from `..tz` instead of reaching it through the \
+            module\nFound \
              1 error.\n"
         )
     );
@@ -173,17 +191,6 @@ fn stub_only_module_attribute_is_not_reported() {
     assert_eq!(check(root.path(), &["--select", "SMP304"]).1, common::PASSED);
 }
 
-// A namespace package under `src` has no `__init__.py` at any level, and its modules import by their dotted path.
-#[test]
-fn namespace_package_test_imports_do_not_require_exports() {
-    let root = project(&[
-        ("src/outer/inner/helpers.py", "def helper() -> None:\n    pass\n"),
-        ("tests/test_helpers.py", "from outer.inner.helpers import helper\n"),
-    ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
-}
-
-// A stub for another module declares nothing about `backend.py`.
 #[test_case("backend.pyi", common::PASSED ; "stub_of_the_module")]
 #[test_case(
     "other.pyi",
@@ -195,7 +202,8 @@ fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
     let root = project(&[
         (
             "backend.py",
-            "__all__ = [\"run\"]\nLIMIT = 1\nNAME: str = \"x\"\n\n\ndef run() -> None:\n    pass\n\n\nclass Missing(TypeError):\n    pass\n",
+            "__all__ = [\"run\"]\nLIMIT = 1\nNAME: str = \"x\"\n\n\ndef run() -> None:\n    pass\n\n\nclass \
+            Missing(TypeError):\n    pass\n",
         ),
         (stub, "import os\nLIMIT: int\nNAME = ...\ndef run() -> None: ...\nclass Missing(TypeError): ...\n"),
     ]);
@@ -227,7 +235,8 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
         ("pkg/__init__.py", ""),
         (
             "pkg/manager.py",
-            "def _load(name: str) -> str:\n    return import_module(name)\n\n\ndef run() -> str:\n    return _load(\"x\")\n",
+            "def _load(name: str) -> str:\n    return import_module(name)\n\n\ndef run() -> str:\n    return \
+            _load(\"x\")\n",
         ),
         ("test_manager.py", &format!("def test_run(mocker):\n    mocker.patch(\"{target}\")\n")),
     ]);
@@ -257,7 +266,8 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
 #[test_case("del report.TABLE_JSON_DIR\n" ; "deletion")]
 #[test_case("setattr(report, \"TABLE_JSON_DIR\", Path(\"out\"))\n" ; "setattr")]
 fn stored_module_variable_stays_module_level(store: &str) {
-    let report = "from pathlib import Path\n\nTABLE_JSON_DIR: Path | None = None\n\n\ndef render() -> bool:\n    return \
+    let report = "from pathlib import Path\n\nTABLE_JSON_DIR: Path | None = None\n\n\ndef render() -> bool:\n    \
+    return \
                   TABLE_JSON_DIR is not None\n";
     let root = project(&[
         ("pkg/__init__.py", ""),
@@ -305,7 +315,8 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "support/other.py:1:1: SMP404 `region` is not in `__all__`; name it `_region`\nFound 1 error.\n1 unsafe fix \
+            "support/other.py:1:1: SMP404 `region` is not in `__all__`; name it `_region`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -324,7 +335,8 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ; "namesake"
 )]
 #[test_case(
-    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, 1)\n", "", "@dataclass" ; "low_protocol_pickle"
+    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, \
+    1)\n", "", "@dataclass" ; "low_protocol_pickle"
 )]
 #[test_case(
     "from pickle import dumps as write\n\n    result = Result(log=\"\")\n    result.log = log\n    write(result, 1)\n",
@@ -333,7 +345,8 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ; "low_protocol_aliased_pickle"
 )]
 #[test_case(
-    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)\n",
+    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, \
+    protocol=pickle.HIGHEST_PROTOCOL)\n",
     "",
     "@dataclass"
     ; "highest_protocol_pickle"
