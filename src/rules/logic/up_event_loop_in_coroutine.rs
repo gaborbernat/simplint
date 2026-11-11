@@ -8,29 +8,28 @@ use crate::rules::logic::modernize::rename_attribute;
 use crate::syntax::signature_annotations;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
         return;
     };
+    let checker = walker.checker;
     if !arguments.is_empty()
         || !checker.semantic().resolves_to(func, &["asyncio", "get_event_loop"])
         || !in_coroutine(walker, expr)
     {
         return;
     }
-    let fix = func.as_attribute_expr().map(|attribute| Fix::safe_edit(rename_attribute(attribute, "get_running_loop")));
     checker.report_fix(
         Rule::EventLoopInCoroutine,
         expr.range(),
         "`asyncio.get_event_loop()` in a coroutine; a loop is always running there",
-        fix,
+        func.as_attribute_expr().map(|attribute| Fix::safe_edit(rename_attribute(attribute, "get_running_loop"))),
         "Call `asyncio.get_running_loop()`",
     );
 }
 
-// The innermost scope whose body holds the call decides. A class body runs as part of the function it sits in, and a
-// header (decorators, defaults, annotations) runs where its `def` statement runs, so those are skipped. Lazy annotations
-// are never evaluated there, so a call in one is left alone.
+// A class body runs as part of the function around it, and a `def` header runs where its statement does, so the
+// innermost scope whose body holds the call decides. Lazy annotations are never evaluated, so a call in one is left
+// alone.
 fn in_coroutine(walker: &Walker, expr: &Expr) -> bool {
     let lazy = walker.checker.semantic().annotations_are_lazy();
     walker
