@@ -105,13 +105,25 @@ pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
 }
 
 // The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
-// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice.
+// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice. Hard
+// links share a file's device and inode, which their canonical paths do not show.
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
-    python.retain(|path| fs::canonicalize(path).map_or(true, |target| seen.insert(target)));
+    python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
     python.sort();
     python
+}
+
+#[cfg(unix)]
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(path).ok().map(|metadata| (metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn identity(path: &Path) -> Option<PathBuf> {
+    fs::canonicalize(path).ok()
 }
 
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file

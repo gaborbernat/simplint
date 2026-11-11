@@ -73,6 +73,17 @@ fn file_reached_through_a_link_is_fixed_once() {
     );
 }
 
+// Hard links share one file, so the run lints it once: under the smallest path in sort order, with symlinks last, rather
+// than under each name in parallel, where a fix would race on the file and each report would show once per name.
+#[cfg(unix)]
+#[test]
+fn hard_links_to_one_file_are_linted_once() {
+    let root = project(&[("module.py", "VALUE = vars(None)\n"), ("other.py", "VALUE = vars(None)\n")]);
+    fs::hard_link(root.path().join("module.py"), root.path().join("link.py")).expect("hard link");
+    let (_, stdout, _) = check(root.path(), &["--select", "SMP604"]);
+    assert_eq!(stdout.matches("SMP604").count(), 2);
+}
+
 // Standard input names no file, so `--add-noqa` and `--add-ignore` have nothing to edit and must not edit the files
 // under the working directory instead.
 #[test_case("--add-noqa" ; "noqa")]

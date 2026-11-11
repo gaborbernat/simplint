@@ -58,6 +58,9 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
       - Turns on Ruff's preview mode. simplint has no preview rules, so it only changes the output, which names rules
         instead of showing their codes, and lets simplint's fixes account for Ruff's preview rules.
 
+Several names for one file, through hard links or symlinks, are linted once, under the smallest path in sort order, with
+symlinks last.
+
 Standard input
 --------------
 
