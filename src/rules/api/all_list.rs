@@ -13,8 +13,7 @@ pub(super) fn exploded(checker: &Checker, base: &str, items: &[String]) -> Strin
     format!("[{eol}{lines}{base}]")
 }
 
-// The elements of an `__all__` list or tuple with the statement binding it, which bounds where a parenthesized element
-// ends.
+// The statement bounds where a parenthesized element ends, so it is kept with the elements.
 pub(super) struct AllList<'a> {
     stmt: &'a Stmt,
     value: TextRange,
@@ -60,7 +59,6 @@ impl<'a> AllList<'a> {
     }
 }
 
-// Whether nothing but indentation comes before the range on its first line.
 pub(super) fn is_alone_on_line(checker: &Checker, range: TextRange) -> bool {
     checker.text(TextRange::new(checker.source.line_start(range.start()), range.start())).trim().is_empty()
 }

@@ -1,5 +1,4 @@
-Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports. Importing any
-submodule runs the package's `__init__.py` first, so code there can slow down or break unrelated modules.
+Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports.
 
 ## Why is this bad?
 
