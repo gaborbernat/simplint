@@ -17,7 +17,7 @@ use super::Resolved;
 // `__init__.py` excluded there still imports and re-exports the names of the modules it covers.
 pub(crate) struct Discovered<'a> {
     pub(crate) python: Vec<PathBuf>,
-    pub(crate) unlinted: Vec<PathBuf>,
+    pub(super) unlinted: Vec<PathBuf>,
     pub(crate) resolver: Resolver<'a>,
     pub(crate) missing: Vec<(PathBuf, String)>,
 }
@@ -116,7 +116,7 @@ fn identity(path: &Path) -> Option<PathBuf> {
 // stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file
 // is not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the
 // walk reports it as missing rather than as a file.
-pub(crate) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
+pub(super) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
     let extension = path.extension().and_then(|extension| extension.to_str());
     if matches!(extension, Some("ipynb" | "toml" | "md")) {
         return Ok(false);

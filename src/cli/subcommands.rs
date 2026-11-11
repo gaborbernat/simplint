@@ -19,11 +19,11 @@ use crate::lint::registry::{GROUPS, Rule};
 use crate::project::cache;
 use crate::settings::SimplintOptions;
 
-pub fn version(format: HelpFormat) -> Result<()> {
+pub(crate) fn version(format: HelpFormat) -> Result<()> {
     print(&VersionInfo { version: env!("CARGO_PKG_VERSION"), commit_info: None }, format)
 }
 
-pub fn rule(rule: Rule, format: HelpFormat) -> Result<()> {
+pub(crate) fn rule(rule: Rule, format: HelpFormat) -> Result<()> {
     print(&Explanation::from_rule(rule), format)
 }
 
@@ -32,16 +32,16 @@ pub fn rules(format: HelpFormat) -> Result<()> {
 }
 
 // simplint's own listing of its rules, shorter than `rule --all`.
-pub fn rule_list(format: HelpFormat) -> Result<()> {
+pub(crate) fn rule_list(format: HelpFormat) -> Result<()> {
     print(&Rule::ALL.iter().copied().map(RuleEntry::from_rule).collect::<Vec<_>>(), format)
 }
 
-pub fn config(key: Option<&str>, format: HelpFormat) -> Result<()> {
+pub(crate) fn config(key: Option<&str>, format: HelpFormat) -> Result<()> {
     let metadata = SimplintOptions::metadata();
     print(&key.and_then(|key| metadata.find(key)).map_or(ConfigOutput::All(metadata), ConfigOutput::Entry), format)
 }
 
-pub fn linter(format: HelpFormat) -> Result<()> {
+pub(crate) fn linter(format: HelpFormat) -> Result<()> {
     let groups = GROUPS.iter().map(|&(family, name, _)| LinterInfo {
         name,
         codes: Rule::ALL.iter().filter(|rule| rule.family() == family).map(|rule| rule.code()).collect(),
@@ -73,7 +73,7 @@ trait HelpOutput: Serialize {
 
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
 // generated from the definition the binary parses with.
-pub fn cli_schema(command: &clap::Command) -> Result<()> {
+pub(crate) fn cli_schema(command: &clap::Command) -> Result<()> {
     let mut stdout = BufWriter::new(std::io::stdout().lock());
     writeln!(stdout, "{}", serde_json::to_string_pretty(&command_schema(command))?)?;
     stdout.flush()?;
@@ -382,7 +382,7 @@ fn command_schema(command: &clap::Command) -> serde_json::Value {
 }
 
 // Ruff's `clean`, for simplint's directory in each Ruff cache directory, which leaves Ruff's own cache alone.
-pub fn clean(level: LogLevel) -> Result<()> {
+pub(crate) fn clean(level: LogLevel) -> Result<()> {
     let mut stderr = BufWriter::new(std::io::stderr().lock());
     for entry in WalkDir::new(std::env::current_dir()?)
         .into_iter()

@@ -98,7 +98,7 @@ pub(super) struct PerFileIgnoreSource {
 impl Configuration {
     // Relative patterns are anchored at `base`: the project root for a file, the working directory for the command
     // line.
-    pub fn from_options(options: SimplintOptions, base: &Path, source: &Source) -> Self {
+    pub(crate) fn from_options(options: SimplintOptions, base: &Path, source: &Source) -> Self {
         let tag = |setting: &'static str, selectors: Vec<String>| {
             selectors.into_iter().map(|text| Selector { text, setting, source: source.clone() }).collect_vec()
         };
@@ -156,7 +156,7 @@ impl Configuration {
 
     // As Ruff's `Configuration::combine`: `self` wins, and lists that extend go after those of `other`.
     #[must_use]
-    pub fn combine(self, other: Self) -> Self {
+    pub(crate) fn combine(self, other: Self) -> Self {
         Self {
             rule_selections: other.rule_selections.into_iter().chain(self.rule_selections).collect(),
             per_file_ignores: self.per_file_ignores.or(other.per_file_ignores),
@@ -177,8 +177,8 @@ impl Configuration {
 // configuration file, and the dedicated flags win over both.
 #[derive(Default)]
 pub struct Overrides {
-    pub inline: Configuration,
-    pub flags: Configuration,
+    pub(crate) inline: Configuration,
+    pub(crate) flags: Configuration,
 }
 
 impl Overrides {
@@ -215,11 +215,11 @@ impl ProjectOptions {
 // The options that shape a whole run, which Ruff reads from the root configuration only.
 #[derive(Clone, Copy, Default)]
 pub struct RunOptions {
-    pub fix: Option<bool>,
-    pub fix_only: Option<bool>,
-    pub unsafe_fixes: Option<bool>,
-    pub show_fixes: Option<bool>,
-    pub output_format: Option<OutputFormat>,
+    pub(crate) fix: Option<bool>,
+    pub(crate) fix_only: Option<bool>,
+    pub(crate) unsafe_fixes: Option<bool>,
+    pub(crate) show_fixes: Option<bool>,
+    pub(crate) output_format: Option<OutputFormat>,
 }
 
 impl RunOptions {
@@ -233,7 +233,7 @@ impl RunOptions {
         }
     }
 
-    pub fn unsafe_fixes(self) -> UnsafeFixes {
+    pub(crate) fn unsafe_fixes(self) -> UnsafeFixes {
         self.unsafe_fixes.map_or(UnsafeFixes::Hint, UnsafeFixes::from)
     }
 }
@@ -255,21 +255,21 @@ pub struct SimplintOptions {
             output-format = "grouped"
         "#
     )]
-    pub output_format: Option<OutputFormat>,
+    pub(crate) output_format: Option<OutputFormat>,
 
     /// Enable fix behavior by-default when running `simplint` (overridden by the `--fix` and `--no-fix` command-line
     /// flags). Only includes automatic fixes unless `--unsafe-fixes` is provided.
     #[option(default = "false", value_type = "bool", example = "fix = true")]
-    pub fix: Option<bool>,
+    pub(crate) fix: Option<bool>,
 
     /// Enable application of unsafe fixes. If excluded, a hint will be displayed when unsafe fixes are available. If
     /// set to false, the hint will be hidden.
     #[option(default = r#"null"#, value_type = "bool", example = "unsafe-fixes = true")]
-    pub unsafe_fixes: Option<bool>,
+    pub(crate) unsafe_fixes: Option<bool>,
 
     /// Like [`fix`](#fix), but disables reporting on leftover violation. Implies [`fix`](#fix).
     #[option(default = "false", value_type = "bool", example = "fix-only = true")]
-    pub fix_only: Option<bool>,
+    pub(crate) fix_only: Option<bool>,
 
     /// Whether to show an enumeration of all fixed lint violations (overridden by the `--show-fixes` command-line
     /// flag).
@@ -281,7 +281,7 @@ pub struct SimplintOptions {
             show-fixes = true
         "#
     )]
-    pub show_fixes: Option<bool>,
+    pub(crate) show_fixes: Option<bool>,
 
     /// A list of rule codes, prefixes or names to enable. Prefixes can specify exact rules (like `SMP601`), entire
     /// groups (like `SMP1`), or anything in between.
@@ -298,7 +298,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub select: Option<Vec<String>>,
+    pub(crate) select: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to enable, in addition to those specified by [`select`](#select).
     #[option(
@@ -310,7 +310,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub extend_select: Option<Vec<String>>,
+    pub(crate) extend_select: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to ignore. Prefixes can specify exact rules (like `SMP601`), entire
     /// groups (like `SMP1`), or anything in between.
@@ -323,7 +323,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub ignore: Option<Vec<String>>,
+    pub(crate) ignore: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider fixable. By default, all rules are considered fixable.
     #[option(
@@ -335,7 +335,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub fixable: Option<Vec<String>>,
+    pub(crate) fixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider fixable, in addition to those specified by
     /// [`fixable`](#fixable).
@@ -348,7 +348,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub extend_fixable: Option<Vec<String>>,
+    pub(crate) extend_fixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider non-fixable.
     #[option(
@@ -360,7 +360,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub unfixable: Option<Vec<String>>,
+    pub(crate) unfixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider non-fixable, in addition to those specified by
     /// [`unfixable`](#unfixable).
@@ -373,7 +373,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub extend_unfixable: Option<Vec<String>>,
+    pub(crate) extend_unfixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names for which unsafe fixes should be considered safe.
     #[option(
@@ -385,7 +385,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub extend_safe_fixes: Option<Vec<String>>,
+    pub(crate) extend_safe_fixes: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names for which safe fixes should be considered unsafe.
     #[option(
@@ -397,7 +397,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
-    pub extend_unsafe_fixes: Option<Vec<String>>,
+    pub(crate) extend_unsafe_fixes: Option<Vec<String>>,
 
     /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, when considering any matching
     /// files. A pattern matches the file's name, or its path relative to the project root. An initial '!' negates the
@@ -418,7 +418,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
-    pub per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
+    pub(crate) per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
     /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, in addition to any rules
     /// excluded by [`per-file-ignores`](#per-file-ignores).
@@ -432,7 +432,7 @@ pub struct SimplintOptions {
         "#
     )]
     #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
-    pub extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
+    pub(crate) extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
     /// Whether the project is a `"library"`, whose public API other code imports, or an `"application"`, which has no
     /// Python API, so all of its code is internal. `"auto"` picks `"library"` when something installs the project: a
@@ -458,7 +458,7 @@ pub struct SimplintOptions {
             api-packages = ["my_package"]
         "#
     )]
-    pub api_packages: Option<Vec<String>>,
+    pub(crate) api_packages: Option<Vec<String>>,
 
     /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP924`, check: `"rst"` for
     /// reStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not
@@ -470,7 +470,7 @@ pub struct SimplintOptions {
             docstring-style = "rst"
         "#
     )]
-    pub docstring_style: Option<DocstringStyle>,
+    pub(crate) docstring_style: Option<DocstringStyle>,
 
     /// The most words a paragraph may hold: a comment paragraph for `long-paragraph` (`SMP002`), and a docstring
     /// paragraph for `long-docstring-paragraph` (`SMP904`).
@@ -481,7 +481,7 @@ pub struct SimplintOptions {
             max-paragraph-words = 80
         "#
     )]
-    pub max_paragraph_words: Option<usize>,
+    pub(crate) max_paragraph_words: Option<usize>,
 
     /// Options for the naming rules.
     #[option_group]
@@ -509,7 +509,7 @@ pub struct NamingOptions {
             keep-names = ["urlpatterns"]
         "#
     )]
-    pub keep_names: Option<Vec<String>>,
+    pub(crate) keep_names: Option<Vec<String>>,
 
     /// Words that name a variable, parameter or attribute without saying what it holds, which `meaningless-name`
     /// (`SMP103`) reports. A word matches in lower or upper case, with or without leading or trailing underscores.
@@ -521,7 +521,7 @@ pub struct NamingOptions {
             meaningless-names = ["foo", "baz", "tmp", "stuff"]
         "#
     )]
-    pub meaningless_names: Option<Vec<String>>,
+    pub(crate) meaningless_names: Option<Vec<String>>,
 
     /// Names of modules and packages that `catch-all-module` (`SMP104`) reports, since they hold whatever does not fit
     /// elsewhere. A package is reported through its `__init__.py`.
@@ -533,7 +533,7 @@ pub struct NamingOptions {
             catch-all-modules = ["utils", "helpers", "misc"]
         "#
     )]
-    pub catch_all_modules: Option<Vec<String>>,
+    pub(crate) catch_all_modules: Option<Vec<String>>,
 }
 
 impl NamingOptions {
@@ -560,7 +560,7 @@ pub struct ImportsOptions {
             module-attributes = ["app.settings"]
         "#
     )]
-    pub module_attributes: Option<Vec<String>>,
+    pub(crate) module_attributes: Option<Vec<String>>,
 }
 
 impl ImportsOptions {
@@ -583,7 +583,7 @@ pub struct LogicOptions {
             max-helper-statements = 2
         "#
     )]
-    pub max_helper_statements: Option<usize>,
+    pub(crate) max_helper_statements: Option<usize>,
 
     /// The most statements the caller of such a helper may have once the helper's statements are added to its own.
     #[option(
@@ -593,7 +593,7 @@ pub struct LogicOptions {
             max-caller-statements = 30
         "#
     )]
-    pub max_caller_statements: Option<usize>,
+    pub(crate) max_caller_statements: Option<usize>,
 
     /// The most elements a tuple returned from a function may hold before `long-tuple-return` (`SMP528`) reports it. A
     /// longer tuple is a record whose fields are known only by position; a dataclass or a named tuple names them.
@@ -605,7 +605,7 @@ pub struct LogicOptions {
             max-tuple-elements = 3
         "#
     )]
-    pub max_tuple_elements: Option<usize>,
+    pub(crate) max_tuple_elements: Option<usize>,
 
     /// The highest cognitive complexity a function may have before `cognitive-complexity` (`SMP529`) reports it. The
     /// score counts each branch, loop and handler more the deeper it is nested, as `SonarSource` defines it.
@@ -616,7 +616,7 @@ pub struct LogicOptions {
             max-cognitive-complexity = 30
         "#
     )]
-    pub max_cognitive_complexity: Option<usize>,
+    pub(crate) max_cognitive_complexity: Option<usize>,
     /// The fewest statements in a row another module must repeat for `duplicate-code` (`SMP530`) to report them.
     /// Statements count as those of one body, each nested block counting as one.
     #[option(
@@ -627,7 +627,7 @@ pub struct LogicOptions {
             min-duplicate-statements = 10
         "#
     )]
-    pub min_duplicate_statements: Option<usize>,
+    pub(crate) min_duplicate_statements: Option<usize>,
 }
 
 impl LogicOptions {

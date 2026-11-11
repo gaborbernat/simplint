@@ -52,17 +52,17 @@ impl Display for DocstringStyle {
 
 // Which modules make up a library's public API: those of its API packages whose path has no `_` segment.
 pub struct ApiScope {
-    pub kind: ProjectKind,
+    pub(crate) kind: ProjectKind,
     // The top-level packages and modules the distribution ships; `None` when none could be found, so every module
     // outside the documentation and the tests counts.
-    pub packages: Option<BTreeSet<String>>,
+    pub(crate) packages: Option<BTreeSet<String>>,
 }
 
 // Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
 // the interface its author declares to them, so no name in it needs an importer in the project.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct ModuleRole {
-    pub public: bool,
+    pub(crate) public: bool,
 }
 
 impl CacheKey for ModuleRole {
@@ -91,7 +91,7 @@ impl ApiScope {
 
     // A file's role from its module path, such as `["package", "module"]` or `["package", "__init__"]`; a file that is
     // not importable, a test module, and every module of an application have none.
-    pub fn role(&self, module_path: Option<&[String]>, is_test: bool) -> ModuleRole {
+    pub(crate) fn role(&self, module_path: Option<&[String]>, is_test: bool) -> ModuleRole {
         let Some(module_path) = module_path.filter(|_| self.kind == ProjectKind::Library && !is_test) else {
             return ModuleRole::default();
         };

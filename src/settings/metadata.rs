@@ -9,13 +9,13 @@ use serde::Deserialize;
 #[derive(Deserialize, Default)]
 #[serde(from = "ProjectTable")]
 pub struct ProjectMetadata {
-    pub name: Option<String>,
-    pub dependencies: BTreeSet<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) dependencies: BTreeSet<String>,
     // Every module the project lists, whatever its marker, in optional dependencies and dependency groups too. A rule
     // asks whether a tool is declared at all, which an install may leave out.
     pub declared: BTreeSet<String>,
-    pub entry_points: Vec<String>,
-    pub scripts: Vec<String>,
+    pub(crate) entry_points: Vec<String>,
+    pub(crate) scripts: Vec<String>,
 }
 
 impl ProjectMetadata {
@@ -151,17 +151,17 @@ struct ProjectTable {
 }
 
 #[derive(Default)]
-pub struct BuildConfiguration {
-    pub has_build_system: bool,
-    pub packages: Vec<String>,
-    pub uv_package: Option<bool>,
-    pub maturin_bindings: Option<String>,
+pub(super) struct BuildConfiguration {
+    pub(super) has_build_system: bool,
+    pub(crate) packages: Vec<String>,
+    pub(super) uv_package: Option<bool>,
+    pub(super) maturin_bindings: Option<String>,
     // The `build-backend` as written, `module` or `module:object`, and the `backend-path` directories it loads from.
-    pub backend: Option<String>,
-    pub backend_path: Vec<String>,
+    backend: Option<String>,
+    backend_path: Vec<String>,
     // The `path` of each custom build or metadata hook of hatchling, which loads the hook's class from that file.
-    pub hatch_hooks: Vec<String>,
-    pub pdm_hook: Option<String>,
+    pub(crate) hatch_hooks: Vec<String>,
+    pdm_hook: Option<String>,
 }
 
 impl BuildConfiguration {
@@ -231,8 +231,8 @@ fn hatch_hook_paths(hatch: &toml::Table) -> Vec<String> {
 // configures them. Without a plugin there is nothing to search for, so no directory is kept.
 #[derive(Default)]
 pub struct CoveragePlugins {
-    pub modules: Vec<String>,
-    pub search_paths: Vec<PathBuf>,
+    pub(crate) modules: Vec<String>,
+    pub(crate) search_paths: Vec<PathBuf>,
 }
 
 impl CoveragePlugins {

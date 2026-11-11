@@ -29,7 +29,7 @@ use crate::run::{Diagnostics, DisplayKey, FixMap, FullDisplay, Mode};
 
 bitflags! {
     #[derive(Default, Copy, Clone)]
-    pub struct Flags: u8 {
+    pub(crate) struct Flags: u8 {
         const SHOW_VIOLATIONS = 1 << 0;
         const SHOW_FIX_SUMMARY = 1 << 1;
     }
@@ -56,18 +56,18 @@ impl ExpandedStatistics<'_> {
 const FULL_CHUNK: usize = 64;
 const FULL_WINDOW: usize = FULL_CHUNK * 256;
 
-pub struct Printer<'a> {
-    pub format: OutputFormat,
-    pub log_level: LogLevel,
-    pub mode: &'a Mode,
-    pub flags: Flags,
-    pub preview: bool,
+pub(super) struct Printer<'a> {
+    pub(crate) format: OutputFormat,
+    pub(crate) log_level: LogLevel,
+    pub(crate) mode: &'a Mode,
+    pub(crate) flags: Flags,
+    pub(crate) preview: bool,
     // Ruff's `output-prefer-rule-codes`: in preview, rules show by name unless it is set.
-    pub prefer_rule_codes: bool,
+    pub(crate) prefer_rule_codes: bool,
 }
 
 impl Printer<'_> {
-    pub fn write_once(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
+    pub(super) fn write_once(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
         if matches!(self.log_level, LogLevel::Silent) {
             return Ok(());
         }
@@ -94,7 +94,7 @@ impl Printer<'_> {
 
     // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when
     // the working directory cannot be read, which leaves the text to the printer.
-    pub fn full_display(&self) -> Option<FullDisplay> {
+    pub(super) fn full_display(&self) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
         }
@@ -251,7 +251,7 @@ impl Printer<'_> {
 
     // Ruff's watch mode output: a timestamped count on standard output, then the diagnostics without a summary.
     // Silent mode prints nothing at all.
-    pub fn write_continuously(&self, writer: &mut dyn Write, diagnostics: &Diagnostics) -> Result<()> {
+    pub(super) fn write_continuously(&self, writer: &mut dyn Write, diagnostics: &Diagnostics) -> Result<()> {
         if self.log_level >= LogLevel::Default {
             let count = diagnostics.inner.len();
             notify_user!("Found {count} error{}. Watching for file changes.", plural(count, "s"));
@@ -270,7 +270,7 @@ impl Printer<'_> {
         Ok(())
     }
 
-    pub fn write_to_user(&self, message: &str) {
+    pub(super) fn write_to_user(&self, message: &str) {
         if self.log_level >= LogLevel::Default {
             notify_user!("{message}");
         }
@@ -337,7 +337,7 @@ impl Printer<'_> {
         text
     }
 
-    pub fn write_statistics(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
+    pub(super) fn write_statistics(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
         let required = self.mode.unsafe_fixes.required_applicability();
         let statistics: Vec<ExpandedStatistics> = diagnostics
             .inner

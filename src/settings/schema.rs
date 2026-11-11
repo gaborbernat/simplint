@@ -48,7 +48,7 @@ fn portable(value: &mut Value) {
 
 // A selector as `RuleSet::from_selector` reads it: `ALL`, a rule's code or name, or a code prefix from the `SMP`
 // namespace down. Ruff's selectors are left out, as simplint rejects them.
-pub struct RuleSelectorSchema;
+pub(super) struct RuleSelectorSchema;
 
 impl JsonSchema for RuleSelectorSchema {
     fn schema_name() -> Cow<'static, str> {

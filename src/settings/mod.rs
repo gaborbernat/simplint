@@ -33,14 +33,14 @@ use crate::settings::options::{
 
 // Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
 // a `pyproject.toml`, and otherwise the `pyproject.toml`s closest to each file.
-pub struct SettingsResolver {
-    pub root: Arc<Settings>,
+pub(crate) struct SettingsResolver {
+    pub(crate) root: Arc<Settings>,
     overrides: Overrides,
     discovery: Discovery,
 }
 
 impl SettingsResolver {
-    pub fn new(config_file: Option<&Path>, isolated: bool, overrides: Overrides) -> Result<Self> {
+    pub(crate) fn new(config_file: Option<&Path>, isolated: bool, overrides: Overrides) -> Result<Self> {
         let cwd = std::env::current_dir()?;
         // A relative `--config` would anchor per-file ignore patterns at an empty directory.
         let config_file = config_file.map(std::path::absolute).transpose()?;
@@ -70,7 +70,7 @@ impl SettingsResolver {
         Ok(Self { root: fixed, overrides, discovery })
     }
 
-    pub fn for_file(&self, path: &Path) -> Result<Arc<Settings>> {
+    pub(crate) fn for_file(&self, path: &Path) -> Result<Arc<Settings>> {
         self.discovery.settings(path, &self.overrides)
     }
 }
@@ -238,27 +238,27 @@ const NESTED_MARKERS: [&str; 4] = ["conf.py", "pyproject.toml", "setup.py", "set
 
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.
-pub struct Settings {
-    pub root: PathBuf,
+pub(crate) struct Settings {
+    pub(crate) root: PathBuf,
     // Whether the root is a nested project of the run, whose files are test input for the rules that judge docstrings
     // and the visibility of names.
-    pub nested: bool,
-    pub path: Option<PathBuf>,
+    pub(crate) nested: bool,
+    pub(crate) path: Option<PathBuf>,
     pub metadata: ProjectMetadata,
     // The `pyproject.toml` the metadata and build settings come from, which can differ from `path` in a workspace.
-    pub metadata_path: Option<PathBuf>,
+    metadata_path: Option<PathBuf>,
     // The directory of the metadata's `pyproject.toml`, which can sit above `root` in a workspace.
-    pub project_dir: PathBuf,
+    pub(crate) project_dir: PathBuf,
     // The build backend's hooks, each with the file that defines it.
-    pub build_hooks: Vec<(PathBuf, String)>,
+    pub(crate) build_hooks: Vec<(PathBuf, String)>,
     // The files hatchling loads its custom build and metadata hooks from, whose hook class no import reaches.
-    pub hatch_hooks: Vec<PathBuf>,
+    pub(crate) hatch_hooks: Vec<PathBuf>,
     // The coverage plugins and the directories they resolve from, which the index searches for them.
     pub coverage: CoveragePlugins,
-    pub run: RunOptions,
+    pub(crate) run: RunOptions,
     pub knobs: Knobs,
     pub api: ApiScope,
-    pub docstring_style: Option<DocstringStyle>,
+    pub(crate) docstring_style: Option<DocstringStyle>,
     rules: RuleSet,
     fixable: RuleSet,
     fix_safety: FixSafetyTable,
@@ -366,7 +366,7 @@ impl Settings {
         })
     }
 
-    pub fn rules_for(&self, path: &Path) -> RuleSet {
+    fn rules_for(&self, path: &Path) -> RuleSet {
         let rules = if self.nested { self.rules.subtract(RuleSet::skipped_in_nested()) } else { self.rules };
         let absolute = std::path::absolute(path).unwrap_or_default();
         self.per_file_ignores
@@ -377,17 +377,17 @@ impl Settings {
 
     // Ruff drops the fix of a rule `fixable` leaves out, and `extend-safe-fixes` and `extend-unsafe-fixes` change how
     // safe the rest are.
-    pub fn fix_for(&self, rule: Rule, fix: Option<Fix>) -> Option<Fix> {
+    pub(crate) fn fix_for(&self, rule: Rule, fix: Option<Fix>) -> Option<Fix> {
         let fix = fix.filter(|_| self.is_fixable(rule))?;
         let applicability = self.fix_safety.resolve_applicability(rule, fix.applicability());
         Some(fix.with_applicability(applicability))
     }
 
-    pub fn is_fixable(&self, rule: Rule) -> bool {
+    fn is_fixable(&self, rule: Rule) -> bool {
         self.fixable.contains(rule)
     }
 
-    pub fn is_test_module(&self, path: &Path) -> bool {
+    pub(crate) fn is_test_module(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
         // A nested project rooted at a test directory, such as `tools/swig/test` with its own `setup.py`, has its files
         // below that directory, which the path relative to the root no longer names.
@@ -399,11 +399,11 @@ impl Settings {
     }
 
     // The rule tables `--show-settings` lists: enabled, fixable, forced safe and forced unsafe.
-    pub fn rule_sets(&self) -> [RuleSet; 4] {
+    pub(crate) fn rule_sets(&self) -> [RuleSet; 4] {
         [self.rules, self.fixable, self.fix_safety.forced_safe, self.fix_safety.forced_unsafe]
     }
 
-    pub fn per_file_ignores(&self) -> impl Iterator<Item = (&str, RuleSet)> {
+    pub(crate) fn per_file_ignores(&self) -> impl Iterator<Item = (&str, RuleSet)> {
         self.per_file_ignores.iter().map(|ignore| (ignore.pattern.as_str(), ignore.rules))
     }
 }
@@ -476,7 +476,7 @@ fn hook_runs_flake8_lazy(project: Option<&Path>, main: Option<&Path>) -> bool {
 }
 
 // The hook configuration files pre-commit and prek read from a project, which the nearest one upwards decides.
-pub const HOOK_CONFIGS: [&str; 3] = [".pre-commit-config.yaml", ".pre-commit-config.yml", "prek.toml"];
+pub(crate) const HOOK_CONFIGS: [&str; 3] = [".pre-commit-config.yaml", ".pre-commit-config.yml", "prek.toml"];
 
 fn config_has_flake8_lazy(path: &Path) -> Result<bool> {
     let bytes = std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -559,16 +559,16 @@ impl FixSafetyTable {
 // The scalar and list settings the rules tune themselves with, which a cached result depends on.
 #[derive(CacheKey)]
 pub struct Knobs {
-    pub max_paragraph_words: usize,
-    pub keep_names: Vec<String>,
-    pub meaningless_names: Vec<String>,
-    pub catch_all_modules: Vec<String>,
-    pub module_attributes: Vec<String>,
-    pub max_helper_statements: usize,
-    pub max_caller_statements: usize,
-    pub max_tuple_elements: usize,
-    pub max_cognitive_complexity: usize,
-    pub min_duplicate_statements: usize,
+    pub(crate) max_paragraph_words: usize,
+    pub(crate) keep_names: Vec<String>,
+    pub(crate) meaningless_names: Vec<String>,
+    pub(crate) catch_all_modules: Vec<String>,
+    pub(crate) module_attributes: Vec<String>,
+    pub(crate) max_helper_statements: usize,
+    pub(crate) max_caller_statements: usize,
+    pub(crate) max_tuple_elements: usize,
+    pub(crate) max_cognitive_complexity: usize,
+    pub(crate) min_duplicate_statements: usize,
 }
 
 impl Knobs {

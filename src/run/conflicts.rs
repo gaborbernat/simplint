@@ -21,11 +21,11 @@ use crate::settings::{DocstringStyle, FileSettings};
 // A file the run is about to lint: simplint's settings for it, Ruff's with the configuration file they come from, and
 // the package it sits in, which decides whether Ruff counts its module as public.
 pub(super) struct Scope<'a> {
-    pub path: &'a Path,
-    pub settings: &'a FileSettings<'a>,
-    pub ruff: &'a ruff_workspace::Settings,
-    pub ruff_config: Option<&'a Path>,
-    pub package: Option<PackageRoot<'a>>,
+    pub(crate) path: &'a Path,
+    pub(crate) settings: &'a FileSettings<'a>,
+    pub(crate) ruff: &'a ruff_workspace::Settings,
+    pub(super) ruff_config: Option<&'a Path>,
+    pub(crate) package: Option<PackageRoot<'a>>,
 }
 
 // Fails when a simplint rule and Ruff rules on for the same file work against each other: one side's fix undoes the
