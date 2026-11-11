@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::str::Quote;
 use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion};
@@ -74,10 +75,14 @@ fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {
 
 // Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
 // lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from
-// ISC003, so this rule keeps it.
+// ISC003, so this rule keeps it. ISC003 is left the pair only while Ruff runs it: `ruff format` joins the lines once
+// simplint is done, and the pair would come back to this rule on the next run.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
+    let from_ruff = &walker.checker.settings.from_ruff;
     is_logging_message(walker, expr)
-        || (walker.checker.settings.from_ruff.allow_multiline && ruff_fixes_literal_pair_at_start(walker.checker, expr))
+        || (from_ruff.allow_multiline
+            && from_ruff.ruff_runs(RuffRule::ExplicitStringConcatenation)
+            && ruff_fixes_literal_pair_at_start(walker.checker, expr))
 }
 
 // As G003 finds the message: the `msg` keyword, or the argument at the message's position, which `log` moves after

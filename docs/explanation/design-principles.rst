@@ -40,7 +40,7 @@ A rule page's **Ruff overlap** section names the Ruff rules that take part of it
 When simplint keeps an overlapping case
 ---------------------------------------
 
-Two exceptions keep a case in simplint although a Ruff rule reports it too:
+Three exceptions keep a case in simplint although a Ruff rule reports it too:
 
 - **simplint can fix it and Ruff cannot.** When the Ruff rule has no fix, or only one it shows but never applies, and
   the simplint rule has one, the simplint rule keeps reporting so the fix stays available. An unsafe Ruff fix still
@@ -50,6 +50,11 @@ Two exceptions keep a case in simplint although a Ruff rule reports it too:
   configuration selects the Ruff rule. For example, Ruff's undocumented-* rules (``D1``) ask for docstrings on internal
   code, which :doc:`/rules/SMP901` removes. With ``D1`` ignored, :doc:`/rules/SMP903` reports the undocumented public
   API itself.
+- **The Ruff rule reads line breaks that ``ruff format`` moves.** simplint runs before ``ruff format``, which joins
+  code that fits on one line. A case that a Ruff rule reports only while it spans lines would then come back to
+  simplint on the next run, and ``check --fix`` would not settle in one round. For these, simplint leaves a case to Ruff
+  only while your configuration selects the Ruff rule, so ``ruff check --fix`` takes it first. Ruff's COM812 and ISC003
+  are such rules, for :doc:`/rules/SMP405` and :doc:`/rules/SMP503`.
 
 What is not an overlap
 ----------------------

@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::token::{Token, TokenKind};
 use ruff_python_ast::{self as ast, Expr};
 use ruff_python_trivia::leading_indentation;
@@ -53,7 +54,11 @@ pub fn all_format(checker: &Checker) {
         if is_list {
             if comma.is_none() && magic {
                 // Ruff's COM812 reports a list whose closing bracket follows a line break with no comma before it.
-                if closing_bracket_follows_line_break(checker, last, value) {
+                // The list is left to it only while Ruff runs it: `ruff format` joins a list that fits on one line
+                // once simplint is done, and the list would come back to this rule on the next run.
+                if checker.settings.from_ruff.ruff_runs(RuffRule::MissingTrailingComma)
+                    && closing_bracket_follows_line_break(checker, last, value)
+                {
                     continue;
                 }
                 // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.

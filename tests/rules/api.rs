@@ -796,19 +796,25 @@ fn unexported_public_name_checks_strings_of_other_files() {
 }
 
 // Ruff's COM812 reports a list whose closing bracket follows a line break with no trailing comma, so SMP405 leaves that
-// list to it whether or not the project selects the rule. A list that closes on its last element's line is not
-// COM812's.
-#[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", false ; "closing_bracket_on_own_line")]
-#[test_case("__all__ = [\n    \"a\"  # note\n]\n", false ; "comment_before_closing_bracket")]
-#[test_case("__all__ = [\n    (\"a\")\n]\n", false ; "parenthesized_last_element")]
-#[test_case("__all__ = [\n    \"a\",\n    \"b\"]\n", true ; "closing_bracket_after_last_element")]
-#[test_case("__all__ = [\"a\", \"b\"]\n", true ; "single_line")]
-#[test_case("__all__ = [\n    \"a\" \\\n]\n", true ; "line_continuation")]
-fn all_format_leaves_com812_lists_to_ruff(source: &str, reported: bool) {
-    let root = common::project(&[("module.py", source)]);
+// list to it while Ruff runs the rule: `ruff format` joins a list that fits on one line, where COM812 no longer reports
+// it. A list that closes on its last element's line is not COM812's.
+#[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", COM812, false ; "closing_bracket_on_own_line")]
+#[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", "", true ; "closing_bracket_on_own_line_without_com812")]
+#[test_case("__all__ = [\n    \"a\"  # note\n]\n", COM812, false ; "comment_before_closing_bracket")]
+#[test_case("__all__ = [\n    (\"a\")\n]\n", COM812, false ; "parenthesized_last_element")]
+#[test_case("__all__ = [\n    \"a\",\n    \"b\"]\n", COM812, true ; "closing_bracket_after_last_element")]
+#[test_case("__all__ = [\"a\", \"b\"]\n", COM812, true ; "single_line")]
+#[test_case("__all__ = [\n    \"a\" \\\n]\n", COM812, true ; "line_continuation")]
+fn all_format_leaves_com812_lists_to_ruff(source: &str, selected: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{selected}]\n")),
+        ("module.py", source),
+    ]);
     let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
     assert_eq!(stdout.contains("has no trailing comma"), reported, "{stdout}");
 }
+
+const COM812: &str = "\"COM812\"";
 
 // A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.
 #[test]

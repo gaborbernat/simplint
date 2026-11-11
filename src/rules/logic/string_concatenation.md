@@ -83,9 +83,16 @@ message = f"Hello, {name}!"
 
 - **Two literals joined by `+` across lines**, such as `("Hello, "` followed by `+ "world")`: Ruff's
   [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it when
-  `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain that starts with such a pair is left to Ruff
-  as well, since both would report the same spot. Ruff gives no fix to a pair with a parenthesized operand, so this rule
-  keeps that pair and its chain, where its own fix stays available.
+  `allow-multiline` is on, so this rule leaves it to Ruff while the project's Ruff configuration selects ISC003. Without
+  it, this rule reports the pair: `ruff format` joins the lines when they fit on one, where ISC003 no longer reports it,
+  and the next run would bring it back here. A longer chain that starts with such a pair is left to Ruff as well, since
+  both would report the same spot. Ruff gives no fix to a pair with a parenthesized operand, so this rule keeps that
+  pair and its chain, where its own fix stays available.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["ISC003"]
+  ```
 
   ```python ok
   # fmt: off
@@ -311,7 +318,7 @@ No fix is offered when:
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
   [G003](https://docs.astral.sh/ruff/rules/logging-string-concat/) and
   [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which report `+` in logging calls and
-  between two literals split across lines and which this rule leaves to them; open issue
+  between two literals split across lines and which this rule leaves to them, ISC003 only while it runs; open issue
   [#11060](https://github.com/astral-sh/ruff/issues/11060) lists Sourcery's use-fstring-for-concatenation.
 - [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
   [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)

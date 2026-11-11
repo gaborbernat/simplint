@@ -11,3 +11,6 @@ left cases to Ruff now always do, and these rules leave Ruff's cases for the fir
 [`unused-default`](../src/rules/logic/unused_default.md) (PT028, when it has no fix). Select the Ruff rules to have
 these cases reported. [`undocumented-public-api`](../src/rules/docstrings/undocumented_public_api.md) still leaves a
 case to Ruff's D1 rules only while they run, since the recommended setup turns them off.
+[`all-format`](../src/rules/api/all_format.md) and [`string-concatenation`](../src/rules/logic/string_concatenation.md)
+also still leave a COM812 or ISC003 case to Ruff only while those run, since `ruff format` moves the line breaks the two
+rules read.

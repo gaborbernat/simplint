@@ -130,7 +130,14 @@ literal.
 - **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line
   above `]` with no comma after it: Ruff's
   [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it, so this rule leaves it
-  to Ruff. A tuple written that way, which COM812 reports too, stays here for the fix that turns it into a list.
+  to Ruff while the project's Ruff configuration selects COM812. Without it, this rule reports the list: `ruff format`
+  joins a list that fits on one line, where COM812 no longer reports it, and the next run would bring it back here. A
+  tuple written that way, which COM812 reports too, stays here for the fix that turns it into a list.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["COM812"]
+  ```
 
   ```python ok
   # fmt: off
@@ -143,12 +150,12 @@ literal.
 
 ### Fix
 
-| Value                                                                              | Fix                                                   | Safe |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------- | :--: |
-| list without the trailing comma, no comment, closing bracket after a name          | rewrites it, one name per line, with a trailing comma |  ✓   |
-| list without the trailing comma, with a comment and a closing bracket after a name | adds the comma after the last name                    |  ✓   |
-| tuple                                                                              | rewrites it as a list                                 |  ✗   |
-| empty tuple                                                                        | becomes `[]`                                          |  ✗   |
+| Value                                                                                | Fix                                                   | Safe |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | :--: |
+| list without the trailing comma, no comment, closing bracket after a name            | rewrites it, one name per line, with a trailing comma |  ✓   |
+| list without the trailing comma, with a comment or a closing bracket on its own line | adds the comma after the last name                    |  ✓   |
+| tuple                                                                                | rewrites it as a list                                 |  ✗   |
+| empty tuple                                                                          | becomes `[]`                                          |  ✗   |
 
 ```python report
 __all__ = ["load", "save"]
@@ -243,9 +250,10 @@ The fix keeps the names in their order. The layout depends on how the literal is
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
   [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which reports a missing trailing comma when the
-  closing bracket is on its own line and which this rule leaves to it for a list; this rule covers the rest of the
-  layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open issues
-  [#22443](https://github.com/astral-sh/ruff/issues/22443) and [#27983](https://github.com/astral-sh/ruff/issues/27983).
+  closing bracket is on its own line and which this rule leaves to it for a list while it runs; this rule covers the
+  rest of the layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open
+  issues [#22443](https://github.com/astral-sh/ruff/issues/22443) and
+  [#27983](https://github.com/astral-sh/ruff/issues/27983).
 - [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports
   [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It
   accepts tuples, which this rule reports, and it does not check the trailing comma.

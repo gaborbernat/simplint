@@ -1226,14 +1226,15 @@ const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
     false ;
     "logger_object"
 )]
-#[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
-#[test_case("", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
-#[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
-#[test_case("", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
-#[test_case("", "x = (\n    (\"Hello, \")\n    + \"world\"\n)\n", true ; "parenthesized_left_of_pair")]
-#[test_case("", "x = (\n    \"Hello, \"\n    + (\"world\")\n)\n", true ; "parenthesized_right_of_pair")]
+#[test_case(ISC003, "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
+#[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "literal_pair_across_lines_without_isc003")]
+#[test_case(ISC003, "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
+#[test_case(ISC003, "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
+#[test_case(ISC003, "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
+#[test_case(ISC003, "x = (\n    (\"Hello, \")\n    + \"world\"\n)\n", true ; "parenthesized_left_of_pair")]
+#[test_case(ISC003, "x = (\n    \"Hello, \"\n    + (\"world\")\n)\n", true ; "parenthesized_right_of_pair")]
 #[test_case(
-    "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n",
+    "extend-select = [\"ISC003\"]\n[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n",
     "x = (\n    \"Hello, \"\n    + \"world\"\n)\n",
     true ;
     "multiline_not_allowed"
@@ -1246,6 +1247,10 @@ fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) 
     let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
     assert_eq!(stdout.contains("Build text with an f-string"), reported, "{stdout}");
 }
+
+// `ruff format` joins a pair ISC003 reports onto one line, where ISC003 no longer reports it, so SMP503 leaves the pair
+// to Ruff only while Ruff runs ISC003.
+const ISC003: &str = "extend-select = [\"ISC003\"]\n";
 
 // A class of the project is skipped under any name, and a function of the project is reported even when its name is
 // CapWords, since the project's own definitions tell the two apart. An import from outside the project is a class only
