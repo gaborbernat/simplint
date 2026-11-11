@@ -4,7 +4,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
-use crate::lint::checker::{Checker, counts_ruff_appends};
+use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{is_constant, is_hashable};
 use crate::syntax::{expr_mentions, for_each_body, is_name, sole_argument};
@@ -128,17 +128,15 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
     );
 }
 
-// Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, when preview mode is on and the
-// project selects it. The run counts every append to the list in the appends that follow the literal, not only the
-// ones that enter it here.
+// Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, so the literal leaves them to
+// it. The run counts every append to the list in the appends that follow the literal, not only the ones that enter it
+// here.
 fn ruff_repeats_append(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
-    counts_ruff_appends(checker.settings)
-        && rest
-            .iter()
-            .take_while(|stmt| checker.semantic().is_list_append(stmt.range()))
-            .filter(|stmt| appends_to(stmt, name))
-            .count()
-            >= 2
+    rest.iter()
+        .take_while(|stmt| checker.semantic().is_list_append(stmt.range()))
+        .filter(|stmt| appends_to(stmt, name))
+        .count()
+        >= 2
 }
 
 fn appends_to(stmt: &Stmt, name: &str) -> bool {

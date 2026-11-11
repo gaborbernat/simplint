@@ -985,22 +985,20 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// FURB113 reports two or more appends to a list, with appends to other lists between them, when preview mode is on and
-// the project selects it. The run leaves a list that Ruff reports to Ruff, and keeps the rest.
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\n", 0 ; "preview_selected")]
-#[test_case("select = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\n", 1 ; "preview_off")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 0 ; "append_to_other_list_between")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nprint(xs)\nxs.append(2)\n", 1 ; "call_between")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs\nxs.append(2)\n", 1 ; "expression_between")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.copy().append(0)\nxs.append(2)\n", 1 ; "append_on_call_between")]
-#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.insert(0, 0)\nxs.append(2)\n", 1 ; "insert_between")]
-fn collection_built_by_statements_leaves_repeated_appends_to_ruff(config: &str, source: &str, reported: usize) {
-    let ruff = format!("[tool.ruff.lint]\n{config}");
-    let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
+// FURB113 reports two or more appends to a list, with appends to other lists between them. The run leaves a list that
+// Ruff reports to Ruff, and keeps the rest. No Ruff rule is selected here, so the skip does not depend on the selection.
+#[test_case("xs = []\nxs.append(1)\nxs.append(2)\n", 0 ; "repeated_appends_left_to_ruff")]
+#[test_case("xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
+#[test_case("ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 0 ; "append_to_other_list_between")]
+#[test_case("xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
+#[test_case("def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
+#[test_case("def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
+#[test_case("xs = []\nxs.append(1)\nprint(xs)\nxs.append(2)\n", 1 ; "call_between")]
+#[test_case("xs = []\nxs.append(1)\nxs\nxs.append(2)\n", 1 ; "expression_between")]
+#[test_case("xs = []\nxs.append(1)\nxs.copy().append(0)\nxs.append(2)\n", 1 ; "append_on_call_between")]
+#[test_case("xs = []\nxs.append(1)\nxs.insert(0, 0)\nxs.append(2)\n", 1 ; "insert_between")]
+fn collection_built_by_statements_leaves_repeated_appends_to_ruff(source: &str, reported: usize) {
+    let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP531", "--output-format", "json"]);
     assert_eq!(stdout.matches("\"code\": \"SMP531\"").count(), reported, "{stdout}");
