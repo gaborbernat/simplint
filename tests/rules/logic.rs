@@ -34,16 +34,30 @@ use crate::common::{self, check, read};
 #[test_case("single-caller-helper", "single_caller_helper_recursive.py", None ; "single_caller_helper_recursive")]
 #[test_case("single-caller-helper", "single_caller_helper_reference.py", None ; "single_caller_helper_reference")]
 #[test_case("single-caller-helper", "single_caller_helper_call_lines.py", None ; "single_caller_helper_call_lines")]
-#[test_case("single-caller-helper", "tests/test_single_caller_helper_from_test.py", None ; "single_caller_helper_from_test")]
+#[test_case(
+    "single-caller-helper", "tests/test_single_caller_helper_from_test.py", None ; "single_caller_helper_from_test"
+)]
 #[test_case("single-use-variable", "single_use_variable.py", None ; "single_use_variable")]
 #[test_case("single-use-variable", "single_use_variable_width.py", None ; "single_use_variable_width")]
 #[test_case("single-use-variable", "single_use_variable_debug.py", None ; "single_use_variable_debug")]
 #[test_case("single-use-variable", "single_use_variable_raw_debug.py", None ; "single_use_variable_raw_debug")]
 #[test_case("single-use-variable", "single_use_variable_requote.py", Some("py311") ; "single_use_variable_requote")]
 #[test_case("single-use-variable", "single_use_variable_splice.py", None ; "single_use_variable_splice")]
-#[test_case("single-use-variable", "single_use_variable_splice.py", Some("py311") ; "single_use_variable_splice_before_python312")]
-#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", None ; "single_use_variable_nested_fstring")]
-#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", Some("py311") ; "single_use_variable_nested_fstring_before_python312")]
+#[test_case(
+    "single-use-variable",
+    "single_use_variable_splice.py",
+    Some("py311") ;
+    "single_use_variable_splice_before_python312"
+)]
+#[test_case(
+    "single-use-variable", "single_use_variable_nested_fstring.py", None ; "single_use_variable_nested_fstring"
+)]
+#[test_case(
+    "single-use-variable",
+    "single_use_variable_nested_fstring.py",
+    Some("py311") ;
+    "single_use_variable_nested_fstring_before_python312"
+)]
 #[test_case("single-use-variable", "single_use_variable_parens.py", None ; "single_use_variable_parens")]
 #[test_case("single-use-variable", "single_use_variable_field.py", None ; "single_use_variable_field")]
 #[test_case("single-use-variable", "single_use_variable_lifetime.py", None ; "single_use_variable_lifetime")]
@@ -61,7 +75,9 @@ use crate::common::{self, check, read};
 #[test_case("string-concatenation", "string_concatenation_type_params.py", None ; "string_concatenation_type_params")]
 #[test_case("string-concatenation", "string_concatenation_ruff_overlap.py", None ; "string_concatenation_ruff_overlap")]
 #[test_case("string-concatenation", "string_concatenation_imported.py", None ; "string_concatenation_imported")]
-#[test_case("string-concatenation", "string_concatenation_imported_values.py", None ; "string_concatenation_imported_values")]
+#[test_case(
+    "string-concatenation", "string_concatenation_imported_values.py", None ; "string_concatenation_imported_values"
+)]
 #[test_case("string-concatenation", "string_concatenation_class_values.py", None ; "string_concatenation_class_values")]
 #[test_case("string-concatenation", "string_concatenation_bindings.py", None ; "string_concatenation_bindings")]
 #[test_case("unused-default", "unused_default.py", None ; "unused_default")]
@@ -69,15 +85,32 @@ use crate::common::{self, check, read};
 #[test_case("unused-default", "unused_default_comment.py", None ; "unused_default_comment")]
 #[test_case("error-message-matching", "error_message_matching.py", None ; "error_message_matching")]
 #[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", Some("py315") ; "comprehension_unpacking")]
-#[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", None ; "comprehension_unpacking_before_python315")]
-#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", Some("py310") ; "traceback_exception_arguments")]
-#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", Some("py39") ; "traceback_exception_arguments_before_python310")]
+#[test_case(
+    "up-comprehension-unpacking", "up_comprehension_unpacking.py", None ; "comprehension_unpacking_before_python315"
+)]
+#[test_case(
+    "up-traceback-exception-arguments",
+    "up_traceback_exception_arguments.py",
+    Some("py310") ;
+    "traceback_exception_arguments"
+)]
+#[test_case(
+    "up-traceback-exception-arguments",
+    "up_traceback_exception_arguments.py",
+    Some("py39") ;
+    "traceback_exception_arguments_before_python310"
+)]
 #[test_case("up-exc-info-exception", "up_exc_info_exception.py", Some("py311") ; "exc_info_exception")]
 #[test_case("up-exc-info-exception", "up_exc_info_exception.py", Some("py310") ; "exc_info_exception_before_python311")]
 #[test_case("up-object-sentinel", "up_object_sentinel.py", Some("py315") ; "object_sentinel")]
 #[test_case("up-object-sentinel", "up_object_sentinel.py", None ; "object_sentinel_before_python315")]
 #[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", None ; "context_var_token_reset")]
-#[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", Some("py313") ; "context_var_token_reset_before_python314")]
+#[test_case(
+    "up-context-var-token-reset",
+    "up_context_var_token_reset.py",
+    Some("py313") ;
+    "context_var_token_reset_before_python314"
+)]
 #[test_case("up-chdir-restore", "up_chdir_restore.py", Some("py311") ; "chdir_restore")]
 #[test_case("up-chdir-restore", "up_chdir_restore_future.py", Some("py311") ; "chdir_restore_after_future_import")]
 #[test_case("up-chdir-restore", "up_chdir_restore_no_import.py", Some("py311") ; "chdir_restore_without_imports")]
@@ -86,7 +119,12 @@ use crate::common::{self, check, read};
 #[test_case("up-chdir-restore", "up_chdir_restore.py", Some("py310") ; "chdir_restore_before_python311")]
 #[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", Some("py311") ; "chdir_restore_shared_line")]
 #[test_case("up-chdir-restore", "up_chdir_restore_shadow.py", Some("py311") ; "chdir_restore_shadow")]
-#[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", None ; "context_var_token_reset_shared_line")]
+#[test_case(
+    "up-context-var-token-reset",
+    "up_context_var_token_reset_shared_line.py",
+    None ;
+    "context_var_token_reset_shared_line"
+)]
 #[test_case("up-strptime-date", "up_strptime_date.py", None ; "strptime_date")]
 #[test_case("up-strptime-date", "up_strptime_date_name.py", None ; "strptime_date_class_name")]
 #[test_case("up-strptime-date", "up_strptime_date_spelled.py", None ; "strptime_date_name_taken")]
@@ -95,16 +133,63 @@ use crate::common::{self, check, read};
 #[test_case("up-strptime-date", "up_strptime_date_no_class_import.py", None ; "strptime_date_without_class_import")]
 #[test_case("up-strptime-date", "up_strptime_date.py", Some("py313") ; "strptime_date_before_python314")]
 #[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", None ; "event_loop_in_coroutine")]
-#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", Some("py313") ; "event_loop_in_coroutine_before_python314")]
-#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine_future.py", Some("py313") ; "event_loop_in_coroutine_future_import")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", None ; "asyncio_iscoroutinefunction")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_inspect.py", None ; "asyncio_iscoroutinefunction_imported")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_bound.py", None ; "asyncio_iscoroutinefunction_bound")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_sorted.py", None ; "asyncio_iscoroutinefunction_sorted")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_guarded.py", None ; "asyncio_iscoroutinefunction_guarded")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_name.py", None ; "asyncio_iscoroutinefunction_name")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_parameter.py", None ; "asyncio_iscoroutinefunction_parameter")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_shadow.py", None ; "asyncio_iscoroutinefunction_shadow")]
+#[test_case(
+    "up-event-loop-in-coroutine",
+    "up_event_loop_in_coroutine.py",
+    Some("py313") ;
+    "event_loop_in_coroutine_before_python314"
+)]
+#[test_case(
+    "up-event-loop-in-coroutine",
+    "up_event_loop_in_coroutine_future.py",
+    Some("py313") ;
+    "event_loop_in_coroutine_future_import"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", None ; "asyncio_iscoroutinefunction"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_inspect.py",
+    None ;
+    "asyncio_iscoroutinefunction_imported"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_bound.py",
+    None ;
+    "asyncio_iscoroutinefunction_bound"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_sorted.py",
+    None ;
+    "asyncio_iscoroutinefunction_sorted"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_guarded.py",
+    None ;
+    "asyncio_iscoroutinefunction_guarded"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_name.py",
+    None ;
+    "asyncio_iscoroutinefunction_name"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_parameter.py",
+    None ;
+    "asyncio_iscoroutinefunction_parameter"
+)]
+#[test_case(
+    "up-asyncio-iscoroutinefunction",
+    "up_asyncio_iscoroutinefunction_shadow.py",
+    None ;
+    "asyncio_iscoroutinefunction_shadow"
+)]
 #[test_case("up-codecs-open", "up_codecs_open_comprehension.py", None ; "codecs_open_comprehension")]
 #[test_case("up-codecs-open", "up_codecs_open.py", None ; "codecs_open")]
 #[test_case("up-codecs-open", "up_codecs_open_shadowed.py", None ; "codecs_open_renamed")]
@@ -116,9 +201,21 @@ use crate::common::{self, check, read};
 #[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", None ; "re_error_alias_fallback_import")]
 #[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", None ; "re_error_alias_deleted_name")]
 #[test_case("up-re-error-alias", "up_re_error_alias.py", Some("py312") ; "re_error_alias_before_python313")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", Some("py315") ; "argparse_suggest_on_error")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", Some("py310") ; "argparse_suggest_on_error_before_python315")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", Some("py315") ; "argparse_suggest_on_error_commented")]
+#[test_case(
+    "up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", Some("py315") ; "argparse_suggest_on_error"
+)]
+#[test_case(
+    "up-argparse-suggest-on-error",
+    "up_argparse_suggest_on_error.py",
+    Some("py310") ;
+    "argparse_suggest_on_error_before_python315"
+)]
+#[test_case(
+    "up-argparse-suggest-on-error",
+    "up_argparse_suggest_on_error_commented.py",
+    Some("py315") ;
+    "argparse_suggest_on_error_commented"
+)]
 #[test_case("up-removed-ast-node", "up_removed_ast_node.py", None ; "removed_ast_node")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", None ; "removed_ast_node_shadowed")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node_parameter.py", None ; "removed_ast_node_parameter")]
@@ -126,42 +223,78 @@ use crate::common::{self, check, read};
 #[test_case("early-assignment", "early_assignment_blocked.py", None ; "early_assignment_blocked")]
 #[test_case("early-assignment", "early_assignment_comment.py", None ; "early_assignment_comment")]
 #[test_case("super-forwarding-method", "super_forwarding_method.py", None ; "super_forwarding_method")]
-#[test_case("super-forwarding-method", "super_forwarding_method_decorated.py", None ; "super_forwarding_method_decorated")]
-#[test_case("super-forwarding-method", "super_forwarding_method_class_body.py", None ; "super_forwarding_method_class_body")]
-#[test_case("super-forwarding-method", "super_forwarding_method_class_body_forms.py", None ; "super_forwarding_method_class_body_forms")]
+#[test_case(
+    "super-forwarding-method", "super_forwarding_method_decorated.py", None ; "super_forwarding_method_decorated"
+)]
+#[test_case(
+    "super-forwarding-method", "super_forwarding_method_class_body.py", None ; "super_forwarding_method_class_body"
+)]
+#[test_case(
+    "super-forwarding-method",
+    "super_forwarding_method_class_body_forms.py",
+    None ;
+    "super_forwarding_method_class_body_forms"
+)]
 #[test_case("long-tuple-return", "long_tuple_return.py", None ; "long_tuple_return")]
 #[test_case("long-tuple-return", "long_tuple_return_quoted.py", None ; "long_tuple_return_quoted")]
 #[test_case("cognitive-complexity", "cognitive_complexity.py", None ; "cognitive_complexity")]
-#[test_case("collection-built-by-statements", "collection_built_by_statements.py", None ; "collection_built_by_statements")]
-#[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", None ; "collection_built_by_statements_names")]
+#[test_case(
+    "collection-built-by-statements", "collection_built_by_statements.py", None ; "collection_built_by_statements"
+)]
+#[test_case(
+    "collection-built-by-statements",
+    "collection_built_by_statements_names.py",
+    None ;
+    "collection_built_by_statements_names"
+)]
 #[test_case("unnamed-regex-group", "unnamed_regex_group.py", None ; "unnamed_regex_group")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", None ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", None ; "unnamed_regex_group_default_scope")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", None ; "unnamed_regex_group_escaping")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", None ; "unnamed_regex_group_scoped_verbose")]
+#[test_case(
+    "unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", None ; "unnamed_regex_group_scoped_verbose"
+)]
 #[test_case("unexplained-regex", "unexplained_regex.py", None ; "unexplained_regex")]
 #[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", None ; "unexplained_regex_unknown_flags")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", None ; "utf8_encoding_default_before_python315")]
-#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", Some("py315") ; "utf8_encoding_default_shadowed_open")]
+#[test_case(
+    "up-utf8-encoding-default",
+    "up_utf8_encoding_default_shadowed.py",
+    Some("py315") ;
+    "utf8_encoding_default_shadowed_open"
+)]
 #[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", Some("py315") ; "re_prefixmatch")]
 #[test_case("up-re-prefixmatch", "up_re_prefixmatch_fallback.py", Some("py315") ; "re_prefixmatch_fallback_import")]
 #[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", None ; "re_prefixmatch_before_python315")]
 #[test_case("up-compression-modules", "up_compression_modules.py", None ; "compression_modules")]
-#[test_case("up-compression-modules", "up_compression_modules.py", Some("py313") ; "compression_modules_before_python314")]
-#[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", None ; "compression_modules_in_compression_package")]
+#[test_case(
+    "up-compression-modules", "up_compression_modules.py", Some("py313") ; "compression_modules_before_python314"
+)]
+#[test_case(
+    "up-compression-modules",
+    "compression/up_compression_modules_shim.py",
+    None ;
+    "compression_modules_in_compression_package"
+)]
 #[test_case("up-compression-modules", "up_compression_modules_lazy.py", Some("py315") ; "compression_modules_lazy")]
 #[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", Some("py313") ; "warnings_deprecated")]
-#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", Some("py312") ; "warnings_deprecated_before_python313")]
+#[test_case(
+    "up-warnings-deprecated", "up_warnings_deprecated.py", Some("py312") ; "warnings_deprecated_before_python313"
+)]
 #[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py312") ; "deprecated_stdlib_alias")]
-#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310")]
+#[test_case(
+    "up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 // Ruff's cleanup merges the `if` the fix leaves alone in an outer `if`, whatever the layout and line length.
 #[test_case("if flag:", "        size = len(text)", "if flag and len(text) > 3:" ; "fits")]
-#[test_case("if flag:", "        size = len(text                )", "if flag and len(text                ) > 3:" ; "spaced")]
+#[test_case(
+    "if flag:", "        size = len(text                )", "if flag and len(text                ) > 3:" ; "spaced"
+)]
 #[test_case(
     "if not text:\n        return \"\"\n    elif flag:",
     "        size = len(text)",
@@ -181,17 +314,20 @@ fn walrus_candidate_leaving_collapsible_if_is_merged(outer: &str, assignment: &s
 }
 
 #[test_case(
-    "    if flag:\n        size = len(text)\n        if size > 3:\n            return text\n        else:\n            return \"\"\n",
+    "    if flag:\n        size = len(text)\n        if size > 3:\n            return text\n        else:\n            \
+        return \"\"\n",
     "    if flag:\n        if len(text) > 3:\n            return text\n        else:\n            return \"\"\n"
     ; "inner_else"
 )]
 #[test_case(
-    "    if flag:\n        size = len(text)\n        if size > 3:\n            return text\n    else:\n        return \"\"\n",
+    "    if flag:\n        size = len(text)\n        if size > 3:\n            return text\n    else:\n        return \
+        \"\"\n",
     "    if flag:\n        if len(text) > 3:\n            return text\n    else:\n        return \"\"\n"
     ; "outer_else"
 )]
 #[test_case(
-    "    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            return text\n        else:\n            return \"\"\n",
+    "    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            return text\n        else:\
+        \n            return \"\"\n",
     "    if flag:  # keep\n        if len(text) > 3:\n            return text\n        else:\n            return \"\"\n"
     ; "inner_else_under_comment"
 )]
@@ -208,7 +344,8 @@ fn walrus_candidate_keeping_if_branches_is_fixed(body: &str, fixed: &str) {
 // loop withdraws. The finding stays, without its fix, and the other candidates of the file are still fixed.
 #[test]
 fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() {
-    let source = "def run(text, flag):\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            \
+    let source = "def run(text, flag):\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\
+        \n            \
                   return text\n    return \"\"\n";
     let root = collapsible_if_project(source);
     let report = "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 1 error.\n";
@@ -219,7 +356,8 @@ fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() 
 
 #[test]
 fn walrus_candidate_under_a_comment_leaves_the_other_candidates_fixed() {
-    let source = "def run(text, flag):\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            \
+    let source = "def run(text, flag):\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\
+        \n            \
                   return text\n    return \"\"\n\n\ndef first(text):\n    found = text.strip()\n    if found:\n        \
                   return found\n    return text\n";
     let root = collapsible_if_project(source);
@@ -228,7 +366,8 @@ fn walrus_candidate_under_a_comment_leaves_the_other_candidates_fixed() {
         (code, stdout.as_str(), read(root.path(), "module.py")),
         (
             1,
-            "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 2 errors (1 fixed, 1 remaining).\n",
+            "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 2 errors (1 fixed, 1 remaining).\
+                \n",
             source.replace(
                 "    found = text.strip()\n    if found:\n        return found\n",
                 "    if found := text.strip():\n        return found\n"
@@ -247,7 +386,8 @@ fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
         (
             "module.py",
             "import re\n\n_PATTERN = \"descendant-or-self::label[@for]\"\n\n\ndef find(text: str, flag: bool) \
-             -> list[str] | None:\n    if flag:\n        found = re.findall(_PATTERN, text)\n        if found:\n            \
+             -> list[str] | None:\n    if flag:\n        found = re.findall(_PATTERN, text)\n        if found:\
+             \n            \
              return found\n    return None\n",
         ),
     ]);
@@ -268,7 +408,8 @@ fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
 #[test]
 fn walrus_candidate_lets_ruff_collapse_the_ifs_its_lines_now_fit() {
     let root = collapsible_if_project(
-        "def run(text, flag):\n    size = len(text)\n    if size > 3 and flag:\n        if text.isupper():\n            \
+        "def run(text, flag):\n    size = len(text)\n    if size > 3 and flag:\n        if text.isupper():\
+            \n            \
          return text\n",
     );
     check(root.path(), &["--fix", "--select", "SMP502"]);
@@ -295,7 +436,8 @@ fn collapsible_if_project(source: &str) -> TempDir {
 #[test_case("py39", "registry[0]", "@decorate", Some("@registry[0]") ; "subscript_from_python39")]
 fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Option<&str>) {
     let source = format!(
-        "def run(registry):\n    decorate = {value}\n    {decorator}\n    def inner():\n        return 1\n    return inner\n"
+        "def run(registry):\n    decorate = {value}\n    {decorator}\n    def inner():\n        return 1\n    return in\
+            ner\n"
     );
     let root = single_use_project(target, &source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
@@ -334,8 +476,10 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
 // one line, as the formatter joins it.
 #[test_case(
     "py311",
-    "def join(items):\n    joined = (\n        b', '.join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
-    Some("def join(items):\n    return f\"Items({b', '.join(items)})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    "def join(items):\n    joined = (\n        b', '.join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(\
+        items):\n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def join(items):\n    return f\"Items({b', '.join(items)})\"\n\n\ndef size(items):\n    return f\"\
+        {len(items)}\"\n")
     ; "line_break_before_python312"
 )]
 #[test_case(
@@ -348,8 +492,10 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
 // Python 3.12 too, and the fixes it does not block still apply.
 #[test_case(
     "py311",
-    "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
-    Some("def render(items):\n    return f\"Items([{','.join(items)}])\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\
+        \n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def render(items):\n    return f\"Items([{','.join(items)}])\"\n\n\ndef size(items):\n    return f\"\
+        {len(items)}\"\n")
     ; "nested_string_before_python312"
 )]
 #[test_case(
@@ -370,25 +516,50 @@ fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
     assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
 }
 
-// `yield name` is never reported. Ruff's RUF070 covers a `yield from` of the assigned name, so SMP504 leaves that pair to
-// it whether or not the project selects the rule. The other next statements are inlined.
-#[test_case("def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "yield_never_reported")]
-#[test_case("def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    count = len(items)\n    yield from count\n" ; "leaves_yield_from_to_ruff")]
-#[test_case("def run(first, second):\n    pair = first, second\n    yield from pair\n", "def run(first, second):\n    pair = first, second\n    yield from pair\n" ; "leaves_tuple_yield_from_to_ruff")]
-#[test_case("def run(first, second):\n    pair = first, second\n    yield pair\n", "def run(first, second):\n    pair = first, second\n    yield pair\n" ; "tuple_yield_never_reported")]
-#[test_case("def run(items):\n    count = len(items)\n    print(count)\n", "def run(items):\n    print(len(items))\n" ; "inlines_into_call")]
-#[test_case("def run(items):\n    count = len(items)\n    total = count\n    return total\n", "def run(items):\n    total = len(items)\n    return total\n" ; "inlines_into_assignment")]
+// `yield name` is never reported. Ruff's RUF070 covers a `yield from` of the assigned name, so SMP504 leaves that pair
+// to it whether or not the project selects the rule. The other next statements are inlined.
+#[test_case(
+    "def run(items):\n    count = len(items)\n    yield count\n",
+    "def run(items):\n    count = len(items)\n    yield count\n" ;
+    "yield_never_reported"
+)]
+#[test_case(
+    "def run(items):\n    count = len(items)\n    yield from count\n",
+    "def run(items):\n    count = len(items)\n    yield from count\n" ;
+    "leaves_yield_from_to_ruff"
+)]
+#[test_case(
+    "def run(first, second):\n    pair = first, second\n    yield from pair\n",
+    "def run(first, second):\n    pair = first, second\n    yield from pair\n" ;
+    "leaves_tuple_yield_from_to_ruff"
+)]
+#[test_case(
+    "def run(first, second):\n    pair = first, second\n    yield pair\n",
+    "def run(first, second):\n    pair = first, second\n    yield pair\n" ;
+    "tuple_yield_never_reported"
+)]
+#[test_case(
+    "def run(items):\n    count = len(items)\n    print(count)\n",
+    "def run(items):\n    print(len(items))\n" ;
+    "inlines_into_call"
+)]
+#[test_case(
+    "def run(items):\n    count = len(items)\n    total = count\n    return total\n",
+    "def run(items):\n    total = len(items)\n    return total\n" ;
+    "inlines_into_assignment"
+)]
 fn single_use_variable_leaves_ruff_yield_froms_to_ruff(source: &str, fixed: &str) {
     let root = single_use_project("py314", source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
     assert_eq!(read(root.path(), "module.py"), fixed);
 }
 
-// `ruff format` closes the gap a removed statement leaves, but a `# fmt: off` file keeps it, so the fix takes one of the
-// two blank lines with it.
+// `ruff format` closes the gap a removed statement leaves, but a `# fmt: off` file keeps it, so the fix takes one of
+// the two blank lines with it.
 #[test]
 fn single_use_variable_keeps_one_blank_line_under_fmt_off() {
-    let source = "# fmt: off\ndef make(flags, kwargs):\n    configure(kwargs)\n\n    cli_kwargs = to_args(kwargs)\n\n    return flags + cli_kwargs\n";
+    let source = "# fmt: off\ndef make(flags, kwargs):\n    configure(kwargs)\n\n    cli_kwargs = to_args(kwargs)\n\
+        \n    return flags + cli_kwargs\n";
     let root = single_use_project("py314", source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
     assert_eq!(
@@ -401,7 +572,8 @@ fn single_use_variable_keeps_one_blank_line_under_fmt_off() {
 // would inline it, and the fix does the same on the first.
 #[test]
 fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
-    let source = "def f(conn):\n    request = (\n        b\"POST / HTTP/1.1\\r\\n\"\n        b\"Host: example.com\\r\\n\"\n    )\n    conn.receive_data(request)\n";
+    let source = "def f(conn):\n    request = (\n        b\"POST / HTTP/1.1\\r\\n\"\n        b\"Host: example.com\\r\\n\
+        \"\n    )\n    conn.receive_data(request)\n";
     let root = single_use_project("py314", source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix", "--unsafe-fixes"]);
     assert_eq!(
@@ -416,7 +588,8 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
 #[test_case("box = Generic[T]\n    ref = ForwardRef(\"list[T]\")\n    return box, ref" ; "forward_ref")]
 fn single_use_string_annotation_is_a_read(body: &str) {
     let source = format!(
-        "from typing import ForwardRef, Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    {body}\n"
+        "from typing import ForwardRef, Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    \
+            {body}\n"
     );
     let root = single_use_project("py314", &source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
@@ -428,7 +601,8 @@ fn single_use_string_annotation_is_a_read(body: &str) {
 fn single_use_unparsable_string_annotation_reads_nothing() {
     let root = single_use_project(
         "py314",
-        "from typing import Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    class Box(Generic[T]):\n        item: \"list[\"\n\n    return Box\n",
+        "from typing import Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    class Box(Generic\
+            [T]):\n        item: \"list[\"\n\n    return Box\n",
     );
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
     assert!(read(root.path(), "module.py").contains("class Box(Generic[TypeVar(\"T\")]):"));
@@ -482,14 +656,16 @@ fn unused_default_leaves_the_public_api_alone() {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// Outside code calls the public methods of a public class, not its private ones, so a private method keeps its judgment.
+// Outside code calls the public methods of a public class, not its private ones, so a private method keeps its
+// judgment.
 #[test]
 fn unused_default_judges_private_methods_of_public_classes() {
     let root = common::project(&[
         ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         (
             "core.py",
-            "__all__ = [\"Client\"]\n\n\nclass Client:\n    def run(self) -> None:\n        self._verify(\"a\", 1)\n\n    def _verify(self, host, timeout=30):\n        return host, timeout\n",
+            "__all__ = [\"Client\"]\n\n\nclass Client:\n    def run(self) -> None:\n        self._verify(\"a\", 1)\n\
+                \n    def _verify(self, host, timeout=30):\n        return host, timeout\n",
         ),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
@@ -505,7 +681,8 @@ fn unused_default_leaves_reexported_functions_alone() {
         ("pkg/__init__.py", "from pkg._core import _connect\n\n__all__ = [\"_connect\"]\n"),
         (
             "pkg/_core.py",
-            "def _connect(host, timeout=30):\n    return host, timeout\n\n\ndef _helper(host, timeout=30):\n    return host, timeout\n\n\n_connect(\"a\", 5)\n_helper(\"a\", 5)\n",
+            "def _connect(host, timeout=30):\n    return host, timeout\n\n\ndef _helper(host, timeout=30):\n    return \
+                host, timeout\n\n\n_connect(\"a\", 5)\n_helper(\"a\", 5)\n",
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
@@ -522,7 +699,8 @@ fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
         ("pkg/__init__.py", "from ._impl import make\n\n__all__ = sorted([\"make\"])\n"),
         (
             "pkg/_impl.py",
-            "def make(x: int = 0) -> int:\n    return x\n\n\ndef _unused(x: int = 1) -> int:\n    return x\n\n\n_unused(2)\n",
+            "def make(x: int = 0) -> int:\n    return x\n\n\ndef _unused(x: int = 1) -> int:\n    return x\n\n\n_unused\
+                (2)\n",
         ),
         ("pkg/cli.py", "from pkg import make\n\nprint(make(2))\n"),
     ]);
@@ -531,15 +709,16 @@ fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
     assert!(stdout.contains("`_unused`") && !stdout.contains("`make`"), "{stdout}");
 }
 
-// The `__all__` of a library's public module declares its interface, so a public function it leaves out is judged like a
-// private one, as the other API rules judge it.
+// The `__all__` of a library's public module declares its interface, so a public function it leaves out is judged like
+// a private one, as the other API rules judge it.
 #[test]
 fn unused_default_judges_public_functions_all_omits() {
     let root = common::project(&[
         ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         (
             "core.py",
-            "__all__ = [\"connect\"]\n\n\ndef connect(host, timeout=30):\n    return host, timeout\n\n\ndef helper(host, timeout=30):\n    return host, timeout\n\n\nconnect(\"a\", 1)\nhelper(\"a\", 1)\n",
+            "__all__ = [\"connect\"]\n\n\ndef connect(host, timeout=30):\n    return host, timeout\n\n\ndef helper(host\
+                , timeout=30):\n    return host, timeout\n\n\nconnect(\"a\", 1)\nhelper(\"a\", 1)\n",
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
@@ -560,12 +739,39 @@ fn unused_default_leaves_star_imported_modules_alone() {
 
 // PT028 reports every default of a pytest test function, with a display-only fix, so a default this rule cannot fix is
 // left to it there. A default it can fix is reported in a test as anywhere else.
-#[test_case("def test_connect(host, timeout=30):\n    return host, timeout\n\n\ntest_connect(\"db\", 5)\n", 1 ; "fixable_default_of_test")]
-#[test_case("def test_pair(first=1, second=2):\n    return first, second\n\n\ntest_pair(1, 2)\n", 1 ; "unfixable_default_of_test")]
-#[test_case("def pair(first=1, second=2):\n    return first, second\n\n\npair(1, 2)\n", 2 ; "unfixable_default_of_other_function")]
-#[test_case("class TestPair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 1 ; "unfixable_default_of_test_method")]
-#[test_case("class TestPair:\n    def __init__(self) -> None:\n        pass\n\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_with_init")]
-#[test_case("class Pair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_not_named_test")]
+#[test_case(
+    "def test_connect(host, timeout=30):\n    return host, timeout\n\n\ntest_connect(\"db\", 5)\n",
+    1 ;
+    "fixable_default_of_test"
+)]
+#[test_case(
+    "def test_pair(first=1, second=2):\n    return first, second\n\n\ntest_pair(1, 2)\n",
+    1 ;
+    "unfixable_default_of_test"
+)]
+#[test_case(
+    "def pair(first=1, second=2):\n    return first, second\n\n\npair(1, 2)\n",
+    2 ;
+    "unfixable_default_of_other_function"
+)]
+#[test_case(
+    "class TestPair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\
+        \n        return self.test_pair(1, 2)\n",
+    1 ;
+    "unfixable_default_of_test_method"
+)]
+#[test_case(
+    "class TestPair:\n    def __init__(self) -> None:\n        pass\n\n    def test_pair(self, first=1, second=2):\
+        \n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n",
+    2 ;
+    "test_method_of_class_with_init"
+)]
+#[test_case(
+    "class Pair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\
+        \n        return self.test_pair(1, 2)\n",
+    2 ;
+    "test_method_of_class_not_named_test"
+)]
 fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &str, reports: usize) {
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP506"]);
@@ -600,11 +806,19 @@ fn error_message_matching_leaves_asserts_to_pt017(body: &str, reports: usize) {
 #[test_case("return str(exc) == str(other)", 0 ; "text_of_two_exceptions")]
 #[test_case("return str(exc) == \"boom\"", 1 ; "text_against_literal")]
 #[test_case("return exc.args == expected", 1 ; "args_against_variable")]
-#[test_case("try:\n            f()\n        except OSError as inner:\n            return str(exc) == str(inner)", 0 ; "text_of_nested_handlers")]
+#[test_case(
+    "try:\n            f()\n        except OSError as inner:\n            return str(exc) == str(inner)",
+    0 ;
+    "text_of_nested_handlers"
+)]
 #[test_case("return str(exc) == str(other) == \"boom\"", 1 ; "text_chained_with_literal")]
 #[test_case("return \"boom\" == str(exc) == str(other)", 1 ; "literal_chained_before_text")]
 #[test_case("other = \"timed out\"\n        return str(exc) == str(other)", 1 ; "parameter_rebound_to_text")]
-#[test_case("def inner(other):\n            return str(exc) == str(other)\n        return inner(expected)", 1 ; "shadowed_by_unannotated_parameter")]
+#[test_case(
+    "def inner(other):\n            return str(exc) == str(other)\n        return inner(expected)",
+    1 ;
+    "shadowed_by_unannotated_parameter"
+)]
 #[test_case("return (lambda other: str(exc) == str(other))(expected)", 1 ; "shadowed_by_lambda_parameter")]
 #[test_case("return (lambda: str(exc) == str(other))()", 0 ; "lambda_reads_outer_parameter")]
 fn error_message_matching_leaves_text_pairs_alone(body: &str, reports: usize) {
@@ -620,7 +834,8 @@ fn error_message_matching_leaves_text_pairs_alone(body: &str, reports: usize) {
 #[test_case("return replay_error.args == expected", 1 ; "args_against_variable")]
 fn error_message_matching_reads_parameters_of_methods(body: &str, reports: usize) {
     let source = format!(
-        "class Replay:\n    def run(self, target, error: OSError, expected):\n        try:\n            target()\n        except OSError as replay_error:\n            {body}\n"
+        "class Replay:\n    def run(self, target, error: OSError, expected):\n        try:\n            target()\
+            \n        except OSError as replay_error:\n            {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -645,7 +860,8 @@ fn error_message_matching_leaves_unresolved_names_alone(body: &str, reports: usi
 #[test_case("\"int\"", 1 ; "string_names_builtin_without_exception")]
 fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str, reports: usize) {
     let source = format!(
-        "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
+        "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError a\
+            s exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -661,7 +877,9 @@ fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str,
 #[test_case("int | None", 1 ; "union_without_exception")]
 fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
     let source = format!(
-        "from typing import Optional\n\n\nclass Local(Exception):\n    pass\n\n\nclass Deep(Local):\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
+        "from typing import Optional\n\n\nclass Local(Exception):\n    pass\n\n\nclass Deep(Local):\n    pass\n\n\ndef \
+            run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) =\
+            = str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -671,7 +889,8 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
 #[test_case("class MyError(Exception):\n    pass\n", 0 ; "imported_exception_class")]
 #[test_case("class MyError:\n    pass\n", 1 ; "imported_class_is_not_an_exception")]
 fn error_message_matching_reads_imported_exceptions(definition: &str, reports: usize) {
-    let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
+    let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except OSErro\
+        r as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("errors.py", definition), ("module.py", module)]);
     common::assert_report_count(root.path(), "SMP507", reports);
 }
@@ -682,7 +901,9 @@ fn error_message_matching_reads_imported_exceptions(definition: &str, reports: u
 #[test_case("int", 1 ; "nested_control_without_exception")]
 fn error_message_matching_reads_nested_exception_classes(annotation: &str, reports: usize) {
     let source = format!(
-        "def outer():\n    class Local(Exception):\n        pass\n\n    def inner(f, other: {annotation}):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n"
+        "def outer():\n    class Local(Exception):\n        pass\n\n    def inner(f, other: {annotation}):\n        try\
+            :\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return i\
+            nner\n"
     );
     let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
@@ -692,7 +913,9 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
 // cycle, so the first binding still shows the exception.
 #[test]
 fn error_message_matching_stops_at_rebound_class_cycles() {
-    let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n";
+    let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A\
+        ):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\
+        \n            return str(exc) == str(other)\n    return inner\n";
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!(stdout.as_str(), common::PASSED);
@@ -703,7 +926,8 @@ fn error_message_matching_stops_at_rebound_class_cycles() {
 fn error_message_matching_reads_exception_classes_of_the_file() {
     let root = common::project(&[(
         "module.py",
-        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    except Offset as replay_error:\n        return replay_error.args == error.args\n",
+        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    ex\
+            cept Offset as replay_error:\n        return replay_error.args == error.args\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
@@ -713,7 +937,8 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
 #[test_case("class AppError(Exception):\n    pass\n", 0 ; "star_imported_exception_class")]
 #[test_case("class AppError:\n    pass\n", 1 ; "star_imported_class_is_not_an_exception")]
 fn error_message_matching_reads_star_imported_exceptions(definition: &str, reports: usize) {
-    let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
+    let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as e\
+        xc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("mod_a.py", definition), ("module.py", module)]);
     common::assert_report_count(root.path(), "SMP507", reports);
 }
@@ -723,7 +948,8 @@ fn error_message_matching_reads_star_imported_exceptions(definition: &str, repor
 #[test_case("[tool.simplint.logic]\nmax-tuple-elements = 3\n", 1 ; "limit_three_reports_quadruples")]
 #[test_case("[tool.simplint.logic]\nmax-tuple-elements = 4\n", 0 ; "limit_four_reports_nothing")]
 fn long_tuple_return_limit(settings: &str, reports: usize) {
-    let source = "def triple() -> tuple[int, int, int]:\n    return 1, 2, 3\n\n\ndef quad() -> tuple[int, int, int, int]:\n    return 1, 2, 3, 4\n";
+    let source = "def triple() -> tuple[int, int, int]:\n    return 1, 2, 3\n\n\ndef quad() -> tuple[int, int, int, int\
+        ]:\n    return 1, 2, 3, 4\n";
     let root = common::project(&[("pyproject.toml", settings), ("module.py", source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP528"]);
     assert_eq!(stdout.matches("SMP528").count(), reports);
@@ -737,15 +963,34 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
     let root = common::project(&[(
         "module.py",
         &format!(
-            "{import}\n\nclass Base:\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n\n\nclass Child(Base):\n    {decorator}\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n"
+            "{import}\n\nclass Base:\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n\n\nclass \
+                Child(Base):\n    {decorator}\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n"
         ),
     )]);
     common::assert_report_count(root.path(), "SMP528", reports + 1);
 }
 
-#[test_case("PLR1702", "max-nested-blocks = 1", "if value:\n        return _helper(value)\n    return 0", "if value:\n        return 1\n    return 0" ; "nested_blocks")]
-#[test_case("PLW0717", "max-statements-in-try = 0", "try:\n        return _helper(value)\n    except ValueError:\n        return 0", "copy = value\n    return copy" ; "try_clause")]
-#[test_case("TRY301", "", "try:\n        return _helper(value)\n    except ValueError:\n        return 0", "if value:\n        raise ValueError\n    return 0" ; "raise_in_try")]
+#[test_case(
+    "PLR1702",
+    "max-nested-blocks = 1",
+    "if value:\n        return _helper(value)\n    return 0",
+    "if value:\n        return 1\n    return 0" ;
+    "nested_blocks"
+)]
+#[test_case(
+    "PLW0717",
+    "max-statements-in-try = 0",
+    "try:\n        return _helper(value)\n    except ValueError:\n        return 0",
+    "copy = value\n    return copy" ;
+    "try_clause"
+)]
+#[test_case(
+    "TRY301",
+    "",
+    "try:\n        return _helper(value)\n    except ValueError:\n        return 0",
+    "if value:\n        raise ValueError\n    return 0" ;
+    "raise_in_try"
+)]
 fn single_caller_helper_respects_other_ruff_rules(rule: &str, option: &str, caller: &str, helper: &str) {
     let config =
         format!("[tool.ruff.lint]\npreview = true\nselect = [\"{rule}\"]\n[tool.ruff.lint.pylint]\n{option}\n");
@@ -764,7 +1009,8 @@ fn single_caller_helper_keeps_caught_raises_outside_try(raised: &str, handler: &
         (
             "module.py",
             &format!(
-                "def _helper(value):\n    if value:\n        {raised}\n    return 0\n\n\ndef run(value):\n    try:\n        return _helper(value)\n    {handler}\n        return 0\n"
+                "def _helper(value):\n    if value:\n        {raised}\n    return 0\n\n\ndef run(value):\n    try:\
+                    \n        return _helper(value)\n    {handler}\n        return 0\n"
             ),
         ),
     ]);
@@ -773,20 +1019,30 @@ fn single_caller_helper_keeps_caught_raises_outside_try(raised: &str, handler: &
 }
 
 #[test_case("TRY301", "", "OSError", "if value:\n        raise ValueError\n    return 0" ; "unrelated_handler")]
-#[test_case("PLR1702", "max-nested-blocks = 2", "ValueError", "if value:\n        return 1\n    return 0" ; "nested_limit_not_crossed")]
-#[test_case("PLW0717", "max-statements-in-try = 2", "ValueError", "copy = value\n    return copy" ; "try_limit_not_crossed")]
+#[test_case(
+    "PLR1702",
+    "max-nested-blocks = 2",
+    "ValueError",
+    "if value:\n        return 1\n    return 0" ;
+    "nested_limit_not_crossed"
+)]
+#[test_case(
+    "PLW0717", "max-statements-in-try = 2", "ValueError", "copy = value\n    return copy" ; "try_limit_not_crossed"
+)]
 fn single_caller_helper_reports_when_ruff_limits_hold(rule: &str, option: &str, handled: &str, helper: &str) {
     let config =
         format!("[tool.ruff.lint]\npreview = true\nselect = [\"{rule}\"]\n[tool.ruff.lint.pylint]\n{option}\n");
     let source = format!(
-        "def _helper(value):\n    {helper}\n\n\ndef run(value):\n    try:\n        return _helper(value)\n    except {handled}:\n        return 0\n"
+        "def _helper(value):\n    {helper}\n\n\ndef run(value):\n    try:\n        return _helper(value)\n    except \
+            {handled}:\n        return 0\n"
     );
     let root = common::project(&[("pyproject.toml", &config), ("module.py", &source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP505"]);
     assert!(stdout.contains("`_helper` is called only"), "{stdout}");
 }
 
-// A function scoring 18 is reported above a limit of 17 and left alone at 18, since the limit is the highest score kept.
+// A function scoring 18 is reported above a limit of 17 and left alone at 18, since the limit is the highest score
+// kept.
 #[test_case("", 1 ; "default_limit_of_twenty_reports_twenty_one")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 18\n", 1 ; "limit_eighteen_keeps_eighteen")]
@@ -826,11 +1082,29 @@ fn cognitive_complexity_scores() {
 #[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", false ; "return")]
 #[test_case("def f():\n    values = make()\n    yield from values\n", false ; "yield_from")]
 #[test_case("def f():\n    yield 0\n    total = 1 + 2\n    return total\n", true ; "return_in_generator")]
-#[test_case("def f():\n    get = lambda: (yield)\n    total = 1 + 2\n    return total\n", true ; "return_with_lambda_yield")]
-#[test_case("def f():\n    def inner():\n        yield 1\n    total = 1 + 2\n    return total\n", false ; "return_with_nested_generator")]
-#[test_case("def f():\n    def inner() -> (yield):\n        return 1\n    total = 1 + 2\n    return total\n", false ; "return_with_nested_annotation_yield")]
-#[test_case("def f():\n    @(yield)\n    def inner():\n        return 1\n    total = 1 + 2\n    return total\n", true ; "return_with_nested_decorator_yield")]
-#[test_case("def f():\n    @(yield)\n    class Inner:\n        pass\n    total = 1 + 2\n    return total\n", true ; "return_with_class_decorator_yield")]
+#[test_case(
+    "def f():\n    get = lambda: (yield)\n    total = 1 + 2\n    return total\n", true ; "return_with_lambda_yield"
+)]
+#[test_case(
+    "def f():\n    def inner():\n        yield 1\n    total = 1 + 2\n    return total\n",
+    false ;
+    "return_with_nested_generator"
+)]
+#[test_case(
+    "def f():\n    def inner() -> (yield):\n        return 1\n    total = 1 + 2\n    return total\n",
+    false ;
+    "return_with_nested_annotation_yield"
+)]
+#[test_case(
+    "def f():\n    @(yield)\n    def inner():\n        return 1\n    total = 1 + 2\n    return total\n",
+    true ;
+    "return_with_nested_decorator_yield"
+)]
+#[test_case(
+    "def f():\n    @(yield)\n    class Inner:\n        pass\n    total = 1 + 2\n    return total\n",
+    true ;
+    "return_with_class_decorator_yield"
+)]
 fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reported: bool) {
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP504"]).1;
@@ -850,7 +1124,15 @@ fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reporte
 #[test_case("B008", "", "3", "held", true, true ; "plain_value")]
 #[test_case("B008", "", "make()", "held: tuple[int, ...]", true, true ; "immutable_annotation")]
 #[test_case("B008", "", "UserId(3)", "held", true, true ; "newtype_of_immutable")]
-#[test_case("B008", "[tool.ruff.lint.flake8-bugbear]\nextend-immutable-calls = [\"frozen.freeze\"]\n", "freeze()", "held", true, true ; "extended_immutable_call")]
+#[test_case(
+    "B008",
+    "[tool.ruff.lint.flake8-bugbear]\nextend-immutable-calls = [\"frozen.freeze\"]\n",
+    "freeze()",
+    "held",
+    true,
+    true ;
+    "extended_immutable_call"
+)]
 #[test_case("B008", "", "freeze()", "held", true, false ; "call_not_extended")]
 #[test_case("B006", "", "[]", "held", true, false ; "list_literal")]
 #[test_case("B006", "", "[]", "held", false, true ; "list_literal_without_b006")]
@@ -874,7 +1156,9 @@ fn single_use_variable_follows_ruff_defaults(
     reported: bool,
 ) {
     let source = format!(
-        "import collections\nfrom frozen import freeze\nfrom typing import NewType\n\nUserId = NewType(\"UserId\", int)\n\n\ndef make() -> list[int]:\n    return []\n\n\ndef f() -> None:\n    lock = {value}\n\n    def g({parameter}=lock) -> None:\n        print(held)\n"
+        "import collections\nfrom frozen import freeze\nfrom typing import NewType\n\nUserId = NewType(\"UserId\", int)\
+            \n\n\ndef make() -> list[int]:\n    return []\n\n\ndef f() -> None:\n    lock = {value}\n\n    def g(\
+            {parameter}=lock) -> None:\n        print(held)\n"
     );
     let select = if selected { format!("\"{code}\"") } else { String::new() };
     let root = common::project(&[
@@ -887,23 +1171,68 @@ fn single_use_variable_follows_ruff_defaults(
 
 // Ruff's G003 reports a `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
 // lines, so SMP503 leaves those to Ruff whether or not the project selects them.
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n", false ; "logging_message")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(msg=\"Hello, \" + name)\n", false ; "logging_keyword_message")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(1, \"Hello, \" + name)\n", false ; "logging_log_message")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name + \"!\")\n", false ; "logging_chain_message")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(\"Hello, \" + name)\n", true ; "logging_log_without_message")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"a\", \"Hello, \" + name)\n", true ; "logging_second_argument")]
-#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info((\"Hello, \" + name) * 2)\n", true ; "logging_repeated_message")]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n",
+    false ;
+    "logging_message"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(msg=\"Hello, \" + name)\n",
+    false ;
+    "logging_keyword_message"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(1, \"Hello, \" + name)\n",
+    false ;
+    "logging_log_message"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name + \"!\")\n",
+    false ;
+    "logging_chain_message"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(\"Hello, \" + name)\n",
+    true ;
+    "logging_log_without_message"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"a\", \"Hello, \" + name)\n",
+    true ;
+    "logging_second_argument"
+)]
+#[test_case(
+    "",
+    "import logging\n\n\ndef f(name: str) -> None:\n    logging.info((\"Hello, \" + name) * 2)\n",
+    true ;
+    "logging_repeated_message"
+)]
 #[test_case("", "def f(name: str) -> None:\n    foo.info(\"Hello, \" + name)\n", true ; "not_a_logger")]
 #[test_case("", "def f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_named_variable")]
-#[test_case("logger-objects = [\"mypkg.logger\"]\n", "from mypkg import logger\n\n\ndef f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_object")]
+#[test_case(
+    "logger-objects = [\"mypkg.logger\"]\n",
+    "from mypkg import logger\n\n\ndef f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n",
+    false ;
+    "logger_object"
+)]
 #[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
 #[test_case("", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
 #[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
 #[test_case("", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
 #[test_case("", "x = (\n    (\"Hello, \")\n    + \"world\"\n)\n", true ; "parenthesized_left_of_pair")]
 #[test_case("", "x = (\n    \"Hello, \"\n    + (\"world\")\n)\n", true ; "parenthesized_right_of_pair")]
-#[test_case("[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
+#[test_case(
+    "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n",
+    "x = (\n    \"Hello, \"\n    + \"world\"\n)\n",
+    true ;
+    "multiline_not_allowed"
+)]
 fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) {
     let root = common::project(&[
         ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = []\n{extra}")),
@@ -929,9 +1258,11 @@ fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) 
 #[test_case("tags.Thing(\"x\")", 0 ; "external_module_capwords")]
 #[test_case("tags.thing(\"x\")", 1 ; "external_module_lowercase")]
 fn string_concatenation_imported_callee(call: &str, reported: usize) {
-    let shapes = "class Badge(str):\n    pass\n\n\nclass badge(str):\n    pass\n\n\ndef Label(text: str) -> str:\n    return text\n";
+    let shapes = "class Badge(str):\n    pass\n\n\nclass badge(str):\n    pass\n\n\ndef Label(text: str) -> str:\n    r\
+        eturn text\n";
     let source = format!(
-        "import re\nimport shapes\nimport tags\n\nfrom markupsafe import Markup\nfrom shapes import Badge, Label, badge\nfrom tags import _Hidden, minify\n\n\ndef f() -> list[str]:\n    return [{call} + \"!\"]\n"
+        "import re\nimport shapes\nimport tags\n\nfrom markupsafe import Markup\nfrom shapes import Badge, Label, badge\
+            \nfrom tags import _Hidden, minify\n\n\ndef f() -> list[str]:\n    return [{call} + \"!\"]\n"
     );
     let root = common::project(&[("shapes.py", shapes), ("module.py", source.as_str())]);
     let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
@@ -967,7 +1298,8 @@ fn string_concatenation_reexported_import(init: &str, call: &str, reported: usiz
 #[test]
 fn string_concatenation_annotated_import() {
     let shapes = "class Badge(str):\n    pass\n";
-    let source = "import markupsafe\n\nfrom shapes import Badge\n\n\ndef f(safe: Badge, outside: markupsafe.Markup) -> list[str]:\n    return [safe + \"!\", outside + \"!\"]\n";
+    let source = "import markupsafe\n\nfrom shapes import Badge\n\n\ndef f(safe: Badge, outside: markupsafe.Markup) -> \
+        list[str]:\n    return [safe + \"!\", outside + \"!\"]\n";
     let root = common::project(&[("shapes.py", shapes), ("module.py", source)]);
     let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
     assert_eq!(stdout.matches("Build text with an f-string").count(), 0, "{stdout}");
@@ -984,17 +1316,56 @@ fn string_concatenation_function_import(import: &str, call: &str, reported: usiz
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// Before Python 3.12 a replacement field cannot hold a backslash inside a string, so a chain whose expression has one has
-// no f-string for that target and is not reported. A line continuation outside any string is not such a backslash, and
-// a quote conflict only declines the fix, since a triple-quoted f-string holds both quote characters.
-#[test_case("py311", "def render(tail: str, names: list[str]) -> str:\n    return \"<p>\" + tail + \"</p>\" + '\", \"'.join(names) + \"'\"\n", 1 ; "both_quotes_before_python312")]
-#[test_case("py312", "def render(tail: str, names: list[str]) -> str:\n    return \"<p>\" + tail + \"</p>\" + '\", \"'.join(names) + \"'\"\n", 1 ; "both_quotes_from_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return \"a\" + name.strip(\"\\n\")\n", 0 ; "backslash_before_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return \"it's \\\"x\\\"\" + name\n", 1 ; "string_operand_with_both_quotes_before_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return 'say \"hi\"' + \"it's\" + name\n", 1 ; "clashing_string_operands_before_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return \"a\" + name \\\n    .strip()\n", 1 ; "line_continuation_before_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return \"x\" + name.join('''a\n    b''')\n", 1 ; "multiline_expression_rendered_escape_before_python312")]
-#[test_case("py311", "def f(name: str) -> str:\n    return \"\"\"a\"\"\" + name.strip('\"') + \"!\"\n", 1 ; "triple_quoted_operand_before_python312")]
+// Before Python 3.12 a replacement field cannot hold a backslash inside a string, so a chain whose expression has one
+// has no f-string for that target and is not reported. A line continuation outside any string is not such a backslash,
+// and a quote conflict only declines the fix, since a triple-quoted f-string holds both quote characters.
+#[test_case(
+    "py311",
+    "def render(tail: str, names: list[str]) -> str:\n    return \"<p>\" + tail + \"</p>\" + '\", \"'.join(names) + \"'\
+        \"\n",
+    1 ;
+    "both_quotes_before_python312"
+)]
+#[test_case(
+    "py312",
+    "def render(tail: str, names: list[str]) -> str:\n    return \"<p>\" + tail + \"</p>\" + '\", \"'.join(names) + \"'\
+        \"\n",
+    1 ;
+    "both_quotes_from_python312"
+)]
+#[test_case(
+    "py311", "def f(name: str) -> str:\n    return \"a\" + name.strip(\"\\n\")\n", 0 ; "backslash_before_python312"
+)]
+#[test_case(
+    "py311",
+    "def f(name: str) -> str:\n    return \"it's \\\"x\\\"\" + name\n",
+    1 ;
+    "string_operand_with_both_quotes_before_python312"
+)]
+#[test_case(
+    "py311",
+    "def f(name: str) -> str:\n    return 'say \"hi\"' + \"it's\" + name\n",
+    1 ;
+    "clashing_string_operands_before_python312"
+)]
+#[test_case(
+    "py311",
+    "def f(name: str) -> str:\n    return \"a\" + name \\\n    .strip()\n",
+    1 ;
+    "line_continuation_before_python312"
+)]
+#[test_case(
+    "py311",
+    "def f(name: str) -> str:\n    return \"x\" + name.join('''a\n    b''')\n",
+    1 ;
+    "multiline_expression_rendered_escape_before_python312"
+)]
+#[test_case(
+    "py311",
+    "def f(name: str) -> str:\n    return \"\"\"a\"\"\" + name.strip('\"') + \"!\"\n",
+    1 ;
+    "triple_quoted_operand_before_python312"
+)]
 fn string_concatenation_before_python312(target: &str, source: &str, reported: usize) {
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--select", "SMP503", "--target-version", target]).1;
@@ -1008,9 +1379,15 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
 #[test_case("xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
 #[test_case("ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 1 ; "append_to_other_list_between")]
 #[test_case("xs = []\nxs.append(1)\n# the second\nxs.append(g())\n", 1 ; "comment_between_appends")]
-#[test_case("xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
-#[test_case("def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
-#[test_case("def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
+#[test_case(
+    "xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept"
+)]
+#[test_case(
+    "def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope"
+)]
+#[test_case(
+    "def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept"
+)]
 #[test_case("xs = []\nxs.append(1)\nprint(xs)\nxs.append(2)\n", 1 ; "call_between")]
 #[test_case("xs = []\nxs.append(1)\nxs\nxs.append(2)\n", 1 ; "expression_between")]
 #[test_case("xs = []\nxs.append(1)\nxs.copy().append(0)\nxs.append(2)\n", 1 ; "append_on_call_between")]
@@ -1055,10 +1432,12 @@ fn collection_built_by_statements_leaves_repeated_appends_to_ruff(source: &str, 
 #[test_case("return re.match(\"ab\", *text) is None", 1 ; "starred_string")]
 #[test_case("if (found := re.match(\"ab\", text)):\n        pass", 1 ; "walrus")]
 fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(body: &str, reported: usize) {
-    let settings = "[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\nselect = []\n";
     let source =
         format!("import re\n\nPLAIN = \"ab\"\nREBOUND = \"ab\"\nREBOUND = \"cd\"\n\n\ndef check(text):\n    {body}\n");
-    let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\nselect = []\n"),
+        ("module.py", &source),
+    ]);
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522", "--output-format", "json"]);
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
@@ -1076,7 +1455,8 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
     assert_eq!(
         stdout,
-        "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 unsafe \
+        "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 unsa\
+            fe \
          fix available with `--fix --unsafe-fixes`.\n"
     );
 }
@@ -1101,11 +1481,54 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
 
 // A module-level name another module imports, or `__all__` lists, keeps its report, and the fix that removes it is
 // withheld.
-#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import token\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_imported")]
-#[test_case("SMP512", "py314", "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "", "state.py:5:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_listed_in_all")]
-#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import old\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_imported")]
-#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import *\nprint(token)\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_star_imported")]
-#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import *\nprint(old)\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_star_imported")]
+#[test_case(
+    "SMP512",
+    "py314",
+    "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\
+        \n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n",
+    "from state import token\n",
+    "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\
+        \n" ;
+    "context_var_imported"
+)]
+#[test_case(
+    "SMP512",
+    "py314",
+    "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_\
+        id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n",
+    "",
+    "state.py:5:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\
+        \n" ;
+    "context_var_listed_in_all"
+)]
+#[test_case(
+    "SMP513",
+    "py311",
+    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    o\
+        s.chdir(old)\n",
+    "from state import old\n",
+    "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
+    "chdir_imported"
+)]
+#[test_case(
+    "SMP512",
+    "py314",
+    "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\
+        \n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n",
+    "from state import *\nprint(token)\n",
+    "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\
+        \n" ;
+    "context_var_star_imported"
+)]
+#[test_case(
+    "SMP513",
+    "py311",
+    "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    o\
+        s.chdir(old)\n",
+    "from state import *\nprint(old)\n",
+    "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
+    "chdir_star_imported"
+)]
 fn module_name_another_module_uses_keeps_report_without_fix(
     select: &str,
     target: &str,
@@ -1130,7 +1553,8 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
         (
             "state.py",
-            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    tok\
+                en = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
         ),
         ("user.py", "from state import token\n"),
     ]);
@@ -1140,33 +1564,82 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         (
             0,
             common::ONE_FIXED,
-            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        run()\n".to_owned()
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    wit\
+                h request_id.set(value):\n        run()\n".to_owned()
         )
     );
 }
 
 const PY311: &str = "[tool.ruff]\ntarget-version = \"py311\"\n";
 
-// A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before it.
-#[test_case("import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n", "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "backslash_joined_line")]
+// A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before
+// it.
+#[test_case(
+    "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.c\
+        hdir(old)\n",
+    "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
+    "backslash_joined_line"
+)]
 // A parameter named like the module hides it in the function, even when the module imports it too.
-#[test_case("import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "parameter_takes_module_name")]
+#[test_case(
+    "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\
+        \n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+    "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
+    "parameter_takes_module_name"
+)]
 fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
     let root = common::project(&[("pyproject.toml", PY311), ("mod.py", source)]);
     common::assert_fix_keeps_report(root.path(), "SMP513", &["--fix"], "mod.py", report);
 }
 
 // A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
-#[test_case("mod.py", "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n" ; "comment_ending_in_backslash")]
+#[test_case(
+    "mod.py",
+    "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\
+        \nfinally:\n    os.chdir(old)\n",
+    "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), s\
+        tarted)\n" ;
+    "comment_ending_in_backslash"
+)]
 // The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
-#[test_case("block.py", "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n", "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ; "import_above_comment")]
-// A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the docstring
-// and not into the docstring.
-#[test_case("h.py", "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "docstring_line_starting_with_hash")]
+#[test_case(
+    "block.py",
+    "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = o\
+        s.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chd\
+        ir(old)\n",
+    "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(ta\
+        rget):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ;
+    "import_above_comment"
+)]
+// A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the
+// docstring and not into the docstring.
+#[test_case(
+    "h.py",
+    "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\
+        \n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+    "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\
+        \n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
+    "docstring_line_starting_with_hash"
+)]
 // A comment on the first line is a header of the file, which the import stays below.
-#[test_case("first.py", "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "header_comment_on_first_line")]
+#[test_case(
+    "first.py",
+    "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcw\
+        d()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
+    "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import o\
+        s\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
+    "header_comment_on_first_line"
+)]
 // A class attribute named like the module is not seen by the methods of the class, so their fix stays.
-#[test_case("mod.py", "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n", "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n" ; "class_attribute_takes_module_name")]
+#[test_case(
+    "mod.py",
+    "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\
+        \n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chd\
+        ir(old)\n",
+    "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        wit\
+        h contextlib.chdir(target):\n            return os.listdir()\n" ;
+    "class_attribute_takes_module_name"
+)]
 fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
     let root = common::project(&[("pyproject.toml", PY311), (file, source)]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
@@ -1175,8 +1648,21 @@ fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
 
 // An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
 // stays off. A comment after the import is no code, so the import takes the fix.
-#[test_case("SMP516", "py314", "import asyncio; print(asyncio.iscoroutinefunction(print))\n", "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy coroutine marker\nFound 1 error.\n" ; "asyncio_shared_line")]
-#[test_case("SMP601", "py314", "import os; LIMIT = 3\n", "mod.py:1:12: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n" ; "final_shared_line")]
+#[test_case(
+    "SMP516",
+    "py314",
+    "import asyncio; print(asyncio.iscoroutinefunction(print))\n",
+    "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy co\
+        routine marker\nFound 1 error.\n" ;
+    "asyncio_shared_line"
+)]
+#[test_case(
+    "SMP601",
+    "py314",
+    "import os; LIMIT = 3\n",
+    "mod.py:1:12: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n" ;
+    "final_shared_line"
+)]
 fn import_after_a_shared_line_is_not_inserted(select: &str, target: &str, source: &str, report: &str) {
     let root = common::project(&[
         ("pyproject.toml", &format!("[tool.ruff]\ntarget-version = \"{target}\"\n")),
@@ -1194,7 +1680,8 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
         (
             "mod.py",
-            "import asyncio  # loop\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return asyncio.iscoroutinefunction(task)\n",
+            "import asyncio  # loop\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return asyncio.iscoroutinefunction\
+                (task)\n",
         ),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP516", "--fix", "--unsafe-fixes"]);
@@ -1203,7 +1690,8 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         (
             0,
             common::ONE_FIXED,
-            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.iscoroutinefunction(task)\n".to_owned()
+            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.isc\
+                oroutinefunction(task)\n".to_owned()
         )
     );
 }
