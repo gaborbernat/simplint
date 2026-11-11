@@ -41,7 +41,8 @@ fn check_fix_writes_file() {
 )]
 #[test_case(
     &["--unsafe-fixes"],
-    "module.py:2:5: SMP901 [*] Function docstring on internal code; let the name, signature and types document it\nFound \
+    "module.py:2:5: SMP901 [*] Function docstring on internal code; \
+     let the name, signature and types document it\nFound \
      1 error.\n[*] 1 fixable with `--fix`.\n",
     DOCUMENTED ;
     "fixable_when_enabled"
@@ -202,8 +203,16 @@ fn fixable_flags(flags: &[&str], fixable: bool) {
 
 #[test_case("extend-safe-fixes = [\"SMP601\"]", "[*] 2 fixable with `--fix`." ; "safe")]
 #[test_case("extend-unsafe-fixes = [\"SMP0\"]", "2 unsafe fixes available with `--fix --unsafe-fixes`." ; "unsafe")]
-#[test_case("extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP601\"]", "[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`)." ; "unsafe_wins_a_tie")]
-#[test_case("extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP6\"]", "[*] 2 fixable with `--fix`." ; "specific_wins")]
+#[test_case(
+    "extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP601\"]",
+    "[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`)."
+    ; "unsafe_wins_a_tie"
+)]
+#[test_case(
+    "extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP6\"]",
+    "[*] 2 fixable with `--fix`."
+    ; "specific_wins"
+)]
 fn fix_safety_options(options: &str, summary: &str) {
     let root = project(&[
         ("pyproject.toml", &format!("[tool.simplint]\n{options}\n")),
@@ -237,7 +246,8 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\"]\n"),
         (
             "module.py",
-            "from typing import Final\nimport typing as t\n\n_LIMIT: Final = 3\n_STEP: t.Final = 1\n\n\ndef limit() -> int:\n    \
+            "from typing import Final\nimport typing as t\n\n_LIMIT: Final = 3\n_STEP: t.Final = 1\n\n\ndef \
+             limit() -> int:\n    \
              return _LIMIT + _STEP\n",
         ),
     ]);
@@ -283,7 +293,8 @@ fn fix_withdraws_only_the_report_whose_result_ruff_would_report() {
     assert_eq!(
         (fix_unsafe(root.path(), "SMP504").1, read(root.path(), "module.py")),
         (
-            "module.py:10:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
+            "module.py:10:5: SMP504 `limit` is used once, right below; inline its value\nFound \
+             2 errors (1 fixed, 1 remaining).\n"
                 .to_owned(),
             "import sys\n\n\ndef _environment() -> str:\n    \
              build = \"gil\" if getattr(sys, \"_is_gil_enabled\", lambda: True)() else \"free-threaded\"\n    \
@@ -310,7 +321,8 @@ fn fix_withholds_only_the_identical_report_ruff_would_report() {
     assert_eq!(
         (fix_unsafe(root.path(), "SMP504").1, read(root.path(), "module.py")),
         (
-            "module.py:2:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
+            "module.py:2:5: SMP504 `limit` is used once, right below; inline its value\nFound \
+             2 errors (1 fixed, 1 remaining).\n"
                 .to_owned(),
             colliding.replace("    limit = 5\n    print(limit)\n", "    print(5)\n")
         )
@@ -447,7 +459,8 @@ fn fix_lets_ruff_clean_up_after_its_own_fixes() {
         ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"E402\", \"I001\"]\n"),
         (
             "module.py",
-            "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
+            "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import \
+             uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
              sys, uuid, LIMIT)\n",
         ),
     ]);
@@ -464,14 +477,16 @@ fn fix_takes_the_work_ruff_cleanup_leaves_for_the_rules() {
         ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n[tool.ruff.lint]\nselect = [\"UP036\"]\n"),
         (
             "module.py",
-            "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = str\n\n\ndef is_text(value: object) \
+            "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = \
+             str\n\n\ndef is_text(value: object) \
              -> bool:\n    return isinstance(value, basestring)\n",
         ),
     ]);
     fix_unsafe(root.path(), "SMP202,SMP502,SMP102");
     assert_eq!(
         read(root.path(), "module.py"),
-        "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) -> bool:\n    return isinstance(value, BASESTRING)\n"
+        "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) \
+         -> bool:\n    return isinstance(value, BASESTRING)\n"
     );
 }
 
@@ -481,7 +496,8 @@ fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
         ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"F401\", \"RUF100\"]\n"),
         (
             "a.py",
-            "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,  # ruff: ignore[unused-import]\n)\n",
+            "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,  # \
+             ruff: ignore[unused-import]\n)\n",
         ),
         ("b.py", "shown = 1\n_hidden = 2\n"),
         ("c.py", "from a import shown\n\nprint(shown)\n"),
@@ -489,7 +505,8 @@ fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
     fix_unsafe(root.path(), "SMP401");
     assert_eq!(
         read(root.path(), "a.py"),
-        "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,\n)\n\n\n__all__ = [\n    \"shown\",\n]\n"
+        "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,\n)\n\n\n__all__ = \
+         [\n    \"shown\",\n]\n"
     );
 }
 
@@ -546,8 +563,8 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
     );
 }
 
-// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor above the
-// methods. Both rules settle on one order, and a second fix changes nothing.
+// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor
+// above the methods. Both rules settle on one order, and a second fix changes nothing.
 #[test]
 fn fix_places_a_helper_after_the_constructor_that_calls_it() {
     let root = project(&[(
@@ -648,7 +665,8 @@ def run() -> str:
     check(root.path(), &["--fix", "--select", "SMP406"]);
     assert_eq!(
         read(root.path(), "module.py"),
-        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = [\"run\"]\n"
+        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = \
+         [\"run\"]\n"
     );
 }
 
@@ -692,7 +710,8 @@ fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
         ("model.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    uuid: int\n"),
         (
             "test_model.py",
-            "from unittest.mock import MagicMock\n\n\ndef test_user() -> None:\n    user = MagicMock()\n    user.uuid = \
+            "from unittest.mock import MagicMock\n\n\ndef test_user() -> \
+             None:\n    user = MagicMock()\n    user.uuid = \
              7\n    assert user.uuid == 7\n",
         ),
     ]);
@@ -711,8 +730,8 @@ fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
     );
 }
 
-// Renaming `other.Lit` to `_Lit` leaves the dataclass `Lit` no namesake whose instances get attributes, so its fix turns
-// safe and applies in the same run.
+// Renaming `other.Lit` to `_Lit` leaves the dataclass `Lit` no namesake whose instances get attributes, so its
+// fix turns safe and applies in the same run.
 #[test]
 fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
     let root = project(&[
@@ -778,13 +797,15 @@ fn early_assignment_splits_a_shared_line() {
 #[test_case(
     "tests/test_module.py",
     "SMP902",
-    "\"\"\"Tests for a module whose long docstring line is silenced by the file-level noqa directive below.\"\"\"\n# ruff: noqa: E501\n\n\ndef test_a() -> None:\n    pass\n",
+    "\"\"\"Tests for a module whose long docstring line is silenced by the \
+    file-level noqa directive below.\"\"\"\n# ruff: noqa: E501\n\n\ndef test_a() -> None:\n    pass\n",
     1 ; "test_module_docstring_under_file_noqa"
 )]
 #[test_case(
     "module.py",
     "SMP901",
-    "# ruff: noqa: E501\n\n\nclass Box:\n    \"\"\"Holds one value, with a tie-break rule the code does not show.\"\"\"\n\n    value: int = 0\n",
+    "# ruff: noqa: E501\n\n\nclass Box:\n    \"\"\"Holds one value, with a \
+    tie-break rule the code does not show.\"\"\"\n\n    value: int = 0\n",
     1 ; "function_docstring_under_file_noqa"
 )]
 #[test_case(
@@ -796,7 +817,8 @@ fn early_assignment_splits_a_shared_line() {
 #[test_case(
     "tests/test_box.py",
     "SMP801",
-    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # ruff: ignore[E501]\n        assert value\n",
+    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # \
+    ruff: ignore[E501]\n        assert value\n",
     1 ; "test_class_with_ruff_ignore_on_a_long_line"
 )]
 fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, source: &str, code: i32) {
@@ -863,12 +885,14 @@ fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
     let root = project(&[
         (
             "alpha.py",
-            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if found is not \
+            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if \
+             found is not \
              None:\n        return found\n    return beta_value()\n",
         ),
         (
             "beta.py",
-            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not None:\n        \
+            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not \
+             None:\n        \
              return found\n    return 0\n",
         ),
     ]);
@@ -876,8 +900,8 @@ fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
     assert_eq!((code, stdout.matches("SMP308").count()), (1, 2));
 }
 
-// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not hold, so
-// the warning shows once, with the line the comment has on disk.
+// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not
+// hold, so the warning shows once, with the line the comment has on disk.
 #[test]
 fn fix_warns_about_a_noqa_comment_once_with_its_line_on_disk() {
     let source =

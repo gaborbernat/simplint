@@ -248,7 +248,13 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("pyproject.toml", ""),
     (0, 1) ; "skip_magic_trailing_comma_removed"
 )]
-#[test_case(&[("module.py", CLEAN_MODULE)], "SMP101", Change::Write("module.py", "x = 1\n"), (0, 1) ; "clean_file_edited")]
+#[test_case(
+    &[("module.py", CLEAN_MODULE)],
+    "SMP101",
+    Change::Write("module.py", "x = 1\n"),
+    (0, 1)
+    ; "clean_file_edited"
+)]
 // A name another file reads off a module counts as used; once it is a base class instead, the run's sets hold the same
 // names in another order, and the cached clean result of the constant's module no longer holds.
 #[test_case(
@@ -290,7 +296,8 @@ fn cached_result_is_checked_again_after_an_edit(
 }
 
 // A function whose statements another file repeats, so `duplicate-code` reports both.
-const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    \
+const REPEATED: &str = "def run(items):\n    total = 0\n    for item in \
+                        items:\n        total += item\n    count = len(items)\n    \
                         log(total)\n    log(count)\n    return total\n";
 
 #[derive(Clone, Copy)]
@@ -651,7 +658,9 @@ fn cached_findings_report_the_same_as_a_fresh_run(flags: &[&str]) {
 }
 
 // Findings with fixes, help notes, a suppression comment and one without a fix, as a run without fixes reports them.
-const FINDINGS: &str = "import os\n\nVALUE = 1\n\n\ndef f(x):\n    y = 2\n    return x\n\n\ndef g(n):\n    for i in range(n):\n        pass\n    z = 3  # noqa: SMP101\n    return \"a\" + \"b\"\n";
+const FINDINGS: &str = "import os\n\nVALUE = 1\n\n\ndef f(x):\n    y = 2\n    return x\n\n\ndef \
+                        g(n):\n    for i in range(n):\n        pass\n    z = 3  # noqa: \
+                        SMP101\n    return \"a\" + \"b\"\n";
 
 #[test]
 fn cached_findings_are_reported_again_under_other_settings() {
@@ -1003,8 +1012,8 @@ fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
     assert_eq!((warm.1.matches("SMP530").count(), warm.1.contains("SMP502"), warm), (2, true, fresh));
 }
 
-// Ruff's `src` may leave out the directory the mirrored source sits in, yet the paired-test lookup reads it, so a source
-// deleted from there is checked again even though no run names it.
+// Ruff's `src` may leave out the directory the mirrored source sits in, yet the paired-test lookup reads it, so a
+// source deleted from there is checked again even though no run names it.
 #[test]
 fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_deleted() {
     checked_again_once_its_source_is_deleted(|root, _| {
