@@ -762,8 +762,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- the class body, outside any class nested in it, assigns or deletes an attribute on anything other than `self`, or
-  mentions `super`, `__dict__`, `__weakref__`, `__setattr__` or `__delattr__`.
+- the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
+  anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
+  `__setattr__` or `__delattr__`.
 
   ```python report
   from dataclasses import dataclass
@@ -789,6 +790,45 @@ The fix is safe only when nothing else in the checked files might notice the cha
   class Release:
       version: str
       settings.flag = True
+  ```
+
+  A class nested in the dataclass writes its own instances through the first parameter of its methods, which keeps the
+  fix offered; a closure writing the dataclass's instance does not:
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(slots=True)
+  class Release:
+      version: str
+
+      def helper(self) -> None:
+          outer = self
+
+          class Marker:
+              def mark(self) -> None:
+                  outer.flag = True
+
+          Marker().mark()
   ```
 
   `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a class writes its own fields, so they do not

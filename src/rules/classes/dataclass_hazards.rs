@@ -84,6 +84,8 @@ pub(super) fn analyze<'a>(
         depth: 0,
         receiver: None,
         classmethod: false,
+        nested: None,
+        own: None,
     };
     hazards.visit_body(&class.body);
     for attribute in project.attributes_written_on(&qualified) {
@@ -219,6 +221,10 @@ struct Hazards<'f, 'a> {
     receiver: Option<&'a str>,
     // Whether the method being walked is a classmethod, whose receiver is the class rather than an instance.
     classmethod: bool,
+    // The depth at which the innermost class nested in the dataclass is walked.
+    nested: Option<usize>,
+    // The first parameter of a method of a nested class, the instance that class's methods write.
+    own: Option<&'a str>,
 }
 
 impl Hazards<'_, '_> {
@@ -264,19 +270,29 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
                 self.frozen = true;
             }
             Stmt::FunctionDef(function) => {
-                let outer = (self.receiver, self.classmethod);
-                if self.depth == 0 {
+                let outer = (self.receiver, self.classmethod, self.own);
+                if self.nested == Some(self.depth) {
+                    self.receiver = None;
+                    self.own = receiver(function);
+                } else if self.depth == 0 {
                     self.receiver = receiver(function);
                     self.classmethod = is_classmethod(function);
                 }
                 self.depth += 1;
                 visitor::walk_stmt(self, stmt);
                 self.depth -= 1;
-                (self.receiver, self.classmethod) = outer;
+                (self.receiver, self.classmethod, self.own) = outer;
                 return;
             }
-            // A class nested in the dataclass has instances of its own, so its methods write nothing on the dataclass's.
-            Stmt::ClassDef(_) => return,
+            // A class nested in the dataclass has instances of its own, so the writes its methods make through their
+            // first parameter are not the dataclass's; any other write is still checked.
+            Stmt::ClassDef(_) => {
+                let outer = self.nested;
+                self.nested = Some(self.depth);
+                visitor::walk_stmt(self, stmt);
+                self.nested = outer;
+                return;
+            }
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
@@ -287,7 +303,7 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 if self.depth > 0 && self.receiver.is_some_and(|receiver| is_name(value, receiver)) {
                     self.receiver_written(attr.as_str());
-                } else {
+                } else if self.own.is_none_or(|own| !is_name(value, own)) {
                     self.suspected = true;
                 }
             }

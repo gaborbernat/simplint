@@ -665,3 +665,20 @@ fn annotated_dict_store_keeps_frozen_unset(annotation: &str, fixed: bool) {
     common::fix_unsafe(root.path(), "dataclass-frozen");
     assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Counter:"), fixed);
 }
+
+// A nested class writes its own instances through the first parameter of its methods, which leaves the options alone.
+// A write through any other name, the dataclass's instance in a closure or a parameter, still makes the fix unsafe.
+#[test_case("    class Meta:\n        def mark(self) -> None:\n            self.flag = True\n", true ; "own_instance")]
+#[test_case("    class Meta:\n        def mark(self, outer) -> None:\n            outer.flag = 1\n", false ; "unannotated_parameter")]
+#[test_case("    def helper(self) -> None:\n        outer = self\n\n        class Marker:\n            def mark(self) -> None:\n                outer.flag = 1\n\n        Marker().mark()\n", false ; "closure")]
+#[test_case("    def helper(self) -> None:\n        me = self\n\n        class Marker:\n            def mark(inner) -> None:\n                me.flag = 1\n\n        Marker().mark()\n", false ; "closure_write_in_method_of_nested_class")]
+fn nested_class_writes_keep_options_only_for_their_own_instances(body: &str, fixed: bool) {
+    let source =
+        format!("from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n{body}");
+    let root = common::project(&[("main.py", &source)]);
+    common::check(root.path(), &["--no-cache", "--select", "dataclass-frozen,dataclass-slots", "--fix", "."]);
+    assert_eq!(
+        common::read(root.path(), "main.py").contains("@dataclass(frozen=True, slots=True)\nclass Release:"),
+        fixed
+    );
+}
