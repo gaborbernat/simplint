@@ -1135,6 +1135,28 @@ fn module_attribute_import_fixes_after_first_report_is_suppressed() {
     );
 }
 
+// `from . import b` at import time reads `VALUE` before `a` has defined it when `b` imports `a` back, so the cycle keeps
+// the reports and withholds the fix. A back-import under `TYPE_CHECKING` is not a runtime import, so no cycle forms.
+#[test_case(
+    "from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n", false
+    ; "runtime_back_import"
+)]
+#[test_case(
+    "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n",
+    true
+    ; "type_checking_back_import"
+)]
+fn module_attribute_import_withholds_the_fix_in_an_import_cycle(partner: &str, fixable: bool) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", "from . import b\n\nVALUE = 1\n\n\ndef run() -> int:\n    return b.helper()\n"),
+        ("pkg/b.py", partner),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
+    assert_eq!(stdout.matches("SMP304 Import").count(), 2, "{stdout}");
+    assert_eq!(stdout.contains("unsafe fix"), fixable, "{stdout}");
+}
+
 // The fix rewrites the reads of the module only, so a parameter, local, loop or comprehension variable of the same name
 // keeps its attribute reads.
 #[test]

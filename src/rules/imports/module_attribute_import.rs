@@ -48,11 +48,12 @@ pub fn module_attribute_import(checker: &Checker) {
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
         // import without a comment, no stores, no computed write the import would miss, each name importable from the
-        // module, and no other module that imports or reads the bound name, which the replaced import would no longer
-        // bind.
+        // module, no other module that imports or reads the bound name, which the replaced import would no longer
+        // bind, and no import cycle the module and the importer share, where the names may not be defined yet.
         let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
+            && !module.cyclic
             && !checker.is_exported(&module.bound);
         let path = module_path(statement, alias);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);

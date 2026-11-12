@@ -279,7 +279,7 @@ rules! {
     FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module } since PY314),
     AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module } reads [sibling_init]),
     DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
-    ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module } reads [cross_file, GLOBAL_NAMES, COMPUTED_WRITES]),
+    ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module } reads [cross_file, GLOBAL_NAMES, COMPUTED_WRITES, RUNTIME_IMPORTS]),
     BackportImport => ("SMP305", "up-backport-import", "Imports of backports that the standard library replaces", Sometimes, imports::up_backport_import { module } reads [cross_file]),
     TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module } since PY315),
     LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module } since PY315),

@@ -31,6 +31,9 @@ pub struct ModuleUse {
     // A write under a computed name may set the module's names, so an import would miss that write.
     pub computed_written: bool,
     pub top_level_package: bool,
+    // The importer and the module are in one cycle of runtime imports, where a from-import that reads a name at load
+    // time may run before the module defines it.
+    pub cyclic: bool,
 }
 
 impl CacheKey for ModuleUse {
@@ -42,6 +45,7 @@ impl CacheKey for ModuleUse {
         self.rebound.cache_key(state);
         self.computed_written.cache_key(state);
         self.top_level_package.cache_key(state);
+        self.cyclic.cache_key(state);
     }
 }
 
@@ -452,6 +456,7 @@ pub(super) fn module_uses(
     sources: &FxHashMap<FileId, &FileFacts>,
     referenced: &FxHashMap<FileId, FxHashSet<String>>,
     computed_writes: &FxHashSet<FileId>,
+    cycles: &FxHashMap<FileId, Cycle>,
     files: &FileIds,
 ) -> FxHashMap<FileId, Vec<ModuleUse>> {
     let mut uses: FxHashMap<FileId, Vec<ModuleUse>> = FxHashMap::default();
@@ -464,7 +469,10 @@ pub(super) fn module_uses(
         let defined = facts.defined.iter().cloned().collect();
         let computed_written = computed_writes.contains(&target);
         let top_level_package = !module.contains('.') && files.path(target).ends_with("__init__.py");
-        let module = ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package };
+        let cyclic =
+            cycles.get(&importer).zip(cycles.get(&target)).is_some_and(|(from, to)| from.component == to.component);
+        let module =
+            ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package, cyclic };
         uses.entry(importer).or_default().push(module);
     }
     uses

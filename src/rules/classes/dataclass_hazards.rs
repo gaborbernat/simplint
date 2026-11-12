@@ -319,6 +319,29 @@ fn is_generic(base: &Expr) -> bool {
     last_segment(base) == Some("Generic")
 }
 
+// Whether the class body reads a `__class__` cell, which `slots=True` leaves pointing at the class it replaces: a bare
+// `__class__` or a zero-argument `super()`, in a method or in a function or lambda nested in one.
+pub(super) fn uses_class_cell(class: &ast::StmtClassDef) -> bool {
+    let mut cells = ClassCells { found: false };
+    cells.visit_body(&class.body);
+    cells.found
+}
+
+struct ClassCells {
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for ClassCells {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        self.found |= match expr {
+            Expr::Name(ast::ExprName { id, .. }) => id.as_str() == "__class__",
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => arguments.is_empty() && is_name(func, "super"),
+            _ => false,
+        };
+        visitor::walk_expr(self, expr);
+    }
+}
+
 // The names the module calls inside `pytest.raises(...)` or `self.assertRaises(...)`: a test creating an instance there
 // expects it to fail somewhere, as an unhashable dict key, and either option can change that.
 pub(crate) fn expected_to_raise_classes(body: &[Stmt]) -> FxHashSet<&str> {

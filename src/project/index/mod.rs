@@ -224,7 +224,16 @@ impl Project {
                             &bindings,
                         )
                     },
-                    || module_uses(module_names, &sources, &stored_references, &computed_writes, ids_of),
+                    || {
+                        module_uses(
+                            module_names,
+                            &sources,
+                            &stored_references,
+                            &computed_writes,
+                            &cycle_reports,
+                            ids_of,
+                        )
+                    },
                 )
             },
             || {

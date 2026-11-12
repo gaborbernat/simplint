@@ -15,7 +15,7 @@ pub fn dataclass_frozen(checker: &Checker) {
             && is_data_structure_shape(decorated.class))
             || (from_ruff.ruff_runs(RuffRule::TooManyArguments) && analysis.parameters > from_ruff.max_args);
         Some(Offer {
-            left_to_ruff: checker.path.extension().is_none_or(|extension| extension != "pyi")
+            unreported: checker.path.extension().is_none_or(|extension| extension != "pyi")
                 && analysis.mutated
                 && plain_form_rejected,
             ..Offer::options(

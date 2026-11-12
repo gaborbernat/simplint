@@ -117,6 +117,28 @@ class Release:
       version: str
   ```
 
+- **Target versions before 3.14, for a class whose body uses zero-argument `super()` or `__class__`**: nothing is
+  reported. `slots=True` builds a new class, and the methods keep their `__class__` cell on the old one, so `super()`
+  raises `TypeError` until CPython 3.14 fixes it ([gh-90562](https://github.com/python/cpython/issues/90562)). The fix
+  reached 3.13 only in 3.13.14, which `requires-python = ">=3.13"` also admits, so 3.13 counts as unfixed.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py313"
+  ```
+
+  ```python ok
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def label(self) -> str:
+          return super().__repr__()
+  ```
+
 ### Fix
 
 The fix sets `slots=True` on the decorator. No fix is offered for:
@@ -898,6 +920,11 @@ The fix is safe only when nothing else in the checked files might notice the cha
   [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
   `super().__setattr__(...)` are how a class writes its own fields, so they do not count as writes and keep the fix
   offered, but naming `__setattr__` or `super` still makes it unsafe:
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py314"
+  ```
 
   ```python report
   from dataclasses import dataclass

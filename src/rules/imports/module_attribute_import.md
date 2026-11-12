@@ -439,6 +439,51 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **A module in an import cycle with the importing file**: the file and the module import each other at run time, so the
+  from-import would read a name the module has not defined yet when the cycle loads it. The rule reports the accesses
+  without a fix. Here `pkg/a.py` and `pkg/b.py` import each other, and each reads a name of the other. A back-import
+  under `if TYPE_CHECKING:` is not a run-time import, so it forms no cycle.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python report file=pkg/a.py
+  from . import b
+
+  VALUE = 1
+
+
+  def run() -> int:
+      return b.helper()
+  ```
+
+  ```python fixed file=pkg/a.py
+  from . import b
+
+  VALUE = 1
+
+
+  def run() -> int:
+      return b.helper()
+  ```
+
+  ```python report file=pkg/b.py
+  from . import a
+
+
+  def helper() -> int:
+      return a.VALUE
+  ```
+
+  ```python fixed file=pkg/b.py
+  from . import a
+
+
+  def helper() -> int:
+      return a.VALUE
+  ```
+
 ### Fix
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
@@ -447,8 +492,8 @@ patches the module attribute later no longer reaches the name.
 The fix replaces the import and every `findings.Name` access in the file. It is offered only when every use of the
 module is such an access to a name the module defines, no computed write, such as
 [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr), may set a name of the
-module, no other module of the run imports or reads the module's name, and `__all__` does not list it, since the
-replaced import would no longer bind it.
+module, no other module of the run imports or reads the module's name, `__all__` does not list it, since the replaced
+import would no longer bind it, and the file and the module are not in one cycle of run-time imports.
 
 The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
 report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries

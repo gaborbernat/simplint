@@ -319,6 +319,23 @@ fn write_file(root: &Path, name: &str, content: &str) {
     fs::write(path, content).expect("write");
 }
 
+// A back-import from another file closes an import cycle with the module, which withdraws the fix the cached report
+// offered, and removing the back-import offers it again.
+#[test]
+fn import_closing_a_cycle_in_another_file_withdraws_the_cached_fix() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", "from . import b\n\nVALUE = 1\n\n\ndef run() -> int:\n    return b.helper()\n"),
+        ("pkg/b.py", "def helper() -> int:\n    return 1\n"),
+    ]);
+    let fixable = |root: &Path| check(root, &["--select", "SMP304"]).1.contains("unsafe fix");
+    let before = fixable(root.path());
+    write_file(root.path(), "pkg/b.py", "from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n");
+    let closed = fixable(root.path());
+    write_file(root.path(), "pkg/b.py", "def helper() -> int:\n    return 1\n");
+    assert_eq!((before, closed, fixable(root.path())), (true, false, true));
+}
+
 // Only a rule that reads other files of the run keys a file's result by the whole run, so an edit to another file keeps
 // the result of a file checked by per-file rules alone, and invalidates one checked by a cross-file rule.
 #[test_case("SMP101", 0 ; "per_file_rule_keeps_the_cached_result")]

@@ -15,6 +15,8 @@ pub struct Cycle {
     pub(super) range: TextRange,
     pub(super) chain: Vec<FileId>,
     pub(super) omitted: usize,
+    // The strongly connected component the file is in, numbered per run: files of one cycle share it.
+    pub(super) component: usize,
 }
 
 impl Cycle {
@@ -88,7 +90,7 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
             chain.push(file);
             (chain, omitted)
         };
-        cycles.insert(file, Cycle { range, chain, omitted });
+        cycles.insert(file, Cycle { range, chain, omitted, component: home });
     }
     cycles
 }
