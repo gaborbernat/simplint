@@ -242,6 +242,43 @@ fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
     );
 }
 
+// Ruff's F401 reports an import of a name that its own file never reads, which another module imports, whether or not
+// the project selects F401. simplint keeps that report either way.
+#[test]
+fn missing_from_all_reports_unused_import_others_use_under_f401() {
+    let case = common::RuffOverlap {
+        settings: "",
+        select: "SMP401",
+        ruff_code: "F401",
+        files: &[
+            ("config.py", "from os import sep\n\n\ndef local() -> int:\n    return 1\n"),
+            ("cli.py", "from config import sep, local\n\nprint(sep, local())\n"),
+        ],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "`sep` is imported by other modules"), [true, true]);
+}
+
+// With F401 selected, the fix lists the name and keeps the import, so Ruff's fix does not delete it. A `noqa` with its
+// reason goes once the fix lists every name on its line.
+#[test_case("from os import sep" ; "import_kept")]
+#[test_case("from os import sep  # noqa: F401  # imported by cli.py" ; "reasoned_noqa_removed")]
+fn missing_from_all_lists_unused_import_others_use_under_f401(import: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\"]\n"),
+        ("config.py", &format!("{import}\n\n\ndef local() -> int:\n    return 1\n")),
+        ("cli.py", "from config import sep, local\n\nprint(sep, local())\n"),
+    ]);
+    let (code, _, _) = common::fix_unsafe(root.path(), "SMP401");
+    assert_eq!(
+        (code, common::read(root.path(), "config.py")),
+        (
+            0,
+            "from os import sep\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"local\",\n    \"sep\",\n]\n"
+                .to_owned()
+        )
+    );
+}
+
 // Each report of a listing shows the whole fix in the full output, so a module with many missing names shows it once.
 #[test]
 fn missing_from_all_shows_the_fix_once_for_many_names() {

@@ -92,3 +92,8 @@ Things to know when resolving a conflict:
     Other combinations clash only on some code, such as :doc:`single-user-constant </rules/SMP202>` inlining a value
     into a comparison Ruff's `magic-value-comparison <https://docs.astral.sh/ruff/rules/magic-value-comparison/>`__
     reports. simplint then offers no fix for that report and keeps it, and the run goes on.
+
+    Ruff's unused-import (F401) clashes with :doc:`missing-from-all </rules/SMP401>` on an import that its own file
+    never reads but another module imports. Ruff's safe fix deletes that import, while
+    :doc:`missing-from-all </rules/SMP401>` reports it and lists the name in ``__all__``. The run does not stop for it,
+    and the rule page names how to keep Ruff's fix from breaking the importer.
