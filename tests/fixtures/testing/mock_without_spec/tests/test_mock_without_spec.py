@@ -39,3 +39,9 @@ def test_disabled_spec() -> None:
 def test_replacement(mocker: pytest_mock.MockerFixture) -> None:
     mocker.patch("pkg.FLAG", new=False)
     mocker.patch("pkg.HANDLER", new=None)
+
+
+def test_autospec_on_a_mock_is_an_attribute(mocker: pytest_mock.MockerFixture) -> None:
+    client = MagicMock(autospec=True)
+    assert client and mock.Mock(new_callable=int)
+    mocker.patch("os.getcwd", new_callable=MagicMock)

@@ -132,10 +132,15 @@ in for, and that cannot be inferred from the call.
 
 These count as a spec:
 
-- **An `autospec` or `new_callable` keyword**, unless its value is `None` or `False`: those values spell out the
-  default, no spec.
+- **An `autospec` or `new_callable` keyword on a `patch` or `patch.object` call**, unless its value is `None` or
+  `False`: those values spell out the default, no spec. A mock constructor reads the keyword as an attribute, so it
+  makes no spec.
 
   ```python ok
+  mocker.patch("app.service.fetch", autospec=True)
+  ```
+
+  ```python report
   client = MagicMock(autospec=True)
   ```
 

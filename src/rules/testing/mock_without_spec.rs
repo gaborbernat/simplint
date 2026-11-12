@@ -24,7 +24,10 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
         || arguments.keywords.iter().any(|keyword| match keyword.arg.as_ref() {
             None => true,
             Some(arg) => {
-                arg == "new" || (matches!(arg.as_str(), "autospec" | "new_callable") && is_set(&keyword.value))
+                arg == "new"
+                    || (kind.is_patch()
+                        && matches!(arg.as_str(), "autospec" | "new_callable")
+                        && is_set(&keyword.value))
             }
         });
     if replaced {
@@ -82,6 +85,11 @@ impl MockCall {
             _ if is_patch_object(semantic, func) => Some(Self::PatchObject),
             _ => None,
         }
+    }
+
+    // On a mock constructor, `autospec` and `new_callable` are only attributes, so they make no spec.
+    fn is_patch(&self) -> bool {
+        matches!(self, Self::Patch | Self::PatchObject)
     }
 
     // `patch` replaces its target with its second positional argument, `patch.object` with its third, so no mock is made.
