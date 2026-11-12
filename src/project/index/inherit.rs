@@ -55,3 +55,32 @@ fn collect<'a>(
         collect(home, classes, base_bases, &deeper, visited, inherited);
     }
 }
+
+// The methods each class defines again after a class of the run up its bases defined them, by class and file.
+pub(super) fn overridden_methods(
+    graph: &ClassGraph,
+    reexports: &Reexports,
+) -> FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>> {
+    let home = graph.home(reexports);
+    let mut overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>> = FxHashMap::default();
+    for (key, (bases, methods)) in &graph.classes {
+        let mut visited: FxHashSet<ClassKey> = FxHashSet::default();
+        let mut pending: Vec<ClassKey> =
+            bases.iter().filter_map(|(file, _, name)| file.and_then(|file| home(file, name))).collect();
+        let mut ancestors: FxHashSet<&str> = FxHashSet::default();
+        while let Some(base) = pending.pop() {
+            if !visited.insert(base.clone()) {
+                continue;
+            }
+            let (base_bases, base_methods) = graph.classes[&base];
+            ancestors.extend(base_methods.iter().map(String::as_str));
+            pending.extend(base_bases.iter().filter_map(|(file, _, name)| file.and_then(|file| home(file, name))));
+        }
+        let found: FxHashSet<String> =
+            methods.iter().filter(|method| ancestors.contains(method.as_str())).cloned().collect();
+        if !found.is_empty() {
+            overridden.entry(key.0).or_default().insert(key.1.clone(), found);
+        }
+    }
+    overridden
+}

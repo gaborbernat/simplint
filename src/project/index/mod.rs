@@ -78,6 +78,7 @@ pub struct Project {
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
@@ -262,6 +263,7 @@ impl Project {
             },
         );
         let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
+        let overridden = inherit::overridden_methods(&graph, &reexports);
         let enum_types = enum_classes(&graph, &reexports, &bindings);
         calls.set_test_support(test_support);
         Self {
@@ -286,6 +288,7 @@ impl Project {
             api_reached,
             library_reached,
             inherited,
+            overridden,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
@@ -336,6 +339,7 @@ impl Project {
                 api_reached: entry(&self.api_reached, id),
                 library_reached: entry(&self.library_reached, id),
                 inherited: entry(&self.inherited, id),
+                overridden: entry(&self.overridden, id),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
                 prefix_siblings: entry(&self.prefix_siblings, id),

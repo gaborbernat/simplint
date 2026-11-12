@@ -1,0 +1,69 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:9 SMP710 `run` overrides a method of a base class of `MoChild` without `@override` [fix: Mark it with `@override`]
+17:9 SMP710 `size` overrides a method of a base class of `MoChild` without `@override` [fix: Mark it with `@override`]
+27:9 SMP710 `pause` overrides a method of a base class of `MoChild` without `@override` [fix: Mark it with `@override`]
+46:9 SMP710 `run` overrides a method of a base class of `MoLocalChild` without `@override` [fix: Mark it with `@override`]
+--- fixed (4 applied, 0 remaining) ---
+from typing import overload
+from typing import override
+
+import typing_extensions
+
+from mo_base import MoBase, MoMiddle
+
+
+class MoChild(MoMiddle):
+    @override
+    def run(self) -> int:
+        return 3
+
+    @typing_extensions.override
+    def stop(self) -> int:
+        return 4
+
+    @property
+    @override
+    def size(self) -> int:
+        return 5
+
+    @size.setter
+    def size(self, value: int) -> None:
+        print(value)
+
+    def __repr__(self) -> str:
+        return "MoChild"
+
+    @override
+    def pause(self) -> int:
+        return 6
+
+    def own(self) -> int:
+        return 7
+
+
+class MoLocal:
+    def run(self) -> int:
+        return 8
+
+
+class MoLocalChild(MoLocal):
+    @overload
+    def run(self, value: int) -> int: ...
+
+    @overload
+    def run(self, value: str) -> str: ...
+
+    @override
+    def run(self, value: object = None) -> object:
+        return value
+
+
+class MoUnrelated:
+    def run(self) -> int:
+        return 9
+
+
+print(MoBase, MoChild, MoLocalChild, MoUnrelated)

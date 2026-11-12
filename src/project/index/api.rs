@@ -127,6 +127,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
+    pub(super) overridden: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
     pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
@@ -169,6 +170,7 @@ impl CacheKey for FileIndex<'_> {
             api_reached,
             library_reached,
             inherited,
+            overridden,
             cycle,
             duplicates,
             prefix_siblings,
@@ -203,6 +205,7 @@ impl CacheKey for FileIndex<'_> {
         api_reached.cache_key(state);
         library_reached.cache_key(state);
         inherited.cache_key(state);
+        overridden.cache_key(state);
         cycle.is_some().cache_key(state);
         if let Some(cycle) = cycle {
             cycle.cache_key_with(&self.project.files, state);
@@ -288,6 +291,11 @@ impl<'a> FileIndex<'a> {
     // Users reach the member through the public class that inherits it, so it is part of the API.
     pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
         self.answers.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
+    }
+
+    // A class of the run up the class's bases defines the method too, so the class overrides it.
+    pub fn is_override(&self, class: &str, method: &str) -> bool {
+        self.answers.overridden.and_then(|classes| classes.get(class)).is_some_and(|methods| methods.contains(method))
     }
 
     // A call through a value loaded from the file reaches its names, and no import shows that.
