@@ -8,7 +8,7 @@ use ruff_macros::CacheKey;
 use ruff_python_ast::PythonVersion;
 use ruff_python_semantic::NameImport;
 use ruff_workspace::resolver::match_exclusion;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::registry::RuleSet;
 use crate::settings::Settings;
@@ -73,6 +73,10 @@ pub struct FromRuff<'a> {
     pub(crate) allowed_unused_imports: &'a [String],
     // The decorators whose functions Ruff's pydocstyle rules skip.
     pub(crate) ignore_decorators: &'a BTreeSet<String>,
+    // The aliases Ruff's flake8-import-conventions asks modules to be imported under, and the modules it bans
+    // importing names from.
+    pub(crate) import_aliases: &'a FxHashMap<String, String>,
+    pub(crate) banned_from: &'a FxHashSet<String>,
     // The rules Ruff's settings enable, which decide whether a rule that Ruff covers is left to it. Per-file ignores
     // are not applied: a file that silences a Ruff rule is the project's choice, as a `noqa` for it is.
     ruff_rules: RuffRuleSet,
@@ -112,6 +116,8 @@ impl<'a> FromRuff<'a> {
             required_imports: &settings.linter.isort.required_imports,
             allowed_unused_imports: &settings.linter.pyflakes.allowed_unused_imports,
             ignore_decorators: &settings.linter.pydocstyle.ignore_decorators,
+            import_aliases: &settings.linter.flake8_import_conventions.aliases,
+            banned_from: &settings.linter.flake8_import_conventions.banned_from,
             ruff_rules: settings.linter.rules.iter_enabled().collect(),
         }
     }

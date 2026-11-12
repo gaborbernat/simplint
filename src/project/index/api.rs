@@ -341,6 +341,11 @@ impl<'a> FileIndex<'a> {
         self.answers.package_star_imported
     }
 
+    // Whether a string or store of the run reaches `module.name`, as a test patching it does.
+    pub fn is_path_referenced(&self, module: &str, name: &str) -> bool {
+        self.project.wide.referenced_paths.contains(&format!("{module}.{name}"))
+    }
+
     pub fn is_attribute_assigned(&self, name: &str) -> bool {
         self.project.wide.assigned_attributes.contains(name)
     }

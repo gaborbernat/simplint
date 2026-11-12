@@ -1002,3 +1002,16 @@ fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str
         common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
     common::assert_report_count(root.path(), "SMP303", reports);
 }
+
+#[test_case("import json\n\nTEXT = json.dumps([])\n", true ; "attribute")]
+#[test_case("import json\nimport json\n\nTEXT = json.dumps([])\n", false ; "bound_twice")]
+#[test_case("import json\n\nTEXT = json.dumps([])\nprint(json)\n", false ; "used_as_value")]
+#[test_case("import json\n\nTEXT = json.__name__\n", false ; "dunder")]
+fn module_attribute_import_outside_modules(source: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint.imports]\nmodule-attribute-scope = [\"stdlib\"]\n"),
+        ("consumer.py", source),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304"]).1;
+    assert_eq!(stdout.contains("Import `"), reported, "{stdout}");
+}

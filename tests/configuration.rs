@@ -344,6 +344,35 @@ fn module_attributes_leave_listed_modules_alone(pyproject: &str, flags: &[&str])
     assert_eq!(check(root.path(), &[&["--select", "SMP304"], flags].concat()), (0, PASSED.to_owned(), String::new()));
 }
 
+#[test_case("[tool.simplint.imports]\nmodule-attribute-scope = [\"stdlib\"]\n", &[] ; "pyproject")]
+#[test_case("", &["--config", "imports.module-attribute-scope = ['json']"] ; "inline_module")]
+fn module_attribute_scope_reaches_outside_modules(pyproject: &str, flags: &[&str]) {
+    let root = project(&[
+        ("pyproject.toml", pyproject),
+        (
+            "consumer.py",
+            "import json
+
+TEXT = json.dumps([])
+",
+        ),
+    ]);
+    assert!(
+        check(root.path(), &[&["--select", "SMP304"], flags].concat()).1.contains("SMP304 Import `dumps` from `json`")
+    );
+}
+
+#[test]
+fn module_attribute_scope_without_project_skips_project_modules() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint.imports]\nmodule-attribute-scope = [\"third-party\"]\n"),
+        ("pkg/__init__.py", "# A package.\n"),
+        ("pkg/findings.py", "class DbWriter:\n    pass\n"),
+        ("pkg/consumer.py", "from . import findings\n\nwriter = findings.DbWriter()\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP304"]), (0, PASSED.to_owned(), String::new()));
+}
+
 #[test]
 fn module_attributes_report_unlisted_modules() {
     let root = project(&[
@@ -914,7 +943,7 @@ max-cognitive-complexity = 15
                  [\n\t\"foo\",\n\t\"baz\",\n\t\"qux\",\n\t\"quux\",\n]\nlinter.naming.catch_all_modules = \
                  [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\
                  \t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = \
-                 [\n\t\"app.settings\",\n]\n\
+                 [\n\t\"app.settings\",\n]\nlinter.imports.module_attribute_scope = [\n\t\"project\",\n]\n\
                  linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = \
                  20\nlinter.logic.max_tuple_elements = \
                  3\n\

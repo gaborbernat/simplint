@@ -66,6 +66,22 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- [`module-attribute-scope`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):
+  the modules the rule checks. `"project"` covers the modules of the run, `"stdlib"` the standard library,
+  `"third-party"` every other module, and an absolute module name covers that module and its submodules, so a project
+  can widen the rule one module at a time. The default is `["project"]`.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["project", "stdlib"]
+  ```
+
+  ```python report
+  import json
+
+  text = json.dumps([])
+  ```
+
 ## What it does
 
 ### Active on
@@ -105,6 +121,21 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **Attribute access on a module outside the run bound by `import module` or `import module as name`**, once
+  `module-attribute-scope` covers it. The run does not show which names such a module defines, so the report comes
+  without a fix.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["project", "requests"]
+  ```
+
+  ```python report
+  import requests
+
+  response = requests.get("https://example.com")
+  ```
+
 - **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a
   module that resolves to a file of this project is checked.
 
@@ -121,13 +152,62 @@ writer = DbWriter()
 
 ### Exceptions
 
-- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as
-  it is.
+- **Third-party and standard-library modules under the default scope**: only modules that resolve to a file of the run
+  count until `module-attribute-scope` lists more, so `json` stays as it is.
 
   ```python ok
   import json as jsonlib
 
   text = jsonlib.dumps([])
+  ```
+
+- **A module imported under its conventional alias**: Ruff's
+  [`flake8-import-conventions`](https://docs.astral.sh/ruff/settings/#lint_flake8-import-conventions_aliases) asks for
+  `import numpy as np`, `import pandas as pd` and the other aliases of its `aliases` and `extend-aliases`, and code
+  reads such a module through its alias on purpose, so `np.array` stays.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["third-party"]
+  ```
+
+  ```python ok
+  import numpy as np
+
+  values = np.array([1, 2])
+  ```
+
+- **A module Ruff bans importing names from**: a module its
+  [`banned-from`](https://docs.astral.sh/ruff/settings/#lint_flake8-import-conventions_banned-from) lists, which
+  [banned-import-from](https://docs.astral.sh/ruff/rules/banned-import-from/) (ICN003) reports `from module import name`
+  for, stays reached through the module.
+
+  ```toml config
+  [tool.ruff.lint.flake8-import-conventions]
+  banned-from = ["json"]
+
+  [tool.simplint.imports]
+  module-attribute-scope = ["stdlib"]
+  ```
+
+  ```python ok
+  import json
+
+  text = json.dumps([])
+  ```
+
+- **A dotted import of a module outside the run without an alias**: `import os.path` binds `os`, and its `path`
+  attribute is the imported submodule rather than a name to import.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["stdlib"]
+  ```
+
+  ```python ok
+  import os.path
+
+  joined = os.path.join("a", "b")
   ```
 
 - **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its
@@ -308,6 +388,25 @@ writer = DbWriter()
   ```python context file=tests/test_writer.py
   def test_writer(mocker):
       mocker.patch("pkg.findings.DbWriter")
+  ```
+
+  The same holds for a module outside the run that `module-attribute-scope` covers, such as
+  `mocker.patch("requests.get")`.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["requests"]
+  ```
+
+  ```python ok file=client.py
+  import requests
+
+  response = requests.get("https://example.com")
+  ```
+
+  ```python context file=tests/test_client.py
+  def test_get(mocker):
+      mocker.patch("requests.get")
   ```
 
 - **An import with a comment inside its statement**, such as a comment after an opening parenthesis: the rule reports

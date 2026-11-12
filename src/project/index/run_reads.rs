@@ -6,6 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
 use crate::project::computed_reads::ComputedReads;
+use crate::project::facts::Channel;
 use crate::project::{DocReferences, FileFacts};
 
 use super::files::FileId;
@@ -21,6 +22,9 @@ pub(in crate::project) struct RunWide {
     pub(super) fixture_requests: FxHashSet<String>,
     // Names the index cannot follow: those read from a module that resolves to no file of the run, and doctest uses.
     pub(super) opaque_names: FxHashSet<String>,
+    // The dotted names a string or store of the run reaches, such as `requests.get` in `mock.patch("requests.get")`,
+    // whether or not their module is a file of the run.
+    pub(super) referenced_paths: FxHashSet<String>,
     pub(super) computed_reads: ComputedReads,
     pub(super) writes: Writes,
 }
@@ -50,6 +54,11 @@ pub(super) fn run_names(
     // A store to the name in another project still makes it assigned here, as a store in this one does.
     let assigned_attributes: FxHashSet<String> =
         assigned_attributes.into_iter().chain(outer_assigned.iter().cloned()).collect();
+    let referenced_paths = indexed
+        .iter()
+        .flat_map(|(_, facts)| &facts.names[Channel::Reference])
+        .flat_map(|(module, names)| names.iter().map(move |name| format!("{module}.{name}")))
+        .collect();
     RunWide {
         reads,
         assigned_attributes,
@@ -57,6 +66,7 @@ pub(super) fn run_names(
         base_classes,
         fixture_requests,
         opaque_names,
+        referenced_paths,
         computed_reads,
         writes,
     }
@@ -132,6 +142,7 @@ impl RunWide {
             &self.base_classes,
             &self.fixture_requests,
             &self.opaque_names,
+            &self.referenced_paths,
             &self.writes.untyped,
             &self.writes.dict_stores,
             &self.writes.unslottable_bases,
@@ -167,6 +178,11 @@ impl RunWide {
             .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
             .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
+            .chain(
+                self.referenced_paths
+                    .symmetric_difference(&other.referenced_paths)
+                    .map(|path| path.rsplit_once('.').map_or(path.as_str(), |(_, name)| name)),
+            )
             .chain(classes)
             .chain(pickling)
             .chain(self.string_word_changes(other))

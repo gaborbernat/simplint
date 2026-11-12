@@ -64,6 +64,20 @@ stay reached through the module, so list it, by its absolute dotted name, in ``i
 ``--config "imports.module-attributes = ['pkg.findings']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.imports.module_attributes``.
 
+The rule checks the modules of the run by default. ``imports.module-attribute-scope`` widens it: ``"stdlib"`` adds the
+standard library, ``"third-party"`` every other module, and an absolute module name adds that module and its
+submodules, so a project can take on one dependency at a time. A module imported under the alias Ruff's
+``flake8-import-conventions`` asks for, as ``numpy`` under ``np``, stays read through its alias, and so does a module
+its ``banned-from`` lists. A module outside the run is reported without a fix, since the run does not show which names
+it defines.
+
+.. code-block:: toml
+
+    [tool.simplint.imports]
+    module-attribute-scope = ["project", "stdlib", "requests"]  # the default is ["project"]
+
+``--show-settings`` prints it as ``linter.imports.module_attribute_scope``.
+
 .. _logic:
 
 Logic

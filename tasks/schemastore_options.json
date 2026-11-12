@@ -56,6 +56,10 @@
   "imports": {
     "module-attributes": [
       "app.settings"
+    ],
+    "module-attribute-scope": [
+      "project",
+      "stdlib"
     ]
   },
   "logic": {
