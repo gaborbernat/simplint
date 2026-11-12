@@ -423,6 +423,23 @@ fn class_doc_from_on_a_directive_selects_the_copy(conf: &str, api: &str, stdout:
     assert_eq!(duplicate_report(&files), stdout);
 }
 
+// A module of a package is named by its dotted path from the package's root, so a directive that names it in full
+// selects its class.
+#[test]
+fn packaged_module_is_named_by_its_dotted_path() {
+    let api = ".. autoclass:: pkg.model.Reader\n    :class-doc-from: class\n";
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/model.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", INIT),
+        ("docs/api.rst", api),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP918"]).1;
+    assert!(stdout.contains(&format!("{}:10:10: SMP918", common::native("pkg/model.py"))), "{stdout}");
+}
+
 // A `conf.py` is a Sphinx configuration beside an index file, or when it names the extensions or master document.
 #[test_case("docs/index.rst", INDEX, INIT, KEPT_INIT ; "index_rst")]
 #[test_case("docs/index.md", INDEX, INIT, KEPT_INIT ; "index_md")]

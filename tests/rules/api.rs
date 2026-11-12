@@ -141,6 +141,65 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
+// A defaulted parameter that a test passes is exempt only when its default is a collaborator the body calls. Values,
+// call results, enum members, loop variables and calls of anything but a class stay reported.
+#[test_case(
+    "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n",
+    "send(\"a@b.c\", urgent=True)", 1 ; "flag_stays_reported"
+)]
+#[test_case(
+    "def send(address: str, hook=lambda value: None) -> None:\n    hook(address)\n",
+    "send(\"a@b.c\", hook=print)", 0 ; "lambda_called_in_body"
+)]
+#[test_case(
+    "for hook in (print,):\n    pass\n\n\ndef send(address: str, sink=hook) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "loop_variable_stays_reported"
+)]
+#[test_case(
+    "import app.enums\n\n\ndef send(address: str, urgent: app.enums.Mode = app.enums.Mode.FAST) -> None:\n    \
+        print(address, urgent)\n",
+    "send(\"a@b.c\", urgent=None)", 1 ; "nested_module_enum_member_stays_reported"
+)]
+#[test_case(
+    "class Mailer:\n    def send(self, address: str) -> None:\n        print(address)\n\n\ndef send(address: str, \
+        deliver=Mailer.send) -> None:\n    deliver(Mailer(), address)\n",
+    "send(\"a@b.c\", deliver=print)", 0 ; "method_of_a_class_the_module_defines_called_in_body"
+)]
+#[test_case(
+    "class Mailer:\n    def send(self, address: str) -> None:\n        print(address)\n\n\ndef send(address: str, \
+        deliver=Mailer.close) -> None:\n    deliver(address)\n",
+    "send(\"a@b.c\", deliver=print)", 1 ; "method_the_class_does_not_define_stays_reported"
+)]
+#[test_case(
+    "def build() -> object:\n    return print\n\n\ndef send(address: str, sink=build()) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "call_of_a_function_stays_reported"
+)]
+#[test_case(
+    "FACTORIES = [object]\n\n\ndef send(address: str, sink=FACTORIES[0]()) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "call_of_a_subscript_stays_reported"
+)]
+#[test_case(
+    "import app.sinks\n\n\ndef send(address: str, sink=app.sinks.Sink()) -> None:\n    sink.notify(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "instance_of_a_class_in_a_nested_module_stays_reported"
+)]
+fn test_only_parameter_exempts_only_collaborators(module: &str, test_call: &str, reported: usize) {
+    assert_eq!(test_only_parameter_reports(module, test_call), reported);
+}
+
+// Production calls `send` without the parameter and a test passes it, so the rule judges the parameter.
+fn test_only_parameter_reports(module: &str, test_call: &str) -> usize {
+    let service = "from app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n";
+    let test = format!("from app.mail import send\n\n\ndef test_send() -> None:\n    {test_call}\n");
+    let root = common::project(&[
+        ("app/enums.py", "from enum import Enum\n\n\nclass Mode(Enum):\n    FAST = 1\n    SLOW = 2\n"),
+        ("app/mail.py", module),
+        ("app/service.py", service),
+        ("tests/test_mail.py", test.as_str()),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP410"]);
+    common::reports(&stdout, "SMP410").len()
+}
+
 #[test_case("", "", 0 ; "paired_test_only_without_all")]
 #[test_case("__all__ = []\n", "", 0 ; "paired_test_only_with_all")]
 #[test_case("", "from pkg._render.intersphinx import Hint\n", 1 ; "production_import_without_all")]
