@@ -72,10 +72,11 @@ impl Field {
         format!(":{}:", self.words.join(" "))
     }
 
-    // The name a field documents, its last word without the `*` or `\*` of `*args`; `None` for a field of one word.
+    // The name a field documents, its last word without the `*` or `\*` of `*args` and the backticks of interpreted
+    // text, which Sphinx renders without them; `None` for a field of one word.
     pub(crate) fn subject(&self) -> Option<&str> {
         match self.words.as_slice() {
-            [_, .., last] => Some(last.trim_start_matches(['\\', '*'])),
+            [_, .., last] => Some(last.trim_start_matches(['\\', '*']).trim_matches('`')),
             _ => None,
         }
     }

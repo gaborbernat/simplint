@@ -1,5 +1,6 @@
 use ruff_text_size::{TextRange, TextSize};
 
+use super::blocks::{Shown, marks};
 use super::lines::Line;
 
 // A field of a field list, as `:param int count: How many.` with the lines that continue it.
@@ -20,10 +21,12 @@ pub(crate) struct ListedField<'a> {
 
 // The fields at indentation `base`, each with the deeper lines that follow it before any other text.
 pub(crate) fn field_list<'a>(lines: &[Line<'a>], base: usize) -> Vec<ListedField<'a>> {
+    let blocks = marks(lines);
     let mut fields: Vec<ListedField> = Vec::new();
     // The field whose body a deeper line continues, and its indentation.
     let mut open: Option<(usize, usize)> = None;
     let mut text_since_field = false;
+    let mut previous_field = None;
     for (index, line) in lines.iter().enumerate() {
         if line.text.is_empty() {
             continue;
@@ -31,6 +34,7 @@ pub(crate) fn field_list<'a>(lines: &[Line<'a>], base: usize) -> Vec<ListedField
         let level = line.indent;
         let trimmed = line.text.trim_start();
         if level == base
+            && blocks[index].shown == Shown::Prose
             && let Some(marker) = field_marker(trimmed)
         {
             fields.push(ListedField {
@@ -42,9 +46,10 @@ pub(crate) fn field_list<'a>(lines: &[Line<'a>], base: usize) -> Vec<ListedField
                 span: TextRange::at(line.start, TextSize::of(line.raw)),
                 description: trimmed[marker.len() + 2..].trim().to_owned(),
                 after_text: text_since_field && !fields.is_empty(),
-                joins_text: index > 0 && open.is_none() && !lines[index - 1].text.is_empty(),
+                joins_text: index > 0 && blocks[index - 1].paragraph && previous_field != Some(index - 1),
             });
             open = Some((fields.len() - 1, level));
+            previous_field = Some(index);
             text_since_field = false;
             continue;
         }
@@ -63,18 +68,34 @@ pub(crate) fn field_list<'a>(lines: &[Line<'a>], base: usize) -> Vec<ListedField
     fields
 }
 
-// The text between the colons of a field, as `param count` in `:param count: How many.` A role such as `:class:`Name``
-// starting a line of prose has a backtick after its colon, not a space.
+// The text between the colons of a field, as `param count` in `:param count: How many.` Like docutils, a colon that
+// follows more text stays in the name, an escaped one included, and the closing colon needs a space or the end after
+// it and no space before it.
 pub(crate) fn field_marker(line: &str) -> Option<&str> {
     let rest = line.strip_prefix(':')?;
-    let end = rest.find(':')?;
-    let marker = &rest[..end];
-    let after = &rest[end + 1..];
-    (!marker.is_empty()
-        && !marker.starts_with(char::is_whitespace)
-        && !marker.contains('`')
-        && (after.is_empty() || after.starts_with(char::is_whitespace)))
-    .then_some(marker)
+    if rest.starts_with(|char: char| char == ':' || char.is_ascii_whitespace()) {
+        return None;
+    }
+    let mut chars = rest.char_indices();
+    while let Some((index, char)) = chars.next() {
+        match char {
+            '\\' => {
+                chars.next()?;
+            }
+            ':' => {
+                let after = &rest[index + 1..];
+                if after.is_empty() || after.starts_with(|char: char| char.is_ascii_whitespace()) {
+                    return (!rest[..index].ends_with(|char: char| char.is_ascii_whitespace()))
+                        .then_some(&rest[..index]);
+                }
+                if after.starts_with('`') {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -91,6 +112,16 @@ mod tests {
     #[test_case(": a: text", None ; "space_before_marker")]
     #[test_case("::", None ; "empty_marker")]
     #[test_case("param a: text", None ; "no_leading_colon")]
+    #[test_case(":param a\\: b: desc", Some("param a\\: b") ; "escaped_colon_in_name")]
+    #[test_case(":Field\\: names\\: with\\: colons\\:: are possible.", Some("Field\\: names\\: with\\: colons\\:") ; "escaped_colons_then_marker")]
+    #[test_case(":\\: Not a field either.", None ; "escaped_colon_right_after_the_opening")]
+    #[test_case(":param a\\", None ; "backslash_at_the_end")]
+    #[test_case(":param x:y: desc", Some("param x:y") ; "colon_followed_by_text_in_name")]
+    #[test_case(":field::name:", Some("field::name") ; "colons_in_a_row")]
+    #[test_case(":param `x`: desc", Some("param `x`") ; "backticks_in_name")]
+    #[test_case(":param a : desc", None ; "space_before_closing_colon")]
+    #[test_case(":param a:\tdesc", Some("param a") ; "tab_after_closing_colon")]
+    #[test_case(":param a:\u{a0}desc", None ; "non_breaking_space_is_not_a_separator")]
     fn marker_of_a_field_line(line: &str, expected: Option<&str>) {
         assert_eq!(field_marker(line), expected);
     }
@@ -132,6 +163,54 @@ mod tests {
             scanned(":param a: x\n    b\n"),
             [(vec!["param", "a"], "param a", ":param a: x\n", "x".to_owned(), false, false)]
         );
+    }
+
+    #[test]
+    fn field_after_a_bullet_is_not_joined() {
+        assert_eq!(
+            scanned("- item\n:param a: desc"),
+            [(vec!["param", "a"], "param a", ":param a: desc", "desc".to_owned(), false, false)]
+        );
+    }
+
+    #[test]
+    fn field_after_a_literal_block_is_not_joined() {
+        assert_eq!(
+            scanned("Example::\n\n    code\n:param a: desc"),
+            [(vec!["param", "a"], "param a", ":param a: desc", "desc".to_owned(), false, false)]
+        );
+    }
+
+    #[test]
+    fn field_after_a_directive_line_is_not_joined() {
+        assert_eq!(
+            scanned(".. note:: Text\n:param a: desc"),
+            [(vec!["param", "a"], "param a", ":param a: desc", "desc".to_owned(), false, false)]
+        );
+    }
+
+    #[test]
+    fn only_the_first_field_of_a_joined_run_is_flagged() {
+        assert_eq!(
+            scanned("Text\n:param a: x\n:param b: y"),
+            [
+                (vec!["param", "a"], "param a", ":param a: x\n", "x".to_owned(), false, true),
+                (vec!["param", "b"], "param b", ":param b: y", "y".to_owned(), false, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn enumerated_item_without_indented_next_line_is_text_before_a_field() {
+        assert_eq!(
+            scanned("Summary.\n\n1. Item\n:param a: y"),
+            [(vec!["param", "a"], "param a", ":param a: y", "y".to_owned(), false, true)]
+        );
+    }
+
+    #[test]
+    fn quoted_literal_lines_are_not_fields() {
+        assert_eq!(scanned("Example::\n\n:param a: desc\n"), []);
     }
 
     #[test]

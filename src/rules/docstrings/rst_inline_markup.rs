@@ -3,7 +3,7 @@ use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rst::{bare_roles, classify_docstring, unclosed_literals};
+use crate::rst::{Cause, bare_roles, classify_docstring, literal_findings};
 
 pub fn rst_inline_markup(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
@@ -31,11 +31,26 @@ pub fn rst_inline_markup(checker: &Checker) {
                 "Put the target in backticks",
             );
         }
-        for opening in unclosed_literals(&lines) {
+        for finding in literal_findings(&lines) {
+            let message = match &finding.cause {
+                Cause::Unclosed => {
+                    "Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code"
+                        .to_owned()
+                }
+                Cause::Suffix { literal, suffix } => {
+                    format!("Text right after ``{literal}`` keeps the literal open; write ``{literal}``\\ {suffix}")
+                }
+                Cause::Fence => "Markdown code fence in a reST docstring; use `::` or `.. code-block::`".to_owned(),
+                Cause::Mismatch { opened, closed } => format!(
+                    "Mismatched backticks: opened with {} and closed with {}",
+                    "`".repeat(*opened),
+                    "`".repeat(*closed)
+                ),
+            };
             checker.report(
                 Rule::RstInlineMarkup,
-                TextRange::new(at(opening), at(opening + 2)),
-                "Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code",
+                TextRange::new(at(finding.at), at(finding.at + finding.len)),
+                message,
             );
         }
     }

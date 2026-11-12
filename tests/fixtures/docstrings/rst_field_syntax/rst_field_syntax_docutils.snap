@@ -1,0 +1,45 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+25:6 SMP910 Field `:param path:` follows text without a blank line, so it renders as part of that paragraph [unsafe fix: Add a blank line before the field list]
+--- fixed (1 applied, 0 remaining) ---
+def after_bullet(path: str) -> str:
+    """Read a file.
+
+    - Where it is.
+    :param path: Where it is.
+    """
+    return path
+
+
+def after_literal(path: str) -> str:
+    """Read a file.
+
+    Example::
+
+        call()
+    :param path: Where it is.
+    """
+    return path
+
+
+def after_text(path: str) -> str:
+    """Read a file.
+
+    Where it is.
+
+    :param path: Where it is.
+    :param other: Where it is, too.
+    """
+    return path
+
+
+def in_quoted_literal(path: str) -> str:
+    """Read a file.
+
+    Example::
+
+    :param path: Not a field here.
+    """
+    return path

@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:12 SMP911 Text right after ``list`` keeps the literal open; write ``list``\ s
+18:27 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+27:11 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+50:13 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+58:5 SMP911 Markdown code fence in a reST docstring; use `::` or `.. code-block::`
+62:10 SMP911 Mismatched backticks: opened with ` and closed with ``
+62:28 SMP911 Mismatched backticks: opened with `` and closed with `

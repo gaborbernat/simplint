@@ -39,7 +39,13 @@ pub(crate) fn docstring_lines(text: &str) -> Vec<Line<'_>> {
 }
 
 pub(crate) fn indent_width(line: &str) -> usize {
-    line.len() - line.trim_start().len()
+    columns(&line[..line.len() - line.trim_start().len()])
+}
+
+// The width of text in columns, with each tab moved to the next multiple of eight, as docutils and `inspect.cleandoc`
+// read indentation.
+pub(crate) fn columns(text: &str) -> usize {
+    text.chars().fold(0, |column, char| if char == '\t' { (column / 8 + 1) * 8 } else { column + 1 })
 }
 
 #[cfg(test)]
@@ -82,7 +88,9 @@ mod tests {
     #[test_case("", 0 ; "empty")]
     #[test_case("text", 0 ; "unindented")]
     #[test_case("    text", 4 ; "indented")]
-    #[test_case("\t text", 2 ; "tab_and_space")]
+    #[test_case("\t text", 9 ; "tab_and_space")]
+    #[test_case("\ttext", 8 ; "tab_is_eight_columns")]
+    #[test_case(" \ttext", 8 ; "tab_stops_after_a_space")]
     fn indent_width_counts_leading_whitespace(line: &str, expected: usize) {
         assert_eq!(indent_width(line), expected);
     }

@@ -10,5 +10,5 @@ pub(crate) use blocks::classify_docstring;
 pub(crate) use directives::{Directive, directives};
 pub(crate) use fields::{field_list, field_marker};
 pub(crate) use lines::{docstring_lines, indent_width};
-pub(crate) use literals::unclosed_literals;
+pub(crate) use literals::{Cause, literal_findings};
 pub(crate) use roles::{bare_roles, references};
