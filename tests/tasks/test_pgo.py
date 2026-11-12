@@ -77,6 +77,17 @@ def test_main_pins_the_latest_sdists(tmp_path: Path, mocker: MockerFixture, file
     ]
 
 
+def test_main_downloads_the_pinned_sdists(tmp_path: Path, mocker: MockerFixture, files_url: str) -> None:
+    manifest = tmp_path / "pgo_corpus.toml"
+    payload = b"sdist"
+    write_manifest(manifest, [Pinned(url=f"{files_url}/demo-1.0.tar.gz", sha256=hashlib.sha256(payload).hexdigest())])
+    mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(payload))
+
+    main(["download", str(tmp_path / "cache"), "--manifest", str(manifest)])
+
+    assert (tmp_path / "cache" / "demo-1.0.tar.gz").read_bytes() == payload
+
+
 def test_extract_keeps_only_python_files(tmp_path: Path, capsys: pytest.CaptureFixture[str], tar_gz: _TarGz) -> None:
     archive = tmp_path / "demo-1.0.tar.gz"
     archive.write_bytes(

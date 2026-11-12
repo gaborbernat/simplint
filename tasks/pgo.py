@@ -71,14 +71,20 @@ def main(arguments: list[str]) -> None:
         "work", type=Path, help="gets corpus/, profiles/ and simplint.profdata; the first two must be new"
     )
     record.add_argument("--cache", type=Path, help="keeps verified downloads between runs, <work>/downloads by default")
+    fetch = commands.add_parser("download", help="download the sdists into the cache the release builds restore")
+    fetch.add_argument("into", type=Path, help="the cache directory to download into")
     guard = commands.add_parser("verify", help="fail if the optimized build found no profile data for hot code")
     guard.add_argument("log", type=Path, help="the output of the build with -Cllvm-args=-pgo-warn-missing-function")
     guard.add_argument("profile", type=Path, help="the merged profile the build used")
-    for command in (pin, record):
+    for command in (pin, record, fetch):
         command.add_argument("--manifest", type=Path, default=_MANIFEST, help="the sdist manifest")
     options = parser.parse_args(arguments, namespace=_Options())
     if options.command == "train":
         _train(options.binary, options.work, options.cache or options.work / "downloads", options.manifest)
+        return
+    if options.command == "download":
+        for sdist in read_manifest(options.manifest):
+            download(sdist, options.into)
         return
     if options.command == "verify":
         _verify(options.log, options.profile)
@@ -92,6 +98,7 @@ class _Options(argparse.Namespace):
     binary: Path
     work: Path
     cache: Path | None
+    into: Path
     log: Path
 
 

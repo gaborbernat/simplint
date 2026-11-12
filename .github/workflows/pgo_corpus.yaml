@@ -3,10 +3,15 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 1 * *"
+  push:
+    branches: ["main"]
+    paths:
+      - "tasks/pgo_corpus.toml"
 permissions: {}
 jobs:
   bump:
     name: 📦 Bump the PGO sdists
+    if: github.event_name != 'push'
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -58,3 +63,43 @@ jobs:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: read
+  # A tag reads only its own caches and the default branch's, so the release builds find the sdists only if main saved
+  # them; each runner OS keeps its own copy, as the release's PGO legs restore by OS.
+  cache:
+    name: 💾 Cache the PGO sdists @ ${{ matrix.os }}
+    if: github.event_name != 'schedule'
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-26.04, windows-2025, macos-26]
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: 📦 Restore PGO corpus
+        id: corpus
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: pgo-corpus
+          key: pgo-corpus-${{ runner.os }}-${{ hashFiles('tasks/pgo_corpus.toml') }}
+          lookup-only: true
+      - name: 🐍 Install uv
+        if: steps.corpus.outputs.cache-hit != 'true'
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📥 Download the sdists
+        if: steps.corpus.outputs.cache-hit != 'true'
+        run: uv run --no-project --python 3.15 python -m tasks.pgo download pgo-corpus
+      - name: 💾 Save PGO corpus
+        if: steps.corpus.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: pgo-corpus
+          key: ${{ steps.corpus.outputs.cache-primary-key }}
