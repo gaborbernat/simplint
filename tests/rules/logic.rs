@@ -317,6 +317,11 @@ use crate::common::{self, check, read};
 #[test_case("unformatted-exception-args", "unformatted_exception_args.py", None ; "unformatted_exception_args")]
 #[test_case("shadowed-except-handler", "shadowed_except_handler.py", None ; "shadowed_except_handler")]
 #[test_case("dropped-exception-note", "dropped_exception_note.py", None ; "dropped_exception_note")]
+#[test_case("expression-complexity", "expression_complexity.py", None ; "expression_complexity")]
+#[test_case("comprehension-complexity", "comprehension_complexity.py", None ; "comprehension_complexity")]
+#[test_case(
+    "comprehension-complexity", "comprehension_complexity.py", Some("py315") ; "comprehension_complexity_python315"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

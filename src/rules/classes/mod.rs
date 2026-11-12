@@ -8,12 +8,14 @@ pub(crate) mod exception_init_args;
 mod indistinct_error_class;
 pub(crate) mod rejected_operand;
 pub(crate) mod unbound_super;
+mod too_many_attributes;
 
 pub(crate) use dataclass_frozen::dataclass_frozen;
 pub(crate) use dataclass_hazards::expected_to_raise_classes;
 pub(crate) use dataclass_kw_only::dataclass_kw_only;
 pub(crate) use dataclass_slots::dataclass_slots;
 pub(crate) use indistinct_error_class::indistinct_error_class;
+pub(crate) use too_many_attributes::too_many_attributes;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::visitor::Visitor;

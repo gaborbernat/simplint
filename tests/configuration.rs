@@ -948,7 +948,9 @@ max-cognitive-complexity = 15
                  20\nlinter.logic.max_tuple_elements = \
                  3\n\
                  linter.logic.max_cognitive_complexity = \
-                 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = \
+                 15\nlinter.logic.min_duplicate_statements = 6\n\
+                 linter.logic.max_expression_complexity = 8\n\
+                 linter.classes.max_instance_attributes = 12\nlinter.project_kind = \
                  library\n\
                  linter.api_packages = [\n\t\"app\",\n]\n\
                  linter.docstring_style = rst\n"

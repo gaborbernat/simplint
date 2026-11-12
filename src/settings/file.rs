@@ -64,6 +64,7 @@ pub struct FromRuff<'a> {
     pub(crate) max_locals: usize,
     pub(crate) max_nested_blocks: usize,
     pub(crate) max_statements_in_try: usize,
+    pub(crate) max_bool_expr: usize,
     // The modules and members Ruff's TID251 bans, by qualified name.
     pub(crate) banned_api: &'a FxHashMap<String, ApiBan>,
     // The builtin names Ruff's flake8-builtins rules, as its A004, let a binding shadow.
@@ -111,6 +112,7 @@ impl<'a> FromRuff<'a> {
             max_locals: settings.linter.pylint.max_locals,
             max_nested_blocks: settings.linter.pylint.max_nested_blocks,
             max_statements_in_try: settings.linter.pylint.max_statements_in_try,
+            max_bool_expr: settings.linter.pylint.max_bool_expr,
             banned_api: &settings.linter.flake8_tidy_imports.banned_api,
             builtins_ignorelist: &settings.linter.flake8_builtins.ignorelist,
             required_imports: &settings.linter.isort.required_imports,

@@ -1,6 +1,6 @@
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
-use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
 
 use std::sync::LazyLock;
@@ -350,10 +350,13 @@ rules! {
     WallClockDuration => ("SMP551", "wall-clock-duration", "Durations measured with `time.time()`", Sometimes, logic::wall_clock_duration { module }),
     ShadowedExceptHandler => ("SMP552", "shadowed-except-handler", "`except` clauses an earlier, broader clause already catches", Sometimes, logic::shadowed_except_handler { statement }),
     DroppedExceptionNote => ("SMP553", "dropped-exception-note", "Exceptions given a note and then dropped", None, logic::dropped_exception_note { statement, except_handler }),
+    ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
+    ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than one `for` or a compound filter", None, logic::comprehension_complexity { expression }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
+    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file]),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
@@ -363,6 +366,7 @@ rules! {
     BrokenDecoratorStack => ("SMP707", "broken-decorator-stack", "Descriptor decorators stacked in an order that does not work", None, classes::broken_decorator_stack { statement }),
     AsyncSyncDunder => ("SMP708", "async-sync-dunder", "`async def` on special methods Python calls without awaiting", None, classes::async_sync_dunder { statement }),
     RejectedOperand => ("SMP709", "rejected-operand", "Operator methods that reject an unknown operand instead of returning `NotImplemented`", Sometimes, classes::rejected_operand { statement }),
+    TooManyAttributes => ("SMP711", "too-many-attributes", "Classes whose instances hold more attributes than the limit", None, classes::too_many_attributes { module }),
     TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),

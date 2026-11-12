@@ -140,6 +140,7 @@ impl Configuration {
                 naming: options.naming.unwrap_or_default(),
                 imports: options.imports.unwrap_or_default(),
                 logic: options.logic.unwrap_or_default(),
+                classes: options.classes.unwrap_or_default(),
                 project_kind: options.project_kind,
                 api_packages: options.api_packages,
                 docstring_style: options.docstring_style,
@@ -193,6 +194,7 @@ pub(super) struct ProjectOptions {
     pub(super) naming: NamingOptions,
     pub(super) imports: ImportsOptions,
     pub(super) logic: LogicOptions,
+    pub(super) classes: ClassesOptions,
     pub(super) project_kind: Option<ProjectKindOption>,
     pub(super) api_packages: Option<Vec<String>>,
     pub(super) docstring_style: Option<DocstringStyle>,
@@ -205,6 +207,7 @@ impl ProjectOptions {
             naming: self.naming.combine(other.naming),
             imports: self.imports.combine(other.imports),
             logic: self.logic.combine(other.logic),
+            classes: self.classes.combine(other.classes),
             project_kind: self.project_kind.or(other.project_kind),
             api_packages: self.api_packages.or(other.api_packages),
             docstring_style: self.docstring_style.or(other.docstring_style),
@@ -493,6 +496,9 @@ pub struct SimplintOptions {
     /// Options for the logic rules.
     #[option_group]
     pub logic: Option<LogicOptions>,
+    /// Options for the class rules.
+    #[option_group]
+    pub classes: Option<ClassesOptions>,
 }
 
 /// The `[tool.simplint.naming]` table.
@@ -644,6 +650,17 @@ pub struct LogicOptions {
         "#
     )]
     pub(crate) min_duplicate_statements: Option<usize>,
+    /// The highest complexity an expression may have before `expression-complexity` (`SMP561`) reports it. Each
+    /// operator, call, subscript, conditional expression, lambda and comprehension adds one to the operands it holds,
+    /// and the score is the deepest such nesting, so a long flat chain of `and` or `+` counts once.
+    #[option(
+        default = "8",
+        value_type = "int",
+        example = r#"
+            max-expression-complexity = 10
+        "#
+    )]
+    pub(crate) max_expression_complexity: Option<usize>,
 }
 
 impl LogicOptions {
@@ -654,6 +671,29 @@ impl LogicOptions {
             max_tuple_elements: self.max_tuple_elements.or(other.max_tuple_elements),
             max_cognitive_complexity: self.max_cognitive_complexity.or(other.max_cognitive_complexity),
             min_duplicate_statements: self.min_duplicate_statements.or(other.min_duplicate_statements),
+            max_expression_complexity: self.max_expression_complexity.or(other.max_expression_complexity),
         }
+    }
+}
+
+/// The `[tool.simplint.classes]` table.
+#[derive(Deserialize, Default, Clone, Copy, JsonSchema, OptionsMetadata)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ClassesOptions {
+    /// The most attributes a class's instances may hold before `too-many-attributes` (`SMP711`) reports it: the
+    /// attributes its methods set on the instance, and a dataclass's fields.
+    #[option(
+        default = "12",
+        value_type = "int",
+        example = r#"
+            max-instance-attributes = 7
+        "#
+    )]
+    pub(crate) max_instance_attributes: Option<usize>,
+}
+
+impl ClassesOptions {
+    fn combine(self, other: Self) -> Self {
+        Self { max_instance_attributes: self.max_instance_attributes.or(other.max_instance_attributes) }
     }
 }

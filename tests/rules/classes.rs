@@ -44,6 +44,7 @@ fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
 #[test_case("broken-decorator-stack", "broken_decorator_stack.py", Some("py310") ; "broken_decorator_stack_py310")]
 #[test_case("async-sync-dunder", "async_sync_dunder.py", None ; "async_sync_dunder")]
 #[test_case("rejected-operand", "rejected_operand.py", None ; "rejected_operand")]
+#[test_case("too-many-attributes", "too_many_attributes.py", None ; "too_many_attributes")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
