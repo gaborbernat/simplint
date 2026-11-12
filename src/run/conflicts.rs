@@ -128,7 +128,7 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
             let rules = rules.into_iter().map(|position| clash.ruff[position]).collect_vec();
             let ruff_codes = rules
                 .iter()
-                .map(|rule| rule.noqa_code().map(|code| code.to_string()).unwrap_or_default())
+                .map(|rule| rule.noqa_code().expect("every Ruff rule in a clash has a code").to_string())
                 .collect_vec();
             let names = Names {
                 by_name,
@@ -165,7 +165,7 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
 
 // The selector a rule is turned off by: its name or its code.
 fn pick(by_name: bool, name: &str, code: &str) -> String {
-    if by_name || code.is_empty() { name.to_owned() } else { code.to_owned() }
+    if by_name { name.to_owned() } else { code.to_owned() }
 }
 
 // A clash found for some files: which one, where each side's settings come from, and where its Ruff rules that
@@ -364,13 +364,7 @@ const CLASHES: [Clash; 7] = [
 
 // How a rule is shown in the message: by its name with its code, or by its code with its name.
 fn shown(by_name: bool, name: &str, code: &str) -> String {
-    if code.is_empty() {
-        name.to_owned()
-    } else if by_name {
-        format!("{name} ({code})")
-    } else {
-        format!("{code} ({name})")
-    }
+    if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") }
 }
 
 // The way out of a clash that a Ruff rule's ignore and simplint's own ignore both offer.
