@@ -157,13 +157,19 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 
 #[test_case("from ._api import API\n", 0 ; "direct_private_sibling")]
 #[test_case("from . import _api\n", 1 ; "direct_private_module_object")]
-#[test_case("from .public import _helper\n", 0 ; "direct_private_symbol")]
+#[test_case("from .public import _helper\n", 1 ; "direct_private_symbol")]
 #[test_case("from .public.deep import API\n", 0 ; "deep_public_path")]
 #[test_case("from package import API\n", 0 ; "public_import")]
 #[test_case("from package import __version__\n", 0 ; "dunder_import")]
 #[test_case("from os import _exit\n", 0 ; "public_underscore_name")]
-#[test_case("from ._api import _helper\nVALUE = _helper\n", 0 ; "direct_private_symbol_from_private_module")]
-#[test_case("from ._api import _helper as helper\nVALUE = helper\n", 0 ; "aliased_direct_private_symbol")]
+#[test_case("from ._api import helper\nVALUE = helper\n", 0 ; "public_name_from_private_module")]
+#[test_case("from ._api import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_private_child")]
+#[test_case("from .public import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_public_sibling")]
+#[test_case("from package import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_project_package")]
+#[test_case("from external import helper as _helper\nVALUE = _helper\n", 0 ; "third_party_private_binding")]
+#[test_case("from ._api import _helper\nVALUE = _helper\n", 1 ; "direct_private_symbol_from_private_module")]
+#[test_case("from ._api import _helper as helper\nVALUE = helper\n", 1 ; "aliased_direct_private_symbol")]
+#[test_case("from ._api import API, _helper\nVALUE = _helper\n", 1 ; "mixed_public_private_symbols")]
 #[test_case("from ._api._helpers import API\n", 1 ; "two_private_modules")]
 #[test_case("from ._api._helpers import _helper\n", 1 ; "deep_private_symbol")]
 #[test_case("from ._api.helpers import API\n", 1 ; "private_module_below_sibling")]
@@ -178,13 +184,35 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("import package._api\n", 1 ; "absolute_private_import")]
 #[test_case("import package._api as api\nprint(api.make())\n", 1 ; "aliased_private_module")]
 #[test_case("def load():\n    from .._api import API\n    return API\n", 1 ; "function_import")]
-#[test_case("def load():\n    from ._api import _helper\n    return _helper\n", 0 ; "function_direct_private_symbol")]
+#[test_case("def load():\n    from ._api import _helper\n    return _helper\n", 1 ; "function_direct_private_symbol")]
 fn private_import_path(source: &str, expected: usize) {
     let root = common::project(&[("package/__init__.py", ""), ("package/module.py", source)]);
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
-#[test_case("from ._api import _helper\nVALUE = _helper\n", 0 ; "nested_direct_child")]
+#[test_case("import package.public as _helper\nVALUE = _helper\n", 0 ; "private_binding_of_project_module")]
+#[test_case("import package as _helper\nVALUE = _helper\n", 0 ; "private_binding_of_project_package")]
+#[test_case("import external as _helper\nVALUE = _helper\n", 0 ; "third_party_private_module_binding")]
+#[test_case("import package.public as public\nVALUE = public\n", 0 ; "public_binding_of_project_module")]
+fn private_import_path_module_alias(source: &str, expected: usize) {
+    let root =
+        common::project(&[("package/__init__.py", ""), ("package/public.py", ""), ("package/module.py", source)]);
+    common::assert_report_count(root.path(), "SMP310", expected);
+}
+
+#[test_case("package/public.pyi", "package/module.py", "package/__init__.py" ; "stub_module")]
+#[test_case("package/public/__init__.py", "package/module.py", "package/__init__.py" ; "package")]
+#[test_case("package/public/__init__.pyi", "package/module.py", "package/__init__.py" ; "stub_package")]
+#[test_case("src/package/public.py", "src/package/module.py", "src/package/__init__.py" ; "src_module")]
+#[test_case("src/package/public.pyi", "src/package/module.py", "src/package/__init__.py" ; "src_stub_module")]
+#[test_case("src/package/public/__init__.py", "src/package/module.py", "src/package/__init__.py" ; "src_package")]
+#[test_case("src/package/public/__init__.pyi", "src/package/module.py", "src/package/__init__.py" ; "src_stub_package")]
+fn private_import_path_project_module_alias(target: &str, consumer: &str, package: &str) {
+    let root = common::project(&[(package, ""), (target, ""), (consumer, "import package.public as _helper\n")]);
+    common::assert_report_count(root.path(), "SMP310", 0);
+}
+
+#[test_case("from ._api import _helper\nVALUE = _helper\n", 1 ; "nested_direct_child")]
 #[test_case("from .._api import _helper\n", 1 ; "nested_parent_relative")]
 #[test_case("from ._api._helpers import _helper\n", 1 ; "nested_deep_private_path")]
 #[test_case("from package.sub._api import _helper\n", 1 ; "nested_absolute_private_path")]
@@ -205,7 +233,7 @@ fn private_import_path_nested(source: &str, expected: usize) {
 #[test_case("a/b/test_x.py", "from a.b._x import Name\nVALUE: Name\n", 0 ; "paired_colocated")]
 #[test_case("a/b/test_x.py", "from ._x import Name\nVALUE: Name\n", 0 ; "paired_colocated_relative")]
 #[test_case("tests/a/b/test_x.py", "from ._x import Name\nVALUE: Name\n", 1 ; "mirrored_relative")]
-#[test_case("tests/a/b/test_x.py", "from a.b._x import _Name\n", 0 ; "paired_private_name")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x import _Name\nVALUE: _Name\n", 1 ; "paired_private_name")]
 #[test_case("tests/a/b/test_x.py", "from a.b._other import Name\nVALUE: Name\n", 1 ; "other_private_module")]
 #[test_case("tests/a/b/test_x.py", "from ._other import Name\nVALUE: Name\n", 1 ; "other_relative_module")]
 #[test_case("tests/a/b/test_x.py", "from a.c._x import Name\nVALUE: Name\n", 1 ; "other_package")]

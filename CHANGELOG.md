@@ -1,25 +1,5 @@
 # Changelog
 
-## 0.11.0 (2026-11-12)
-
-<a name="release-0-11-0"></a>
-
-<a name="release-0-11-0-added"></a>
-
-### Added
-
-- Allow direct relative imports of private helper names from sibling modules, so packages can share internal code
-  without `private-import-path` suppressions ([#128](https://github.com/gaborbernat/simplint/pull/128)) by
-  [@gaborbernat](https://github.com/gaborbernat).
-
-<a name="release-0-11-0-documentation"></a>
-
-### Documentation
-
-- The changelog links each rule page and project file at the release it describes, so the links in GitHub release notes
-  and on PyPI open the file instead of a 404 ([#127](https://github.com/gaborbernat/simplint/pull/127)) by
-  [@gaborbernat](https://github.com/gaborbernat).
-
 ## 0.10.3 (2026-11-11)
 
 <a name="release-0-10-3"></a>
