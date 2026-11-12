@@ -10,8 +10,8 @@ than a longer straight-line function, because the reader holds each condition in
 count where one is far harder to follow, and this score adds more for each level of nesting. A
 [meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found that the score correlates with comprehension
 time and subjective ratings. Moving a deep branch into a named helper lowers the score of the function it leaves.
-[Lavazza et al. (2023)](https://researchr.org/publication/LavazzaALM23) found it predicts understandability no better
-than older measures. The rule keeps the score for its nesting term, which McCabe's count ignores.
+[Lavazza et al. (2023)](https://doi.org/10.1016/j.jss.2022.111561) found it predicts understandability no better than
+older measures. The rule keeps the score for its nesting term, which McCabe's count ignores.
 
 ## Example
 
