@@ -181,6 +181,9 @@ def _train(binary: Path, work: Path, cache: Path, manifest: Path) -> None:
     print(f"profile written to {merged}, {merged.stat().st_size / 2**20:.1f} MiB", flush=True)
 
 
+_COMPILING_SIMPLINT_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\s*Compiling simplint ", re.MULTILINE)
+
+
 def _verify(log: Path, profile: Path) -> None:
     # Check that the profile matched the optimized build.
     #
@@ -195,7 +198,7 @@ def _verify(log: Path, profile: Path) -> None:
     # of
     #     a crate in GUARDED that the profile holds under no matching crate disambiguator
     text = _ANSI.sub("", log.read_text(encoding="utf-8", errors="replace"))
-    if not re.search(r"^\s*Compiling simplint ", text, re.MULTILINE):
+    if not _COMPILING_SIMPLINT_PATTERN.search(text):
         msg = f"::error::{log} shows no build of simplint, so it cannot tell whether the PGO profile matched"
         raise SystemExit(msg)
     warnings = [(kind, _crate_root(symbol)) for kind, symbol in _PGO_WARNING.findall(text)]

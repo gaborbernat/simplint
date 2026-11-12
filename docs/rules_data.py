@@ -185,12 +185,15 @@ def _group(line: str) -> tuple[str, str]:
     return match["name"], match["short"]
 
 
+_READS_PATTERN: Final[re.Pattern[str]] = re.compile(r"reads \[([^\]]*)\]")
+
+
 def _rule(root: Path, line: str, groups: list[tuple[str, str]]) -> RuleEntry:
     row = _match(_ROW, line)
     family, check = row["family"], row["check"]
     explanation = (root / "src" / "rules" / family / f"{check}.md").read_bytes().decode("utf-8")
     group, short_group = groups[int(row["code"][3])]
-    reads = re.search(r"reads \[([^\]]*)\]", row["attributes"])
+    reads = _READS_PATTERN.search(row["attributes"])
     return {
         "code": row["code"],
         "name": row["name"],

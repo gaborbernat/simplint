@@ -86,6 +86,9 @@ def main(arguments: list[str]) -> int:
     return int(bool(failures))
 
 
+_BLOCK_FLOOR_PATTERN: Final[re.Pattern[str]] = re.compile(r">=\s*3\.(\d+)")
+
+
 def block_floor(config: dict[str, str] | None) -> int:
     # Read the oldest minor release a group supports from its config: the target version, else the lower bound.
     #
@@ -96,7 +99,7 @@ def block_floor(config: dict[str, str] | None) -> int:
     settings = tomllib.loads(config["source"])
     if target := settings.get("tool", {}).get("ruff", {}).get("target-version"):
         return int(target.removeprefix("py3"))
-    if match := re.match(r">=\s*3\.(\d+)", settings.get("project", {}).get("requires-python", "")):
+    if match := _BLOCK_FLOOR_PATTERN.match(settings.get("project", {}).get("requires-python", "")):
         return int(match.group(1))
     return _DEFAULT_FLOOR
 

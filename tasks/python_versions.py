@@ -94,26 +94,30 @@ def fetch(url: str) -> list[dict[str, str]]:
     return decoded
 
 
+_CLASSIFIER_RUN_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"""(?:\ \ "Programming\ Language\ ::\ Python\ ::\ \d+\.\d+",\n)+""",  # The per-release classifier run.
+    re.VERBOSE,
+)
+_REQUIRES_PYTHON_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r'''requires-python\ =\ ">=\d+\.\d+"''',  # The package's own floor.
+    re.VERBOSE,
+)
+
+
 def written_places(newest: int, oldest: int) -> list[Place]:
     # Describe each place in the project that names the supported Python releases.
     #
     # :param newest: the newest supported minor release
     # :param oldest: the oldest supported minor release
     # :returns: the places with their expected spelling
-    classifier_run = re.compile(
-        r"""(?:\ \ "Programming\ Language\ ::\ Python\ ::\ \d+\.\d+",\n)+""",  # The per-release classifier run.
-        re.VERBOSE,
-    )
     run = "".join(f'  "Programming Language :: Python :: {_MAJOR}.{minor}",\n' for minor in range(oldest, newest + 1))
-    requires_python = re.compile(
-        r'''requires-python\ =\ ">=\d+\.\d+"''',  # The package's own floor.
-        re.VERBOSE,
-    )
     return [
         Place(
-            path=_ROOT / "pyproject.toml", pattern=requires_python, spelling=f'requires-python = ">={_MAJOR}.{oldest}"'
+            path=_ROOT / "pyproject.toml",
+            pattern=_REQUIRES_PYTHON_PATTERN,
+            spelling=f'requires-python = ">={_MAJOR}.{oldest}"',
         ),
-        Place(path=_ROOT / "pyproject.toml", pattern=classifier_run, spelling=run),
+        Place(path=_ROOT / "pyproject.toml", pattern=_CLASSIFIER_RUN_PATTERN, spelling=run),
     ]
 
 

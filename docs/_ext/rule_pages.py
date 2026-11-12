@@ -83,6 +83,9 @@ def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> 
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
 
+_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
+
+
 def _rule_row(rule: RuleEntry) -> str:
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
     fix = (
@@ -92,7 +95,7 @@ def _rule_row(rule: RuleEntry) -> str:
         f"{badge_text.split(' ', 1)[0]}</span>"
     )
     searchable = html.escape(f"{rule['code']} {rule['name']} {rule['summary']}".lower(), quote=True)
-    summary = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(rule["summary"]))
+    summary = _CODE_SPAN_PATTERN.sub(r"<code>\1</code>", html.escape(rule["summary"]))
     return (
         f'<tr class="rule-row" id="{rule["name"]}" data-group="{rule["family"]}" data-fix="{rule["fix"]}"'
         f' data-scope="{"cross-file" if rule["cross_file"] else "single-file"}"'
@@ -111,6 +114,15 @@ def _group_page(group: str, rules: list[RuleEntry]) -> str:
         f"   {rule['code']} · {rule['name']} <../rules/{rule['code']}>" for rule in rules if rule["group"] == group
     )
     return f"{group}\n{'=' * len(group)}\n\n.. toctree::\n   :titlesonly:\n\n{entries}\n"
+
+
+_RULE_CODE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(r"\]\((SMP\d+)\.html\)")
+
+_ABSOLUTE_PAGE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#"
+)
+
+_SIMPLINT_DOCS_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/")
 
 
 def _rule_page(rule: RuleEntry) -> str:
@@ -132,11 +144,11 @@ def _rule_page(rule: RuleEntry) -> str:
         f"{cross_file}"
         '<a class="badge" href="../rules.html">All rules</a></div>'
     )
-    explanation = re.sub(r"\]\((SMP\d+)\.html\)", r"](\1.md)", rule["explanation"])
+    explanation = _RULE_CODE_LINK_PATTERN.sub(r"](\1.md)", rule["explanation"])
     # links to the settings and how-to pages stay absolute in the binary, for `simplint rule`; built, they resolve to
     # the labels on those pages, so each version of these docs links its own
-    explanation = re.sub(r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#", "](#", explanation)
-    if re.search(r"https?://simplint\.readthedocs\.io/", explanation):
+    explanation = _ABSOLUTE_PAGE_LINK_PATTERN.sub("](#", explanation)
+    if _SIMPLINT_DOCS_URL_PATTERN.search(explanation):
         msg = f"{rule['code']} links to a simplint.readthedocs.io page that has no label to link to"
         raise ValueError(msg)
     lines = explanation.split("\n")

@@ -425,6 +425,9 @@ class _Options(argparse.Namespace):
     names: list[str]
 
 
+_CONFLICTING_PATTERN: Final[re.Pattern[str]] = re.compile(r"\(`([A-Z]+[0-9]+)`\)")
+
+
 def check(package: Package, archive: Path, simplint: str, target: Interpreter | None) -> list[str]:
     # Run the documented pipeline on a project and check that one round of it reaches a fixed point.
     #
@@ -454,7 +457,7 @@ def check(package: Package, archive: Path, simplint: str, target: Interpreter | 
         # Rules Ruff warns conflict with its formatter for this project cannot hold after `ruff format`, with or without
         # simplint, as Ruff documents; their findings say nothing about simplint.
         formatting = work.run(["ruff", "format", "--check", "."], work.original)
-        conflicting = re.findall(r"\(`([A-Z]+[0-9]+)`\)", formatting.stderr)
+        conflicting = _CONFLICTING_PATTERN.findall(formatting.stderr)
         unaffected = ["--ignore", ",".join(conflicting)] if conflicting else []
         # Formatting splits a line and can leave its pragma comment after the closing bracket, where it no longer
         # covers the line it was written for; that happens to the project with or without simplint, as Ruff matches
@@ -504,9 +507,15 @@ class _Workspace:
         return subprocess.run(command, cwd=cwd, env=self.environment, capture_output=True, text=True, check=False)
 
 
+_IO_ERRORS_PATTERN: Final[re.Pattern[str]] = re.compile(r":\d+:\d+: (E902 |io-error: )")
+
+
 # Ruff names the rule `E902`, or `io-error` when preview shows rules by name.
 def _io_errors(completed: subprocess.CompletedProcess[str]) -> list[str]:
-    return [line for line in completed.stdout.splitlines() if re.search(r":\d+:\d+: (E902 |io-error: )", line)]
+    return [line for line in completed.stdout.splitlines() if _IO_ERRORS_PATTERN.search(line)]
+
+
+_REFUSED_RULE_PATTERN: Final[re.Pattern[str]] = re.compile(r"ignore (\S+) in `\[tool\.simplint\]`")
 
 
 # simplint refuses to run when the project's Ruff settings work against one of its rules; a user of the project would
@@ -515,7 +524,7 @@ def _checked(
     simplint_check: list[str], report: list[str], work: _Workspace
 ) -> tuple[list[str], subprocess.CompletedProcess[str]]:
     checked = work.run([*simplint_check, *report], work.fixed)
-    if not (refused := re.findall(r"ignore (\S+) in `\[tool\.simplint\]`", checked.stderr)):
+    if not (refused := _REFUSED_RULE_PATTERN.findall(checked.stderr)):
         return simplint_check, checked
     retried = [*simplint_check, "--ignore", ",".join(refused)]
     return retried, work.run([*retried, *report], work.fixed)
@@ -531,17 +540,19 @@ def _failures(completed: subprocess.CompletedProcess[str], unreadable: set[str])
     return failures
 
 
-def _stranded_pragmas(root: Path) -> dict[str, int]:
-    pattern = re.compile(
-        r"""
+_STRANDED_PRAGMAS_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"""
         ^\s*[)\]}]+[,:]?  # closing syntax at the start of a line
         \s*\#\s*          # comment marker
         (?:noqa|type:|pyright:|ruff:|simplint:)  # suppression directive
         """,
-        re.MULTILINE | re.VERBOSE,
-    )
+    re.MULTILINE | re.VERBOSE,
+)
+
+
+def _stranded_pragmas(root: Path) -> dict[str, int]:
     return {
-        path.relative_to(root).as_posix(): len(pattern.findall(path.read_text(errors="replace")))
+        path.relative_to(root).as_posix(): len(_STRANDED_PRAGMAS_PATTERN.findall(path.read_text(errors="replace")))
         for path in root.rglob("*.py")
     }
 
@@ -627,8 +638,11 @@ def _second_round(simplint_check: list[str], work: _Workspace, unaffected: list[
     return problems
 
 
+_DIFF_FILE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^--- (\S+)$", re.MULTILINE)
+
+
 def _changed(diff: str) -> set[str]:
-    return set(re.findall(r"^--- (\S+)$", diff, re.MULTILINE))
+    return set(_DIFF_FILE_PATTERN.findall(diff))
 
 
 if __name__ == "__main__":

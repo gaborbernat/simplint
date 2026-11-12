@@ -6,6 +6,7 @@ import argparse
 import re
 import subprocess
 from dataclasses import dataclass
+from typing import Final
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -15,13 +16,16 @@ class Interpreter:
     path: str
 
 
+_MINOR_VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(r"3\.(\d+)")
+
+
 def minor_version(text: str) -> int:
     # Read a CPython version such as 3.12 as its minor number.
     #
     # :param text: the version, of the form 3.X
     # :returns: the minor number
     # :raises argparse.ArgumentTypeError: if the text is not a 3.X version
-    if match := re.fullmatch(r"3\.(\d+)", text):
+    if match := _MINOR_VERSION_PATTERN.fullmatch(text):
         return int(match.group(1))
     msg = f"expected 3.X, got {text!r}"
     raise argparse.ArgumentTypeError(msg)
