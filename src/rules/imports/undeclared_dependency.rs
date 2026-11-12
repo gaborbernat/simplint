@@ -50,7 +50,7 @@ pub fn undeclared_dependency(checker: &Checker) {
 
 // A distribution's import name is its normalized name in most cases, so a namespace package such as `google.auth`
 // matches `google-auth`, and one whose name adds a prefix or suffix, such as `grpcio` or `pyserial`, contains it.
-fn is_declared(runtime: &BTreeSet<String>, module: &str) -> bool {
+pub(super) fn is_declared(runtime: &BTreeSet<String>, module: &str) -> bool {
     let lower = module.to_ascii_lowercase();
     let mut prefix = String::new();
     for part in lower.split('.') {
@@ -117,7 +117,7 @@ fn handles_import_error(handlers: &[ast::ExceptHandler]) -> bool {
 }
 
 // A module the standard library ships on any Python version, since a version check may pick it, as `tomllib` on 3.11.
-fn is_stdlib(module: &str) -> bool {
+pub(super) fn is_stdlib(module: &str) -> bool {
     (7..=15).any(|minor| is_stdlib_root(minor, module))
 }
 

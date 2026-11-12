@@ -287,6 +287,7 @@ rules! {
     PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
     FlattenedPackage => ("SMP311", "flattened-package", "Private modules sharing a name prefix instead of a package", None, imports::flattened_package { module } reads [cross_file]),
     UndeclaredDependency => ("SMP312", "undeclared-dependency", "Imports of third-party modules no requirement of the project installs", None, imports::undeclared_dependency { module } reads [cross_file, RUNTIME_IMPORTS]),
+    UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file]),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),

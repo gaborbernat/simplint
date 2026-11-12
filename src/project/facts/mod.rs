@@ -77,6 +77,7 @@ pub struct FileFacts {
     // An import of one of these names may bind a function rather than a class.
     pub(super) functions: Vec<String>,
     pub(super) plain_modules: Vec<String>,
+    pub(super) imported_modules: Vec<String>,
     pub(super) interface: Vec<Definition>,
     pub(super) runtime_imports: Vec<ImportSite>,
     pub(super) statements: Vec<Statement>,
@@ -181,6 +182,7 @@ impl FileFacts {
             classes,
             functions: module_functions(&parsed.syntax().body),
             plain_modules: visitor.plain_modules,
+            imported_modules: visitor.imported_modules.into_iter().collect(),
             interface: interface(&parsed.syntax().body),
             fixture_requests: visitor.fixture_requests.into_iter().collect(),
             pytest_requests: visitor.pytest_requests.into_iter().collect(),

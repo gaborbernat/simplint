@@ -18,6 +18,8 @@ pub struct ProjectMetadata {
     pub(crate) runtime: BTreeSet<String>,
     // Whether `[project]` lists the requirements itself, rather than leaving them to the build backend as `dynamic`.
     pub(crate) lists_dependencies: bool,
+    // Each unconditional requirement by its distribution name, with the modules it installs.
+    pub(crate) requirements: Vec<(String, Vec<String>)>,
     pub(crate) entry_points: Vec<String>,
     pub(crate) scripts: Vec<String>,
 }
@@ -111,6 +113,12 @@ impl From<ProjectTable> for ProjectMetadata {
             declared: runtime.clone(),
             runtime,
             lists_dependencies,
+            requirements: project
+                .dependencies
+                .iter()
+                .filter(|spec| !spec.contains(';'))
+                .map(|spec| (distribution_name(spec).to_owned(), import_names(spec)))
+                .collect(),
             entry_points: scripts
                 .iter()
                 .cloned()
@@ -119,6 +127,13 @@ impl From<ProjectTable> for ProjectMetadata {
             scripts,
         }
     }
+}
+
+fn distribution_name(requirement: &str) -> &str {
+    let end = requirement
+        .find(|char: char| !(char.is_ascii_alphanumeric() || matches!(char, '-' | '_' | '.')))
+        .unwrap_or(requirement.len());
+    &requirement[..end]
 }
 
 pub(super) fn import_names(requirement: &str) -> Vec<String> {

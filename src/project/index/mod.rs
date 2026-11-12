@@ -83,6 +83,8 @@ pub struct Project {
     pub(super) package_loaded: FxHashSet<FileId>,
     // The offsets of each file's runtime import statements that reach a file of the run.
     pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<u32>>,
+    // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
+    pub(super) imported_modules: FxHashSet<String>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
@@ -177,6 +179,11 @@ impl Project {
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
         let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
+        let imported_modules: FxHashSet<String> = indexed
+            .iter()
+            .filter(|(id, _)| !test_modules.contains(id))
+            .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
+            .collect();
         let resolved_imports: FxHashMap<FileId, FxHashSet<u32>> = runtime
             .iter()
             .map(|(file, imports)| (*file, imports.iter().map(|(_, range)| range.start().to_u32()).collect()))
@@ -300,6 +307,7 @@ impl Project {
             overridden,
             package_loaded,
             resolved_imports,
+            imported_modules,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
@@ -353,6 +361,10 @@ impl Project {
                 overridden: entry(&self.overridden, id),
                 package_loaded: id.is_some_and(|id| self.package_loaded.contains(&id)),
                 resolved_imports: entry(&self.resolved_imports, id),
+                imported_modules: path
+                    .file_name()
+                    .is_some_and(|name| name == "__init__.py")
+                    .then_some(&self.imported_modules),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
                 prefix_siblings: entry(&self.prefix_siblings, id),

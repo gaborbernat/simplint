@@ -417,6 +417,10 @@ impl CacheKey for Settings {
         self.metadata.declared.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.runtime.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.lists_dependencies.cache_key(state);
+        for (name, modules) in &self.metadata.requirements {
+            name.cache_key(state);
+            modules.cache_key(state);
+        }
         self.metadata.entry_points.cache_key(state);
         self.metadata.scripts.cache_key(state);
         self.build_hooks.cache_key(state);
