@@ -1,0 +1,57 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+9:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+11:15 SMP544 The message has `{}` fields, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+13:15 SMP544 The message has `{}` fields, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+15:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple
+21:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple
+23:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+25:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple
+--- fixed (5 applied, 3 remaining) ---
+class ProjectError(Exception):
+    pass
+
+
+def check(value, limit):
+    if value < 0:
+        raise ValueError("bad %s" % (value,))
+    if value < 1:
+        raise KeyError("bad %s and %5.2f" % (value, limit))
+    if value < 2:
+        raise ValueError("bad {}".format(value))
+    if value < 3:
+        raise TypeError("bad {!r} over {:>4}".format(value, limit))
+    if value < 4:
+        raise ValueError("bad %s", value, limit)
+    if value < 5:
+        raise ValueError("bad %(value)s", value)
+    if value < 6:
+        raise ValueError("bad {value}", value)
+    if value < 7:
+        raise ValueError("bad " "%s", value)
+    if value < 8:
+        raise ValueError("100%% done %s" % (value,))
+    if value < 9:
+        raise ValueError(
+            "bad %s",  # the value
+            value,
+        )
+
+
+def fine(value, values):
+    if value < 0:
+        raise ValueError("bad", value)
+    if value < 1:
+        raise ValueError("100% sure", value)
+    if value < 2:
+        raise ProjectError("bad %s", value)
+    if value < 3:
+        raise ValueError(f"bad {value}")
+    if value < 4:
+        raise ValueError("bad %s", *values)
+    if value < 5:
+        raise ValueError("bad %s")
+    raise ValueError("{{literal}}", value)

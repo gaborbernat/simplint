@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:10 SMP540 `kind == "a"` repeats an earlier test of this `if` chain, so this branch never runs
+24:10 SMP540 `kind == "a"` repeats an earlier test of this `if` chain, so this branch never runs
+38:45 SMP540 `first.ready` repeats an earlier operand of this `and`, so it never changes the result
+38:67 SMP540 `first` repeats an earlier operand of this `or`, so it never changes the result
+55:14 SMP540 `case 1` repeats an earlier case, so this case never runs
+63:14 SMP540 `case 3` repeats an earlier case, so this case never runs

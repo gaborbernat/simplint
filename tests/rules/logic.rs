@@ -298,6 +298,12 @@ use crate::common::{self, check, read};
 #[test_case(
     "up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310"
 )]
+#[test_case("shared-mutable-repetition", "shared_mutable_repetition.py", None ; "shared_mutable_repetition")]
+#[test_case("duplicate-condition", "duplicate_condition.py", None ; "duplicate_condition")]
+#[test_case("ambiguous-operator-chain", "ambiguous_operator_chain.py", None ; "ambiguous_operator_chain")]
+#[test_case("failed-swap", "failed_swap.py", None ; "failed_swap")]
+#[test_case("in-place-result", "in_place_result.py", None ; "in_place_result")]
+#[test_case("unformatted-exception-args", "unformatted_exception_args.py", None ; "unformatted_exception_args")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
