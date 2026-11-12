@@ -30,8 +30,10 @@ The full resolution order for each setting is in :doc:`/configuration/project`.
 Layer private packages
 **********************
 
-A module imports private names only from its **direct** private child. When a name lives deeper, each package on the
-way up re-exports it, and callers import it from the nearest package:
+A module imports only public names, and only from its **direct** private child. A private name is never imported across
+modules: the private module makes it public instead, which keeps it out of the package API while the module stays
+private. When a name lives deeper, each package on the way up re-exports it, and callers import it from the nearest
+package:
 
 .. code-block:: text
 

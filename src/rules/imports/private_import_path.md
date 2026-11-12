@@ -3,10 +3,12 @@ In tests, imports from private modules must match the test's path and name.
 
 ## Why is this bad?
 
-A module imports private names only from its direct private child: `from ._a import what`. When the name lives deeper,
-in `_a/_x.py`, the child package re-exports it (`from ._x import what` in `_a/__init__.py`) and every caller above
-imports it from there. Each package then decides what it exposes one level up, and moving `_x` inside `_a` touches only
-`_a/__init__.py`. Flattening the layout or suppressing the rule only hides the deeper import.
+A module imports only public names, and only from its direct private child: `from ._a import what`. A private name is
+never imported across modules. The private module makes it public instead, which keeps it out of the package API while
+the module itself stays private. When the name lives deeper, in `_a/_x.py`, the child package re-exports it
+(`from ._x import what` in `_a/__init__.py`) and every caller above imports it from there. Each package then decides
+what it exposes one level up, and moving `_x` inside `_a` touches only `_a/__init__.py`. Flattening the layout or
+suppressing the rule only hides the deeper import.
 
 Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
 package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
@@ -50,8 +52,11 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
 
-- **Deep private paths**, such as `from ._a._x import what` or `from ._internal._helpers import API`. Import from the
-  direct sibling package boundary instead.
+- **Paths with two private names**, such as `from ._a._x import what` or `from ._internal._helpers import API`. A direct
+  relative import may cross one private name, not two. The fix for `from ._a._x import what` is a re-export, not moving
+  the module: the package's `__init__.py` imports `what` from its private module, and the caller imports `what` from the
+  package. A private name, as in `from ._internal import _helper`, is renamed to a public name inside `_internal`
+  instead.
 
   ```python report file=package/b.py
   from ._a._x import what
@@ -82,9 +87,8 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 ### Exceptions
 
-- **Direct relative sibling imports**: `from ._api import API` and `from ._api import _helper` let modules within one
-  package share names without exposing the implementation path outside that package. `from .public import _helper` also
-  stays within the same package level.
+- **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
+  build an API outside tests. `from .public import _helper` also stays within the same package level.
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
