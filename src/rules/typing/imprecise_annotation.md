@@ -12,8 +12,7 @@ type checker and documents what callers pass.
 
 The
 [typing best practices](https://typing.python.org/en/latest/reference/best_practices.html#arguments-and-return-types)
-recommend `object` for a parameter that accepts any value. Such a parameter is flagged because `object` leaves each use
-to narrow the value at runtime.
+recommend `object` for a parameter that accepts any value. With `object`, each use has to narrow the value at runtime.
 
 ## Example
 

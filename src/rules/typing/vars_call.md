@@ -10,7 +10,7 @@ one whose class defines `__slots__`. Reading attributes from a typed object keep
 [`Namespace`](https://docs.python.org/3/library/argparse.html#argparse.Namespace) subclass with annotated attributes to
 [`parse_args(namespace=...)`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args), as in
 the example. The [argparse docs](https://docs.python.org/3/library/argparse.html#the-namespace-object) show `vars(args)`
-for a dict view. The typed form keeps the checks that an untyped dict loses, so the rule reports the call.
+for a dict view. The typed form keeps the checks an untyped dict loses.
 
 ## Example
 

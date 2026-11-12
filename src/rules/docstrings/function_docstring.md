@@ -6,8 +6,8 @@ mostly repeats the name and signature.
 [PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public code and, for a
 non-public method, only a comment after the `def` line; the fix writes that comment.
 [Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a docstring
-on any nontrivial or non-obvious function. Such a docstring only restates the name, signature and annotations, and
-nothing checks it as the code changes, so the rule flags it.
+on any nontrivial or non-obvious function. On internal code such a docstring restates the name, signature and
+annotations, and nothing checks it as the code changes.
 
 A longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a
 comment.

@@ -10,8 +10,8 @@ by every test, and [setup methods](https://docs.pytest.org/en/stable/how-to/xuni
 on out of the test, where [Google's testing guide](https://abseil.io/resources/swe-book/html/ch12.html) asks to keep
 them. pytest's
 [getting-started guide](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class) lists
-grouping and class-scoped fixtures among the benefits of a class. The rule flags classes, since a module-level prefix
-keeps the grouping visible in the test name without the shared state.
+grouping and class-scoped fixtures among the benefits of a class. A module-level prefix keeps the grouping visible in
+the test name without the shared state.
 
 ## Example
 
