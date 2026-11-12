@@ -1126,3 +1126,12 @@ fn isolated_run_reads_no_nested_pyproject() {
     let (code, stdout, _) = check(root.path(), &["--isolated", "--select", "SMP101"]);
     assert_eq!((code, stdout.contains("SMP101")), (1, true));
 }
+
+// The release's PGO training lints with this configuration, so a Ruff rule it turns on that conflicts with simplint
+// fails the release.
+#[test]
+fn pgo_training_config_has_no_ruff_conflict() {
+    let root = project(&[("pgo.toml", include_str!("../tasks/pgo.toml")), ("module.py", "x = 1\n")]);
+    let (code, _, stderr) = check(root.path(), &["--config", "pgo.toml"]);
+    assert_eq!((code, stderr), (1, String::new()));
+}

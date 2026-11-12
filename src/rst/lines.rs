@@ -45,6 +45,11 @@ pub(crate) fn indent_width(line: &str) -> usize {
     indent_columns(line, TAB_WIDTH)
 }
 
+// The whitespace a line starts with, as text: `indent_width` counts a tab as up to eight columns, so it cannot slice.
+pub(crate) fn leading_whitespace(line: &str) -> &str {
+    &line[..line.len() - line.trim_start().len()]
+}
+
 // The indentation of a line in columns, where a tab runs to the next multiple of `tab`.
 pub(crate) fn indent_columns(line: &str, tab: usize) -> usize {
     let body = line.trim_start();
