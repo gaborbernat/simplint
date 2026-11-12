@@ -294,7 +294,7 @@ rules! {
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
     InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file]),
     TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),
-    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods and class attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, COMPUTED_READS, DOCTESTS, docs]),
+    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods, nested functions and attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, STRING_WORDS, COMPUTED_READS, DOCTESTS, docs]),
     TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     UnusedReturnValue => ("SMP411", "unused-return-value", "Return values no production call reads", None, api::unused_return_value { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     ForwardingFunction => ("SMP501", "forwarding-function", "Private functions that only forward to another call", None, logic::forwarding_function { module } reads [cross_file]),
