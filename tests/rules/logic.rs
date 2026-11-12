@@ -248,6 +248,10 @@ use crate::common::{self, check, read};
     "collection_built_by_statements_names"
 )]
 #[test_case("unnamed-regex-group", "unnamed_regex_group.py", None ; "unnamed_regex_group")]
+#[test_case("unreachable-code", "unreachable_code.py", None ; "unreachable_code")]
+#[test_case("dead-store", "dead_store.py", None ; "dead_store")]
+#[test_case("loop-variable-after-loop", "loop_variable_after_loop.py", None ; "loop_variable_after_loop")]
+#[test_case("side-effect-expression", "side_effect_expression.py", None ; "side_effect_expression")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", None ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", None ; "unnamed_regex_group_default_scope")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", None ; "unnamed_regex_group_escaping")]
