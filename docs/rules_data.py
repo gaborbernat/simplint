@@ -11,18 +11,33 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import Final, NamedTuple, TypedDict
 
 _ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _ROLES: Final[frozenset[str]] = frozenset({"report", "ok", "context", "fixed"})
 _TABLE: Final[re.Pattern[str]] = re.compile(r"^rules! \{\n(.*?)^\}\n", re.MULTILINE | re.DOTALL)
 _GROUPS: Final[re.Pattern[str]] = re.compile(r"^pub const GROUPS: .*? = \[\n(.*?)^\];\n", re.MULTILINE | re.DOTALL)
 _ROW: Final[re.Pattern[str]] = re.compile(
-    r'\w+ => \("(?P<code>SMP\d{3})", "(?P<name>[^"\\]+)", "(?P<summary>[^"\\]+)", '
-    r"(?P<fix>Always|Sometimes|None), (?P<family>\w+)::(?P<check>\w+) \{[^}]*\}"
-    r"(?P<attributes>(?: (?:since \w+|reads \[[^\]]*\]|skips \[[^\]]*\]))*)\),"
+    r"""
+    \w+[ ]=>[ ]\(                                 # the registry key and the rule's tuple
+    "(?P<code>SMP\d{3})",[ ]                      # the code
+    "(?P<name>[^"\\]+)",[ ]                       # the name
+    "(?P<summary>[^"\\]+)",[ ]                    # the summary
+    (?P<fix>Always|Sometimes|None),[ ]            # when the fix applies
+    (?P<family>\w+)::(?P<check>\w+)[ ]\{[^}]*\}   # the module and check, then the rule's fields
+    (?P<attributes>(?:[ ](?:since[ ]\w+|reads[ ]\[[^\]]*\]|skips[ ]\[[^\]]*\]))*)  # the attributes
+    \),                                           # the end of the tuple
+    """,
+    re.VERBOSE,
 )
-_GROUP: Final[re.Pattern[str]] = re.compile(r'\("\w+", "(?P<name>[^"\\]+)", "(?P<short>[^"\\]+)"\),')
+_GROUP: Final[re.Pattern[str]] = re.compile(
+    r"""
+    \("\w+",[ ]                 # the group's key
+    "(?P<name>[^"\\]+)",[ ]     # the name
+    "(?P<short>[^"\\]+)"\),     # the short name, then the end of the tuple
+    """,
+    re.VERBOSE,
+)
 
 
 class Fence(TypedDict):
@@ -77,7 +92,7 @@ def parse(explanation: str) -> list[Example]:
 
 
 def main() -> None:
-    sys.stdout.write(json.dumps(rule_entries(), indent=2) + "\n")
+    sys.stdout.write(f"{json.dumps(rule_entries(), indent=2)}\n")
 
 
 class _Parser:
@@ -130,14 +145,14 @@ class _Parser:
         if language != "python" and (role != "context" or not attributes):
             msg = f"line {number}: a `{language}` block is a `context` block with a file"
             raise ValueError(msg)
-        file, executable, select = _attributes(attributes, number)
+        parsed = _attributes(attributes, number)
         block = Block(
             role=role,
             language=language,
-            file="example.py" if file is None else file,
-            named=file is not None,
-            executable=executable,
-            select=select,
+            file="example.py" if parsed.file is None else parsed.file,
+            named=parsed.file is not None,
+            executable=parsed.executable,
+            select=parsed.select,
             line=number,
             end_line=fence["end_line"],
             source=fence["source"],
@@ -189,7 +204,7 @@ def _group(line: str) -> tuple[str, str]:
     return match["name"], match["short"]
 
 
-_READS_PATTERN: Final[re.Pattern[str]] = re.compile(r"reads \[([^\]]*)\]")
+_READS_PATTERN: Final[re.Pattern[str]] = re.compile(r"reads \[(?P<names>[^\]]*)\]")
 
 
 def _rule(root: Path, line: str, groups: list[tuple[str, str]]) -> RuleEntry:
@@ -198,25 +213,22 @@ def _rule(root: Path, line: str, groups: list[tuple[str, str]]) -> RuleEntry:
     explanation = (root / "src" / "rules" / family / f"{check}.md").read_bytes().decode("utf-8")
     group, short_group = groups[int(row["code"][3])]
     reads = _READS_PATTERN.search(row["attributes"])
+    try:
+        examples: Examples = {"parsed": parse(explanation)}
+    except ValueError as error:
+        examples = {"error": str(error)}
     return {
         "code": row["code"],
         "name": row["name"],
         "summary": row["summary"],
         "fix": row["fix"],
         "explanation": explanation,
-        "examples": _examples(explanation),
+        "examples": examples,
         "family": family,
         "group": group,
         "short_group": short_group,
-        "cross_file": reads is not None and "cross_file" in reads[1].replace(" ", "").split(","),
+        "cross_file": reads is not None and "cross_file" in reads["names"].replace(" ", "").split(","),
     }
-
-
-def _examples(explanation: str) -> Examples:
-    try:
-        return {"parsed": parse(explanation)}
-    except ValueError as error:
-        return {"error": str(error)}
 
 
 def _split_lines(text: str) -> list[str]:
@@ -233,8 +245,7 @@ def _read_fence(lines: list[str], start: int) -> Fence:
     index = start + 1
     while index < len(lines) and lines[index].strip() != "```":
         body = lines[index]
-        leading = len(body) - len(body.lstrip(" "))
-        source.append(body[min(leading, indent) :] + "\n")
+        source.append(f"{body[min(len(body) - len(body.lstrip(' ')), indent) :]}\n")
         index += 1
     if index == len(lines):
         msg = f"line {start + 1}: unclosed code block"
@@ -242,7 +253,13 @@ def _read_fence(lines: list[str], start: int) -> Fence:
     return Fence(line=start + 1, end_line=index + 1, source="".join(source))
 
 
-def _attributes(words: list[str], number: int) -> tuple[str | None, bool, list[str]]:
+class _Attributes(NamedTuple):
+    file: str | None
+    executable: bool
+    select: list[str]
+
+
+def _attributes(words: list[str], number: int) -> _Attributes:
     file: str | None = None
     executable = False
     select: list[str] = []
@@ -263,7 +280,7 @@ def _attributes(words: list[str], number: int) -> tuple[str | None, bool, list[s
             case _:
                 msg = f"line {number}: unknown attribute `{word}`"
                 raise ValueError(msg)
-    return file, executable, select
+    return _Attributes(file=file, executable=executable, select=select)
 
 
 def _codes(codes: str, number: int) -> list[str]:

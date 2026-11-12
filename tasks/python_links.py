@@ -17,18 +17,21 @@ if TYPE_CHECKING:
 _DOCS: Final[str] = "https://docs.python.org/3"
 _LINK: Final[re.Pattern[str]] = re.compile(r"\]\((?P<uri>https://docs\.python\.org/3/[^)\s]+)\)")
 # Each code span in turn, with the brackets of a link around it, so a closing backtick never opens a span.
-_SPAN: Final[re.Pattern[str]] = re.compile(r"(?P<open>\[)?`(?P<code>[^`]+)`(?P<close>\])?")
+_SPAN: Final[re.Pattern[str]] = re.compile(
+    r"""
+    (?P<open>\[)?        # the bracket opening a link around the span
+    `(?P<code>[^`]+)`    # the code span
+    (?P<close>\])?       # the bracket closing that link
+    """,
+    re.VERBOSE,
+)
 # A name, optionally called: `contextlib.chdir`, `os.chdir(target)`, `TypeError`.
-_NAME: Final[re.Pattern[str]] = re.compile(r"(?P<name>[A-Za-z_][\w.]*)(?P<call>\(.*\))?")
-_LINKED_ROLES: Final[tuple[str, ...]] = (
-    "py:exception",
-    "py:class",
-    "py:function",
-    "py:method",
-    "py:attribute",
-    "py:property",
-    "py:data",
-    "py:module",
+_NAME: Final[re.Pattern[str]] = re.compile(
+    r"""
+    (?P<name>[A-Za-z_][\w.]*)  # a dotted name
+    (?P<call>\(.*\))?          # its arguments, when it is called
+    """,
+    re.VERBOSE,
 )
 
 
@@ -38,7 +41,17 @@ class Inventory:
         self.uris: set[str] = {item.uri for role in data.values() for item in role.values()}
         # The first role listed wins, so an exception or class is not linked as the function of the same name.
         self.names: dict[str, tuple[str, str]] = {}
-        for role in reversed(_LINKED_ROLES):
+        linked_roles: tuple[str, ...] = (
+            "py:exception",
+            "py:class",
+            "py:function",
+            "py:method",
+            "py:attribute",
+            "py:property",
+            "py:data",
+            "py:module",
+        )
+        for role in reversed(linked_roles):
             self.names.update({name: (role, item.uri) for name, item in data.get(role, {}).items()})
         # A page that moved keeps its file name and anchors, as `library/functions.html` did into `builtins/`.
         self.moved = {_file_and_anchor(uri): uri for uri in self.uris}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Final
 
 import pypandoc
 
@@ -87,8 +88,15 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
     return re.sub(rf"\b(?P<code>{code_pattern})\b|{named}(?: \((?:{code_pattern})\))?", link, markdown)
 
 
-_DOC_PAGE_LINK = re.compile(
-    r"\[(?P<text>[^]`]+)\]\((?:\.\./|https://github\.com/gaborbernat/simplint/blob/[^/)]+/)?docs/(?P<page>[^)#]+)\.(?:rst|md)\)"
+_DOC_PAGE_LINK: Final[re.Pattern[str]] = re.compile(
+    r"""
+    \[(?P<text>[^]`]+)\]        # the link text, up to its closing bracket
+    \(                          # the opening of the target
+    (?:\.\./|https://github\.com/gaborbernat/simplint/blob/[^/)]+/)?  # a relative path or the repository at a ref
+    docs/(?P<page>[^)#]+)       # the page under docs/, without its anchor
+    \.(?:rst|md)\)              # its source suffix and the closing bracket
+    """,
+    re.VERBOSE,
 )
 
 

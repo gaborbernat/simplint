@@ -8,14 +8,6 @@ import subprocess
 from dataclasses import dataclass
 from typing import Final
 
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Interpreter:
-    # A CPython of a minor version, found by uv.
-    minor: int
-    path: str
-
-
 _MINOR_VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(r"3\.(\d+)")
 
 
@@ -46,6 +38,13 @@ def resolve(minor: int) -> Interpreter:
         msg = f"no CPython 3.{minor} for the examples: {found.stderr.strip()}"
         raise ValueError(msg)
     return Interpreter(minor=minor, path=found.stdout.strip())
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Interpreter:
+    # A CPython of a minor version, found by uv.
+    minor: int
+    path: str
 
 
 __all__ = [

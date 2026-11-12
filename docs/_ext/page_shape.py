@@ -50,6 +50,10 @@ def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
     if badges is not None and any("example-static" not in example["classes"] for example in examples):
         switch = '<button type="button" class="badge example-switch" aria-expanded="false">Expand all examples</button>'
         badges.replace_self(nodes.raw("", badges.astext().replace("</div>", f"{switch}</div>"), format="html"))
+    _add_example_toggles(examples)
+
+
+def _add_example_toggles(examples: list[dropdown_main]) -> None:
     count = 0
     for example in examples:
         classes = example["classes"]

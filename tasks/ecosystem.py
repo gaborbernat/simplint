@@ -456,8 +456,7 @@ def check(package: Package, archive: Path, simplint: str, target: Interpreter | 
         problems += [f"fix: {line}" for line in _failures(fixing, unreadable)]
         # Rules Ruff warns conflict with its formatter for this project cannot hold after `ruff format`, with or without
         # simplint, as Ruff documents; their findings say nothing about simplint.
-        formatting = work.run(["ruff", "format", "--check", "."], work.original)
-        conflicting = _CONFLICTING_PATTERN.findall(formatting.stderr)
+        conflicting = _CONFLICTING_PATTERN.findall(work.run(["ruff", "format", "--check", "."], work.original).stderr)
         unaffected = ["--ignore", ",".join(conflicting)] if conflicting else []
         # Formatting splits a line and can leave its pragma comment after the closing bracket, where it no longer
         # covers the line it was written for; that happens to the project with or without simplint, as Ruff matches

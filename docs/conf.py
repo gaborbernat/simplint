@@ -98,12 +98,13 @@ if shutil.which("npx") is None:
     raise RuntimeError(msg)
 mermaid_output_format: Final[str] = "svg"
 mermaid_cmd: Final[str] = "npx --yes --package=@mermaid-js/mermaid-cli@12.2.0 mmdc"
-mermaid_sequence_config: Final[str] = str(diagrams.CONFIG_PATH)
+config_path, puppeteer_path = diagrams.write_settings()
+mermaid_sequence_config: Final[str] = str(config_path)
 mermaid_params: Final[list[str]] = [
     "--backgroundColor",
     "transparent",
     "--puppeteerConfigFile",
-    str(diagrams.PUPPETEER_PATH),
+    str(puppeteer_path),
 ]
 
 # copying a snippet takes the code alone, not the line numbers or console prompts and output
@@ -140,6 +141,5 @@ markdown_http_base: Final[str] = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 llms_txt_suppress_unknown_node_warnings: Final[list[str]] = ["label", "PassthroughTextElement", "mermaid"]
 
 
-diagrams.write_settings()
 # every page's template context, where the edit and view links of a rule page find the file it comes from
 html_context: Final[dict[str, dict[str, str]]] = {"rule_sources": rule_pages.generate(Path(__file__).parent)}

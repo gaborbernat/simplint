@@ -47,7 +47,7 @@ def test_oldest_supported_skips_ended_cycles(mocker: MockerFixture) -> None:
     assert oldest_supported() == 11
 
 
-@pytest.mark.parametrize("index", range(2), ids=("requires-python", "classifiers"))
+@pytest.mark.parametrize("index", [pytest.param(0, id="requires-python"), pytest.param(1, id="classifiers")])
 def test_written_places_match_expected_spelling(tmp_path: Path, index: int) -> None:
     place = written_places(15, 11)[index]
     previous = written_places(14, 10)[index].spelling

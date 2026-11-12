@@ -13,23 +13,22 @@ if TYPE_CHECKING:
 
     from pytest_mock import MockerFixture
 
-_ENTRIES = """\
+
+@pytest.fixture
+def inventory() -> Inventory:
+    return Inventory(_inventory_bytes())
+
+
+def _inventory_bytes() -> bytes:
+    header = b"# Sphinx inventory version 2\n# Project: Python\n# Version: 3.15\n# The remainder is zlib-compressed.\n"
+    entries = """\
 contextlib.chdir py:class 1 library/contextlib.html#$ -
 os.chdir py:function 1 library/os.html#$ -
 open py:function 1 builtins/functions.html#$ -
 TypeError py:exception 1 builtins/exceptions.html#$ -
 dict py:class 1 builtins/stdtypes.html#$ -
 """
-
-
-def _inventory_bytes() -> bytes:
-    header = b"# Sphinx inventory version 2\n# Project: Python\n# Version: 3.15\n# The remainder is zlib-compressed.\n"
-    return header + zlib.compress(_ENTRIES.encode())
-
-
-@pytest.fixture
-def inventory() -> Inventory:
-    return Inventory(_inventory_bytes())
+    return header + zlib.compress(entries.encode())
 
 
 @pytest.mark.parametrize(
@@ -92,7 +91,9 @@ def test_relink_reports_links_the_inventory_lacks(inventory: Inventory) -> None:
 
 @pytest.fixture
 def served(mocker: MockerFixture) -> None:
-    mocker.patch("tasks.python_links.urllib.request.urlopen", side_effect=lambda _: io.BytesIO(_inventory_bytes()))
+    mocker.patch(
+        "tasks.python_links.urllib.request.urlopen", autospec=True, side_effect=lambda _: io.BytesIO(_inventory_bytes())
+    )
 
 
 @pytest.mark.usefixtures("served")
