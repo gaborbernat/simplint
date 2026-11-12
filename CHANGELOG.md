@@ -1,5 +1,170 @@
 # Changelog
 
+## 0.11.0 (2026-11-12)
+
+<a name="release-0-11-0"></a>
+
+<a name="release-0-11-0-added"></a>
+
+### Added
+
+- [`flattened-package`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/flattened_package.md)
+  reports each private module whose name shares a `_<prefix>_` prefix with two or more siblings in its directory, such
+  as `_html_url.py`, `_html_parse.py` and `_html_css.py`, which a `_html` package that re-exports their names would
+  group. It checks a module again when a sibling joins or leaves its directory
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`inline-regex`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/logic/inline_regex.md) reports a
+  regular expression compiled inside a function, such as `re.fullmatch(r"...", text)`, and its unsafe fix moves the
+  pattern to a module-level constant compiled once. A call that goes through `re` looks its pattern up in a bounded
+  cache on every call, and a program that uses more patterns than the cache holds compiles some of them again each time,
+  so the constant keeps those calls fast ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-attribute-import`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/module_attribute_import.md)
+  takes an `imports.module-attribute-scope` setting that widens it from the project's own modules to the standard
+  library (`"stdlib"`), every other module (`"third-party"`) or one module and its submodules by name, such as
+  `"requests"`. The default, `["project"]`, keeps today's behavior. A module outside the run is reported without a fix.
+  A module imported under the alias Ruff's `flake8-import-conventions` asks for, such as `numpy` as `np`, one its
+  `banned-from` lists, and a name a string patches, such as `mocker.patch("requests.get")`, stay reached through the
+  module ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-11-0-changes"></a>
+
+### Changes
+
+- [`missing-from-all`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/api/missing_from_all.md) has a
+  Conflicts with Ruff section for the import it reports that another module uses. Ruff's unused-import (F401) deletes
+  that import with a safe fix, so running `ruff check --fix` before simplint breaks the importer. The page recommends
+  keeping the import with a `# noqa: F401` that gives a reason, or running simplint's fix first
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- The [`mock-without-spec`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/testing/mock_without_spec.md)
+  rule now reports a `spec`, `spec_set` or positional spec and a `wraps` argument, since they do not check call
+  signatures, and asks for `autospec`. A spec for a class the module defines stays accepted when the test reads an
+  instance attribute or a property that autospeccing cannot see through the mock. A `patch(..., spec=True)` gets an
+  unsafe fix to `autospec=True`. `autospec`, `new` and `new_callable` count only on `patch` calls: on `Mock(...)` they
+  set attributes and check nothing ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The
+  [`parametrize-without-id`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/testing/parametrize_without_id.md)
+  rule now reports an `ids=` list of string literals, since the list drifts from the rows it names, and offers a fix
+  that moves each id into its row as `pytest.param(..., id=...)`. A module-level name bound once to such a list is
+  reported without a fix. A callable, or a name the rule cannot read, is left alone
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`private-import-path`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/private_import_path.md)
+  names the fix for each private import it reports: a re-export in the `__init__.py` of the private package, an import
+  from a public module, or a public name for a private name ([#130](https://github.com/gaborbernat/simplint/pull/130))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`unnamed-regex-group`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/logic/unnamed_regex_group.md)
+  and [`unexplained-regex`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/logic/unexplained_regex.md)
+  now also read the patterns of `re.prefixmatch()` calls, the function Python 3.15 adds next to `re.match()`, so a
+  prefixmatch pattern with unnamed groups or four unexplained parts is reported like the other `re` functions
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`rst-duplicate-param`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/docstrings/rst_duplicate_param.md)
+  follows the docstring Sphinx renders for each class, resolved per project from a `:class-doc-from:` option on its
+  `autoclass` or `autoexception` directive, then `autodoc_default_options` for a class such a directive names, then
+  `autoclass_content` in the project's Sphinx configuration. A directive names a class by its dotted name, or by a
+  simple name that the page's `module` or `currentmodule` qualifies. With no module on the page, a simple name shared by
+  two classes of the run leaves both alone. Under `init` the rule reports the copy in the class docstring and removes
+  that one, and under `both` it keeps reporting the `__init__` copy. A configuration counts when it sits beside an index
+  page or names `extensions`, `master_doc` or `root_doc`, and a wildcard import does not count. A value the rule cannot
+  read leaves every copy alone ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/layout/single_user_constant.md)
+  no longer reports a list, set or dict display, or a `frozenset` call, since inlining one rebuilds it on every call. It
+  reports a binary operation only where CPython folds it at compile time, within CPython 3.11's limits: an integer
+  result of 128 bits, a string or bytes repetition of 4096 characters, and a tuple repetition of 256 items, with nested
+  items counted up to 1024. A division by zero or a type error is left to run per call
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- The [`test-only-parameter`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/api/test_only_parameter.md)
+  rule no longer reports a defaulted parameter that injects a collaborator, such as a class-typed parameter the body
+  uses, a `None` default the body calls, or a default that resolves to a function, a class, a module or an instance
+  built by calling a class, since a test passes a stand-in for it by design. Data, names the rule cannot resolve, and
+  enums stay reported, so a `None` default the body only reads is reported too
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-11-0-fixed"></a>
+
+### Fixed
+
+- [`dataclass-slots`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/classes/dataclass_slots.md) no
+  longer reports a dataclass whose body uses zero-argument `super()` or `__class__` when the target version is before
+  3.14. Slotting such a class made `super()` raise `TypeError` until CPython fixed it in 3.14 (gh-90562), and 3.13 has
+  the fix only from 3.13.14, so 3.13 counts as unfixed ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-attribute-import`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/module_attribute_import.md)
+  keeps its report without a fix when the file and the module it reads from are in one cycle of runtime imports. The fix
+  turned `module.Name` reads into a from-import, which fails at load time when the cycle reaches the name before the
+  module defines it ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Reject imports that read private names across modules, including direct private children and paired tests. Shared
+  names must be public in their owning module and re-exported at each package level. gettext's `_` and imports from
+  `_typeshed` stay allowed ([#129](https://github.com/gaborbernat/simplint/pull/129)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`private-import-path`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/private_import_path.md)
+  no longer reports a private import that the code uses at runtime when a string type expression, such as
+  `cast("_SubParsersAction", value)`, also names it: Ruff's import-private-name (PLC2701) reports that import, so the
+  two no longer both warn ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The docstring rules read reStructuredText the way docutils does.
+  [`rst-field-syntax`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/docstrings/rst_field_syntax.md)
+  treats a field after a bullet item, literal block or directive line as a new field list, and reports only the first
+  field joined to a paragraph.
+  [`rst-inline-markup`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/docstrings/rst_inline_markup.md)
+  follows docutils' rules for where inline markup starts and ends: a literal closed by a pair followed by a letter is
+  unclosed, backticks after a quote mark or inside interpreted text are not, and comments, `raw` and `math` content,
+  literal blocks, targets and substitution definitions are not scanned. Its messages name the cause: a Markdown fence, a
+  literal followed by a suffix, or backtick runs of different lengths.
+  [`rst-unknown-param`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/docstrings/rst_unknown_param.md)
+  and the other field rules read escaped colons, colons in names and backticked names as docutils does
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- The reStructuredText and MyST scanners behind the documentation rules now read roles and directives as docutils and
+  MyST do. `rst-inline-markup` no longer reports a bare role inside an inline literal, a comment or raw content, and now
+  reports one inside quotes or after interpreted text, which docutils reads as a role. `unused-definition` and the other
+  rules that read the project's pages count the roles and directives docutils reads: suffix roles, targets and explicit
+  titles wrapped across lines, directives after enumerators such as `1.`, `(a)` or `#.`, directives in grid and simple
+  table cells, directives in substitution definitions, wrapped options, `{eval-rst}` content, and MyST fences with three
+  or more markers, tilde fences and `---` option blocks. A `| text` line outside a grid table is a line block, so it
+  holds no directive. Indented code in MyST needs four spaces past the content of the list item it follows, lazy
+  continuation lines stay in their list item, and `* * *` or `---` are thematic breaks rather than list items. Roles
+  next to non-ASCII punctuation follow docutils' Unicode punctuation classes, which hold ranges of characters, so an em
+  dash, an ellipsis, `。` or `．` before or after a role counts as a delimiter, as do `«»`, `‘’` and CJK brackets. Each
+  line of a directive's argument is a signature, as Sphinx reads them, and a tab counts to the next multiple of eight
+  columns in reStructuredText and four in MyST. MyST fences on a list item's marker line or in a blockquote are read,
+  and comments, HTML blocks, autolinks and link destinations hold no roles. The rules no longer count roles in code,
+  comments, emphasis or escaped text, or directives in literal blocks and comments
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-11-0-documentation"></a>
+
+### Documentation
+
+- The changelog page of the documentation links a documentation page it mentions, such as the design principles, to that
+  page in the documentation instead of its source on GitHub ([#130](https://github.com/gaborbernat/simplint/pull/130))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- The
+  [`entrypoint-module-name`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/naming/entrypoint_module_name.md)
+  page recommends keeping a command's code in `__main__.py` and moving it to a separate module only when `__main__.py`
+  grows too large ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Rule pages show their Example section as open Flagged and Preferred cards, including pages whose example is a single
+  fix, and the examples of Configuration and other sections stay open. Only the examples under What it does fold, and
+  the Expand all examples switch covers just those ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The
+  [`up-lazy-modules-list`](https://github.com/gaborbernat/simplint/blob/0.11.0/src/rules/imports/up_lazy_modules_list.md)
+  page points large codebases adopting lazy imports to [Lifeguard](https://github.com/meta/Lifeguard), which judges
+  across a project which modules are safe to load lazily, while the rule rewrites one file's `__lazy_modules__` list
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+- Rule pages link the standard-library names they mention to the Python documentation, at the addresses its intersphinx
+  inventory gives, and the documentation's link check fails when a page names an API it does not link or links an
+  address that moved ([#130](https://github.com/gaborbernat/simplint/pull/130)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The changelog links each rule page and project file at the release it describes, so the links in GitHub release notes
+  and on PyPI open the file instead of a 404 ([#129](https://github.com/gaborbernat/simplint/pull/129)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Every case a rule page lists under What it does, reported or left alone, now shows an example, and every `up-` rule
+  links the PEP or the standard-library documentation that introduced the feature it rewrites to
+  ([#130](https://github.com/gaborbernat/simplint/pull/130)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.10.3 (2026-11-11)
 
 <a name="release-0-10-3"></a>
