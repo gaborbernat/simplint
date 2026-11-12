@@ -315,6 +315,8 @@ use crate::common::{self, check, read};
 #[test_case("failed-swap", "failed_swap.py", None ; "failed_swap")]
 #[test_case("in-place-result", "in_place_result.py", None ; "in_place_result")]
 #[test_case("unformatted-exception-args", "unformatted_exception_args.py", None ; "unformatted_exception_args")]
+#[test_case("shadowed-except-handler", "shadowed_except_handler.py", None ; "shadowed_except_handler")]
+#[test_case("dropped-exception-note", "dropped_exception_note.py", None ; "dropped_exception_note")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

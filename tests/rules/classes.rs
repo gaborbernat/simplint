@@ -37,6 +37,13 @@ fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
 #[test_case("indistinct-error-class", "ierr_app.py", None ; "indistinct_error_class_catching_module")]
 #[test_case("indistinct-error-class", "ierr_reexport.py", None ; "indistinct_error_class_reexport")]
 #[test_case("indistinct-error-class", "test_ierr_errors.py", None ; "indistinct_error_class_test_module")]
+#[test_case("exception-init-args", "exception_init_args.py", None ; "exception_init_args")]
+#[test_case("unbound-super", "unbound_super.py", None ; "unbound_super")]
+#[test_case("unbound-super", "unbound_super.py", Some("py311") ; "unbound_super_py311")]
+#[test_case("broken-decorator-stack", "broken_decorator_stack.py", None ; "broken_decorator_stack")]
+#[test_case("broken-decorator-stack", "broken_decorator_stack.py", Some("py310") ; "broken_decorator_stack_py310")]
+#[test_case("async-sync-dunder", "async_sync_dunder.py", None ; "async_sync_dunder")]
+#[test_case("rejected-operand", "rejected_operand.py", None ; "rejected_operand")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

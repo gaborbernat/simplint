@@ -1,0 +1,105 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+21:12 SMP552 `FileNotFoundError` derives from `OSError`, which the handler on line 19 catches first, so this handler never runs
+28:25 SMP552 `UnicodeDecodeError` derives from `ValueError`, which this clause also names, so it adds nothing [fix: Remove `UnicodeDecodeError`]
+37:13 SMP552 `ConfigError` derives from `AppError`, which the handler on line 35 catches first, so this entry never matches [fix: Remove `ConfigError`]
+44:22 SMP552 `io.UnsupportedOperation` derives from `OSError`, which this clause also names, so it adds nothing [fix: Remove `io.UnsupportedOperation`]
+44:47 SMP552 `socket.timeout` derives from `OSError`, which this clause also names, so it adds nothing [fix: Remove `socket.timeout`]
+55:12 SMP552 the handlers on lines 51, 53 catch a base of every class `(KeyError, FileNotFoundError)` names first, so this handler never runs
+64:9 SMP552 `IsADirectoryError` derives from `OSError`, which this clause also names, so it adds nothing
+--- fixed (4 applied, 3 remaining) ---
+__all__ = []
+
+import io
+import os
+import socket
+
+
+class AppError(Exception):
+    pass
+
+
+class ConfigError(AppError):
+    pass
+
+
+def read(path):
+    try:
+        return open(path).read()
+    except OSError:
+        return ""
+    except FileNotFoundError:
+        return None
+
+
+def parse(text):
+    try:
+        return int(text)
+    except ValueError:
+        return 0
+
+
+def load(path):
+    try:
+        return read(path)
+    except AppError:
+        raise
+    except KeyError:
+        return None
+
+
+def close(stream):
+    try:
+        stream.close()
+    except OSError:
+        pass
+
+
+def every_entry(path):
+    try:
+        return read(path)
+    except LookupError:
+        return None
+    except OSError:
+        return None
+    except (KeyError, FileNotFoundError):
+        return ""
+
+
+def with_comment(path):
+    try:
+        return read(path)
+    except (
+        OSError,  # the base
+        IsADirectoryError,
+    ):
+        return None
+
+
+def unrelated(path):
+    try:
+        return os.stat(path)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        return None
+    except (ValueError, TypeError):
+        return None
+
+
+def same_class(path):
+    try:
+        return read(path)
+    except (OSError, OSError):
+        return None
+
+
+def unknown(path, error):
+    try:
+        return read(path)
+    except Exception:
+        return None
+    except error:
+        return None

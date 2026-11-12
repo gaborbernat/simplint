@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:15 SMP708 Python calls `__init__` without awaiting it, so `async def` makes it return an unawaited coroutine; define it with `def`
+8:15 SMP708 Python calls `__len__` without awaiting it, so `async def` makes it return an unawaited coroutine; define it with `def`
+11:15 SMP708 Python calls `__iter__` without awaiting it, so `async def` makes it return an async generator; define it with `def`
+15:15 SMP708 Python calls `__aiter__` without awaiting it, so `async def` makes it return an unawaited coroutine; define it with `def`

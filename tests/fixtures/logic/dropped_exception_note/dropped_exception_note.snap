@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:9 SMP553 The note is added to `error`, which is then dropped; raise `error` or leave the note out
+21:5 SMP553 The note is added to `error`, which is then dropped; raise `error` or leave the note out

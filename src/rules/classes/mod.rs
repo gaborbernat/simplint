@@ -1,8 +1,13 @@
+pub(crate) mod async_sync_dunder;
+pub(crate) mod broken_decorator_stack;
 mod dataclass_frozen;
 mod dataclass_hazards;
 mod dataclass_kw_only;
 mod dataclass_slots;
+pub(crate) mod exception_init_args;
 mod indistinct_error_class;
+pub(crate) mod rejected_operand;
+pub(crate) mod unbound_super;
 
 pub(crate) use dataclass_frozen::dataclass_frozen;
 pub(crate) use dataclass_hazards::expected_to_raise_classes;
