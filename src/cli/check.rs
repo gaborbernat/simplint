@@ -198,6 +198,8 @@ fn write_settings(
     writeln!(writer, "linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements)?;
     writeln!(writer, "linter.logic.max_cognitive_complexity = {}", knobs.max_cognitive_complexity)?;
     writeln!(writer, "linter.logic.min_duplicate_statements = {}", knobs.min_duplicate_statements)?;
+    writeln!(writer, "linter.logic.max_expression_complexity = {}", knobs.max_expression_complexity)?;
+    writeln!(writer, "linter.classes.max_instance_attributes = {}", knobs.max_instance_attributes)?;
     writeln!(writer, "linter.project_kind = {}", api.kind)?;
     match &api.packages {
         Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,

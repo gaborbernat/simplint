@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:35 SMP562 Comprehension has 3 `for` clauses; write the nested loop as `for` statements or a helper
+6:36 SMP562 Comprehension has 2 `for` clauses; write the nested loop as `for` statements or a helper
+7:43 SMP562 Comprehension has 3 `if` clauses; name the condition in a helper

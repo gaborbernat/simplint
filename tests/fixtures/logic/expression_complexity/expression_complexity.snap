@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:9 SMP561 Expression has complexity 9, over the limit of 8; name its parts with variables or helpers
+17:8 SMP561 Expression has complexity 10, over the limit of 8; name its parts with variables or helpers
+19:10 SMP561 Expression has complexity 10, over the limit of 8; name its parts with variables or helpers

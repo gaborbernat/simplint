@@ -37,6 +37,7 @@ fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
 #[test_case("indistinct-error-class", "ierr_app.py", None ; "indistinct_error_class_catching_module")]
 #[test_case("indistinct-error-class", "ierr_reexport.py", None ; "indistinct_error_class_reexport")]
 #[test_case("indistinct-error-class", "test_ierr_errors.py", None ; "indistinct_error_class_test_module")]
+#[test_case("too-many-attributes", "too_many_attributes.py", None ; "too_many_attributes")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

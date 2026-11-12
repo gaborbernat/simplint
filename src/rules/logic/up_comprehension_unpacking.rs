@@ -8,31 +8,7 @@ use crate::syntax::is_name;
 
 // Python 3.15 unpacks inside a comprehension, so a nested `for` that only unpacks its iterable moves into the element.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let (generators, element) = match expr {
-        Expr::ListComp(ast::ExprListComp { elt, generators, .. })
-        | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
-        | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => (generators.as_slice(), Element::Single(elt)),
-        Expr::DictComp(ast::ExprDictComp { key: Some(key), value, generators, .. }) => {
-            (generators.as_ref(), Element::Pair(key, value))
-        }
-        _ => return,
-    };
-    let [outer, inner] = generators else {
-        return;
-    };
-    let Expr::Name(source) = &outer.target else {
-        return;
-    };
-    let source = source.id.as_str();
-    if outer.is_async
-        || inner.is_async
-        || !outer.ifs.is_empty()
-        || !inner.ifs.is_empty()
-        || is_name(&inner.target, source)
-    {
-        return;
-    }
-    let Some(unpacking) = unpacking(element, inner, source) else {
+    let Some(Matched { outer, inner, element, source, unpacking }) = matched(expr) else {
         return;
     };
     let checker = walker.checker;
@@ -64,6 +40,48 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         ),
     };
     checker.report_fix(Rule::ComprehensionUnpacking, expr.range(), message, fix, title);
+}
+
+// Whether the comprehension's nested `for` only unpacks its iterable into the element, which this rule moves there.
+pub(crate) fn unpacks_only(expr: &Expr) -> bool {
+    matched(expr).is_some()
+}
+
+struct Matched<'a> {
+    outer: &'a Comprehension,
+    inner: &'a Comprehension,
+    element: Element<'a>,
+    source: &'a str,
+    unpacking: Unpacking,
+}
+
+fn matched(expr: &Expr) -> Option<Matched<'_>> {
+    let (generators, element) = match expr {
+        Expr::ListComp(ast::ExprListComp { elt, generators, .. })
+        | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
+        | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => (generators.as_slice(), Element::Single(elt)),
+        Expr::DictComp(ast::ExprDictComp { key: Some(key), value, generators, .. }) => {
+            (generators.as_ref(), Element::Pair(key, value))
+        }
+        _ => return None,
+    };
+    let [outer, inner] = generators else {
+        return None;
+    };
+    let Expr::Name(source) = &outer.target else {
+        return None;
+    };
+    let source = source.id.as_str();
+    if outer.is_async
+        || inner.is_async
+        || !outer.ifs.is_empty()
+        || !inner.ifs.is_empty()
+        || is_name(&inner.target, source)
+    {
+        return None;
+    }
+    let unpacking = unpacking(element, inner, source)?;
+    Some(Matched { outer, inner, element, source, unpacking })
 }
 
 #[derive(Clone, Copy)]

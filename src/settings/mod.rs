@@ -28,7 +28,8 @@ pub use schema::config_schema;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
 use crate::settings::options::{
-    ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer,
+    ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
+    SelectorLayer,
 };
 
 // Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
@@ -327,8 +328,16 @@ impl Settings {
             resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable), RuleSet::all())?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
-        let ProjectOptions { max_paragraph_words, naming, imports, logic, project_kind, api_packages, docstring_style } =
-            configuration.project;
+        let ProjectOptions {
+            max_paragraph_words,
+            naming,
+            imports,
+            logic,
+            classes,
+            project_kind,
+            api_packages,
+            docstring_style,
+        } = configuration.project;
         let api = ApiScope::resolve(
             project_dir,
             project_kind.unwrap_or_default(),
@@ -350,7 +359,7 @@ impl Settings {
             api,
             docstring_style,
             run: configuration.run,
-            knobs: Knobs::resolve(max_paragraph_words, naming, imports, logic),
+            knobs: Knobs::resolve(max_paragraph_words, naming, imports, logic, classes),
             rules,
             fixable,
             fix_safety,
@@ -568,6 +577,8 @@ pub struct Knobs {
     pub(crate) max_tuple_elements: usize,
     pub(crate) max_cognitive_complexity: usize,
     pub(crate) min_duplicate_statements: usize,
+    pub(crate) max_expression_complexity: usize,
+    pub(crate) max_instance_attributes: usize,
 }
 
 impl Knobs {
@@ -576,6 +587,7 @@ impl Knobs {
         naming: NamingOptions,
         imports: ImportsOptions,
         logic: LogicOptions,
+        classes: ClassesOptions,
     ) -> Self {
         Self {
             max_paragraph_words: max_paragraph_words.unwrap_or(100),
@@ -594,6 +606,8 @@ impl Knobs {
             max_cognitive_complexity: logic.max_cognitive_complexity.unwrap_or(20),
             // A window needs one statement to match, so a smaller setting counts as one.
             min_duplicate_statements: logic.min_duplicate_statements.unwrap_or(6).max(1),
+            max_expression_complexity: logic.max_expression_complexity.unwrap_or(8),
+            max_instance_attributes: classes.max_instance_attributes.unwrap_or(12),
         }
     }
 }
@@ -692,7 +706,13 @@ mod tests {
 
     #[test]
     fn documented_defaults_are_the_resolved_ones() {
-        let knobs = Knobs::resolve(None, NamingOptions::default(), ImportsOptions::default(), LogicOptions::default());
+        let knobs = Knobs::resolve(
+            None,
+            NamingOptions::default(),
+            ImportsOptions::default(),
+            LogicOptions::default(),
+            ClassesOptions::default(),
+        );
         let resolved = [
             ("max-paragraph-words", serde_json::json!(knobs.max_paragraph_words)),
             ("naming.keep-names", serde_json::json!(knobs.keep_names)),
@@ -705,6 +725,8 @@ mod tests {
             ("logic.max-tuple-elements", serde_json::json!(knobs.max_tuple_elements)),
             ("logic.max-cognitive-complexity", serde_json::json!(knobs.max_cognitive_complexity)),
             ("logic.min-duplicate-statements", serde_json::json!(knobs.min_duplicate_statements)),
+            ("logic.max-expression-complexity", serde_json::json!(knobs.max_expression_complexity)),
+            ("classes.max-instance-attributes", serde_json::json!(knobs.max_instance_attributes)),
         ];
         for (name, value) in resolved {
             let field = SimplintOptions::metadata().find(name).and_then(OptionEntry::into_field);

@@ -1,8 +1,10 @@
 mod cognitive_complexity;
 mod collection_built_by_statements;
+pub(crate) mod comprehension_complexity;
 mod duplicate_code;
 mod early_assignment;
 pub(crate) mod error_message_matching;
+mod expression_complexity;
 mod forwarding_function;
 mod inline;
 mod inline_regex;
@@ -42,6 +44,7 @@ pub(crate) use cognitive_complexity::cognitive_complexity;
 pub(crate) use collection_built_by_statements::collection_built_by_statements;
 pub(crate) use duplicate_code::duplicate_code;
 pub(crate) use early_assignment::early_assignment;
+pub(crate) use expression_complexity::expression_complexity;
 pub(crate) use forwarding_function::forwarding_function;
 pub(crate) use inline_regex::inline_regex;
 pub(crate) use kinds::KindsCache;

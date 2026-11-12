@@ -29,6 +29,10 @@ use crate::common;
 #[test_case("vars-call", "vars_call.py", None ; "vars_call")]
 #[test_case("vars-call", "vars_call_bound.py", None ; "vars_call_shadowed")]
 #[test_case("vars-call", "vars_call_mapping.py", None ; "vars_call_mapping")]
+#[test_case("mutable-module-constant", "mutable_module_constant.py", None ; "mutable_module_constant")]
+#[test_case(
+    "mutable-module-constant", "mutable_module_constant.py", Some("py315") ; "mutable_module_constant_python315"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -224,4 +228,19 @@ fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, re
     let reports = common::reports(&stdout, "SMP602");
     assert_eq!(reports.len(), reported, "{stdout}");
     assert!(reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:"))), "{stdout}");
+}
+
+// Another module may change a constant through its import, or every name through a star import, out of this module's
+// sight.
+#[test_case("from app.settings import PLUGINS\n\nPLUGINS.append(\"extra\")\n", 0 ; "imported_by_name")]
+#[test_case("from app import settings\n\nsettings.PLUGINS.append(\"extra\")\n", 0 ; "read_through_the_module")]
+#[test_case("from app.settings import *\n", 0 ; "star_imported")]
+#[test_case("import app.settings\n", 1 ; "module_imported_only")]
+fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, reports: usize) {
+    let root = common::project(&[
+        ("app/__init__.py", ""),
+        ("app/settings.py", "PLUGINS = [\"core\"]\n\n\ndef plugins() -> int:\n    return len(PLUGINS)\n"),
+        ("app/main.py", main),
+    ]);
+    common::assert_report_count(root.path(), "SMP605", reports);
 }

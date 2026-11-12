@@ -1,6 +1,6 @@
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
-use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
 
 use std::sync::LazyLock;
@@ -331,14 +331,18 @@ rules! {
     UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module } reads [cross_file]),
     UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
     InlineRegex => ("SMP534", "inline-regex", "Regular expressions compiled inside a function", Sometimes, logic::inline_regex { module }),
+    ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
+    ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than one `for` or a compound filter", None, logic::comprehension_complexity { expression }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
+    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file]),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
     IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module } reads [cross_file, CAUGHT, docs]),
+    TooManyAttributes => ("SMP711", "too-many-attributes", "Classes whose instances hold more attributes than the limit", None, classes::too_many_attributes { module }),
     TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),

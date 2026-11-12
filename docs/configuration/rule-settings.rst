@@ -87,8 +87,8 @@ Logic
 is short and its caller stays short. Two limits set how short. :doc:`duplicate-code </rules/SMP530>` reports statements
 another module repeats, once the copy is long enough. Statements count as the top-level statements of a body, each
 nested block counting as one, and a docstring does not count. :doc:`long-tuple-return </rules/SMP528>` reports a
-returned tuple with more elements than its limit, and :doc:`cognitive-complexity </rules/SMP529>` a function whose score
-is over its limit:
+returned tuple with more elements than its limit, :doc:`cognitive-complexity </rules/SMP529>` a function whose score
+is over its limit, and :doc:`expression-complexity </rules/SMP561>` an expression nested deeper than its limit:
 
 .. code-block:: toml
 
@@ -98,11 +98,27 @@ is over its limit:
     min-duplicate-statements = 6   # the default is 6
     max-tuple-elements = 2         # the default is 2
     max-cognitive-complexity = 20  # the default is 20
+    max-expression-complexity = 8  # the default is 8
 
 ``--config "logic.max-caller-statements = 30"`` replaces a value, and ``--show-settings`` prints them as
 ``linter.logic.max_helper_statements``, ``linter.logic.max_caller_statements``,
-``linter.logic.min_duplicate_statements``, ``linter.logic.max_tuple_elements`` and
-``linter.logic.max_cognitive_complexity``.
+``linter.logic.min_duplicate_statements``, ``linter.logic.max_tuple_elements``,
+``linter.logic.max_cognitive_complexity`` and ``linter.logic.max_expression_complexity``.
+
+.. _classes:
+
+Classes
+=======
+
+:doc:`too-many-attributes </rules/SMP711>` reports a class whose instances hold more attributes than its limit, counting
+the attributes its methods set on the instance and a dataclass's fields:
+
+.. code-block:: toml
+
+    [tool.simplint.classes]
+    max-instance-attributes = 12  # the default is 12
+
+``--show-settings`` prints it as ``linter.classes.max_instance_attributes``.
 
 .. _docstring-markup:
 
