@@ -50,7 +50,7 @@ fn rules_json_lists_parsed_examples() {
             first["blocks"][0]["source"].as_str().map(|source| source.starts_with("# ---------- parsing")),
             imports["short_group"].as_str(),
         ),
-        (0, Some("Example"), Some(10), Some(14), Some("report"), Some(10), Some(true), Some("Imports"))
+        (0, Some("Example"), Some(12), Some(16), Some("report"), Some(12), Some(true), Some("Imports"))
     );
 }
 
