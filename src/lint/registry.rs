@@ -1,6 +1,6 @@
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
-use ruff_macros::CacheKey;
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
 
 use std::sync::LazyLock;
@@ -378,10 +378,18 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
     diagnostic.secondary_code().and_then(|code| Rule::from_code(code.as_str()))
 }
 
-#[derive(Clone, Copy, Default, CacheKey)]
-pub struct RuleSet(u128);
+const WORDS: usize = 8;
 
-const _: () = assert!(Rule::ALL.len() <= 128, "RuleSet holds one bit per rule in a u128");
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuleSet([u128; WORDS]);
+
+const _: () = assert!(Rule::ALL.len() <= WORDS * 128, "RuleSet holds one bit per rule in its u128 words");
+
+impl CacheKey for RuleSet {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.0.as_slice().cache_key(state);
+    }
+}
 
 impl RuleSet {
     // A selector's rules and how specific it is, ordered as Ruff's `Specificity`: `ALL`, then code prefixes by length,
@@ -394,7 +402,7 @@ impl RuleSet {
             return Some((Self::from_rules([rule]), usize::MAX));
         }
         let set = Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.code().starts_with(selector)));
-        (!selector.is_empty() && set.0 != 0).then_some((set, selector.len()))
+        (!selector.is_empty() && set != Self::default()).then_some((set, selector.len()))
     }
 
     pub fn all() -> Self {
@@ -402,11 +410,22 @@ impl RuleSet {
     }
 
     pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
-        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u128))
+        rules.into_iter().fold(Self::default(), |set, rule| set.union(Self::single(rule)))
+    }
+
+    fn single(rule: Rule) -> Self {
+        let bit = rule as usize;
+        let mut words = [0; WORDS];
+        words[bit / 128] = 1 << (bit % 128);
+        Self(words)
+    }
+
+    fn combine(self, other: Self, word: fn(u128, u128) -> u128) -> Self {
+        Self(std::array::from_fn(|index| word(self.0[index], other.0[index])))
     }
 
     pub fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
+        self.combine(other, |left, right| left | right)
     }
 
     pub fn for_target(self, target: PythonVersion) -> Self {
@@ -416,7 +435,7 @@ impl RuleSet {
     }
 
     pub fn subtract(self, other: Self) -> Self {
-        Self(self.0 & !other.0)
+        self.combine(other, |left, right| left & !right)
     }
 
     pub fn iter(self) -> impl Iterator<Item = Rule> {
@@ -424,11 +443,11 @@ impl RuleSet {
     }
 
     pub fn contains(self, rule: Rule) -> bool {
-        self.0 & 1 << rule as u128 != 0
+        self.overlaps(Self::single(rule))
     }
 
     pub fn overlaps(self, other: Self) -> bool {
-        self.0 & other.0 != 0
+        self.combine(other, |left, right| left & right) != Self::default()
     }
 
     // The rules that read the project index, directly or through the public API, the rst targets' publicness, string
