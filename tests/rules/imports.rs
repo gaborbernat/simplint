@@ -157,7 +157,7 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 
 #[test_case("from ._api import API\n", 0 ; "direct_private_sibling")]
 #[test_case("from . import _api\n", 1 ; "direct_private_module_object")]
-#[test_case("from .public import _helper\n", 0 ; "direct_private_symbol")]
+#[test_case("from .public import _helper\n", 1 ; "private_symbol_from_public_module")]
 #[test_case("from .public.deep import API\n", 0 ; "deep_public_path")]
 #[test_case("from package import API\n", 0 ; "public_import")]
 #[test_case("from package import __version__\n", 0 ; "dunder_import")]

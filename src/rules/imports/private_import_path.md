@@ -77,8 +77,20 @@ re-export or replacing uses of a module object may require changes elsewhere.
 - **Paths with two private names**, such as `from ._a._x import what` or `from ._internal._helpers import API`. A direct
   relative import may cross one private name, not two. The fix for `from ._a._x import what` is a re-export, not moving
   the module: the package's `__init__.py` imports `what` from its private module, and the caller imports `what` from the
-  package. A private name, as in `from ._internal import _helper`, is renamed to a public name inside `_internal`
-  instead.
+  package.
+
+- **Private names from another module**, such as `from ._internal import _helper` or `from .public import _helper`.
+  Rename the name to a public one inside its module; the module can stay private.
+
+  ```python report file=package/consumer.py
+  from .public import _helper
+
+  _helper()
+  ```
+
+  ```python context file=package/public.py
+  def _helper() -> None: ...
+  ```
 
   ```python report file=package/b.py
   from ._a._x import what
@@ -123,8 +135,8 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 ### Exceptions
 
-- **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
-  build an API outside tests. `from .public import _helper` also stays within the same package level.
+- **A public name from a direct private child**: `from ._api import API` lets the package use a private sibling to build
+  an API outside tests.
 
   ```python ok file=package/consumer.py
   from ._api import API

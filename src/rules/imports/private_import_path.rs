@@ -41,9 +41,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                 if *level == 0 && path == "os" && alias.name.as_str() == "_exit" {
                     continue;
                 }
-                let count = private + private_count(alias.name.as_str());
-                if count > 0
-                    && (!direct || count > 1 || path.is_empty())
+                let named = private_count(alias.name.as_str()) > 0;
+                if (named || (private > 0 && !direct))
                     && !walker.checker.semantic().reported_by_plc2701(alias.identifier())
                 {
                     report(walker, 0, alias.name.as_str(), alias.name.range(), || {
