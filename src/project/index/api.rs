@@ -120,6 +120,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) read_whole: bool,
     pub(super) uncaught_exceptions: Option<&'a FxHashSet<String>>,
     pub(super) exception_types: Option<&'a FxHashSet<String>>,
+    pub(super) enum_types: Option<&'a FxHashSet<String>>,
     pub(super) hook_classes: Option<&'a FxHashSet<String>>,
     pub(super) run_imports: Option<&'a FxHashMap<String, bool>>,
     pub(super) run_modules: RunModules<'a>,
@@ -161,6 +162,7 @@ impl CacheKey for FileIndex<'_> {
             read_whole,
             uncaught_exceptions,
             exception_types,
+            enum_types,
             hook_classes,
             run_imports,
             run_modules,
@@ -194,6 +196,7 @@ impl CacheKey for FileIndex<'_> {
         read_whole.cache_key(state);
         uncaught_exceptions.cache_key(state);
         exception_types.cache_key(state);
+        enum_types.cache_key(state);
         hook_classes.cache_key(state);
         run_imports.cache_key(state);
         run_modules.by_alias().cache_key(state);
@@ -252,6 +255,17 @@ impl<'a> FileIndex<'a> {
 
     pub fn is_exception_type(&self, name: &str) -> bool {
         self.answers.exception_types.is_some_and(|names| names.contains(name))
+    }
+
+    pub fn is_enum_class(&self, name: &str) -> bool {
+        self.answers.enum_types.is_some_and(|names| names.contains(name))
+    }
+
+    pub fn is_run_module_enum(&self, module: &str, name: &str) -> bool {
+        let Some(target) = self.answers.run_modules.modules.and_then(|modules| modules.get(module)) else {
+            return false;
+        };
+        self.project.enum_types.get(target).is_some_and(|names| names.contains(name))
     }
 
     pub fn is_hatch_hook_class(&self, name: &str) -> bool {

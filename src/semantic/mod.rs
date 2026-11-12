@@ -424,6 +424,19 @@ fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
 }
 
 // A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
+// What a binding names, as the rules that follow a name into the project read it.
+pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
+    match binding.kind {
+        RuffBindingKind::FunctionDefinition(_) => Referent::Function,
+        RuffBindingKind::ClassDefinition(_) => Referent::Class,
+        RuffBindingKind::Import(_) | RuffBindingKind::SubmoduleImport(_) => Referent::Module,
+        RuffBindingKind::FromImport(_) => Referent::Member,
+        RuffBindingKind::Builtin => Referent::Builtin,
+        RuffBindingKind::Assignment | RuffBindingKind::NamedExprAssignment => Referent::Value,
+        _ => Referent::Other,
+    }
+}
+
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
     stmt.as_import_from_stmt()
         .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))
@@ -657,6 +670,19 @@ pub struct Binding {
     pub kind: BindingKind,
     // Whether the binding is made in the module scope, rather than in a function's `global` assignment.
     pub module_scope: bool,
+}
+
+// What a name is bound to: a function, a class, a module, a name imported from a module, a builtin, or a value that an
+// assignment gives, which the rules follow to its value.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Referent {
+    Function,
+    Class,
+    Module,
+    Member,
+    Builtin,
+    Value,
+    Other,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

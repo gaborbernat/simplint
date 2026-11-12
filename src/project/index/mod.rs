@@ -5,6 +5,7 @@ mod cycles;
 mod documented;
 mod duplicates;
 mod entries;
+mod enums;
 mod exceptions;
 mod files;
 mod hatch;
@@ -43,6 +44,7 @@ use self::cycles::{Cycle, RuntimeGraph};
 use self::documented::documented_members;
 use self::duplicates::DuplicateRun;
 use self::entries::{coverage_plugin_names, interned_entry_names, startup_entries};
+use self::enums::enum_classes;
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
@@ -68,6 +70,7 @@ pub struct Project {
     pub(super) loaded_as_value: FxHashSet<FileId>,
     pub(super) uncaught_exceptions: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) exception_types: FxHashMap<FileId, FxHashSet<String>>,
+    pub(super) enum_types: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) hook_classes: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
     pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
@@ -259,6 +262,7 @@ impl Project {
             },
         );
         let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
+        let enum_types = enum_classes(&graph, &reexports, &bindings);
         calls.set_test_support(test_support);
         Self {
             imported,
@@ -274,6 +278,7 @@ impl Project {
             loaded_as_value: read_whole,
             uncaught_exceptions,
             exception_types,
+            enum_types,
             hook_classes: hatch_hook_classes(&graph),
             run_imports,
             run_modules,
@@ -324,6 +329,7 @@ impl Project {
                 read_whole: id.is_some_and(|id| self.read_whole.contains(&id)),
                 uncaught_exceptions: entry(&self.uncaught_exceptions, id),
                 exception_types: entry(&self.exception_types, id),
+                enum_types: entry(&self.enum_types, id),
                 hook_classes: entry(&self.hook_classes, id),
                 run_imports: entry(&self.run_imports, id),
                 run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },

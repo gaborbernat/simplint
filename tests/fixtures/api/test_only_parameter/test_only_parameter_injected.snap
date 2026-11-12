@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+48:24 SMP410 Only tests pass `notifier` to `keep`; production calls leave it at its default
+78:25 SMP410 Only tests pass `mode` to `route`; production calls leave it at its default
+82:24 SMP410 Only tests pass `shade` to `tint`; production calls leave it at its default
+86:25 SMP410 Only tests pass `shade` to `blend`; production calls leave it at its default
+90:23 SMP410 Only tests pass `hue` to `mix`; production calls leave it at its default
+94:25 SMP410 Only tests pass `tone` to `style`; production calls leave it at its default
+98:24 SMP410 Only tests pass `urgent` to `flag`; production calls leave it at its default
+102:27 SMP410 Only tests pass `limit` to `stretch`; production calls leave it at its default
+106:25 SMP410 Only tests pass `notifier` to `knock`; production calls leave it at its default
+110:25 SMP410 Only tests pass `method_map` to `stash`; production calls leave it at its default
+114:28 SMP410 Only tests pass `options` to `cache_it`; production calls leave it at its default
+118:24 SMP410 Only tests pass `items` to `fold`; production calls leave it at its default

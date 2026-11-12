@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+14:31 SMP410 Only tests pass `table` to `dflt_lookup`; production calls leave it at its default
+18:30 SMP410 Only tests pass `table` to `dflt_alias`; production calls leave it at its default
+22:28 SMP410 Only tests pass `bag` to `dflt_bag`; production calls leave it at its default
+26:30 SMP410 Only tests pass `client` to `dflt_probe`; production calls leave it at its default
+30:33 SMP410 Only tests pass `settings` to `dflt_settings`; production calls leave it at its default
+42:30 SMP410 Only tests pass `produced` to `dflt_fetch`; production calls leave it at its default
+58:28 SMP410 Only tests pass `sep` to `dflt_sep`; production calls leave it at its default
+62:33 SMP410 Only tests pass `retries` to `dflt_run_data`; production calls leave it at its default
+78:29 SMP410 Only tests pass `shade` to `dflt_tone`; production calls leave it at its default
+82:31 SMP410 Only tests pass `shade` to `dflt_member`; production calls leave it at its default

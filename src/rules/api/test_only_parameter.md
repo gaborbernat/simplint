@@ -329,6 +329,74 @@ unpacks `**kwargs`, which may pass any keyword.
       assert make_config(rev="v1") != default_config()
   ```
 
+- **Parameters that inject a collaborator**: a defaulted parameter is a seam where a test swaps in a stand-in, which is
+  a design choice rather than test-only plumbing. A collaborator is a function, a class, a module, or an instance built
+  by calling a class. It is exempt in these cases:
+
+  - a `None` default, when the body calls the parameter, such as `hook(address)`, or when the annotation, unwrapped from
+    `Optional[...]` and `... | None`, names a class, Protocol, module or callable that is not a data type, and the body
+    calls the parameter or reads an attribute of it. A `None` default alone does not exempt a parameter;
+  - any other default that is a name, an attribute or a call resolving to a collaborator, when the body calls the
+    parameter or reads an attribute of it, such as `mailer.send(address)`. A name bound to a literal, such as a `dict`,
+    or to a call of a data constructor, such as `dict()`, is data, and so is a name that cannot be resolved.
+
+  The data types are the builtins, such as `dict`, `list` and `str`, and the collection types of `collections.abc` and
+  `typing`, such as `Mapping` and `Sequence`. A parameter annotated `bool`, `int`, `float`, `str`, `bytes`, `complex` or
+  `Literal[...]` stays reported, and so does one annotated with an enum, which the project defines or imports, as
+  `Mode`, `Mode | None`, `Optional[Mode]` or `module.Mode`. So does one whose default is an enum member, such as
+  `Mode.FAST`.
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python ok file=app/mail.py
+  from collections.abc import Callable
+
+
+  def send(address: str, hook: Callable[[str], None] | None = None) -> None:
+      if hook is not None:
+          hook(address)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", hook=print)
+  ```
+
+  A data parameter the body only passes on, without calling it or reading an attribute, is still reported:
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python report file=app/mail.py
+  from collections.abc import Mapping
+
+
+  def send(address: str, options: Mapping[str, bool] | None = None) -> str:
+      return address
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", options={})
+  ```
+
 - **Calls that unpack `*args` or `**kwargs`**: the unpacked values may pass the parameter.
 
   ```python context file=app/service.py
