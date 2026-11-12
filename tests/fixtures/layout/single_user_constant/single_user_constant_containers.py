@@ -85,3 +85,12 @@ _REPEATED = [1] * 3
 
 def repeated() -> list[int]:
     return _REPEATED
+
+
+_SQUARES = [number * number for number in range(3)]
+_LETTERS = {letter for letter in "ab"}
+_WIDTHS = {letter: len(letter) for letter in "ab"}
+
+
+def comprehended() -> object:
+    return _SQUARES, _LETTERS, _WIDTHS

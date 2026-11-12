@@ -31,7 +31,7 @@ use common::{fix_unsafe, project, read};
 )]
 #[test_case(
     40,
-    "_SKIP = {\n    # a comment long enough to matter\n    \"a\",\n}\n\n\ndef skipped(name: str) -> bool:\n    \
+    "_SKIP = (\n    # a comment long enough to matter\n    \"a\",\n)\n\n\ndef skipped(name: str) -> bool:\n    \
      return name in _SKIP\n",
     "SMP202",
     "module.py:1:1: SMP202 `_SKIP` is used by one function only; define it there\nFound 1 error.\n" ;

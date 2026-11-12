@@ -5,8 +5,9 @@ the function without scrolling away to find it.
 
 A module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code
 locality makes a function easy to read and reason about without scrolling around to find the value. In later pull
-requests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,
-there is no duplication the constant avoids, so such a constant is better inlined.
+requests the constant may not even be in the diff, which makes reviews harder. For a number, string or tuple of
+constants, nothing pays for that: with one user, there is no duplication the constant avoids, so such a constant is
+better inlined.
 
 A module-level constant also suggests the value is shared, so a reader has to search the module to learn that one
 function uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying
@@ -66,8 +67,9 @@ functions nested in it. These values count:
       return value + _OFFSET
   ```
 
-- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `"-" * 40`: the result follows
-  from the literals alone.
+- **Binary operations between such values that the compiler folds**, such as `60 * 60` or `"-" * 40`: CPython computes
+  the result when it compiles the module, so writing the operation out in the function costs nothing per call. The
+  Exceptions below list the operations it leaves to run per call.
 
   ```python report
   _WINDOW = 60 * 60
@@ -77,8 +79,8 @@ functions nested in it. These values count:
       return age > _WINDOW
   ```
 
-- **Tuple, list, set or dict displays made only of such values**, such as `("a", 1)` or `{"ok": 0}`: the container is
-  written out in full.
+- **Tuples made only of such values**, such as `("a", 1)`: the compiler stores a tuple of constants with the code, so
+  moving it into the function costs nothing per call.
 
   ```python report
   _FIELDS = ("name", 1)
@@ -86,17 +88,6 @@ functions nested in it. These values count:
 
   def describe() -> str:
       return str(_FIELDS)
-  ```
-
-- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so
-  the call is the builtin.
-
-  ```python report
-  _KEYS = frozenset(["a", "b"])
-
-
-  def has(key: str) -> bool:
-      return key in _KEYS
   ```
 
 ### Exceptions
@@ -131,10 +122,10 @@ functions nested in it. These values count:
 
   That covers a call result such as a cache, a logger from
   [`logging.getLogger(__name__)`](https://docs.python.org/3/library/logging.html#logging.getLogger), a pattern from
-  [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), a `Path` or a client instance; a name or
-  attribute such as [`logging.INFO`](https://docs.python.org/3/library/logging.html#logging.INFO); an f-string; and a
-  display unpacking another value with `*` or `**`. A pattern from `re.compile` is the module constant
-  [inline-regex](SMP534.html) asks for when the compile sits inside a function.
+  [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), a `Path`, a
+  [`frozenset`](https://docs.python.org/3/library/stdtypes.html#frozenset) or a client instance; a name or attribute
+  such as [`logging.INFO`](https://docs.python.org/3/library/logging.html#logging.INFO); and an f-string. A pattern from
+  `re.compile` is the module constant [inline-regex](SMP534.html) asks for when the compile sits inside a function.
 
   ```python ok
   import logging
@@ -144,6 +135,19 @@ functions nested in it. These values count:
 
   def run() -> None:
       _LOGGER.info("run")
+  ```
+
+- **Binary operations the compiler leaves to run per call**: CPython 3.11 folds an integer result of at most 128 bits, a
+  string or bytes repetition of at most 4096 characters, a tuple repetition of at most 256 items (1024 counting the
+  items of nested tuples), and no operation that raises, such as a division by zero or a type error. Past a limit, the
+  operation runs on each call, so the constant stays at module level, and so does a tuple holding such a value.
+
+  ```python ok
+  _LIMIT = 2**128
+
+
+  def cap(value: int) -> int:
+      return min(value, _LIMIT)
   ```
 
 - **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.
@@ -239,31 +243,18 @@ functions nested in it. These values count:
   config._TIMEOUT = 5
   ```
 
-- **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive
-  each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds
-  another name to it lets that state be changed or kept.
-
-  A container stays reportable only when the function tests membership with `in` or calls `len` on it, or, when its
-  items are immutable, iterates, indexes or unpacks it, calls `copy`, `count`, `get`, `index`, `items`, `keys` or
-  `values` on it, or passes it to a builtin that copies or reduces it, such as `sorted` or `sum`.
+- **Lists, sets and dicts, and a tuple holding one**: a display is built again on each call, so moving it into the
+  function costs more than the lookup it saves. Measured with [`timeit`](https://docs.python.org/3/library/timeit.html)
+  on Python 3.15.2, a 3-key dict lookup in a function took 19.5 ns through a module constant and 54.3 ns with the
+  display written inside it. Such a constant is never reported, whatever the function does with it. A comprehension is
+  not a value written out in full, so it is not reported either.
 
   ```python ok
-  _SEEN = {"a"}
+  _CODES = {"ok": 0, "error": 1, "warning": 2}
 
 
-  def mark(item: str) -> None:
-      _SEEN.add(item)
-  ```
-
-  ```python ok
-  import heapq
-
-  _QUEUE = []
-
-
-  def push(item: int) -> int:
-      heapq.heappush(_QUEUE, item)
-      return len(_QUEUE)
+  def code(name: str) -> int:
+      return _CODES[name]
   ```
 
 - **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must
@@ -299,8 +290,8 @@ flowchart TD
 
 ### Fix
 
-**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call
-a new object for mutable ones.
+**Unsafe fix:** always, because a name read through the module, such as one a test patches, no longer finds the constant
+once the fix moves it into the function.
 
 The fix moves the value in one of two ways:
 
@@ -385,21 +376,22 @@ The fix moves the value in one of two ways:
     ```
 
   - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be
-    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check
-    against the function's return annotation.
+    typed on its own. A tuple of constants under `tuple[float, float]` is one: inlined, `(0.5, 2)` is typed as
+    `tuple[float, int]`, which does not match the declared annotation, so the constant keeps its declared type as a
+    local.
 
     ```python report
-    _LIMIT: int = 30
+    _BOUNDS: tuple[float, float] = (0.5, 2)
 
 
-    def connect() -> int:
-        return _LIMIT
+    def widen() -> tuple[float, float]:
+        return _BOUNDS
     ```
 
     ```python fixed
-    def connect() -> int:
-        limit: int = 30
-        return limit
+    def widen() -> tuple[float, float]:
+        bounds: tuple[float, float] = (0.5, 2)
+        return bounds
     ```
 
   - An integer followed by a `.` gets parentheses, since `30.bit_length()` reads the dot as a decimal point and does not
@@ -486,16 +478,6 @@ No fix is offered when:
       if _TIMEOUT:
           return socket.create_connection((host, 443), timeout=_TIMEOUT)
       return socket.create_connection((host, 443), timeout=timeout)
-  ```
-
-- the value calls `frozenset` and the function has a parameter or local named `frozenset`.
-
-  ```python report
-  _KEYS = frozenset(["a", "b"])
-
-
-  def has(frozenset: set, key: str) -> bool:
-      return key in _KEYS
   ```
 
 - the constant is read in a t-string, which keeps the source text of its expressions;

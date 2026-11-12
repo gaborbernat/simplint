@@ -2,20 +2,18 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP202 `_PI_OVERRIDES` is used by one function only; define it there [unsafe fix: Move `_PI_OVERRIDES` into `lookup`]
 4:1 SMP202 `_LIMIT` is used by one function only; define it there [unsafe fix: Move `_LIMIT` into `connect`]
 5:1 SMP202 `_MODE` is used by one function only; define it there [unsafe fix: Move `_MODE` into `mode`]
-6:1 SMP202 `_CODES` is used by one function only; define it there
---- fixed (3 applied, 1 remaining) ---
+--- fixed (2 applied, 0 remaining) ---
 from typing import Final
 
+_PI_OVERRIDES: Final[dict[str, str]] = {"<?namespace>": "ProcessingInstruction"}
 _CODES: dict[str, int] = {"ok": 0}
 
 
 def lookup(text: str, expected: str) -> str:
-    pi_overrides: dict[str, str] = {"<?namespace>": "ProcessingInstruction"}
     if text.endswith(">"):
-        return pi_overrides.get(text, expected)
+        return _PI_OVERRIDES.get(text, expected)
     return expected
 
 
