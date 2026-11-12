@@ -162,10 +162,14 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("from package import API\n", 0 ; "public_import")]
 #[test_case("from package import __version__\n", 0 ; "dunder_import")]
 #[test_case("from os import _exit\n", 0 ; "public_underscore_name")]
-#[test_case("from ._api import _helper\n", 1 ; "two_private_names")]
+#[test_case("from ._api import _helper\nVALUE = _helper\n", 0 ; "direct_private_symbol_from_private_module")]
+#[test_case("from ._api import _helper as helper\nVALUE = helper\n", 0 ; "aliased_direct_private_symbol")]
 #[test_case("from ._api._helpers import API\n", 1 ; "two_private_modules")]
+#[test_case("from ._api._helpers import _helper\n", 1 ; "deep_private_symbol")]
 #[test_case("from ._api.helpers import API\n", 1 ; "private_module_below_sibling")]
+#[test_case("from ._api.helpers import _helper\n", 1 ; "private_symbol_below_sibling")]
 #[test_case("from .._api import API\n", 1 ; "private_parent_module")]
+#[test_case("from .._api import _helper\n", 1 ; "private_parent_symbol")]
 #[test_case("from .. import _api\n", 1 ; "private_parent_member")]
 #[test_case("from package._api import API, Other\n", 1 ; "absolute_private_module_names")]
 #[test_case("from package._api import _helper\n", 1 ; "absolute_private_module_and_name")]
@@ -174,8 +178,25 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("import package._api\n", 1 ; "absolute_private_import")]
 #[test_case("import package._api as api\nprint(api.make())\n", 1 ; "aliased_private_module")]
 #[test_case("def load():\n    from .._api import API\n    return API\n", 1 ; "function_import")]
+#[test_case("def load():\n    from ._api import _helper\n    return _helper\n", 0 ; "function_direct_private_symbol")]
 fn private_import_path(source: &str, expected: usize) {
     let root = common::project(&[("package/__init__.py", ""), ("package/module.py", source)]);
+    common::assert_report_count(root.path(), "SMP310", expected);
+}
+
+#[test_case("from ._api import _helper\nVALUE = _helper\n", 0 ; "nested_direct_child")]
+#[test_case("from .._api import _helper\n", 1 ; "nested_parent_relative")]
+#[test_case("from ._api._helpers import _helper\n", 1 ; "nested_deep_private_path")]
+#[test_case("from package.sub._api import _helper\n", 1 ; "nested_absolute_private_path")]
+#[test_case("from . import _api\n", 1 ; "nested_module_object")]
+fn private_import_path_nested(source: &str, expected: usize) {
+    let root = common::project(&[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "_helper = object()\n"),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/_api.py", "_helper = object()\n"),
+        ("package/sub/consumer.py", source),
+    ]);
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 

@@ -45,8 +45,8 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
 
-- **Paths with two private names**, such as `from ._internal._helpers import API` or `from ._internal import _helper`. A
-  direct relative import may cross one private name, not two.
+- **Deep private paths**, such as `from ._internal._helpers import API` or `from ._internal.helpers import _helper`.
+  Import from the direct sibling package boundary instead.
 
 - **Private modules below a sibling**, such as `from ._api.helpers import API`.
 
@@ -55,8 +55,9 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 ### Exceptions
 
-- **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
-  build an API outside tests. `from .public import _helper` also stays within the same package level.
+- **Direct relative sibling imports**: `from ._api import API` and `from ._api import _helper` let modules within one
+  package share names without exposing the implementation path outside that package. `from .public import _helper` also
+  stays within the same package level.
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
