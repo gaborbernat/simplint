@@ -129,8 +129,8 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
       """
   ```
 
-- **A literal followed by a letter**: a pair of backticks that closes an inline literal must end a word, so
-  ``` ``Path``s ``` keeps the literal open. Write the suffix after a backslash, as ``` ``Path``\ s ```.
+- **A literal followed by a letter**: in ``` ``Path``s ``` the closing backticks do not end a word, so the literal stays
+  open. Write the suffix after a backslash, as ``` ``Path``\ s ```.
 
   ```toml config
   [tool.simplint]
