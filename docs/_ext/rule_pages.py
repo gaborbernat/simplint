@@ -83,9 +83,6 @@ def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> 
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
 
-_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
-
-
 def _rule_row(rule: RuleEntry) -> str:
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
     fix = (
@@ -114,15 +111,6 @@ def _group_page(group: str, rules: list[RuleEntry]) -> str:
         f"   {rule['code']} · {rule['name']} <../rules/{rule['code']}>" for rule in rules if rule["group"] == group
     )
     return f"{group}\n{'=' * len(group)}\n\n.. toctree::\n   :titlesonly:\n\n{entries}\n"
-
-
-_RULE_CODE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(r"\]\((SMP\d+)\.html\)")
-
-_ABSOLUTE_PAGE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(
-    r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#"
-)
-
-_SIMPLINT_DOCS_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/")
 
 
 def _rule_page(rule: RuleEntry) -> str:
@@ -280,6 +268,12 @@ def _pair(reported: Example, accepted: Example, lines: list[str], *, folds: bool
     return [*out, f"{indent}::::", ""]
 
 
+def _indent(lines: list[str], example: Example) -> str:
+    # the fence indentation, which the dropdown keeps so it sits inside the list item
+    line = lines[example["line"] - 1]
+    return line[: len(line) - len(line.lstrip())]
+
+
 # an example that does not fold opens with its page and drops its title bar, so nothing closes it
 def _dropdown_options(indent: str, kind: str, *, folds: bool) -> list[str]:
     if folds:
@@ -287,35 +281,8 @@ def _dropdown_options(indent: str, kind: str, *, folds: bool) -> list[str]:
     return [f"{indent}:open:", f"{indent}:class-container: example example-{kind} example-static", ""]
 
 
-def _indent(lines: list[str], example: Example) -> str:
-    # the fence indentation, which the dropdown keeps so it sits inside the list item
-    line = lines[example["line"] - 1]
-    return line[: len(line) - len(line.lstrip())]
-
-
 def _code_block(indent: str, language: str, label: str, body: list[str]) -> list[str]:
     return [*_fence_lines(indent, language, label, body), ""]
-
-
-# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
-def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
-    heading = [f"{indent}{label}", ""] if label else []
-    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
-    numbering = [f"{indent}:linenos:"] if linenos else []
-    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
-
-
-def _body(lines: list[str], fence: Fence) -> list[str]:
-    return lines[fence["line"] : fence["end_line"] - 1]
-
-
-def _label(block: Block) -> str:
-    words = [f"`{block['file']}`"] if block["named"] else []
-    if block["select"]:
-        words.append(f"with {', '.join(block['select'])} selected")
-    if block["executable"]:
-        words.append("(executable)")
-    return " ".join(words)
 
 
 def _caption(block: Block, side: str) -> str:
@@ -394,10 +361,43 @@ def _cards(lines: list[str], example: Example, *, skip_blank: bool, hidden: str)
     return out, skip_blank
 
 
+# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
+def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
+    heading = [f"{indent}{label}", ""] if label else []
+    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
+    numbering = [f"{indent}:linenos:"] if linenos else []
+    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
+
+
+def _label(block: Block) -> str:
+    words = [f"`{block['file']}`"] if block["named"] else []
+    if block["select"]:
+        words.append(f"with {', '.join(block['select'])} selected")
+    if block["executable"]:
+        words.append("(executable)")
+    return " ".join(words)
+
+
+def _body(lines: list[str], fence: Fence) -> list[str]:
+    return lines[fence["line"] : fence["end_line"] - 1]
+
+
 def remove_stale(folder: Path, current: set[str]) -> None:
     # a page whose rule or group is gone would still build, under a name that no longer exists
     for stale in (page for page in folder.iterdir() if page.name not in current):
         stale.unlink()
+
+
+_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
+
+
+_RULE_CODE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(r"\]\((SMP\d+)\.html\)")
+
+_ABSOLUTE_PAGE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#"
+)
+
+_SIMPLINT_DOCS_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/")
 
 
 _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {

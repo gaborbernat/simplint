@@ -45,6 +45,16 @@ def rule_pages(monkeypatch: pytest.MonkeyPatch, root: Path) -> ModuleType:
     return importlib.import_module("_ext.rule_pages")
 
 
+def test_rule_page_labels_a_block_with_its_file_and_attributes(rule_pages: ModuleType) -> None:
+    page = rule_pages._rule_page(_entry(EXPLANATION))  # ruff: ignore[private-member-access] # the build's own renderer
+
+    assert (
+        "`tasks.py` (executable)\n\n```{code-block} python" in page,
+        "Before, with SMP101 selected" in page,
+        "After" in page,
+    ) == (True, True, True)
+
+
 def _entry(explanation: str) -> RuleEntry:
     return {
         "code": "SMP106",
@@ -58,13 +68,3 @@ def _entry(explanation: str) -> RuleEntry:
         "short_group": "Naming",
         "cross_file": False,
     }
-
-
-def test_rule_page_labels_a_block_with_its_file_and_attributes(rule_pages: ModuleType) -> None:
-    page = rule_pages._rule_page(_entry(EXPLANATION))  # ruff: ignore[private-member-access] # the build's own renderer
-
-    assert (
-        "`tasks.py` (executable)\n\n```{code-block} python" in page,
-        "Before, with SMP101 selected" in page,
-        "After" in page,
-    ) == (True, True, True)

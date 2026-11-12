@@ -24,7 +24,7 @@ pub(crate) struct BareRole {
 // did not open, so `(:meth:Reader.read).` ends at `read` while `:func:foo(x)` keeps its call.
 pub(crate) fn bare_roles(lines: &[Classified]) -> Vec<BareRole> {
     // The roles of Sphinx and its Python domain that take a target in backticks, so a role written without them is
-    // still recognised.
+    // still recognized.
     const TARGET_ROLES: &[&str] = &[
         "class", "func", "meth", "attr", "mod", "obj", "exc", "data", "const", "ref", "doc", "term", "any", "code",
         "envvar", "file", "kbd", "abbr", "math",

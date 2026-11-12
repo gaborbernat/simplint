@@ -102,13 +102,6 @@ class _Parser:
                 raise ValueError(msg)
         return self._examples
 
-    def _prose(self, line: str) -> None:
-        if line.startswith("## "):
-            self._section = line.removeprefix("## ")
-            self._section_config = None
-        if line.strip():
-            self._open = None
-
     def _fence(self, start: int) -> int:
         fence = _read_fence(self._lines, start)
         match self._lines[start].lstrip().removeprefix("```").split():
@@ -166,6 +159,13 @@ class _Parser:
         )
         self._examples.append(example)
         return example
+
+    def _prose(self, line: str) -> None:
+        if line.startswith("## "):
+            self._section = line.removeprefix("## ")
+            self._section_config = None
+        if line.strip():
+            self._open = None
 
 
 def _registry_lines(registry: str, pattern: re.Pattern[str]) -> list[str]:

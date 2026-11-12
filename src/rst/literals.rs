@@ -143,7 +143,7 @@ fn push_units(units: &mut Vec<(char, usize)>, text: &str, at: usize) {
     }
 }
 
-// Scans a paragraph left to right as docutils does: a start-string is recognised only after whitespace or a
+// Scans a paragraph left to right as docutils does: a start-string is recognized only after whitespace or a
 // punctuation mark, and a literal's end-string only after a non-space character, so text between backticks is read
 // the way the rest of the paragraph is.
 fn open_literals(units: &[(char, usize)]) -> Vec<Finding> {

@@ -48,9 +48,6 @@ def _add_arguments(parser: ArgumentParser, command: _Command) -> None:
             _add_arguments(child, subcommand)
 
 
-_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
-
-
 def _add_argument(parser: ArgumentParser, argument: _Argument) -> None:
     # clap help uses Markdown code spans; sphinx-argparse-cli renders help as reStructuredText
     help_text = _CODE_SPAN_PATTERN.sub(r"``\1``", argument["help"] or "")
@@ -73,3 +70,6 @@ def _add_argument(parser: ArgumentParser, argument: _Argument) -> None:
         return
     flags = [f"--{argument['long']}", *([f"-{argument['short']}"] if argument["short"] else [])]
     parser.add_argument(*flags, default=default, choices=choices, metavar=argument["value_name"], help=help_text)
+
+
+_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
