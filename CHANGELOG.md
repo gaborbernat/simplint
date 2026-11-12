@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.1 (2026-11-12)
+
+<a name="release-0-11-1"></a>
+
+<a name="release-0-11-1-changes"></a>
+
+### Changes
+
+- [`inline-regex`](https://github.com/gaborbernat/simplint/blob/0.11.1/src/rules/logic/inline_regex.md) no longer stops
+  the run as a conflict with Ruff's `unnecessary-regular-expression-compile`, so both can stay on. Ruff reports a method
+  called on an inline `re.compile` and has no fix. This rule's fix stores the pattern in a module-level constant, which
+  neither rule reports ([#135](https://github.com/gaborbernat/simplint/pull/135)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.11.0 (2026-11-12)
 
 <a name="release-0-11-0"></a>
