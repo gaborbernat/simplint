@@ -87,5 +87,11 @@ codegen-units = 1
 [profile.release.package.salsa]
 codegen-units = 1
 
+# The release build without link-time optimization, for CI jobs that need a fast binary but not the fastest one.
+[profile.ci]
+inherits = "release"
+lto = false
+codegen-units = 256
+
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

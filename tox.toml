@@ -132,6 +132,8 @@ commands = [ [ "pre-commit", "run", "--all-files", "--show-diff-on-failure" ] ]
 [env.pkg_meta]
 description = "validate package metadata"
 skip_install = true
+# Metadata does not depend on optimizations, so the wheel builds unoptimized into the cached target directory.
+set_env = { MATURIN_PEP517_ARGS = "--profile dev", CARGO_TARGET_DIR = "{tox_root}{/}target" }
 dependency_groups = [ "pkg-meta" ]
 commands = [
   [
@@ -159,8 +161,9 @@ commands = [
 ]
 
 [env.pkg_sdist]
-description = "build and test the source distribution"
+description = "check the source distribution builds a working wheel and ships a suite that compiles"
 skip_install = true
+set_env = { replace = "ref", of = [ "env", "pkg_meta", "set_env" ] }
 dependency_groups = [ "test" ]
 commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
 

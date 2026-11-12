@@ -20,6 +20,8 @@ jobs:
     uses: $/.github/workflows/test.yaml
     permissions:
       contents: read
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   release:
     name: 🏷️ Release dry run
     uses: $/.github/workflows/prepare-release.yaml
