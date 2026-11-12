@@ -4,7 +4,7 @@ use ruff_text_size::{TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::lines::indent_width;
+use crate::rst::indent_width;
 use crate::rules::long_paragraphs;
 use crate::syntax::docstring;
 

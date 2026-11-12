@@ -2,7 +2,7 @@ use ruff_python_ast::{self as ast, StringFlags};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
-use crate::rules::docstrings::lines::{doc_lines, indent_width};
+use crate::rst::{docstring_lines, field_list, field_marker, indent_width};
 
 // What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields`
 // and `ytype` fields documentation tools accept for generators.
@@ -114,64 +114,38 @@ impl<'a> Docstring<'a> {
             _ => None,
         };
         let start = content.map(TextRange::start);
-        let lines = doc_lines(text);
+        let lines = docstring_lines(text);
         let base = lines.first().map_or(0, |line| line.indent);
-        let mut fields: Vec<Field> = Vec::new();
-        let mut sections = Vec::new();
-        // The position and indentation of the field whose body a deeper line continues.
-        let mut open: Option<(usize, usize)> = None;
-        let mut text_since_field = false;
-        for (index, line) in lines.iter().enumerate() {
-            if line.text.is_empty() {
-                continue;
-            }
-            let level = line.indent;
-            let trimmed = line.text.trim_start();
-            if level == base
-                && let Some(marker) = field_marker(trimmed)
-            {
-                let words: Vec<String> = marker.split_whitespace().map(str::to_owned).collect();
-                let in_source = start.filter(|_| index > 0);
-                let description = trimmed[marker.len() + 2..].trim().to_owned();
-                let (kind, primary) = field_name(&words[0]);
-                fields.push(Field {
+        let scanned = field_list(&lines, base);
+        let sections = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| line.indent == base && !line.text.is_empty())
+            .filter(|(_, line)| field_marker(line.text.trim_start()).is_none())
+            .filter_map(|(index, line)| {
+                section(line.text.trim_start(), lines.get(index + 1).map(|next| next.text), base)
+            })
+            .collect();
+        let fields = scanned
+            .into_iter()
+            .map(|listed| {
+                // The first line shares the line of the opening quotes, so its field has no whole line of its own to
+                // edit.
+                let in_source = start.filter(|_| listed.span.start() > TextSize::default());
+                let (kind, primary) = field_name(listed.words[0]);
+                Field {
                     kind,
-                    words,
+                    words: listed.words.into_iter().map(str::to_owned).collect(),
                     primary,
-                    lines: in_source.map(|start| TextRange::at(start + line.start, TextSize::of(line.raw))),
-                    marker: in_source.map(|start| {
-                        TextRange::at(
-                            start + line.start + TextSize::try_from(level + 1).unwrap_or_default(),
-                            TextSize::of(marker),
-                        )
-                    }),
-                    after_text: text_since_field && !fields.is_empty(),
-                    described: !description.is_empty(),
-                    description,
-                    joins_text: index > 0 && open.is_none() && !lines[index - 1].text.is_empty(),
-                });
-                open = Some((fields.len() - 1, level));
-                text_since_field = false;
-                continue;
-            }
-            if let Some((at, _)) = open.filter(|(_, field)| level > *field) {
-                let field = &mut fields[at];
-                field.described = true;
-                field.description.push(' ');
-                field.description.push_str(trimmed);
-                if let (Some(start), Some(range)) = (start, field.lines) {
-                    field.lines = Some(TextRange::new(range.start(), start + line.start + TextSize::of(line.raw)));
+                    lines: in_source.map(|start| listed.span + start),
+                    marker: in_source.map(|start| listed.marker + start),
+                    after_text: listed.after_text,
+                    described: !listed.description.is_empty(),
+                    description: listed.description,
+                    joins_text: listed.joins_text,
                 }
-                continue;
-            }
-            open = None;
-            text_since_field = true;
-            if level == base
-                && let Some(section) = section(trimmed, lines.get(index + 1).map(|next| next.text), level)
-            {
-                sections.push(section);
-            }
-        }
+            })
+            .collect();
         Self { literal, fields, sections, content, commented: checker.trailing_comment(literal).is_some() }
     }
 
@@ -190,20 +164,6 @@ impl<'a> Docstring<'a> {
     pub(crate) fn range(&self) -> TextRange {
         self.literal.range()
     }
-}
-
-// The text between the colons of a field, as `param count` in `:param count: How many.` A role such as `:class:`Name``
-// starting a line of prose has a backtick after its colon, not a space.
-pub(crate) fn field_marker(line: &str) -> Option<&str> {
-    let rest = line.strip_prefix(':')?;
-    let end = rest.find(':')?;
-    let marker = &rest[..end];
-    let after = &rest[end + 1..];
-    (!marker.is_empty()
-        && !marker.starts_with(char::is_whitespace)
-        && !marker.contains('`')
-        && (after.is_empty() || after.starts_with(char::is_whitespace)))
-    .then_some(marker)
 }
 
 // The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and

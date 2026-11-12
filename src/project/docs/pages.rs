@@ -1,36 +1,17 @@
 use super::{DocReferences, Module};
+use crate::rst::{Directive, directives, references};
 
 impl DocReferences {
     pub(super) fn read(&mut self, text: &str) {
-        let mut open: Option<Directive> = None;
-        for line in text.lines() {
-            let trimmed = line.trim();
-            if let Some((name, argument)) = directive(trimmed) {
-                if let Some(done) = open.replace(Directive { name, argument, options: Vec::new() }) {
-                    done.record(self);
-                }
-            } else if let (Some(directive), Some(option)) = (open.as_mut(), option(trimmed)) {
-                directive.options.push(option);
-            } else if let Some(done) = open.take() {
-                done.record(self);
-            }
-            self.names.extend(role_targets(line));
+        let lines: Vec<&str> = text.lines().collect();
+        for directive in directives(&lines) {
+            self.record(&directive);
         }
-        if let Some(done) = open {
-            done.record(self);
-        }
+        self.names.extend(lines.iter().flat_map(|line| references(line)).filter_map(reference_name).map(str::to_owned));
     }
-}
 
-struct Directive<'t> {
-    name: &'t str,
-    argument: &'t str,
-    options: Vec<(&'t str, &'t str)>,
-}
-
-impl Directive<'_> {
     // A name relative to the page's `currentmodule` needs no resolving, since names match by their dotted suffix.
-    fn record(self, references: &mut DocReferences) {
+    fn record(&mut self, directive: &Directive) {
         const OBJECTS: [&str; 10] = [
             "function",
             "class",
@@ -43,39 +24,39 @@ impl Directive<'_> {
             "classmethod",
             "staticmethod",
         ];
-        let value = |key: &str| self.options.iter().find(|(option, _)| *option == key).map(|(_, value)| *value);
-        let target = self.argument.split(['(', ' ']).next().unwrap_or_default().to_owned();
-        let name = self.name.strip_prefix("py:").unwrap_or(self.name);
+        let value = |key: &str| directive.options.iter().find(|(option, _)| *option == key).map(|(_, value)| *value);
+        let target = directive.argument.split(['(', ' ']).next().unwrap_or_default().to_owned();
+        let name = directive.name.strip_prefix("py:").unwrap_or(directive.name);
         let object = name.strip_prefix("auto").unwrap_or(name);
         if matches!(object, "module" | "class" | "exception") && name.starts_with("auto") {
             // Sphinx documents every member for `:members:` alone, and only the listed ones when it has a list.
             match value("members") {
                 Some("") if object == "module" => {
-                    references.modules.insert(Module {
+                    self.modules.insert(Module {
                         target: target.clone(),
                         exclude: listed(value("exclude-members").unwrap_or_default()).map(str::to_owned).collect(),
                         private: value("private-members").is_some(),
                         special: value("special-members").is_some(),
                     });
                 }
-                Some("") => _ = references.scopes.insert(format!("{target}.")),
+                Some("") => _ = self.scopes.insert(format!("{target}.")),
                 Some(members) => {
-                    references.names.extend(listed(members).map(|member| format!("{target}.{member}")));
+                    self.names.extend(listed(members).map(|member| format!("{target}.{member}")));
                 }
                 None => {}
             }
-            references.names.insert(target);
+            self.names.insert(target);
         } else if OBJECTS.contains(&object) {
-            references.names.insert(target);
+            self.names.insert(target);
         }
         // sphinx-argparse and sphinx-argparse-cli render the parser a module's function builds.
         if let Some(module) = value("module")
             && let Some(function) = value("func")
         {
-            references.names.insert(format!("{module}.{function}"));
+            self.names.insert(format!("{module}.{function}"));
         }
         if let Some(path) = value("ref") {
-            references.names.insert(path.to_owned());
+            self.names.insert(path.to_owned());
         }
     }
 }
@@ -84,38 +65,29 @@ fn listed(value: &str) -> impl Iterator<Item = &str> {
     value.split(',').map(str::trim).filter(|member| !member.is_empty())
 }
 
-fn directive(line: &str) -> Option<(&str, &str)> {
-    if let Some(rest) = line.strip_prefix(".. ") {
-        let (name, argument) = rest.split_once("::")?;
-        return (!name.contains(' ')).then(|| (name, argument.trim()));
+// A leading `.` searches every module, which the relative match already does.
+fn reference_name(target: &str) -> Option<&str> {
+    let target = target.trim_start_matches(['~', '!', '.']).trim_end_matches("()");
+    (!target.is_empty()).then_some(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::super::DocReferences;
+
+    #[test_case(":func:`~pkg.mod.name`", &["pkg.mod.name"] ; "tilde_prefix")]
+    #[test_case(":func:`.pkg.name`", &["pkg.name"] ; "dot_prefix")]
+    #[test_case(":func:`!pkg.name`", &["pkg.name"] ; "exclamation_prefix")]
+    #[test_case(":func:`pkg.name()`", &["pkg.name"] ; "call_parentheses")]
+    #[test_case(":class:`Title <~pkg.Thing>`", &["pkg.Thing"] ; "explicit_title")]
+    #[test_case(":func:`~`", &[] ; "nothing_left_after_the_prefix")]
+    fn role_targets_name_definitions(text: &str, expected: &[&str]) {
+        let mut references = DocReferences::default();
+        references.read(text);
+        let mut names: Vec<String> = references.names.into_iter().collect();
+        names.sort();
+        assert_eq!(names, expected);
     }
-    let rest = line.trim_start_matches(['`', ':']).strip_prefix('{').filter(|_| line.starts_with(['`', ':']))?;
-    let (name, argument) = rest.split_once('}')?;
-    Some((name, argument.trim()))
-}
-
-fn option(line: &str) -> Option<(&str, &str)> {
-    let (key, value) = line.strip_prefix(':')?.split_once(':')?;
-    (!key.is_empty() && !key.contains(' ')).then(|| (key, value.trim()))
-}
-
-fn role_targets(line: &str) -> Vec<String> {
-    const ROLES: [&str; 12] =
-        ["func", "class", "meth", "attr", "data", "obj", "mod", "exc", "const", "type", "deco", "property"];
-    let parts: Vec<&str> = line.split('`').collect();
-    (1..parts.len())
-        .step_by(2)
-        .filter_map(|at| {
-            let (before, content) = (parts[at - 1], parts[at]);
-            let role = match before.strip_suffix(':') {
-                Some(rst) => rst.rsplit(':').next().unwrap_or_default(),
-                None => before.strip_suffix('}')?.rsplit_once('{')?.1,
-            };
-            ROLES.contains(&role.strip_prefix("py:").unwrap_or(role)).then_some(())?;
-            let target = content.rsplit_once('<').map_or(content, |(_, inner)| inner.trim_end_matches('>'));
-            // A leading `.` searches every module, which the relative match already does.
-            let target = target.trim_start_matches(['~', '!', '.']).trim_end_matches("()");
-            (!target.is_empty()).then(|| target.to_owned())
-        })
-        .collect()
 }

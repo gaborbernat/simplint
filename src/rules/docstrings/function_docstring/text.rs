@@ -1,7 +1,7 @@
 use ruff_python_trivia::textwrap::dedent;
 
-use crate::rules::docstrings::lines::indent_width;
-use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
+use crate::rst::{field_marker, indent_width};
+use crate::rules::docstrings::rst::SIGNATURE_SECTIONS;
 
 // The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of rst
 // and numpydoc headings, which as comments would read as section dividers.
