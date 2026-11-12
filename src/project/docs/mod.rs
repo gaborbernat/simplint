@@ -12,6 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::project::cache;
 pub use conf::AutoclassContent;
+use conf::Rendered;
 use walk::{is_configuration, is_foreign, pages, tree_key};
 
 #[derive(Clone, Default, PartialEq)]
@@ -23,17 +24,27 @@ pub struct DocReferences {
     // `automodule` with `:members:` alone documents what the module's `__all__` lists, or its public names, which the
     // index resolves into names.
     modules: FxHashSet<Module>,
-    // Per project root, the class docstring its Sphinx configuration renders, and the `class-doc-from` options its
+    // Per project root, the class docstrings its Sphinx configuration renders, and the `class-doc-from` options its
     // pages give to classes. Each project's files read their own root's entry.
     roots: FxHashMap<PathBuf, RootDocs>,
 }
 
 #[derive(Clone, Default, PartialEq)]
 pub(super) struct RootDocs {
-    // The docstring for every class of the project that no directive names.
+    // The docstring for every class of the project that no `autoclass` or `autoexception` directive names.
     pub(super) default: AutoclassContent,
-    // The `class-doc-from` option of each `autoclass` directive, by the class name the directive gives.
-    pub(super) directives: FxHashMap<String, AutoclassContent>,
+    // The docstring for a class such a directive names without its own option. Sphinx takes `autodoc_default_options`
+    // for those directives alone, and `autoclass_content` for the rest.
+    pub(super) named: AutoclassContent,
+    pub(super) directives: Directives,
+}
+
+// The `class-doc-from` option of each `autoclass` and `autoexception` directive, `None` when it sets none. A dotted
+// name is a module path, and a simple name is resolved against the page's module, so it matches any class of that name.
+#[derive(Clone, Default, PartialEq)]
+pub(super) struct Directives {
+    pub(super) qualified: FxHashMap<String, Option<AutoclassContent>>,
+    pub(super) simple: FxHashMap<String, Option<AutoclassContent>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -65,7 +76,7 @@ impl DocReferences {
             }
             let mut found = Self::default();
             let mut configurations = Vec::new();
-            let mut directives = FxHashMap::default();
+            let mut directives = Directives::default();
             for path in pages(root, settings, main) {
                 if is_configuration(&path) {
                     configurations.push(path);
@@ -73,8 +84,10 @@ impl DocReferences {
                     found.read(&path, &text, &mut directives);
                 }
             }
-            let default = conf::agreed(configurations.iter().filter_map(|path| configuration(root, path)));
-            found.roots.insert(root.to_path_buf(), RootDocs { default, directives });
+            let rendered: Vec<Rendered> = configurations.iter().filter_map(|path| configuration(root, path)).collect();
+            let default = conf::agreed(rendered.iter().map(|rendered| rendered.default));
+            let named = conf::agreed(rendered.iter().map(|rendered| rendered.named));
+            found.roots.insert(root.to_path_buf(), RootDocs { default, named, directives });
             if let Some((path, key)) = cache {
                 found.store(&path, key);
             }
@@ -95,12 +108,18 @@ impl DocReferences {
     }
 
     // The docstring a class of `root` renders, when the project's documentation was read. A project that was not read
-    // has no answer, so the caller keeps the class docstring's copy as the only one it knows.
-    pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
+    // has no answer, so the caller keeps the class docstring's copy as the only one it knows. A simple name a page
+    // resolves against its module matches a class only when no other class of the run has that name.
+    pub fn class_doc_from(&self, root: &Path, qualified: &str, namesake: bool) -> Option<AutoclassContent> {
         self.roots.get(root).map(|docs| {
-            let mut suffixes =
-                std::iter::once(qualified).chain(qualified.match_indices('.').map(|(at, _)| &qualified[at + 1..]));
-            suffixes.find_map(|suffix| docs.directives.get(suffix).copied()).unwrap_or(docs.default)
+            if let Some(option) = docs.directives.qualified.get(qualified) {
+                return option.unwrap_or(docs.named);
+            }
+            match docs.directives.simple.get(qualified.rsplit_once('.').map_or(qualified, |(_, name)| name)) {
+                Some(_) if namesake => AutoclassContent::Unknown,
+                Some(option) => option.unwrap_or(docs.named),
+                None => docs.default,
+            }
         })
     }
 
@@ -133,7 +152,7 @@ impl DocReferences {
 // The docstring a Sphinx configuration of `root` renders for its classes, or `None` when `path` is not one. A vendored
 // or other project's `conf.py` is not the project's. A configuration that cannot be read, or is over the size limit,
 // may set the option, so its docstring is unknown.
-fn configuration(root: &Path, path: &Path) -> Option<AutoclassContent> {
+fn configuration(root: &Path, path: &Path) -> Option<Rendered> {
     if is_foreign(root, path) {
         return None;
     }
@@ -145,7 +164,7 @@ fn configuration(root: &Path, path: &Path) -> Option<AutoclassContent> {
         .and_then(|_| fs::read_to_string(path).ok());
     match text {
         Some(text) => conf::class_doc_from(&text, has_index),
-        None => Some(AutoclassContent::Unknown),
+        None => Some(Rendered::UNKNOWN),
     }
 }
 
@@ -169,11 +188,14 @@ impl CacheKey for DocReferences {
         for (root, docs) in roots {
             root.cache_key(state);
             docs.default.cache_key(state);
-            let mut directives: Vec<(&String, &AutoclassContent)> = docs.directives.iter().collect();
-            directives.sort_unstable_by_key(|(name, _)| *name);
-            for (name, content) in directives {
-                name.cache_key(state);
-                content.cache_key(state);
+            docs.named.cache_key(state);
+            for names in [&docs.directives.qualified, &docs.directives.simple] {
+                let mut sorted: Vec<(&String, &Option<AutoclassContent>)> = names.iter().collect();
+                sorted.sort_unstable_by_key(|(name, _)| *name);
+                for (name, content) in sorted {
+                    name.cache_key(state);
+                    content.cache_key(state);
+                }
             }
         }
     }

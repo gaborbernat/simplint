@@ -115,18 +115,25 @@ Which copy counts as the repeat depends on the docstring Sphinx renders for the 
 project in this order:
 
 1. a `:class-doc-from:` option on the class's
-   [`autoclass`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoclass) directive, in
-   one of the project's pages;
-1. `class-doc-from` in `autodoc_default_options` of the project's Sphinx configuration;
+   [`autoclass`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoclass) or
+   [`autoexception`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoexception)
+   directive, in one of the project's pages;
+1. `class-doc-from` in `autodoc_default_options` of the project's Sphinx configuration, for a class that such a
+   directive names without that option;
 1. [`autoclass_content`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content)
    of that configuration;
 1. the class docstring, which Sphinx shows when none of these sets another.
 
+A directive names a class by its dotted name, which Sphinx imports as written, or by its simple name, which Sphinx
+resolves against the page's `module` or `currentmodule`. A simple name on a page with no module matches a class only
+when no other class of the run has that name, and otherwise the rule reports nothing for it.
+
 A Sphinx configuration is a `conf.py` beside an index page (`index.rst`, `index.md` or `index.txt`), or one that assigns
-`extensions`, `master_doc` or `root_doc`. The rule reads it whether or not Ruff excludes it, and follows a symlink whose
-target lies in the project. It skips vendored directories (`_vendor`, `vendor`, `third_party`, `subprojects`), other
-projects below the root, and gitignored files. The Sphinx configurations of one project must agree on the option; when
-they do not, the rule reports nothing for that project.
+`extensions`, `master_doc` or `root_doc`. A wildcard binding, such as a star import, `exec` or `globals()`, does not
+count as an assignment. The rule reads it whether or not Ruff excludes it, and follows a symlink whose target lies in
+the project. It skips vendored directories (`_vendor`, `vendor`, `third_party`, `subprojects`), other projects below the
+root, and gitignored files. The Sphinx configurations of one project must agree on the option; when they do not, the
+rule reports nothing for that project.
 
 The rule reads each option from a top-level assignment, plain, annotated, or as one target of a tuple assignment, and a
 `class-doc-from` key from a dict literal. The docstring is unknown, and the rule reports nothing for the class, when the
@@ -212,9 +219,9 @@ The examples below show each case:
           """
   ```
 
-- **`class-doc-from` on a directive**: an `autoclass` directive names the class and sets the option, which decides the
-  copy of that class ahead of the configuration. Here the configuration sets nothing, and the directive makes the class
-  docstring the repeat.
+- **`class-doc-from` on a directive**: an `autoclass` or `autoexception` directive names the class and sets the option,
+  which decides the copy of that class ahead of the configuration. Here the configuration sets nothing, and the
+  directive makes the class docstring the repeat.
 
   ```toml config
   [tool.simplint]
@@ -245,7 +252,9 @@ The examples below show each case:
           """
   ```
 
-- **`autodoc_default_options`**: the key sets the option for every class of the project, ahead of `autoclass_content`.
+- **`autodoc_default_options`**: the key sets the option for each class an `autoclass` or `autoexception` directive
+  names without its own option, ahead of `autoclass_content`. A class that an `automodule` documents with `:members:`
+  takes `autoclass_content`, since Sphinx gives the key to those directives alone.
 
   ```toml config
   [tool.simplint]
@@ -255,6 +264,10 @@ The examples below show each case:
   ```rst context file=docs/index.rst
   Index
   =====
+  ```
+
+  ```rst context file=docs/api.rst
+  .. autoclass:: Reader
   ```
 
   ```python context file=docs/conf.py

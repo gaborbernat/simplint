@@ -30,6 +30,18 @@ impl AutoclassContent {
     }
 }
 
+// The docstrings a Sphinx configuration renders for a class: `default` for one no `autoclass` or `autoexception`
+// directive names, and `named` for one a directive names without its own `class-doc-from`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Rendered {
+    pub(super) default: AutoclassContent,
+    pub(super) named: AutoclassContent,
+}
+
+impl Rendered {
+    pub(super) const UNKNOWN: Self = Self { default: AutoclassContent::Unknown, named: AutoclassContent::Unknown };
+}
+
 // The docstring of a project's classes, when its Sphinx configurations agree. Sphinx reads each configuration of
 // a project on its own, so one that sets nothing renders the class docstring, and two that disagree leave it unknown.
 pub(super) fn agreed(values: impl IntoIterator<Item = AutoclassContent>) -> AutoclassContent {
@@ -41,18 +53,18 @@ pub(super) fn agreed(values: impl IntoIterator<Item = AutoclassContent>) -> Auto
     }
 }
 
-// The docstring a Sphinx configuration renders for its classes, or `None` when the file is not a Sphinx configuration.
+// The docstrings a Sphinx configuration renders for its classes, or `None` when the file is not a Sphinx configuration.
 // Sphinx's master document is `index`, and a configuration names its extensions or master document, so one with neither
-// does not count. A file that does not parse may still be one, so its docstring is unknown.
-pub(super) fn class_doc_from(text: &str, has_index: bool) -> Option<AutoclassContent> {
+// does not count. A file that does not parse may still be one, so its docstrings are unknown.
+pub(super) fn class_doc_from(text: &str, has_index: bool) -> Option<Rendered> {
     let Ok(parsed) = parse_module(text) else {
-        return Some(AutoclassContent::Unknown);
+        return Some(Rendered::UNKNOWN);
     };
     let scan = Scan::of(&parsed.syntax().body);
     if !has_index && !scan.bound("extensions") && !scan.bound("master_doc") && !scan.bound("root_doc") {
         return None;
     }
-    Some(scan.class_doc_from())
+    Some(scan.rendered())
 }
 
 const OPTION: &str = "autoclass_content";
@@ -150,8 +162,8 @@ impl<'a> Scan<'a> {
         }
     }
 
+    // A wildcard may bind any name, which leaves the options unknown, but it does not tell a configuration apart.
     fn bind_all(&mut self) {
-        self.bound.extend(TRACKED);
         self.unknown.extend([OPTION, DEFAULT_OPTIONS]);
     }
 
@@ -162,11 +174,14 @@ impl<'a> Scan<'a> {
         }
     }
 
-    fn class_doc_from(&self) -> AutoclassContent {
-        self.default_options().or_else(|| self.option()).unwrap_or_default()
+    fn rendered(&self) -> Rendered {
+        Rendered {
+            default: self.option().unwrap_or_default(),
+            named: self.default_options().or_else(|| self.option()).unwrap_or_default(),
+        }
     }
 
-    // The option's value at the top level, which `autodoc_default_options` overrides for every class.
+    // The option's value at the top level, which `autodoc_default_options` overrides for the classes a directive names.
     fn option(&self) -> Option<AutoclassContent> {
         if self.unknown.contains(OPTION) {
             return Some(AutoclassContent::Unknown);

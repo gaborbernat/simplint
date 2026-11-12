@@ -27,6 +27,9 @@ pub(in crate::project) struct RunWide {
     pub(super) referenced_paths: FxHashSet<String>,
     pub(super) computed_reads: ComputedReads,
     pub(super) writes: Writes,
+    // The class names more than one module-level class of the run defines, which a documentation reference by simple
+    // name cannot tell apart.
+    pub(super) class_namesakes: FxHashSet<String>,
 }
 
 pub(super) fn run_names(
@@ -69,7 +72,19 @@ pub(super) fn run_names(
         referenced_paths,
         computed_reads,
         writes,
+        class_namesakes: class_namesakes(indexed),
     }
+}
+
+fn class_namesakes(files: &[(FileId, &FileFacts)]) -> FxHashSet<String> {
+    let mut seen = FxHashSet::default();
+    let mut shared = FxHashSet::default();
+    for class in files.iter().flat_map(|(_, facts)| &facts.classes) {
+        if !seen.insert(class.name.as_str()) {
+            shared.insert(class.name.clone());
+        }
+    }
+    shared
 }
 
 fn fixture_requests(files: &[(FileId, &FileFacts)], test_modules: &FxHashSet<FileId>) -> FxHashSet<String> {

@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{AutoclassContent, DocReferences, Module, RootDocs};
+use super::{AutoclassContent, Directives, DocReferences, Module, RootDocs};
 use crate::project::cache;
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -16,7 +16,9 @@ struct CachedDocs {
 struct CachedRoot {
     root: String,
     default: AutoclassContent,
-    directives: Vec<(String, AutoclassContent)>,
+    named: AutoclassContent,
+    qualified: Vec<(String, Option<AutoclassContent>)>,
+    simple: Vec<(String, Option<AutoclassContent>)>,
 }
 
 impl DocReferences {
@@ -31,7 +33,11 @@ impl DocReferences {
                 .roots
                 .into_iter()
                 .map(|root| {
-                    let docs = RootDocs { default: root.default, directives: root.directives.into_iter().collect() };
+                    let directives = Directives {
+                        qualified: root.qualified.into_iter().collect(),
+                        simple: root.simple.into_iter().collect(),
+                    };
+                    let docs = RootDocs { default: root.default, named: root.named, directives };
                     (PathBuf::from(root.root), docs)
                 })
                 .collect(),
@@ -51,7 +57,14 @@ impl DocReferences {
                 .map(|(root, docs)| CachedRoot {
                     root: root.to_string_lossy().into_owned(),
                     default: docs.default,
-                    directives: docs.directives.iter().map(|(name, content)| (name.clone(), *content)).collect(),
+                    named: docs.named,
+                    qualified: docs
+                        .directives
+                        .qualified
+                        .iter()
+                        .map(|(name, content)| (name.clone(), *content))
+                        .collect(),
+                    simple: docs.directives.simple.iter().map(|(name, content)| (name.clone(), *content)).collect(),
                 })
                 .collect(),
         };

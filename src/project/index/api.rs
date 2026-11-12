@@ -396,7 +396,8 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
-        self.project.docs.class_doc_from(root, qualified)
+        let namesake = self.project.wide.class_namesakes.contains(unqualified(qualified));
+        self.project.docs.class_doc_from(root, qualified, namesake)
     }
 
     pub fn is_fixture_requested(&self, name: &str) -> bool {
