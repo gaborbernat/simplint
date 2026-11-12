@@ -691,6 +691,19 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
     "docs/api.md", ":::{autoclass} app.core.Client\n:members: send\n:::\n", true, false
     ; "myst_colon_directive"
 )]
+#[test_case("docs/index.rst", "`app.core.helper`:func:", false, true ; "suffix_role")]
+#[test_case("docs/index.rst", ":func:`The helper\n<app.core.helper>`", false, true ; "explicit_title_across_lines")]
+#[test_case("docs/index.rst", ".. :func:`app.core.helper`\n", true, true ; "role_in_a_comment")]
+#[test_case("docs/api.md", "```python\n{func}`app.core.helper`\n```\n", true, true ; "myst_role_in_a_code_fence")]
+#[test_case(
+    "docs/index.rst", ".. automodule:: app.core\n   :members: send,\n      helper\n", false, true
+    ; "members_continued_on_the_next_line"
+)]
+#[test_case("docs/index.rst", ".. AutoModule:: app.core\n   :members: helper\n", false, true ; "directive_name_ignores_case")]
+#[test_case("docs/index.rst", ".. |name| autofunction:: app.core.helper\n", false, true ; "substitution_definition")]
+#[test_case("docs/index.rst", "Example::\n\n    .. autofunction:: app.core.helper\n", true, true ; "directive_in_a_literal_block")]
+#[test_case("docs/index.rst", "..\n   .. autofunction:: app.core.helper\n", true, true ; "directive_in_a_comment")]
+#[test_case("docs/index.rst", ".. autofunction::app.core.helper\n", true, true ; "directive_without_a_space_after_the_colons")]
 #[test_case("docs/index.rst", ":func:`app.core.other`", true, true ; "other_name")]
 #[test_case("docs/index.rst", "``helper`` and :unknown:`app.core.helper`", true, true ; "not_a_python_role")]
 #[test_case(".venv/lib/page.rst", ":func:`app.core.helper`", true, true ; "excluded_directory")]

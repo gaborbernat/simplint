@@ -48,6 +48,7 @@ use crate::common;
 #[test_case("rst-inline-markup", "rst_inline_markup.py", None ; "rst_inline_markup")]
 #[test_case("rst-inline-markup", "rst_inline_markup_first_line.py", None ; "rst_inline_markup_first_line")]
 #[test_case("rst-inline-markup", "rst_inline_markup_docutils.py", None ; "rst_inline_markup_docutils")]
+#[test_case("rst-inline-markup", "rst_inline_markup_scanner.py", None ; "rst_inline_markup_scanner")]
 #[test_case("rst-type-field", "rst_type_field.py", None ; "rst_type_field")]
 #[test_case("rst-restating-field", "rst_restating_field.py", None ; "rst_restating_field")]
 #[test_case("rst-empty-field", "rst_empty_field.py", None ; "rst_empty_field")]

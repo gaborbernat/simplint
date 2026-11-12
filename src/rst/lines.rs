@@ -1,5 +1,8 @@
 use ruff_text_size::TextSize;
 
+// Docutils expands a tab to the next multiple of eight columns, as Python's `expandtabs` does for a docstring.
+pub(crate) const TAB_WIDTH: usize = 8;
+
 #[derive(Clone, Copy)]
 pub(crate) struct Line<'a> {
     pub(crate) start: TextSize,
@@ -13,7 +16,7 @@ pub(crate) fn lines(text: &str) -> Vec<Line<'_>> {
     text.split_inclusive('\n')
         .map(|raw| {
             let content = raw.strip_suffix("\r\n").or_else(|| raw.strip_suffix('\n')).unwrap_or(raw);
-            let line = Line { start, raw, text: content, indent: indent_width(content) };
+            let line = Line { start, raw, text: content, indent: indent_columns(content, TAB_WIDTH) };
             start += TextSize::of(raw);
             line
         })
@@ -27,7 +30,7 @@ pub(crate) fn docstring_lines(text: &str) -> Vec<Line<'_>> {
         .into_iter()
         .map(|line| {
             let content = line.text.trim_end();
-            Line { text: content, indent: indent_width(content), ..line }
+            Line { text: content, indent: indent_columns(content, TAB_WIDTH), ..line }
         })
         .collect();
     let base =
@@ -39,20 +42,24 @@ pub(crate) fn docstring_lines(text: &str) -> Vec<Line<'_>> {
 }
 
 pub(crate) fn indent_width(line: &str) -> usize {
-    columns(&line[..line.len() - line.trim_start().len()])
+    indent_columns(line, TAB_WIDTH)
 }
 
-// The width of text in columns, with each tab moved to the next multiple of eight, as docutils and `inspect.cleandoc`
-// read indentation.
-pub(crate) fn columns(text: &str) -> usize {
-    text.chars().fold(0, |column, char| if char == '\t' { (column / 8 + 1) * 8 } else { column + 1 })
+// The indentation of a line in columns, where a tab runs to the next multiple of `tab`.
+pub(crate) fn indent_columns(line: &str, tab: usize) -> usize {
+    let body = line.trim_start();
+    columns(&line[..line.len() - body.len()], tab)
+}
+
+pub(crate) fn columns(text: &str, tab: usize) -> usize {
+    text.chars().fold(0, |width, char| if char == '\t' { width + tab - width % tab } else { width + 1 })
 }
 
 #[cfg(test)]
 mod tests {
     use test_case::test_case;
 
-    use super::{docstring_lines, indent_width, lines};
+    use super::{docstring_lines, indent_columns, indent_width, lines};
 
     #[test_case("a\nb\n", &["a", "b"] ; "newline")]
     #[test_case("a\r\nb\r\n", &["a", "b"] ; "crlf")]
@@ -93,5 +100,13 @@ mod tests {
     #[test_case(" \ttext", 8 ; "tab_stops_after_a_space")]
     fn indent_width_counts_leading_whitespace(line: &str, expected: usize) {
         assert_eq!(indent_width(line), expected);
+    }
+
+    #[test_case("", 8, 0 ; "empty")]
+    #[test_case("\t text", 8, 9 ; "tab_runs_to_the_next_multiple_of_eight")]
+    #[test_case(" \t", 4, 4 ; "tab_after_a_space_runs_to_four")]
+    #[test_case("  \tx\t", 8, 8 ; "text_stops_the_indentation")]
+    fn indent_columns_expand_tabs(line: &str, tab: usize, expected: usize) {
+        assert_eq!(indent_columns(line, tab), expected);
     }
 }

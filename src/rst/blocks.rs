@@ -1,5 +1,5 @@
 use super::fields::field_marker;
-use super::lines::{Line, columns, docstring_lines};
+use super::lines::{Line, TAB_WIDTH, columns, docstring_lines};
 
 pub(crate) struct Classified<'a> {
     pub(crate) line: Line<'a>,
@@ -227,7 +227,7 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
     // A bullet or enumerated item, or a footnote: its body is the lines indented at least to where its text starts,
     // as docutils reads a list item.
     fn list_item(&mut self, index: usize, rest: &'a str, prefix: &str) -> usize {
-        let column = self.line(index).indent + columns(prefix);
+        let column = self.line(index).indent + columns(prefix, TAB_WIDTH);
         let end = self.body_end(index + 1, column);
         let first = Line { text: rest, indent: column, ..self.line(index) };
         self.defer(index, end, column, Some(first));

@@ -49,8 +49,8 @@ impl DocReferences {
             }
             let mut found = Self::default();
             for path in pages(root, settings, main) {
-                if let Ok(text) = fs::read_to_string(path) {
-                    found.read(&text);
+                if let Ok(text) = fs::read_to_string(&path) {
+                    found.read(&path, &text);
                 }
             }
             if let Some((path, key)) = cache {
