@@ -2,6 +2,7 @@ mod api;
 mod file;
 mod metadata;
 mod options;
+mod pytest;
 mod schema;
 
 use rustc_hash::FxHashMap;
@@ -27,6 +28,7 @@ pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
+pub(crate) use crate::settings::pytest::PytestConfig;
 use crate::settings::options::{
     ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
     SelectorLayer,
@@ -254,6 +256,8 @@ pub(crate) struct Settings {
     pub(crate) hatch_hooks: Vec<PathBuf>,
     // The coverage plugins and the directories they resolve from, which the index searches for them.
     pub coverage: CoveragePlugins,
+    // The markers pytest registers and the file names it collects tests from.
+    pub(crate) pytest: PytestConfig,
     pub(crate) run: RunOptions,
     pub knobs: Knobs,
     pub api: ApiScope,
@@ -282,6 +286,7 @@ impl Settings {
         let coverage = metadata.map_or_else(CoveragePlugins::default, |(path, table)| {
             CoveragePlugins::of(table, path.parent().unwrap_or(root))
         });
+        let pyproject = metadata.map(|(_, table)| table);
         let (metadata_path, metadata, build) = match metadata {
             Some((path, table)) => {
                 let hatch_file = path.with_file_name("hatch.toml");
@@ -308,6 +313,7 @@ impl Settings {
         let configuration = overrides.transform(configuration);
         // Its `setup.py` and the packages next to it belong to the metadata's project, which may sit above `root`.
         let project_dir = metadata_path.and_then(Path::parent).unwrap_or(root);
+        let pytest = PytestConfig::of(&[root, project_dir], pyproject);
         // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
         let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = resolve_rules(
@@ -355,6 +361,7 @@ impl Settings {
             build_hooks: build_hooks(project_dir, &build)?,
             hatch_hooks: hatch_hooks(project_dir, &build)?,
             coverage,
+            pytest,
             metadata,
             api,
             docstring_style,
@@ -430,6 +437,7 @@ impl CacheKey for Settings {
         self.hatch_hooks.cache_key(state);
         self.coverage.modules.cache_key(state);
         self.coverage.search_paths.cache_key(state);
+        self.pytest.cache_key(state);
         self.fixable.cache_key(state);
         self.fix_safety.forced_safe.cache_key(state);
         self.fix_safety.forced_unsafe.cache_key(state);

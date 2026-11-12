@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:9 SMP819 pytest 8 no longer calls the nose-style `setup`; name it `setup_method` to run it before each test method [unsafe fix: Rename to `setup_method`]
+8:9 SMP819 pytest 8 no longer calls the nose-style `teardown`; name it `teardown_method` to run it after each test method [unsafe fix: Rename to `teardown_method`]
+--- fixed (2 applied, 0 remaining) ---
+import unittest
+
+
+class TestNose:
+    def setup_method(self):
+        pass
+
+    def teardown_method(self):
+        pass
+
+    def test_value(self) -> None:
+        assert True
+
+
+class TestCaseNose(unittest.TestCase):
+    def setUp(self):
+        pass

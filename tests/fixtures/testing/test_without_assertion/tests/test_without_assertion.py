@@ -1,0 +1,151 @@
+import warnings
+
+import pytest
+
+from .helpers import run_and_check
+
+
+def compute() -> int:
+    return 1
+
+
+def test_nothing() -> None:
+    compute()
+
+
+def test_placeholder() -> None:
+    pass
+
+
+class TestComputation:
+    def test_method(self) -> None:
+        compute()
+
+    def test_through_helper(self) -> None:
+        self.verify()
+
+    def test_self_helper_without_check(self) -> None:
+        self.prepare()
+
+    def test_inherited(self) -> None:
+        self.inherited_helper()
+
+    def verify(self) -> None:
+        assert compute()
+
+    def prepare(self) -> None:
+        compute()
+
+
+def test_assert() -> None:
+    assert compute()
+
+
+def test_raises() -> None:
+    with pytest.raises(ValueError):
+        compute()
+
+
+def test_raise() -> None:
+    if not compute():
+        raise AssertionError
+
+
+def test_check_helper() -> None:
+    check_result(compute())
+
+
+def test_unittest_style(case) -> None:
+    case.assertEqual(compute(), 1)
+
+
+def test_local_helper() -> None:
+    local_helper()
+
+
+def test_local_helper_without_check() -> None:
+    noop_helper()
+
+
+def test_imported_helper() -> None:
+    run_and_check()
+
+
+def test_callable_fixture(run) -> None:
+    run(compute)
+
+
+def test_matcher(pytester: pytest.Pytester) -> None:
+    result = pytester.runpytest()
+    result.stdout.fnmatch_lines(["*passed*"])
+
+
+def test_warnings_as_errors() -> None:
+    with warnings.catch_warnings(action="error"):
+        compute()
+
+
+@pytest.mark.filterwarnings("error")
+def test_marked_warnings_as_errors() -> None:
+    compute()
+
+
+def test_smoke() -> None:
+    compute()
+
+
+def test_documented() -> None:
+    """The call must not crash."""
+    compute()
+
+
+def test_commented() -> None:
+    # no error for an empty input
+    compute()
+
+
+@pytest.mark.skip(reason="not written yet")
+def test_skipped() -> None:
+    compute()
+
+
+def test_benchmark(benchmark) -> None:
+    benchmark(compute)
+
+
+def test_helper_class() -> None:
+    Case(compute)()
+
+
+def test_chained_check() -> None:
+    Data(compute).check()
+
+
+class Case:
+    def __init__(self, function) -> None:
+        self.function = function
+
+    def __call__(self) -> None:
+        assert self.function()
+
+
+class Data:
+    def __init__(self, function) -> None:
+        self.function = function
+
+
+@pytest.fixture
+def test_data() -> int:
+    return compute()
+
+
+def check_result(value: int) -> None:
+    assert value
+
+
+def local_helper() -> None:
+    assert compute()
+
+
+def noop_helper() -> None:
+    compute()
