@@ -115,9 +115,15 @@ impl DocReferences {
             if let Some(option) = docs.directives.qualified.get(qualified) {
                 return option.unwrap_or(docs.named);
             }
+            let below = |outer: &str, inner: &str| outer.strip_suffix(inner).is_some_and(|rest| rest.ends_with('.'));
             match docs.directives.simple.get(qualified.rsplit_once('.').map_or(qualified, |(_, name)| name)) {
                 Some(_) if namesake => AutoclassContent::Unknown,
                 Some(option) => option.unwrap_or(docs.named),
+                // A docs `sys.path` can name the module differently from its package path, so a directive whose
+                // target shares the dotted tail may document this class.
+                None if docs.directives.qualified.keys().any(|key| below(key, qualified) || below(qualified, key)) => {
+                    AutoclassContent::Unknown
+                }
                 None => docs.default,
             }
         })

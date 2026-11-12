@@ -126,7 +126,9 @@ project in this order:
 
 A directive names a class by its dotted name, which Sphinx imports as written, or by its simple name, which Sphinx
 resolves against the page's `module` or `currentmodule`. A simple name on a page with no module matches a class only
-when no other class of the run has that name, and otherwise the rule reports nothing for it.
+when no other class of the run has that name, and otherwise the rule reports nothing for it. A dotted name that shares
+only its tail with the class, such as `a.Reader` for `pkg/a.py` when the docs put `pkg` on `sys.path`, leaves the class
+unreported too.
 
 A Sphinx configuration is a `conf.py` beside an index page (`index.rst`, `index.md` or `index.txt`), or one that assigns
 `extensions`, `master_doc` or `root_doc`. A wildcard binding, such as a star import, `exec` or `globals()`, does not

@@ -502,6 +502,22 @@ fn current_module_qualifies_a_simple_name() {
     assert_eq!(stdout, expected);
 }
 
+// A docs `sys.path` that names the module `a` rather than `pkg.a` leaves the directive's target sharing only the dotted
+// tail with the class, so which copy Sphinx renders is unknown and neither copy is removed.
+#[test_case(".. autoclass:: a.Reader\n    :class-doc-from: init\n" ; "shorter_target")]
+#[test_case(".. autoclass:: src.pkg.a.Reader\n    :class-doc-from: init\n" ; "longer_target")]
+fn directive_sharing_the_dotted_tail_reports_nothing(api: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", ""),
+        ("docs/api.rst", api),
+    ]);
+    common::assert_report_count(root.path(), "SMP918", 0);
+}
+
 // A simple name that two classes of the run share does not tell which one a page documents, so neither copy is removed.
 #[test]
 fn simple_name_shared_by_two_classes_reports_nothing() {
