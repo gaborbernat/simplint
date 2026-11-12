@@ -1,0 +1,138 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+31:17 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+55:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+60:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+65:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+70:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+75:14 SMP806 `wraps` does not check call signatures; build it with `create_autospec`
+80:10 SMP806 `spec` does not check call signatures; pass `autospec=True` [unsafe fix: Pass `autospec=True` in place of `spec=True`]
+90:10 SMP806 `spec` does not check call signatures; pass `autospec=True`
+95:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+101:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+116:12 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+120:14 SMP806 `spec` does not check call signatures; build it with `create_autospec`
+--- fixed (1 applied, 11 remaining) ---
+from functools import cached_property
+from unittest.mock import MagicMock, Mock, patch
+
+from pkg.clients import RemoteClient
+
+
+class Session:
+    pass
+
+
+class Client:
+    def __init__(self, url: str) -> None:
+        self.session = Session()
+        self._cache: dict[str, str] = {}
+
+    def load(self) -> None:
+        self.data = 1
+
+    @property
+    def status(self) -> str:
+        return "ok"
+
+    @cached_property
+    def token(self) -> str:
+        return "t"
+
+    def fetch(self, path: str) -> str:
+        return path
+
+
+MODULE_CLIENT = MagicMock(spec=Client)
+
+
+def test_reads_instance_attribute() -> None:
+    client = MagicMock(spec=Client)
+    assert client.session
+
+
+def test_reads_private_instance_attribute() -> None:
+    client = MagicMock(spec_set=Client)
+    assert client._cache
+
+
+def test_reads_property() -> None:
+    client = Mock(spec=Client)
+    assert client.status == "ok"
+
+
+def test_reads_cached_property() -> None:
+    client = MagicMock(spec_set=Client)
+    assert client.token == "t"
+
+
+def test_reads_method_only() -> None:
+    client = MagicMock(spec=Client)
+    assert client.fetch("/x") == "/x"
+
+
+def test_reads_attribute_set_outside_constructor() -> None:
+    client = MagicMock(spec=Client)
+    assert client.data == 1
+
+
+def test_imported_class() -> None:
+    client = MagicMock(spec=RemoteClient)
+    assert client.session
+
+
+def test_positional_spec_unread() -> None:
+    client = Mock(Client)
+    assert client.fetch("/x") == "/x"
+
+
+def test_wraps() -> None:
+    client = MagicMock(wraps=Client("u"))
+    assert client.session
+
+
+def test_spec_true_patch() -> None:
+    with patch("pkg.clients.Client", autospec=True):
+        pass
+
+
+def test_patch_spec_class_reads_property() -> None:
+    with patch("pkg.clients.Client", spec=Client) as client:
+        assert client.status == "ok"
+
+
+def test_patch_spec_class_unread() -> None:
+    with patch("pkg.clients.Client", spec=Client):
+        pass
+
+
+def test_read_on_other_object() -> None:
+    client = MagicMock(spec=Client)
+    other = Client("u")
+    assert other.session and client
+
+
+def test_write_is_not_a_read() -> None:
+    client = MagicMock(spec=Client)
+    client.session = object()
+
+
+def test_read_through_return_value() -> None:
+    client = MagicMock(spec=Client)
+    assert client.return_value.session
+
+
+def test_assigned_patch_reads_member(mocker) -> None:
+    client = mocker.patch("pkg.clients.Client", spec=Client)
+    assert client.session
+
+
+def test_unbound_spec() -> None:
+    assert MagicMock(spec=Client).session
+
+
+def test_read_on_call_result() -> None:
+    client = MagicMock(spec=Client)
+    assert client and Client("u").session

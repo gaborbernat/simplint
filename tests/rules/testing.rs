@@ -35,6 +35,7 @@ use crate::common;
     "mock-attribute-assignment", "tests/test_mock_reserved_attribute.py", None ; "mock_attribute_assignment_reserved"
 )]
 #[test_case("mock-without-spec", "tests/test_mock_without_spec.py", None ; "mock_without_spec")]
+#[test_case("mock-without-spec", "tests/test_mock_spec_members.py", None ; "mock_without_spec_members")]
 #[test_case("split-composite-assert", "tests/test_split_composite_assert.py", None ; "split_composite_assert")]
 #[test_case("sleep-in-test", "tests/test_sleep_in_test.py", None ; "sleep_in_test")]
 #[test_case("sleep-in-test", "tests/test_sleep_patched.py", None ; "sleep_in_test_patched")]

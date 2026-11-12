@@ -344,7 +344,7 @@ rules! {
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
     ConstantAssert => ("SMP804", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
     MockAttributeAssignment => ("SMP805", "mock-attribute-assignment", "Mock attributes assigned after construction", Sometimes, testing::mock_attribute_assignment { module }),
-    MockWithoutSpec => ("SMP806", "mock-without-spec", "Mocks and patches without a spec", None, testing::mock_without_spec { expression }),
+    MockWithoutSpec => ("SMP806", "mock-without-spec", "Mocks and patches without a spec", Sometimes, testing::mock_without_spec { expression }),
     SplitCompositeAssert => ("SMP807", "split-composite-assert", "Consecutive asserts comparing fields of one object", Sometimes, testing::split_composite_assert { module }),
     SleepInTest => ("SMP808", "sleep-in-test", "`time.sleep` and `asyncio.sleep` calls in tests", None, testing::sleep_in_test { module }),
     StdlibMock => ("SMP809", "stdlib-mock", "`unittest.mock` imports in projects that depend on pytest-mock", None, testing::stdlib_mock { module }),
