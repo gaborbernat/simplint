@@ -286,6 +286,8 @@ rules! {
     ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS, working_directory]),
     PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
     FlattenedPackage => ("SMP311", "flattened-package", "Private modules sharing a name prefix instead of a package", None, imports::flattened_package { module } reads [cross_file]),
+    UndeclaredDependency => ("SMP312", "undeclared-dependency", "Imports of third-party modules no requirement of the project installs", None, imports::undeclared_dependency { module } reads [cross_file, RUNTIME_IMPORTS]),
+    UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file]),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),
@@ -294,7 +296,7 @@ rules! {
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
     InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file]),
     TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),
-    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods and class attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, COMPUTED_READS, DOCTESTS, docs]),
+    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods, nested functions and attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, STRING_WORDS, COMPUTED_READS, DOCTESTS, docs]),
     TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     UnusedReturnValue => ("SMP411", "unused-return-value", "Return values no production call reads", None, api::unused_return_value { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     ForwardingFunction => ("SMP501", "forwarding-function", "Private functions that only forward to another call", None, logic::forwarding_function { module } reads [cross_file]),
@@ -356,6 +358,7 @@ rules! {
     WrapperWithoutWraps => ("SMP557", "wrapper-without-wraps", "Decorator wrappers without `functools.wraps`", Sometimes, logic::wrapper_without_wraps { statement }),
     FunctionAsCondition => ("SMP558", "function-as-condition", "Functions tested for truth instead of called", Sometimes, logic::function_as_condition { statement, expression } reads [cross_file]),
     CatastrophicRegex => ("SMP559", "catastrophic-regex", "Regular expressions whose nested repeats backtrack exponentially", None, logic::catastrophic_regex { module }),
+    DefaultArgumentValue => ("SMP560", "default-argument-value", "Arguments that pass a parameter its own default", Always, logic::default_argument_value { module } reads [cross_file]),
     ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
     ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than one `for` or a compound filter", None, logic::comprehension_complexity { expression }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
@@ -372,6 +375,7 @@ rules! {
     BrokenDecoratorStack => ("SMP707", "broken-decorator-stack", "Descriptor decorators stacked in an order that does not work", None, classes::broken_decorator_stack { statement }),
     AsyncSyncDunder => ("SMP708", "async-sync-dunder", "`async def` on special methods Python calls without awaiting", None, classes::async_sync_dunder { statement }),
     RejectedOperand => ("SMP709", "rejected-operand", "Operator methods that reject an unknown operand instead of returning `NotImplemented`", Sometimes, classes::rejected_operand { statement }),
+    MissingOverride => ("SMP710", "missing-override", "Methods that override a base class method without `@override`", Always, classes::missing_override { module } since PY312 reads [cross_file]),
     TooManyAttributes => ("SMP711", "too-many-attributes", "Classes whose instances hold more attributes than the limit", None, classes::too_many_attributes { module }),
     TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
@@ -411,6 +415,7 @@ rules! {
     RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module } reads [docs] skips [nested]),
     RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module } reads [cross_file, docs] skips [nested]),
     RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", None, docstrings::rst_missing_raises { module } reads [cross_file, docs] skips [nested]),
+    RstUnraisedException => ("SMP925", "rst-unraised-exception", "Public API docstrings that document an exception the function never raises", Sometimes, docstrings::rst_unraised_exception { module } reads [cross_file, docs] skips [nested]),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.

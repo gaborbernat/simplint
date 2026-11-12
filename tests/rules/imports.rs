@@ -1559,3 +1559,52 @@ fn module_attribute_import_outside_modules(source: &str, reported: bool) {
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304"]).1;
     assert_eq!(stdout.contains("Import `"), reported, "{stdout}");
 }
+
+// Only the modules importing the package runs need what they import installed, so a plugin module, a test, a guarded
+// or deferred import and an import a version check picks are left alone.
+#[test_case("dependencies = [\"requests\", \"google-auth\"]\n", &["yaml"] ; "listed")]
+#[test_case("dependencies = [\"requests\", \"google-auth\", \"pyyaml\"]\n", &[] ; "declared")]
+#[test_case(
+    "dependencies = [\"requests\", \"google-auth\"]\noptional-dependencies.yaml = [\"PyYAML\"]\n", &[]
+    ; "extra"
+)]
+#[test_case("dynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
+fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, reported: &[&str]) {
+    let core = "import sys\nfrom typing import TYPE_CHECKING\n\nimport requests\nimport yaml\nfrom google.auth import \
+                default\n\nfrom pkg import helpers\n\ntry:\n    import rich\nexcept ImportError:\n    import \
+                colorama\n\nif TYPE_CHECKING:\n    import numpy\n\nif sys.version_info < (3, 11):\n    import \
+                tomli\n\n\ndef plot() -> None:\n    import matplotlib\n";
+    let root = common::project(&[
+        ("pyproject.toml", format!("[project]\nname = \"pkg\"\n{project}").as_str()),
+        ("pkg/__init__.py", "from pkg import core\n"),
+        ("pkg/core.py", core),
+        ("pkg/helpers.py", ""),
+        ("pkg/pytest_plugin.py", "import pytest\n"),
+        ("tests/__init__.py", ""),
+        ("tests/test_core.py", "import pytest\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "undeclared-dependency"]);
+    let found: Vec<&str> =
+        stdout.lines().filter(|line| line.contains("SMP312")).filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(found, reported, "{stdout}");
+}
+
+// An import anywhere outside the tests uses a requirement, a deferred one too; a requirement with a marker installs
+// only somewhere, so it is left alone. The package's `__init__.py` holds the reports.
+#[test_case("dependencies = [\"requests\", \"google-auth\", \"tomli; python_version < '3.11'\"]\n", &[] ; "used")]
+#[test_case("dependencies = [\"requests\", \"google-auth\", \"pytest-mock\"]\n", &["pytest-mock"] ; "test_only")]
+#[test_case("dependencies = [\"requests\"]\ndynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
+fn unused_dependency_reports_requirements_nothing_imports(project: &str, reported: &[&str]) {
+    let root = common::project(&[
+        ("pyproject.toml", format!("[project]\nname = \"pkg\"\n{project}").as_str()),
+        ("pkg/__init__.py", "import requests\n"),
+        ("pkg/core.py", "def load() -> None:\n    from google import auth\n\n    print(auth)\n"),
+        ("tests/__init__.py", ""),
+        ("tests/test_core.py", "import pytest_mock\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "unused-dependency"]);
+    let found: Vec<&str> =
+        stdout.lines().filter(|line| line.contains("SMP313")).filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(found, reported, "{stdout}");
+    assert!(stdout.lines().filter(|line| line.contains("SMP313")).all(|line| line.starts_with("pkg/__init__.py:1:1:")));
+}

@@ -14,6 +14,12 @@ pub struct ProjectMetadata {
     // Every module the project lists, whatever its marker, in optional dependencies and dependency groups too. A rule
     // asks whether a tool is declared at all, which an install may leave out.
     pub declared: BTreeSet<String>,
+    // The modules an install of the project can bring, through its requirements and extras, whatever their marker.
+    pub(crate) runtime: BTreeSet<String>,
+    // Whether `[project]` lists the requirements itself, rather than leaving them to the build backend as `dynamic`.
+    pub(crate) lists_dependencies: bool,
+    // Each unconditional requirement by its distribution name, with the modules it installs.
+    pub(crate) requirements: Vec<(String, Vec<String>)>,
     pub(crate) entry_points: Vec<String>,
     pub(crate) scripts: Vec<String>,
 }
@@ -88,6 +94,13 @@ fn dotted_attribute(value: &str) -> Option<String> {
 impl From<ProjectTable> for ProjectMetadata {
     fn from(project: ProjectTable) -> Self {
         let scripts: Vec<String> = project.scripts.into_values().chain(project.gui_scripts.into_values()).collect();
+        let lists_dependencies = project.name.is_some() && !project.dynamic.iter().any(|field| field == "dependencies");
+        let runtime: BTreeSet<String> = project
+            .dependencies
+            .iter()
+            .chain(project.optional_dependencies.values().flatten())
+            .flat_map(|spec| import_names(spec))
+            .collect();
         Self {
             name: project.name,
             // A requirement with an environment marker is conditional, so a guarded import of it is legitimate.
@@ -97,11 +110,14 @@ impl From<ProjectTable> for ProjectMetadata {
                 .filter(|spec| !spec.contains(';'))
                 .flat_map(|spec| import_names(spec))
                 .collect(),
-            declared: project
+            declared: runtime.clone(),
+            runtime,
+            lists_dependencies,
+            requirements: project
                 .dependencies
                 .iter()
-                .chain(project.optional_dependencies.values().flatten())
-                .flat_map(|spec| import_names(spec))
+                .filter(|spec| !spec.contains(';'))
+                .map(|spec| (distribution_name(spec).to_owned(), import_names(spec)))
                 .collect(),
             entry_points: scripts
                 .iter()
@@ -113,20 +129,35 @@ impl From<ProjectTable> for ProjectMetadata {
     }
 }
 
+fn distribution_name(requirement: &str) -> &str {
+    let end = requirement
+        .find(|char: char| !(char.is_ascii_alphanumeric() || matches!(char, '-' | '_' | '.')))
+        .unwrap_or(requirement.len());
+    &requirement[..end]
+}
+
 pub(super) fn import_names(requirement: &str) -> Vec<String> {
     // Distributions whose import name differs from the project name; the rest import under their normalized name.
     const RENAMED: &[(&str, &str)] = &[
         ("attrs", "attr"),
+        ("cffi", "_cffi_backend"),
         ("beautifulsoup4", "bs4"),
         ("opencv_python", "cv2"),
         ("opencv_python_headless", "cv2"),
+        ("matplotlib", "mpl_toolkits"),
         ("pillow", "pil"),
         ("protobuf", "google"),
         ("pyjwt", "jwt"),
         ("python_dateutil", "dateutil"),
         ("python_dotenv", "dotenv"),
         ("pyyaml", "yaml"),
+        ("pytest", "_pytest"),
+        ("pywin32", "win32api"),
+        ("pywin32", "win32con"),
+        ("pywin32", "pythoncom"),
+        ("pywin32", "pywintypes"),
         ("pyzmq", "zmq"),
+        ("scikit_image", "skimage"),
         ("scikit_learn", "sklearn"),
         ("setuptools", "pkg_resources"),
     ];
@@ -143,6 +174,7 @@ pub(super) fn import_names(requirement: &str) -> Vec<String> {
 #[serde(default, rename_all = "kebab-case")]
 struct ProjectTable {
     name: Option<String>,
+    dynamic: Vec<String>,
     dependencies: Vec<String>,
     optional_dependencies: BTreeMap<String, Vec<String>>,
     scripts: BTreeMap<String, String>,

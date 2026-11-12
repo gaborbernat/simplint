@@ -50,6 +50,12 @@ impl<'a> Visitor<'a> for Scan<'a> {
         if is_prose_statement(stmt) {
             return;
         }
+        // `obj.name += 1` reads the attribute before it stores it.
+        if let Stmt::AugAssign(ast::StmtAugAssign { target, .. }) = stmt
+            && let Expr::Attribute(ast::ExprAttribute { attr, .. }) = target.as_ref()
+        {
+            *self.attribute_loads.entry(attr.to_string()).or_default() += 1;
+        }
         self.open(stmt);
         visitor::walk_stmt(self, stmt);
         self.close(stmt);

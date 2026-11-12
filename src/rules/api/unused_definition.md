@@ -1,4 +1,5 @@
-Flags functions, classes, methods and class attributes that nothing in the run uses, so the program never reaches them.
+Flags functions, classes, methods, nested functions and attributes that nothing in the run uses, so the program never
+reaches them.
 
 ## Why is this bad?
 
@@ -75,6 +76,37 @@ definition a Sphinx page names is used.
 
 
   print(Client().send())
+  ```
+
+- **Nested functions** that their enclosing function never refers to, outside their own body. A function whose body
+  holds nothing but definitions is left alone, as it may exist only to be read as source.
+
+  ```python report
+  def total(values: list[int]) -> int:
+      def double(value: int) -> int:
+          return value * 2
+
+      return sum(values)
+
+
+  print(total([1]))
+  ```
+
+- **Instance attributes**: `self.name = value` stores in the methods of the same kind of class, when no `obj.name` read
+  or `obj.name += value` update of the name exists in the run. A public attribute of a class the library's public API
+  offers is kept, since code outside the run may read it.
+
+  ```python report
+  class Counter:
+      def __init__(self, start: int) -> None:
+          self.start = start
+          self.label = "counter"
+
+      def next(self) -> int:
+          return self.start + 1
+
+
+  print(Counter(1).next())
   ```
 
 ### Exceptions
@@ -419,6 +451,36 @@ definition a Sphinx page names is used.
 
 
   print(dispatch(Handlers(), "text"))
+  ```
+
+- **Nested functions a call to `locals()`, `vars()`, `eval()` or `exec()` may reach**, and those declared `global` or
+  `nonlocal`, since these read names without spelling them.
+
+  ```python ok
+  def handlers() -> dict[str, object]:
+      def on_text() -> str:
+          return "text"
+
+      return locals()
+
+
+  print(handlers())
+  ```
+
+- **Attributes of objects read whole**: a class that reads `self.__dict__`, passes itself to `vars()`,
+  `dataclasses.asdict()` or `dataclasses.astuple()`, or defines `__getstate__`, `__reduce__`, `__reduce_ex__`,
+  `__copy__`, `__deepcopy__`, `__slots__` or `__getattr__` uses its attributes without naming them.
+
+  ```python ok
+  class Snapshot:
+      def __init__(self) -> None:
+          self.taken = 1
+
+      def __getstate__(self) -> dict[str, object]:
+          return dict(self.__dict__)
+
+
+  print(Snapshot().__getstate__())
   ```
 
 ### Fix

@@ -80,6 +80,7 @@ use crate::common::{self, check, read};
 )]
 #[test_case("string-concatenation", "string_concatenation_class_values.py", None ; "string_concatenation_class_values")]
 #[test_case("string-concatenation", "string_concatenation_bindings.py", None ; "string_concatenation_bindings")]
+#[test_case("default-argument-value", "default_argument_value.py", None ; "default_argument_value")]
 #[test_case("unused-default", "unused_default.py", None ; "unused_default")]
 #[test_case("unused-default", "unused_default_public_module.py", None ; "unused_default_public_module")]
 #[test_case("unused-default", "unused_default_comment.py", None ; "unused_default_comment")]

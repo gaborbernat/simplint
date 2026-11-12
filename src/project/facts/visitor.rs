@@ -96,6 +96,8 @@ pub(super) struct FactVisitor<'a> {
     pub(super) reflected_names: BTreeSet<String>,
     pub(super) module_aliases: Vec<(String, String)>,
     pub(super) plain_modules: Vec<String>,
+    // Every module an absolute import names, in any scope, and each name a `from` import takes from one.
+    pub(super) imported_modules: BTreeSet<String>,
     // A bare class name no import binds is a class of this module.
     own_module: String,
     pub(super) caught: Vec<(String, String)>,
@@ -157,6 +159,7 @@ impl<'a> FactVisitor<'a> {
             reflected_names: BTreeSet::new(),
             module_aliases: Vec::new(),
             plain_modules: Vec::new(),
+            imported_modules: BTreeSet::new(),
             own_module,
             caught: Vec::new(),
             class_tuples: Vec::new(),
@@ -217,6 +220,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             Stmt::ImportFrom(import) => self.import_from(stmt, import, top_level),
             Stmt::Import(ast::StmtImport { names, is_lazy, .. }) => {
                 for alias in names {
+                    self.imported_modules.insert(alias.name.to_string());
                     if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
                         let module = alias.name.as_str().to_owned();
                         self.runtime_sites.push(ImportSite::new(module, Vec::new(), stmt.range(), runtime));
@@ -500,6 +504,11 @@ impl<'a> FactVisitor<'a> {
         let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
         let runtime = self.runtime;
         let module = module.as_ref().map(ast::Identifier::as_str);
+        if let (0, Some(module)) = (*level, module) {
+            self.imported_modules.insert(module.to_owned());
+            self.imported_modules
+                .extend(names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| format!("{module}.{}", alias.name)));
+        }
         if let Some(resolved) = resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned) {
             if names.iter().any(|alias| alias.name.as_str() == "*") {
                 self.stars.insert(resolved.clone());

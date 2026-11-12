@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:9 SMP409 `_udm_outer._udm_unused_helper` is defined inside `_udm_outer` but never called or read; remove it
+29:14 SMP409 `_UdmCounter._udm_never_read` is stored on the instance but never read in the run; remove it or give it a reader

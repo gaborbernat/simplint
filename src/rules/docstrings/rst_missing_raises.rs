@@ -102,7 +102,7 @@ impl<'a> Visitor<'a> for Raises<'a> {
 
 // The built-in classes a built-in exception derives from below `Exception`, so `except OSError` catches a
 // `FileNotFoundError`; the bases of a project's own exceptions are not known.
-fn builtin_bases(name: &str) -> &'static [&'static str] {
+pub(super) fn builtin_bases(name: &str) -> &'static [&'static str] {
     match name {
         "FileNotFoundError" | "FileExistsError" | "PermissionError" | "IsADirectoryError" | "NotADirectoryError"
         | "TimeoutError" | "BlockingIOError" | "ChildProcessError" | "InterruptedError" | "ProcessLookupError" => {

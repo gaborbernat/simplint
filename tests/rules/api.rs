@@ -129,6 +129,7 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
 #[test_case("test-only-code", "test_tonly_builders.py" ; "test_only_code_test_module")]
 #[test_case("unused-definition", "_unused_definition.py" ; "unused_definition")]
 #[test_case("unused-definition", "_unused_definition_used.py" ; "unused_definition_imported")]
+#[test_case("unused-definition", "_unused_definition_members.py" ; "unused_definition_members")]
 #[test_case("unused-definition", "tests/test_udef_helpers.py" ; "unused_definition_test_module")]
 #[test_case("test-only-parameter", "_test_only_parameter.py" ; "test_only_parameter")]
 #[test_case("test-only-parameter", "_test_only_parameter_injected.py" ; "test_only_parameter_injected")]

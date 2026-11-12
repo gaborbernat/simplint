@@ -74,6 +74,7 @@ use crate::common;
 #[test_case("rst-returns", "rst_returns.py", None ; "rst_returns")]
 #[test_case("rst-returns", "rst_returns_lambda_yield.py", None ; "rst_returns_lambda_yield")]
 #[test_case("rst-missing-raises", "rst_missing_raises.py", None ; "rst_missing_raises")]
+#[test_case("rst-unraised-exception", "rst_unraised_exception.py", None ; "rst_unraised_exception")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

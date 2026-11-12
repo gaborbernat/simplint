@@ -8,7 +8,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 use ruff_python_parser::parse_string_annotation;
 use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
@@ -549,11 +549,58 @@ fn member_names(body: &[Stmt]) -> Members {
         .map(|function| function.name.to_string())
         .collect();
     let attributes = classes
+        .clone()
         .flat_map(|class| module_statements(&class.body).filter_map(Stmt::as_assign_stmt))
         .flat_map(|assign| assign.targets.iter().filter_map(Expr::as_name_expr))
         .map(|target| target.id.to_string())
+        .chain(
+            module_statements(body)
+                .filter_map(Stmt::as_class_def_stmt)
+                .flat_map(|class| instance_attributes(class).into_iter().map(|(name, _)| name.to_owned())),
+        )
         .collect();
     Members { methods, attributes }
+}
+
+// The attributes a class's methods store on their instance, as `self.name = value` does, each with its first store.
+pub(crate) fn instance_attributes(class: &ast::StmtClassDef) -> Vec<(&str, TextRange)> {
+    struct Stores<'a> {
+        receiver: &'a str,
+        found: Vec<(&'a str, TextRange)>,
+    }
+    impl<'a> Visitor<'a> for Stores<'a> {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                return;
+            }
+            visitor::walk_stmt(self, stmt);
+        }
+
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            if let Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store, .. }) = expr
+                && value.as_name_expr().is_some_and(|name| name.id.as_str() == self.receiver)
+                && !self.found.iter().any(|(name, _)| *name == attr.as_str())
+            {
+                self.found.push((attr.as_str(), attr.range()));
+            }
+            visitor::walk_expr(self, expr);
+        }
+    }
+    let mut stores = Stores { receiver: "", found: Vec::new() };
+    for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
+        let static_method = method.decorator_list.iter().any(|decorator| {
+            decorator.expression.as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "staticmethod" | "classmethod"))
+        });
+        let Some(receiver) = method.parameters.posonlyargs.iter().chain(&method.parameters.args).next() else {
+            continue;
+        };
+        if static_method {
+            continue;
+        }
+        stores.receiver = receiver.parameter.name.as_str();
+        stores.visit_body(&method.body);
+    }
+    stores.found
 }
 
 struct Members {

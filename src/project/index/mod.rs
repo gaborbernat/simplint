@@ -79,6 +79,13 @@ pub struct Project {
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    // The files that run when a top-level package of the run is imported or one of its entry points runs.
+    pub(super) package_loaded: FxHashSet<FileId>,
+    // The offsets of each file's runtime import statements that reach a file of the run.
+    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<u32>>,
+    // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
+    pub(super) imported_modules: FxHashSet<String>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
@@ -172,6 +179,16 @@ impl Project {
         }
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
+        let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
+        let imported_modules: FxHashSet<String> = indexed
+            .iter()
+            .filter(|(id, _)| !test_modules.contains(id))
+            .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
+            .collect();
+        let resolved_imports: FxHashMap<FileId, FxHashSet<u32>> = runtime
+            .iter()
+            .map(|(file, imports)| (*file, imports.iter().map(|(_, range)| range.start().to_u32()).collect()))
+            .collect();
         // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
         // steps, so they are worked out alongside them.
         let (aside, ()) = rayon::join(
@@ -263,6 +280,7 @@ impl Project {
             },
         );
         let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
+        let overridden = inherit::overridden_methods(&graph, &reexports);
         let enum_types = enum_classes(&graph, &reexports, &bindings);
         calls.set_test_support(test_support);
         Self {
@@ -288,6 +306,10 @@ impl Project {
             api_reached,
             library_reached,
             inherited,
+            overridden,
+            package_loaded,
+            resolved_imports,
+            imported_modules,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
@@ -339,6 +361,13 @@ impl Project {
                 api_reached: entry(&self.api_reached, id),
                 library_reached: entry(&self.library_reached, id),
                 inherited: entry(&self.inherited, id),
+                overridden: entry(&self.overridden, id),
+                package_loaded: id.is_some_and(|id| self.package_loaded.contains(&id)),
+                resolved_imports: entry(&self.resolved_imports, id),
+                imported_modules: path
+                    .file_name()
+                    .is_some_and(|name| name == "__init__.py")
+                    .then_some(&self.imported_modules),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
                 prefix_siblings: entry(&self.prefix_siblings, id),
@@ -534,6 +563,41 @@ fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHas
         .filter(|(_, (path, _))| path.extension().is_none_or(|extension| extension != "pyi"))
         .map(|(id, (_, facts))| (*id, *facts))
         .collect()
+}
+
+// The files a top-level package's `__init__.py` or `__main__.py` runs through runtime imports, itself included: the
+// modules an install loads on its own, apart from the plugins other tools load, the integrations users import by choice
+// and the scripts a checkout runs.
+fn package_loaded(
+    runtime: &RuntimeGraph,
+    indexed: &[(FileId, &FileFacts)],
+    files: &FileIds,
+    test_modules: &FxHashSet<FileId>,
+) -> FxHashSet<FileId> {
+    let inits: FxHashSet<&Path> = indexed
+        .iter()
+        .map(|(id, _)| files.path(*id))
+        .filter(|path| path.file_name().is_some_and(|name| name == "__init__.py"))
+        .filter_map(Path::parent)
+        .collect();
+    let mut pending: Vec<FileId> = indexed
+        .iter()
+        .filter(|(id, _)| !test_modules.contains(id))
+        .filter(|(id, _)| {
+            let path = files.path(*id);
+            path.file_name().is_some_and(|name| name == "__main__.py")
+                || path.file_name().is_some_and(|name| name == "__init__.py")
+                    && path.parent().and_then(Path::parent).is_none_or(|outer| !inits.contains(outer))
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    let mut loaded = FxHashSet::default();
+    while let Some(file) = pending.pop() {
+        if loaded.insert(file) {
+            pending.extend(runtime.get(&file).into_iter().flatten().map(|(target, _)| *target));
+        }
+    }
+    loaded
 }
 
 // The cycles of the runtime imports outside test modules, which import each other as fixtures and deliberately close

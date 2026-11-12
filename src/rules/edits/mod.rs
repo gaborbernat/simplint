@@ -3,7 +3,7 @@ mod debug_text;
 mod imports;
 mod statements;
 
-pub(super) use calls::keyword_removal;
+pub(super) use calls::argument_removal;
 pub(super) use debug_text::{DebugFields, escape_braces, keep_debug_text};
 pub(super) use imports::{Import, above_comments, ensure_import, preamble_len, with_import};
 pub(super) use statements::{Blanks, statement_block, statement_deletion, statement_lines, statement_removal};
