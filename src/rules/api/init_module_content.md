@@ -117,9 +117,33 @@ it belongs.
   under a test root that is itself a project is treated as test input, even when its module name does not start with
   `test_`.
 
+  ```python context file=test-root/setup.py
+  from setuptools import setup
+
+  setup(name="sample")
+  ```
+
+  ```python ok file=test-root/pkg/__init__.py
+  """Fixture package for import tests."""
+
+  from ._core import run
+
+  run()
+  ```
+
 - **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,
   `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by
   those hooks may still need a suppression when they are not re-exports.
+
+  ```python ok file=pkg/__init__.py
+  """HTTP client."""
+
+
+  def __getattr__(name: str) -> object:
+      from importlib import import_module
+
+      return getattr(import_module("pkg._client"), name)
+  ```
 
 - **The module docstring**: it documents the package and runs no code.
 

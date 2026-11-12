@@ -47,10 +47,32 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Private module-object imports**, such as `import package._api as api` and `from . import _api`.
 
+  ```python report
+  import package._api as api
+
+
+  def describe(value: api.API) -> None:
+      print(value)
+  ```
+
 - **Absolute private imports**, such as `from package._api import API`. Use `from ._api import API` within the same
   package, or import `API` from a public re-export elsewhere.
 
+  ```python report
+  from package._api import API
+
+
+  def describe(value: API) -> None:
+      print(value)
+  ```
+
 - **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
+
+  ```python report file=package/sub/consumer.py
+  from .._api import API
+
+  value = API()
+  ```
 
 - **Paths with two private names**, such as `from ._a._x import what` or `from ._internal._helpers import API`. A direct
   relative import may cross one private name, not two. The fix for `from ._a._x import what` is a re-export, not moving
@@ -82,13 +104,33 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Private modules below a sibling**, such as `from ._api.helpers import API`.
 
+  ```python report file=package/consumer.py
+  from ._api.helpers import API
+
+  value = API()
+  ```
+
 - **Unpaired test imports**, such as `tests/package/test_api.py` importing from `package._other`. A test of a private
   module may import from the matching module only; other behavior should be reached through public interfaces.
+
+  ```python report file=tests/package/test_api.py
+  from package._other import API
+
+
+  def test_api(api: API) -> None:
+      assert api
+  ```
 
 ### Exceptions
 
 - **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
   build an API outside tests. `from .public import _helper` also stays within the same package level.
+
+  ```python ok file=package/consumer.py
+  from ._api import API
+
+  value = API()
+  ```
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
@@ -97,13 +139,44 @@ re-export or replacing uses of a module object may require changes elsewhere.
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
   exists.
 
+  ```python context file=package/_api.py
+  class API:
+      pass
+  ```
+
+  ```python ok file=tests/package/test_api.py
+  from package._api import API
+
+
+  def test_api(api: API) -> None:
+      assert api
+  ```
+
   A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source module.
   Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 
+  ```python ok file=consumer.py
+  from __future__ import annotations
+
+  from package.__version__ import __version__
+
+
+  def show() -> str:
+      return __version__
+  ```
+
 - **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
   API despite its underscore.
+
+  ```python ok
+  from os import _exit
+
+
+  def stop() -> None:
+      _exit(0)
+  ```
 
 ## Ruff overlap
 

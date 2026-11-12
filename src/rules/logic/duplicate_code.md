@@ -198,6 +198,45 @@ and by the tokens themselves before a report, so two different statements whose 
   project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported
   across those members. Repeats within either member are still reported.
 
+  ```toml config
+  [tool.uv.workspace]
+  members = ["first", "second"]
+  ```
+
+  ```toml context file=first/pyproject.toml
+  [project]
+  name = "first"
+  version = "1"
+  ```
+
+  ```toml context file=second/pyproject.toml
+  [project]
+  name = "second"
+  version = "1"
+  ```
+
+  ```python ok file=first/reader.py
+  def summarize(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
+  ```python ok file=second/writer.py
+  def summarize(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
 - **Repeats inside one module**, which pylint's duplicate check does not compare either.
 
   ```python ok file=twice.py

@@ -88,8 +88,38 @@ def test_client(mocker: MockerFixture) -> None:
 - **`from unittest.mock import create_autospec` alone**: making a mock from a real object is separate from managing a
   patch. An import that also brings in `patch` or another mock helper is still reported.
 
+  ```toml config
+  [project]
+  name = "demo"
+  dependencies = ["pytest-mock>=3"]
+  ```
+
+  ```python ok file=tests/test_client.py
+  from unittest.mock import create_autospec
+
+  from app.client import Client
+
+
+  def test_client() -> None:
+      client = create_autospec(Client)
+  ```
+
 - **Relative imports**, such as `from .unittest import mock`: they name a module of the project, not the standard
   library.
+
+  ```toml config
+  [project]
+  name = "demo"
+  dependencies = ["pytest-mock>=3"]
+  ```
+
+  ```python ok file=tests/test_client.py
+  from .unittest import mock
+
+
+  def test_client() -> None:
+      client = mock.MagicMock()
+  ```
 
 ### Fix
 

@@ -64,7 +64,20 @@ No fix is offered: the spec is the real object the mock stands in for, and that 
 
 - a dotted name ending in `mock.patch` or `mocker.patch`, such as `unittest.mock.patch` or the
   [pytest-mock](https://pytest-mock.readthedocs.io/en/latest/usage.html) fixture's `mocker.patch`;
+
+  ```python report
+  import unittest.mock
+
+  unittest.mock.patch("app.service.fetch")
+  ```
+
 - `patch` imported from `unittest.mock` or `mock`, under any alias.
+
+  ```python report
+  from unittest.mock import patch as mock_patch
+
+  mock_patch("app.service.fetch")
+  ```
 
 ### Exceptions
 

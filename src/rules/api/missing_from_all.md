@@ -139,11 +139,38 @@ signature reaches it:
 - **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with
   `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
 
+  ```python report file=config.py
+  def main() -> None:
+      pass
+
+
+  __all__ = []
+  ```
+
+  ```python context file=cli.py
+  import pkgutil
+
+  main = pkgutil.resolve_name("config:main")
+  ```
+
 - **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and
   `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);
   Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.
   A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public
   hooks by name.
+
+  ```toml config
+  [tool.mypy]
+  plugins = ["config"]
+  ```
+
+  ```python report file=config.py
+  def plugin(version: str) -> None:
+      pass
+
+
+  __all__ = []
+  ```
 
 - **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
   517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its
@@ -240,6 +267,17 @@ signature reaches it:
 ### Exceptions
 
 - **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.
+
+  ```python ok file=app/__main__.py
+  LIMIT = 3
+  __all__ = []
+  ```
+
+  ```python context file=cli.py
+  from app.__main__ import LIMIT
+
+  print(LIMIT)
+  ```
 
 - **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the
   module's public interface. A production importer still makes the name reportable.

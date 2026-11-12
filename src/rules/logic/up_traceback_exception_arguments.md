@@ -62,6 +62,8 @@ def report(run):
 
 ## What it does
 
+### Active on
+
 Reports a call that resolves to `traceback.print_exception`, `traceback.format_exception` or
 `traceback.format_exception_only` and passes:
 

@@ -179,6 +179,17 @@ def total_price(prices: list[float]) -> str:
 - **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so
   `f"[{inner}]"` with `inner = f"<{value}>"` becomes `f"[<{value}>]"` rather than a nested f-string.
 
+  ```python report
+  def wrap(value: str) -> str:
+      inner = f"<{value}>"
+      return f"[{inner}]"
+  ```
+
+  ```python fixed
+  def wrap(value: str) -> str:
+      return f"[<{value}>]"
+  ```
+
 - **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
   which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field
   cannot hold a line break either.
@@ -261,9 +272,21 @@ def total_price(prices: list[float]) -> str:
 
 - **A next statement that is `yield name`**: never reported, since the value is yielded, not returned.
 
+  ```python ok
+  def run(items: list[str]) -> Iterator[int]:
+      count = len(items)
+      yield count
+  ```
+
 - **A next statement that is `yield from name`**: Ruff's preview rule
   [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (RUF070) covers
   it, so this rule leaves the pair to Ruff whether or not the project selects that rule or enables preview.
+
+  ```python ok
+  def run(items: list[str]) -> Iterator[int]:
+      lengths = [len(item) for item in items]
+      yield from lengths
+  ```
 
 - **A read in a parameter's default, while Ruff's
   [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or

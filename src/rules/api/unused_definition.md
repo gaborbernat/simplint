@@ -109,6 +109,14 @@ definition a Sphinx page names is used.
 
 - **Names listed in `__all__`**: the module exports them, so the run may use them from outside.
 
+  ```python ok file=app/api.py
+  __all__ = ["format_name"]
+
+
+  def format_name(first: str, last: str) -> str:
+      return f"{first} {last}"
+  ```
+
 - **Names doctests use**: a `>>>` example in a docstring reads each name it uses, whether it imports the name or not,
   since a doctest runs in the globals of the module that defines the name, so the example may sit in that module.
 
@@ -308,6 +316,16 @@ definition a Sphinx page names is used.
 - **Tool references in `pyproject.toml`**: setuptools dynamic attributes and command classes, mypy and Pylint plugin
   functions, Poetry plugin entry points, and pytest plugins loaded through `addopts` count as used. For a bare pytest
   plugin module, its public hooks count as used by the host.
+
+  ```toml config
+  [tool.mypy]
+  plugins = ["app.mypy_plugin"]
+  ```
+
+  ```python ok file=app/mypy_plugin.py
+  def plugin(version: str) -> None:
+      print(version)
+  ```
 
 - **Dunder and sunder names** such as `__repr__`, which the interpreter calls without a name in the source, and
   `_repr_html_` or `_missing_`, which Jupyter and `enum` call by name.

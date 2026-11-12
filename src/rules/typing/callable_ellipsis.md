@@ -78,6 +78,16 @@ No fix is offered: the real signature has to be written by hand.
   without invoking it itself. Its annotation need not describe one call signature. A direct call in the body still
   reports, including one inside a nested block.
 
+  ```python ok file=tests/test_run.py
+  from collections.abc import Callable
+
+  from app.run import run_twice
+
+
+  def test_run_twice(callback: Callable[..., None]) -> None:
+      run_twice(callback)
+  ```
+
 - **String annotations**: these are not checked.
 
   ```python ok

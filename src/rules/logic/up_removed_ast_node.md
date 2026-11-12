@@ -121,8 +121,30 @@ so the rule reports them on all target versions.
 
 - **Names imported from `ast`**, such as `from ast import Str`: the fix would need a new import, so these are not
   reported.
+
+  ```python ok
+  from ast import Str
+
+
+  def is_text(node):
+      return isinstance(node, Str)
+  ```
+
 - **Classes that subclass a visitor indirectly**: only the class that names `ast.NodeVisitor` or `ast.NodeTransformer`
   as a base is checked.
+
+  ```python ok
+  import ast
+
+
+  class Base(ast.NodeVisitor):
+      pass
+
+
+  class Counter(Base):
+      def visit_Num(self, node):
+          self.count += 1
+  ```
 
 ### Fix
 

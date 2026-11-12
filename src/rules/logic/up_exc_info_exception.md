@@ -46,10 +46,59 @@ error = sys.exception()
 
 ## What it does
 
+### Active on
+
 Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as system` counts:
 
 - **`sys.exc_info()[1]`**: a read of the second value.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  import sys
+
+  error = sys.exc_info()[1]
+  ```
+
+  ```python fixed
+  import sys
+
+  error = sys.exception()
+  ```
+
 - **`traceback.print_exception(*sys.exc_info())`**: an unpacking of the whole tuple as the only argument.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  import sys
+  import traceback
+
+
+  def report() -> None:
+      try:
+          run()
+      except Exception:
+          traceback.print_exception(*sys.exc_info())
+  ```
+
+  ```python fixed
+  import sys
+  import traceback
+
+
+  def report() -> None:
+      try:
+          run()
+      except Exception:
+          traceback.print_exception(sys.exception())
+  ```
 
 ### Exceptions
 

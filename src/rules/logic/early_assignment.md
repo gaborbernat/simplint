@@ -188,6 +188,20 @@ that statement comes at least two statements below the assignment in the same bl
 
 - **A name that is `_` or a dunder**: `_` is a placeholder, and a dunder has a meaning to Python.
 
+  ```python ok
+  def run(items, prepare, send):
+      _ = 3
+      prepare(items)
+      return send(items, _)
+  ```
+
+  ```python ok
+  def run(items, prepare, send):
+      __retries__ = 3
+      prepare(items)
+      return send(items, __retries__)
+  ```
+
 ### Fix
 
 The fix moves the assignment's lines in front of the statement that reads the name. It is offered only when both the

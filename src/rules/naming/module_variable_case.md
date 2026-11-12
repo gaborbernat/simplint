@@ -351,6 +351,15 @@ lookup:
 - **The names listed in `naming.keep-names`**, under Configuration above: for any other framework that reads a module
   variable by name.
 
+  ```toml config
+  [tool.simplint.naming]
+  keep-names = ["commands"]
+  ```
+
+  ```python ok
+  commands = {"run": "app.cli:run"}
+  ```
+
 ### Fix
 
 The fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.

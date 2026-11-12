@@ -144,6 +144,23 @@ classes, at any nesting depth. What counts as internal depends on the project.
 - **A function an autodoc directive documents**: an `.. automodule::` with `:members:` or an `.. autofunction::` renders
   its docstring for its users, so the function is public API whatever the project is, and its docstring stays.
 
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+  ```
+
+  ```rst context file=docs/api.rst
+  .. autofunction:: demo._core.step
+  ```
+
+  ```python ok file=demo/_core.py
+  def step() -> None:
+      """Run one step of the job."""
+  ```
+
 - **A library's public API**: [undocumented-public-api](SMP903.html) requires it to be documented. That covers what its
   public modules offer and re-export, and the methods of a public class whose names do not start with `_`.
 

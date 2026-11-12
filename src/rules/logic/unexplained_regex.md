@@ -142,6 +142,14 @@ def parse_date(text):
 
 - **A pattern that is not a literal**, such as an f-string or a name, is not read.
 
+  ```python ok
+  import re
+
+
+  def is_version(prefix, text):
+      return re.match(rf"{prefix}(\d+)\.(\d+)\.(\d+)\.(\d+)", text)
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** no rule asks for comments on a regular expression. Ruff's

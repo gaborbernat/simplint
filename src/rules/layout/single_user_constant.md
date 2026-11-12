@@ -105,6 +105,27 @@ functions nested in it. These values count:
   a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from
   Ruff's `lint.pylint.max-locals` setting.
 
+  ```toml config
+  [tool.ruff]
+  preview = true
+
+  [tool.ruff.lint]
+  select = ["PLR0914"]
+
+  [tool.ruff.lint.pylint]
+  max-locals = 2
+  ```
+
+  ```python ok
+  _LIMIT: int = 9
+
+
+  def clamp(value: int) -> int:
+      low = 0
+      high = _LIMIT
+      return min(max(value, low), high)
+  ```
+
 - **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and
   moving it into the function would build a new one on every call.
 
@@ -162,6 +183,19 @@ functions nested in it. These values count:
 
 - **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's
   globals, so inlining the constant would leave the example reading a name that is gone.
+
+  ```python ok
+  _TIMEOUT = 30
+
+
+  def connect() -> int:
+      """Return the timeout in seconds.
+
+      >>> _TIMEOUT
+      30
+      """
+      return _TIMEOUT
+  ```
 
 - **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and
   class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type

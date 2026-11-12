@@ -79,6 +79,18 @@ its own `return` statements, so a nested function's return belongs to the nested
 - **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes
   compatibility imports of `override` that forward to `typing.override`.
 
+  ```python ok
+  from typing import override
+
+  from parsing import Base
+
+
+  class Parser(Base):
+      @override
+      def span(self, text: str) -> tuple[int, int, int]:
+          return 0, len(text), 1
+  ```
+
 - **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and
   `__getnewargs_ex__` must return a tuple of the shape those protocols read.
 

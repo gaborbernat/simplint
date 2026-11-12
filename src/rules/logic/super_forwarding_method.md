@@ -314,6 +314,17 @@ be a plain `def` taking the same parameters under the same names, without defaul
 
 - **An `async` method**: the parent's coroutine may differ from the one a forwarder returns, so the rule leaves it.
 
+  ```python ok
+  class Base:
+      async def load(self, name):
+          return name.encode()
+
+
+  class Store(Base):
+      async def load(self, name):
+          return super().load(name)
+  ```
+
 ### Fix
 
 The fix deletes the method, along with the blank lines after it. A class left with no statement gets a `pass`. The fix

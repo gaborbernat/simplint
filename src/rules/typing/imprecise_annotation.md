@@ -169,17 +169,17 @@ annotations are still checked.
   leaves it alone to avoid a double report. ANN401 reports an `Any` that is the annotation, or sits in an `Optional`, a
   `Union`, a `|` or the first argument of `Annotated`.
 
+  ```python ok
+  from typing import Any
+
+
+  def lookup(key: str) -> Any | None:
+      return None
+  ```
+
 ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload implementations and, with
 `allow-star-arg-any`, `*args` and `**kwargs`. This rule still reports the `Any` in those, since no tool would report it
 otherwise.
-
-```python ok
-from typing import Any
-
-
-def run(value: Any) -> None:
-    print(value)
-```
 
 - **`object` as the return type of a `Callable`**, such as `Callable[..., object]` or `Callable[[int], object]`, from
   `typing` or `collections.abc`: the callable's result is ignored, which is what `object` says there. `object` in its
