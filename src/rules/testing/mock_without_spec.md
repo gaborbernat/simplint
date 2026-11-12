@@ -185,7 +185,7 @@ These count as a spec:
       client.fetch()
   ```
 
-- **A `new` keyword, always**: its value replaces the target, so no mock is created, whatever the value.
+- **A `new` keyword on a patch, always**: its value replaces the target, so no mock is created, whatever the value.
 
   ```python ok
   mocker.patch("app.service.fetch", new=fake_fetch)

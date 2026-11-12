@@ -44,4 +44,5 @@ def test_replacement(mocker: pytest_mock.MockerFixture) -> None:
 def test_autospec_on_a_mock_is_an_attribute(mocker: pytest_mock.MockerFixture) -> None:
     client = MagicMock(autospec=True)
     assert client and mock.Mock(new_callable=int)
+    assert MagicMock(new=1)
     mocker.patch("os.getcwd", new_callable=MagicMock)

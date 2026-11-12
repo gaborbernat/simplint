@@ -24,10 +24,9 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
         || arguments.keywords.iter().any(|keyword| match keyword.arg.as_ref() {
             None => true,
             Some(arg) => {
-                arg == "new"
-                    || (kind.is_patch()
-                        && matches!(arg.as_str(), "autospec" | "new_callable")
-                        && is_set(&keyword.value))
+                kind.is_patch()
+                    && (arg == "new"
+                        || (matches!(arg.as_str(), "autospec" | "new_callable") && is_set(&keyword.value)))
             }
         });
     if replaced {

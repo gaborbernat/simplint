@@ -13,3 +13,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 35:10 SMP806 Patch without a spec; pass `autospec=True`
 45:14 SMP806 Mock without a spec; build it with `create_autospec`
 46:23 SMP806 Mock without a spec; build it with `create_autospec`
+47:12 SMP806 Mock without a spec; build it with `create_autospec`
