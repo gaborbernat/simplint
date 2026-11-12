@@ -22,7 +22,7 @@ jobs:
   prepare:
     name: 🏷️ Prepare release
     if: github.repository == 'gaborbernat/simplint'
-    uses: tox-dev/github-workflows/.github/workflows/prepare-release-creator.yaml@81a3fc661be49ecdc4ea4af99a69fa3879b3d7a1 # 6.8.1
+    uses: tox-dev/github-workflows/.github/workflows/prepare-release-creator.yaml@9389742ac547afdfd13f32ac3fbeeb7c286e88bc # 6.8.2
     permissions:
       contents: read
       pull-requests: read

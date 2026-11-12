@@ -62,7 +62,7 @@ jobs:
       - name: 📦 Install prek
         run: uv tool install prek
       - name: 🧹 Run the hooks as the release installs them
-        uses: tox-dev/github-workflows/cooled-prek@6.8.1
+        uses: tox-dev/github-workflows/cooled-prek@6.8.2
         env:
           # builds the linter from this checkout, which the examples job lints the repository with
           SKIP: simplint

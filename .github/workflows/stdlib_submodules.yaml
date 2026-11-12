@@ -61,7 +61,7 @@ jobs:
     name: 🔀 Open stdlib submodules PR
     needs: regenerate
     if: needs.regenerate.outputs.changed == 'true'
-    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@81a3fc661be49ecdc4ea4af99a69fa3879b3d7a1 # 6.8.1
+    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@9389742ac547afdfd13f32ac3fbeeb7c286e88bc # 6.8.2
     with:
       artifact-id: ${{ needs.regenerate.outputs.artifact-id }}
       allowed-paths: src/rules/imports/stdlib_submodules.rs
