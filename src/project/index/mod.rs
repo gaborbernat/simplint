@@ -33,7 +33,7 @@ use ruff_text_size::TextRange;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
-use crate::project::facts::{Channel, Channels, ImportBinding};
+use crate::project::facts::{Channel, Channels, ImportBinding, Signature};
 use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
 
@@ -75,6 +75,7 @@ pub struct Project {
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
     pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
     pub(super) run_members: FxHashMap<FileId, Members>,
+    pub(super) run_signatures: FxHashMap<FileId, FxHashMap<String, Signature>>,
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
@@ -209,7 +210,7 @@ impl Project {
         wide.opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
-        let RunImports { names: run_imports, modules: run_modules, members: run_members } =
+        let RunImports { names: run_imports, modules: run_modules, members: run_members, signatures: run_signatures } =
             run_import_kinds(&resolver.modules, &bindings, &reexports);
         let (
             ((uncaught_exceptions, exception_types), module_uses),
@@ -283,6 +284,7 @@ impl Project {
             run_imports,
             run_modules,
             run_members,
+            run_signatures,
             api_reached,
             library_reached,
             inherited,
@@ -333,6 +335,7 @@ impl Project {
                 hook_classes: entry(&self.hook_classes, id),
                 run_imports: entry(&self.run_imports, id),
                 run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },
+                run_signatures: entry(&self.run_signatures, id),
                 api_reached: entry(&self.api_reached, id),
                 library_reached: entry(&self.library_reached, id),
                 inherited: entry(&self.inherited, id),

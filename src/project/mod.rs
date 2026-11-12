@@ -8,7 +8,7 @@ pub(crate) mod receivers;
 
 pub use docs::{AutoclassContent, DocReferences};
 pub(crate) use facts::doctest_code;
-pub use facts::{FileFacts, Parts};
+pub use facts::{FileFacts, Parts, Signature};
 pub use index::{Exposure, External, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots};
 
 // What a run does with the structures it built once its output is out. A one-shot CLI process exits next, so freeing

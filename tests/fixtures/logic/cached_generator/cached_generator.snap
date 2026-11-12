@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:1 SMP554 `functools.cache` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+10:1 SMP554 `functools.lru_cache` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+21:5 SMP554 `functools.cache` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+26:5 SMP554 `functools.lru_cache` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+30:5 SMP554 `functools.cached_property` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+36:5 SMP554 `functools.cache` on a generator keeps the generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead
+47:1 SMP554 `functools.lru_cache` on an async generator keeps the async generator object, which the first caller exhausts, so every later call gets nothing; cache a list of the values instead

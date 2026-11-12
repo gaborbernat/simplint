@@ -6,7 +6,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
-use crate::project::facts::{PYTEST_PLUGINS_REQUEST, source_digest};
+use crate::project::facts::{PYTEST_PLUGINS_REQUEST, Signature, source_digest};
 use crate::project::receivers::UNRESOLVED_CLASS;
 use crate::project::{AutoclassContent, FileFacts};
 use crate::settings::ModuleRole;
@@ -124,6 +124,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) hook_classes: Option<&'a FxHashSet<String>>,
     pub(super) run_imports: Option<&'a FxHashMap<String, bool>>,
     pub(super) run_modules: RunModules<'a>,
+    pub(super) run_signatures: Option<&'a FxHashMap<String, Signature>>,
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
@@ -166,6 +167,7 @@ impl CacheKey for FileIndex<'_> {
             hook_classes,
             run_imports,
             run_modules,
+            run_signatures,
             api_reached,
             library_reached,
             inherited,
@@ -200,6 +202,7 @@ impl CacheKey for FileIndex<'_> {
         hook_classes.cache_key(state);
         run_imports.cache_key(state);
         run_modules.by_alias().cache_key(state);
+        run_signatures.cache_key(state);
         api_reached.cache_key(state);
         library_reached.cache_key(state);
         inherited.cache_key(state);
@@ -274,6 +277,11 @@ impl<'a> FileIndex<'a> {
 
     pub fn run_import_class(&self, name: &str) -> Option<bool> {
         self.answers.run_imports.and_then(|names| names.get(name).copied())
+    }
+
+    // The signature of a function of the run that the file imports under `name`.
+    pub fn imported_signature(&self, name: &str) -> Option<&'a Signature> {
+        self.answers.run_signatures.and_then(|signatures| signatures.get(name))
     }
 
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {

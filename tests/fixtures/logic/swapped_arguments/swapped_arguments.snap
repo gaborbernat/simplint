@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+26:18 SMP556 arguments of `stop` are out of order: `cancel` goes to `cancel_msg`, `cancel_msg` goes to `exc_type`; pass them in the order of the parameters, or by keyword
+31:13 SMP556 arguments of `shutdown` are out of order: `cancel` goes to `cancel_msg`, `cancel_msg` goes to `exc_type`; pass them in the order of the parameters, or by keyword
+34:12 SMP556 arguments of `shuffle` are out of order: `second` goes to `first`, `first` goes to `third`; pass them in the order of the parameters, or by keyword

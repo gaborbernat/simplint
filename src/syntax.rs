@@ -1006,3 +1006,30 @@ pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, 
     };
     Some((target.as_name_expr()?, annotation, value))
 }
+
+// Whether a function with this body is a generator: a `yield` outside any nested function, class or lambda.
+pub fn yields(body: &[Stmt]) -> bool {
+    let mut finder = Yields { found: false };
+    finder.visit_body(body);
+    finder.found
+}
+
+struct Yields {
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for Yields {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+            visitor::walk_stmt(self, stmt);
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
+            Expr::Lambda(_) => {}
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
