@@ -1,3 +1,4 @@
+use ruff_text_size::TextSize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -128,6 +129,8 @@ pub(super) struct FileAnswers<'a> {
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) overridden: Option<&'a FxHashMap<String, FxHashSet<String>>>,
+    pub(super) package_loaded: bool,
+    pub(super) resolved_imports: Option<&'a FxHashSet<u32>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
     pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
@@ -171,6 +174,8 @@ impl CacheKey for FileIndex<'_> {
             library_reached,
             inherited,
             overridden,
+            package_loaded,
+            resolved_imports,
             cycle,
             duplicates,
             prefix_siblings,
@@ -206,6 +211,8 @@ impl CacheKey for FileIndex<'_> {
         library_reached.cache_key(state);
         inherited.cache_key(state);
         overridden.cache_key(state);
+        package_loaded.cache_key(state);
+        resolved_imports.cache_key(state);
         cycle.is_some().cache_key(state);
         if let Some(cycle) = cycle {
             cycle.cache_key_with(&self.project.files, state);
@@ -296,6 +303,16 @@ impl<'a> FileIndex<'a> {
     // A class of the run up the class's bases defines the method too, so the class overrides it.
     pub fn is_override(&self, class: &str, method: &str) -> bool {
         self.answers.overridden.and_then(|classes| classes.get(class)).is_some_and(|methods| methods.contains(method))
+    }
+
+    // Importing a top-level package of the run, or running an entry point, runs this file.
+    pub fn is_package_loaded(&self) -> bool {
+        self.answers.package_loaded
+    }
+
+    // The runtime import statement starting at `start` reaches a file of the run.
+    pub fn imports_run_file(&self, start: TextSize) -> bool {
+        self.answers.resolved_imports.is_some_and(|starts| starts.contains(&start.to_u32()))
     }
 
     // A call through a value loaded from the file reaches its names, and no import shows that.
