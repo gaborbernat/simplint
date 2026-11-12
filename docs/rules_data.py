@@ -36,6 +36,8 @@ class Block(Fence):
     language: str
     file: str
     named: bool
+    executable: bool
+    select: list[str]
 
 
 class Example(TypedDict):
@@ -112,7 +114,7 @@ class _Parser:
         match self._lines[start].lstrip().removeprefix("```").split():
             case ["toml", "config"]:
                 self._config(fence)
-            case [("python" | "rst" | "markdown") as language, role, *attributes]:
+            case [("python" | "rst" | "markdown" | "toml") as language, role, *attributes]:
                 self._block(fence, language, role, attributes)
             case _:
                 self._open = None
@@ -135,12 +137,14 @@ class _Parser:
         if language != "python" and (role != "context" or not attributes):
             msg = f"line {number}: a `{language}` block is a `context` block with a file"
             raise ValueError(msg)
-        file = _file(attributes, number)
+        file, executable, select = _attributes(attributes, number)
         block = Block(
             role=role,
             language=language,
             file="example.py" if file is None else file,
             named=file is not None,
+            executable=executable,
+            select=select,
             line=number,
             end_line=fence["end_line"],
             source=fence["source"],
@@ -238,18 +242,36 @@ def _read_fence(lines: list[str], start: int) -> Fence:
     return Fence(line=start + 1, end_line=index + 1, source="".join(source))
 
 
-def _file(attributes: list[str], number: int) -> str | None:
-    match attributes:
-        case []:
-            return None
-        case [attribute]:
-            if not attribute.startswith("file="):
-                msg = f"line {number}: unknown attribute `{attribute}`"
-                raise ValueError(msg)
-            return attribute.removeprefix("file=")
-        case _:
-            msg = f"line {number}: more than one attribute"
+def _attributes(words: list[str], number: int) -> tuple[str | None, bool, list[str]]:
+    file: str | None = None
+    executable = False
+    select: list[str] = []
+    names: set[str] = set()
+    for word in words:
+        name = word.partition("=")[0]
+        if name in names:
+            msg = f"line {number}: repeated attribute `{name}`"
             raise ValueError(msg)
+        names.add(name)
+        match word.partition("="):
+            case ("executable", "", _):
+                executable = True
+            case ("file", "=", path):
+                file = path
+            case ("select", "=", codes):
+                select = _codes(codes, number)
+            case _:
+                msg = f"line {number}: unknown attribute `{word}`"
+                raise ValueError(msg)
+    return file, executable, select
+
+
+def _codes(codes: str, number: int) -> list[str]:
+    selected = codes.split(",")
+    if not all(code.isascii() and code.isalnum() for code in selected):
+        msg = f"line {number}: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`"
+        raise ValueError(msg)
+    return selected
 
 
 def _joins(example: Example, block: Block) -> bool:

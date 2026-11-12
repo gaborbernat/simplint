@@ -180,9 +180,7 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
         ]
         split = max(example["end_line"] for example in reported)
         fixed = [
-            "\n".join(
-                _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
-            )
+            "\n".join(_fence_lines("", block["language"], _label(block), _body(lines, block)))
             for example in reported
             for block in example["blocks"]
             if block["role"] == "fixed"
@@ -311,8 +309,20 @@ def _body(lines: list[str], fence: Fence) -> list[str]:
     return lines[fence["line"] : fence["end_line"] - 1]
 
 
+def _label(block: Block) -> str:
+    words = [f"`{block['file']}`"] if block["named"] else []
+    if block["select"]:
+        words.append(f"with {', '.join(block['select'])} selected")
+    if block["executable"]:
+        words.append("(executable)")
+    return " ".join(words)
+
+
 def _caption(block: Block, side: str) -> str:
-    return f"`{block['file']}` {side}" if block["named"] else side.capitalize()
+    label = _label(block)
+    if block["named"]:
+        return f"{label} {side}"
+    return f"{side.capitalize()}, {label}" if label else side.capitalize()
 
 
 def _dropdown(example: Example, lines: list[str], *, settings: bool, folds: bool) -> list[str]:
@@ -336,9 +346,8 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool, folds: bool
     for block in example["blocks"]:
         body = _body(lines, block)
         # a lone example.py needs no name; a fix shows its before and after side by side
-        file = f"`{block['file']}`" if block["named"] else ""
         if "fixed" not in roles:
-            out.extend(_code_block(indent, block["language"], file, body))
+            out.extend(_code_block(indent, block["language"], _label(block), body))
             continue
         side = "after" if block["role"] == "fixed" else "before"
         out.append(f"{indent}:::{{container}} example-side")
@@ -381,9 +390,7 @@ def _cards(lines: list[str], example: Example, *, skip_blank: bool, hidden: str)
         previous = block["end_line"]
         skip_blank = block["role"] in {"context", hidden}
         if not skip_blank:
-            out.extend(
-                _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
-            )
+            out.extend(_fence_lines("", block["language"], _label(block), _body(lines, block)))
     return out, skip_blank
 
 

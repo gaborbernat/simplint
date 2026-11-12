@@ -18,7 +18,36 @@ if TYPE_CHECKING:
         pytest.param("```python report\nX = 1\n", "line 1: unclosed code block", id="unclosed_block"),
         pytest.param("```python loud\nX = 1\n```\n", "line 1: unknown role `loud`", id="unknown_role"),
         pytest.param("```python report size=2\n```\n", "line 1: unknown attribute `size=2`", id="unknown_attribute"),
-        pytest.param("```python report file=a.py extra\n```\n", "line 1: more than one attribute", id="two_attributes"),
+        pytest.param(
+            "```python report file=a.py file=b.py\n```\n",
+            "line 1: repeated attribute `file`",
+            id="repeated_file",
+        ),
+        pytest.param(
+            "```python report executable executable\n```\n",
+            "line 1: repeated attribute `executable`",
+            id="repeated_executable",
+        ),
+        pytest.param(
+            "```python report executable=yes\n```\n",
+            "line 1: unknown attribute `executable=yes`",
+            id="executable_with_value",
+        ),
+        pytest.param(
+            "```python ok select=\n```\n",
+            "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`",
+            id="empty_select",
+        ),
+        pytest.param(
+            "```python ok select=SMP009,SMP-101\n```\n",
+            "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`",
+            id="select_with_punctuation",
+        ),
+        pytest.param(
+            "```python ok select=SMP009,\n```\n",
+            "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`",
+            id="select_with_empty_code",
+        ),
         pytest.param(
             "```python fixed\nX = 1\n```\n",
             "line 1: `fixed` must directly follow the `report` block of its file",

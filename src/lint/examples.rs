@@ -1,6 +1,8 @@
 // The examples of a rule page, read from its explanation. The tests lint them, the docs render them, `simplint rule`
 // shows them and `simplint rules` lists them, so every reader parses a page the same way.
 
+use std::collections::HashSet;
+
 use serde::Serialize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -40,6 +42,11 @@ pub struct Block {
     // `example.py` unless the block says `file=`.
     pub file: String,
     pub named: bool,
+    // The file is written with its executable bit, which the example's checks skip on platforms without one.
+    pub executable: bool,
+    // Codes the example's run selects with the rule under test, from `select=`, so a selector that only another rule
+    // needs can be kept.
+    pub select: Vec<String>,
     #[serde(flatten)]
     pub fence: Fence,
 }
@@ -121,25 +128,19 @@ pub fn parse(explanation: &str) -> Result<Vec<Example>, String> {
                 });
                 open = Some(examples.len() - 1);
             }
-            [language @ ("python" | "rst" | "markdown"), role, attributes @ ..] => {
+            [language @ ("python" | "rst" | "markdown" | "toml"), role, attributes @ ..] => {
                 let role = Role::parse(role).ok_or_else(|| format!("line {}: unknown role `{role}`", number + 1))?;
                 if *language != "python" && (role != Role::Context || attributes.is_empty()) {
                     return Err(format!("line {}: a `{language}` block is a `context` block with a file", number + 1));
                 }
-                let file = match attributes {
-                    [] => None,
-                    [attribute] => Some(
-                        attribute
-                            .strip_prefix("file=")
-                            .ok_or_else(|| format!("line {}: unknown attribute `{attribute}`", number + 1))?,
-                    ),
-                    _ => return Err(format!("line {}: more than one attribute", number + 1)),
-                };
+                let parsed = parse_attributes(attributes, number + 1)?;
                 let block = Block {
                     role,
                     language: (*language).to_owned(),
-                    file: file.unwrap_or("example.py").to_owned(),
-                    named: file.is_some(),
+                    file: parsed.file.unwrap_or("example.py").to_owned(),
+                    named: parsed.file.is_some(),
+                    executable: parsed.executable,
+                    select: parsed.select,
                     fence,
                 };
                 let index = push(&mut examples, open, block, section)
@@ -154,6 +155,39 @@ pub fn parse(explanation: &str) -> Result<Vec<Example>, String> {
     match examples.iter().position(|example| example.blocks.is_empty()) {
         Some(index) => Err(format!("example {}: a config block has no python block after it", index + 1)),
         None => Ok(examples),
+    }
+}
+
+struct Attributes<'a> {
+    file: Option<&'a str>,
+    executable: bool,
+    select: Vec<String>,
+}
+
+fn parse_attributes<'a>(words: &[&'a str], line: usize) -> Result<Attributes<'a>, String> {
+    let mut parsed = Attributes { file: None, executable: false, select: Vec::new() };
+    let mut names = HashSet::new();
+    for &word in words {
+        let name = word.split_once('=').map_or(word, |(name, _)| name);
+        if !names.insert(name) {
+            return Err(format!("line {line}: repeated attribute `{name}`"));
+        }
+        match word.split_once('=') {
+            None if word == "executable" => parsed.executable = true,
+            Some(("file", file)) => parsed.file = Some(file),
+            Some(("select", codes)) => parsed.select = select_codes(codes, line)?,
+            _ => return Err(format!("line {line}: unknown attribute `{word}`")),
+        }
+    }
+    Ok(parsed)
+}
+
+fn select_codes(codes: &str, line: usize) -> Result<Vec<String>, String> {
+    let selected: Vec<String> = codes.split(',').map(str::to_owned).collect();
+    if selected.iter().all(|code| !code.is_empty() && code.bytes().all(|byte| byte.is_ascii_alphanumeric())) {
+        Ok(selected)
+    } else {
+        Err(format!("line {line}: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`"))
     }
 }
 
@@ -201,7 +235,24 @@ mod tests {
     #[test_case("```python report\nX = 1\n", "line 1: unclosed code block" ; "unclosed_block")]
     #[test_case("```python loud\nX = 1\n```\n", "line 1: unknown role `loud`" ; "unknown_role")]
     #[test_case("```python report size=2\n```\n", "line 1: unknown attribute `size=2`" ; "unknown_attribute")]
-    #[test_case("```python report file=a.py extra\n```\n", "line 1: more than one attribute" ; "two_attributes")]
+    #[test_case("```python report file=a.py file=b.py\n```\n", "line 1: repeated attribute `file`" ; "repeated_file")]
+    #[test_case("```python report executable executable\n```\n", "line 1: repeated attribute `executable`" ; "repeated_executable")]
+    #[test_case("```python report executable=yes\n```\n", "line 1: unknown attribute `executable=yes`" ; "executable_with_value")]
+    #[test_case(
+        "```python ok select=\n```\n",
+        "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`" ;
+        "empty_select"
+    )]
+    #[test_case(
+        "```python ok select=SMP009,SMP-101\n```\n",
+        "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`" ;
+        "select_with_punctuation"
+    )]
+    #[test_case(
+        "```python ok select=SMP009,\n```\n",
+        "line 1: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`" ;
+        "select_with_empty_code"
+    )]
     #[test_case(
         "```python fixed\nX = 1\n```\n",
         "line 1: `fixed` must directly follow the `report` block of its file" ;
@@ -229,6 +280,24 @@ mod tests {
     )]
     fn parse_rejects_malformed_examples(explanation: &str, reason: &str) {
         assert_eq!(parse(explanation), Err(reason.to_owned()));
+    }
+
+    #[test]
+    fn parse_reads_the_executable_and_select_attributes() {
+        let explanation =
+            "```python report file=tasks.py executable\nX = 1\n```\n\n```python ok select=SMP009,SMP101\nX = 1\n```\n";
+        let examples = parse(explanation).expect("parses");
+        assert_eq!(examples.len(), 2);
+        assert_eq!((examples[0].blocks[0].file.as_str(), examples[0].blocks[0].executable), ("tasks.py", true));
+        assert_eq!(examples[1].blocks[0].select, ["SMP009", "SMP101"]);
+        assert!(!examples[1].blocks[0].executable);
+    }
+
+    #[test]
+    fn parse_accepts_toml_as_a_context_file() {
+        let explanation = "```python report\nX = 1\n```\n\n```toml context file=tools/pyproject.toml\n[project]\n```\n";
+        let examples = parse(explanation).expect("parses");
+        assert_eq!((examples[0].blocks.len(), examples[1].blocks[0].language.as_str()), (1, "toml"));
     }
 
     #[test]

@@ -98,6 +98,14 @@ fn rule_shows_examples_as_plain_python() {
     );
 }
 
+#[test_case("SMP106", "# tasks.py (executable)" ; "executable_file")]
+#[test_case("SMP009", "# with SMP009 selected" ; "selected_rule")]
+fn rule_labels_blocks_with_their_attributes(selector: &str, comment: &str) {
+    let root = empty_project();
+    let (code, stdout, _) = simplint(root.path(), &["rule", selector]);
+    assert_eq!((code, stdout.contains(&format!("Reported:\n  ```python\n  {comment}\n"))), (0, true));
+}
+
 #[test]
 fn rule_rejects_unknown() {
     let root = empty_project();
