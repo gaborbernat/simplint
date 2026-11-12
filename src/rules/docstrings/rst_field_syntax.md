@@ -7,7 +7,7 @@ Sphinx renders a field outside its
 [info field list](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists) as a plain field
 list, and a section from another style as prose, so the reference shows a misspelled parameter or a Google-style block
 in place of the formatted parameter list. A field placed directly under a line of text is not parsed as a field:
-[reStructuredText](https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#paragraphs) needs a blank line
+[reStructuredText](https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#paragraph) needs a blank line
 between body elements, so the field joins the paragraph. A duplicate or misplaced field shows twice or apart from the
 others. A field spelled with a Sphinx alias, such as `:arg:` for `:param:`, renders the same, but mixed spellings read
 unevenly and a search for `:param` misses fields.

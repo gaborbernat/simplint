@@ -1,3 +1,4 @@
+use super::directives::{BLANKS, directive_header, substitution_directive};
 use super::fields::field_marker;
 use super::lines::{Line, TAB_WIDTH, columns, docstring_lines};
 
@@ -249,9 +250,9 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
     }
 
     fn explicit(&mut self, index: usize, trimmed: &'a str) -> usize {
-        if let Some(rest) = trimmed.strip_prefix(".. |") {
-            return match rest.split_once('|').and_then(|(_, after)| directive_name(after)) {
-                Some(name) => self.directive(index, name, true),
+        if let Some(rest) = trimmed.strip_prefix(".. |").filter(|rest| !rest.starts_with(BLANKS)) {
+            return match substitution_directive(rest) {
+                Some((name, _)) => self.directive(index, name, true),
                 None => self.non_prose(index, trimmed),
             };
         }
@@ -565,12 +566,7 @@ fn underline(text: &str) -> Option<&str> {
 
 // The name of the directive that `name:: argument` opens, once the `..` before it is gone.
 fn directive_name(text: &str) -> Option<&str> {
-    let (name, rest) = text.trim_start().split_once("::")?;
-    let name = name.trim_end();
-    (!name.is_empty()
-        && name.chars().all(|char| char.is_alphanumeric() || "-_.+:".contains(char))
-        && (rest.is_empty() || rest.starts_with(' ')))
-    .then_some(name)
+    directive_header(text.trim_start_matches(BLANKS)).map(|(name, _)| name)
 }
 
 // The end of a footnote or citation label at the start of `text`, such as `[1]`, `[#]`, `[*]` or `[note]`, with the
@@ -604,6 +600,9 @@ mod tests {
 
     #[test_case("Text.\n", &[false] ; "prose")]
     #[test_case("Example::\n\n    x = 1\n\nAfter\n", &[false, true, true, true, false] ; "literal_block")]
+    #[test_case("Summary.\n\n.. code-block  ::\n\n    x = 1\n", &[false, false, true, true, true] ; "directive_with_two_spaces_before_colons_is_a_comment")]
+    #[test_case("Summary.\n\n.. |sub| code-block  :: python\n\n    x = 1\n", &[false, false, true, true, true] ; "substitution_with_two_spaces_before_colons_is_a_comment")]
+    #[test_case("Summary.\n\n.. | sub| code-block:: python\n\n    x = 1\n", &[false, false, true, true, true] ; "substitution_with_a_space_after_the_bar_is_a_comment")]
     #[test_case(".. code-block:: python\n\n    x = 1\n\nText\n", &[false, true, true, true, false] ; "code_directive")]
     #[test_case(".. note::\n\n    Body\n", &[false, false, false] ; "prose_directive")]
     #[test_case(">>> f()\n1\n\nText\n", &[true, true, false, false] ; "doctest_block")]

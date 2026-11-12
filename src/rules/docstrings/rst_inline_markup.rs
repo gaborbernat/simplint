@@ -33,10 +33,11 @@ pub fn rst_inline_markup(checker: &Checker) {
         }
         for finding in literal_findings(&lines) {
             let message = match &finding.cause {
-                Cause::Unclosed => {
-                    "Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code"
-                        .to_owned()
-                }
+                Cause::Unclosed => concat!(
+                    "Inline literal opened with ``` `` ``` is not closed in its paragraph, ",
+                    "so the backticks and the rest show as plain text, with a warning"
+                )
+                .to_owned(),
                 Cause::Suffix { literal, suffix } => {
                     format!("Text right after ``{literal}`` keeps the literal open; write ``{literal}``\\ {suffix}")
                 }

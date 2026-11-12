@@ -61,3 +61,12 @@ def fences_and_mismatches() -> None:
 
     Call `Path`` here, and ``open` there.
     """
+
+
+def directive_spacing() -> None:
+    """A directive takes no space before ``::``, while two spaces make a comment.
+
+    .. note:: ``open literal`
+
+    .. note  :: ``open literal`
+    """

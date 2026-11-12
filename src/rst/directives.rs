@@ -4,7 +4,7 @@ use super::blocks::{Classified, classify_docstring};
 use super::lines::{Line, TAB_WIDTH, columns, indent_columns, lines};
 use super::roles::{myst_references, references, simplename_len};
 
-const BLANKS: [char; 2] = [' ', '\t'];
+pub(super) const BLANKS: [char; 2] = [' ', '\t'];
 
 // markdown-it lays out a line's indentation on tab stops four columns apart.
 const MYST_TAB: usize = 4;
@@ -470,7 +470,7 @@ fn explicit(text: &str) -> Option<(Explicit<'_>, usize)> {
 
 // The name and the directive of a substitution definition, whose text follows its first `|`: the name runs to a `|`
 // that follows a non-space, and the directive follows that `|` after a space.
-fn substitution_directive(text: &str) -> Option<(&str, &str)> {
+pub(super) fn substitution_directive(text: &str) -> Option<(&str, &str)> {
     let close =
         text.char_indices().skip(1).find(|&(at, char)| char == '|' && !text[..at].ends_with(char::is_whitespace))?.0;
     let rest = text[close + 1..].strip_prefix(BLANKS)?;
@@ -479,7 +479,7 @@ fn substitution_directive(text: &str) -> Option<(&str, &str)> {
 
 // The name and the text after the `::` of a directive, which needs no space before the `::` and a space or the end of
 // the line after it.
-fn directive_header(text: &str) -> Option<(&str, &str)> {
+pub(super) fn directive_header(text: &str) -> Option<(&str, &str)> {
     let name_length = simplename_len(text);
     let after_name = &text[name_length..];
     let rest = after_name.strip_prefix(BLANKS).unwrap_or(after_name).strip_prefix("::")?;
