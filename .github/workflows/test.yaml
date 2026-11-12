@@ -366,24 +366,13 @@ jobs:
             ~/.npm/_npx
             ~/.cache/puppeteer
           key: mermaid-cli-${{ hashFiles('docs/conf.py') }}
-      # Runs beside the environment setup, with the command docs/conf.py pins; the diagrams need only Chrome's headless
-      # shell, not the full Chrome puppeteer would download beside it. GitHub rejects `if` on the step that waits for it,
-      # so every environment runs both, and the others install nothing.
-      - name: 📦 Install mermaid-cli and its browser
-        id: mermaid
-        background: true
-        shell: bash
-        env:
-          ENV: ${{ matrix.env }}
-          PUPPETEER_CHROME_SKIP_DOWNLOAD: "true"
-        run: |
-          if [[ "$ENV" == docs ]]; then
-            $(grep -oP '(?<=^mermaid_cmd: Final\[str\] = ")[^"]*' docs/conf.py) --version
-          fi
       - name: 📦 Set up test suite
+        if: matrix.env != 'docs'
         run: tox run -vv --notest --skip-missing-interpreters false -e ${{ matrix.env }}
-      - name: ⏳ Wait for mermaid-cli
-        wait: mermaid
+      # installs mermaid-cli and its browser while tox sets up the environment, as Read the Docs does
+      - name: 📦 Set up the docs environment and mermaid-cli
+        if: matrix.env == 'docs'
+        run: uv run --no-project python -m tasks.prepare_docs docs/conf.py tox
       - name: 🧪 Run test suite
         run: tox run --skip-pkg-install -e ${{ matrix.env }}
         env:
