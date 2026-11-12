@@ -298,6 +298,8 @@ use crate::common::{self, check, read};
 #[test_case(
     "up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310"
 )]
+#[test_case("shadowed-except-handler", "shadowed_except_handler.py", None ; "shadowed_except_handler")]
+#[test_case("dropped-exception-note", "dropped_exception_note.py", None ; "dropped_exception_note")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

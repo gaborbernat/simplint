@@ -1,5 +1,6 @@
 mod cognitive_complexity;
 mod collection_built_by_statements;
+pub(crate) mod dropped_exception_note;
 mod duplicate_code;
 mod early_assignment;
 pub(crate) mod error_message_matching;
@@ -11,6 +12,7 @@ pub(crate) mod long_tuple_return;
 mod modernize;
 mod regex_pattern;
 mod scoped_block;
+pub(crate) mod shadowed_except_handler;
 mod single_caller_helper;
 mod single_use_variable;
 pub(crate) mod string_concatenation;

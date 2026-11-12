@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP707 `@classmethod` over `@property` stopped returning the value in Python 3.13, so `kind` reads as a bound method; use a class-level attribute or a metaclass property
+12:5 SMP707 `@classmethod` over `@cached_property` stopped returning the value in Python 3.13, so `cached_kind` reads as a bound method; use a class-level attribute or a metaclass property
+17:5 SMP707 `@property` calls `size` with the instance, which `@staticmethod` does not accept, so reading it raises `TypeError`; drop `@staticmethod`
+22:5 SMP707 `@cached_property` calls `total` with the instance, which `@classmethod` does not accept, so reading it raises `TypeError`; drop `@classmethod`
