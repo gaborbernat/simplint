@@ -24,6 +24,10 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         }
         Stmt::ImportFrom(ast::StmtImportFrom { module, level, names, .. }) => {
             let path = module.as_ref().map_or("", ast::Identifier::as_str);
+            // typeshed documents `_typeshed` as the module that stubs and `TYPE_CHECKING` blocks import from.
+            if *level == 0 && path.split('.').next() == Some("_typeshed") {
+                return;
+            }
             let private = private_count(path);
             if private > 0 && paired_test_module(walker, path, *level) {
                 return;
@@ -41,7 +45,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                 if *level == 0 && path == "os" && alias.name.as_str() == "_exit" {
                     continue;
                 }
-                let named = private_count(alias.name.as_str()) > 0;
+                // `_` is gettext's translation function by convention, not a private name.
+                let named = alias.name.as_str() != "_" && private_count(alias.name.as_str()) > 0;
                 if (named || (private > 0 && !direct))
                     && !walker.checker.semantic().reported_by_plc2701(alias.identifier())
                 {

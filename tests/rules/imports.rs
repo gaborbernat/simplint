@@ -162,6 +162,8 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("from package import API\n", 0 ; "public_import")]
 #[test_case("from package import __version__\n", 0 ; "dunder_import")]
 #[test_case("from os import _exit\n", 0 ; "public_underscore_name")]
+#[test_case("from ._api import _\n", 0 ; "gettext_alias")]
+#[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from _typeshed import StrPath\n", 0 ; "typeshed_types")]
 #[test_case("from ._api import _helper\nVALUE = _helper\n", 1 ; "direct_private_symbol_from_private_module")]
 #[test_case("from ._api import _helper as helper\nVALUE = helper\n", 1 ; "aliased_direct_private_symbol")]
 #[test_case("from ._api._helpers import API\n", 1 ; "two_private_modules")]

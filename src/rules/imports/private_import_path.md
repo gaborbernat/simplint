@@ -169,6 +169,11 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 
+- **gettext's `_`**: `from ._i18n import _` imports the translation function by its conventional name.
+
+- **`_typeshed`**: [typeshed](https://github.com/python/typeshed/tree/main/stdlib/_typeshed) documents it as the module
+  stubs and `TYPE_CHECKING` blocks import types from, such as `from _typeshed import StrPath`.
+
   ```python ok file=consumer.py
   from __future__ import annotations
 
