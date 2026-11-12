@@ -51,7 +51,7 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         None => format!("import {module}{eol}"),
     };
     let key = (member.is_some(), module.to_ascii_lowercase());
-    let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
+    let preamble = preamble_len(body);
     let block = body[preamble..].iter().take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)));
     let minor = checker.target_version().minor;
     let stdlib: Vec<(&Stmt, (bool, String))> = block
@@ -88,9 +88,14 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
     Some(Edit::insertion(insertion, line))
 }
 
+// The statements before a module's imports: its docstring and `from __future__` imports.
+pub(crate) fn preamble_len(body: &[Stmt]) -> usize {
+    body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count()
+}
+
 // The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file,
 // where a shebang, encoding or license header stays put.
-fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
+pub(crate) fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
     let source = checker.source;
     let mut line_start = source.line_start(stmt.start());
     while checker.comment_above(TextRange::empty(line_start)).is_some() {

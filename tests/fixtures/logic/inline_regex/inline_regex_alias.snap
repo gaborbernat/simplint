@@ -1,0 +1,117 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:15 SMP534 Move this `re.compile` to a module-level constant [unsafe fix: Move the pattern to a module-level constant]
+10:18 SMP534 Move this `re.compile` to a module-level constant
+17:12 SMP534 Move this `re.compile` to a module-level constant
+26:12 SMP534 Move this `re.compile` to a module-level constant
+27:12 SMP534 Move this `re.compile` to a module-level constant
+32:12 SMP534 Move this `re.compile` to a module-level constant
+38:12 SMP534 Move this `re.compile` to a module-level constant
+48:12 SMP534 Move this `re.compile` to a module-level constant
+49:12 SMP534 Compile this pattern once at module level and call its `match`
+53:12 SMP534 Move this `re.compile` to a module-level constant
+58:12 SMP534 Move this `re.compile` to a module-level constant
+63:19 SMP534 Compile this pattern once at module level and call its `sub`
+64:19 SMP534 Compile this pattern once at module level and call its `sub`
+--- fixed (1 applied, 0 remaining) ---
+import re
+from typing import Final
+
+
+_STRANDED_PATTERN: Final[re.Pattern[str]] = re.compile(r"#\s*(\d+)")
+
+
+def stranded(lines):
+    return [line for line in lines if _STRANDED_PATTERN.search(line)]
+
+
+_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"v\d+")
+
+
+def version(text):
+    if _VERSION_RE.match(text):
+        return _VERSION_RE.pattern
+    return None
+
+
+_SCAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"q")
+
+
+def closure(text):
+
+    def inner(item):
+        return _SCAN_PATTERN.match(item)
+
+    return inner(text)
+
+
+_REBOUND_PATTERN: Final[re.Pattern[str]] = re.compile(r"s")
+
+_REBOUND_PATTERN_2: Final[re.Pattern[str]] = re.compile(r"t")
+
+
+def rebound(text):
+    scan = _REBOUND_PATTERN
+    scan = _REBOUND_PATTERN_2
+    return scan.match(text)
+
+
+_DELETED_PATTERN: Final[re.Pattern[str]] = re.compile(r"s")
+
+
+def deleted(text):
+    scan = _DELETED_PATTERN
+    del scan
+    return text
+
+
+_DECLARED_PATTERN: Final[re.Pattern[str]] = re.compile(r"u")
+
+
+def declared(text):
+    scan = _DECLARED_PATTERN
+
+    def inner():
+        nonlocal scan
+        return scan
+
+    return inner()
+
+
+_READ_BY_CALL_PATTERN: Final[re.Pattern[str]] = re.compile(r"p")
+
+_READ_BY_CALL_PATTERN_2: Final[re.Pattern[str]] = re.compile(r"x")
+
+
+def read_by_call(text):
+    scan = _READ_BY_CALL_PATTERN
+    return _READ_BY_CALL_PATTERN_2.match(scan.pattern) and text
+
+
+_DEBUG_TEXT_PATTERN: Final[re.Pattern[str]] = re.compile(r"d")
+
+
+def debug_text(text):
+    scan = _DEBUG_TEXT_PATTERN
+    return f"{scan=}"
+
+
+_COMMENTED_PATTERN: Final[re.Pattern[str]] = re.compile(r"z")
+
+
+def commented(text):
+    scan = _COMMENTED_PATTERN  # the z form
+    return scan.match(text)
+
+
+_EXPLANATION_PATTERN: Final[re.Pattern[str]] = re.compile(r"a\d")
+
+_EXPLAIN_PATTERN: Final[re.Pattern[str]] = re.compile(r"c\d")
+
+
+def explain(text):
+    explanation = _EXPLANATION_PATTERN.sub("b", text)
+    explanation = _EXPLAIN_PATTERN.sub("d", explanation)
+    return explanation

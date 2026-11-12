@@ -73,6 +73,12 @@ The pairs are:
         sections, and :doc:`rst-missing-raises </rules/SMP924>` for the ``:raises:`` fields
         `docstring-missing-exception <https://docs.astral.sh/ruff/rules/docstring-missing-exception/>`__ reads the same
         way, since those know Google and numpydoc sections only. Ignore the Ruff rules.
+    * - :doc:`inline-regex </rules/SMP534>`
+      - `unnecessary-regular-expression-compile <https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/>`__
+      - :doc:`inline-regex </rules/SMP534>` moves a ``re.compile`` in a function to a module-level constant, which compiles
+        once. `unnecessary-regular-expression-compile <https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/>`__
+        reports the inline compile and suggests ``re.match``, advice that holds only for code that runs once. Ignore the
+        Ruff rule, the recommended way, or ignore :doc:`inline-regex </rules/SMP534>` in ``[tool.simplint]``.
 
 Things to know when resolving a conflict:
 

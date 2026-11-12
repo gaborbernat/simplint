@@ -1,7 +1,7 @@
 use std::ptr;
 
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, CmpOp, Expr, Stmt, UnaryOp};
+use ruff_python_ast::{self as ast, ArgOrKeyword, CmpOp, Expr, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -11,10 +11,11 @@ use crate::syntax::alias_binding;
 const MODULES: [&str; 2] = ["re", "regex"];
 
 // The module functions that take a pattern first, and the methods of a compiled pattern with the same names.
-const FUNCTIONS: [&str; 9] = ["compile", "match", "search", "fullmatch", "finditer", "findall", "split", "sub", "subn"];
+const FUNCTIONS: [&str; 10] =
+    ["compile", "match", "prefixmatch", "search", "fullmatch", "finditer", "findall", "split", "sub", "subn"];
 
 // The methods that return match objects, whose groups a read of the result reaches.
-const MATCH_METHODS: [&str; 4] = ["match", "search", "fullmatch", "finditer"];
+const MATCH_METHODS: [&str; 5] = ["match", "prefixmatch", "search", "fullmatch", "finditer"];
 
 // The methods of a match object that read a group, whose call leaves no group readable beyond the fix's reach.
 const GROUP_READS: [&str; 4] = ["group", "start", "end", "span"];
@@ -78,12 +79,13 @@ enum Usage {
 // A string or bytes literal, which implicit concatenation makes of several parts.
 pub(crate) struct Literal<'a> {
     pub(crate) range: TextRange,
+    pub(crate) bytes: bool,
     // Each part's decoded bytes and the range of its source text between the quotes.
     pub(crate) parts: Vec<(&'a [u8], TextRange)>,
 }
 
 impl<'a> Literal<'a> {
-    fn of(expr: &'a Expr) -> Option<Self> {
+    pub(crate) fn of(expr: &'a Expr) -> Option<Self> {
         let parts = match expr {
             Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
                 value.iter().map(|part| (part.value.as_bytes(), part.content_range())).collect()
@@ -93,7 +95,7 @@ impl<'a> Literal<'a> {
             }
             _ => return None,
         };
-        Some(Self { range: expr.range(), parts })
+        Some(Self { range: expr.range(), bytes: expr.is_bytes_literal_expr(), parts })
     }
 
     pub(crate) fn decoded(&self) -> Vec<u8> {
@@ -111,6 +113,10 @@ pub(crate) struct Call<'a> {
     pub(crate) verbose: Option<bool>,
     // Whether the replacement of a `sub` call is a literal without a backslash, so it names no group.
     plain_replacement: bool,
+    pub(crate) node: &'a ast::ExprCall,
+    // The function or lambda the call sits in, or `None` at module level.
+    pub(crate) scope: Scope,
+    pub(crate) flags: Option<ArgOrKeyword<'a>>,
 }
 
 // The calls, bindings and name uses of a module, gathered in one walk so the decisions read them without another.
@@ -288,6 +294,7 @@ impl<'a> Facts<'_, 'a> {
     }
 
     fn record_call(&mut self, expr: &'a Expr, call: &'a ast::ExprCall) {
+        let scope = self.scope();
         let record = match module_function(self.checker, &call.func) {
             Some(attr) => {
                 let context = self.context();
@@ -300,6 +307,9 @@ impl<'a> Facts<'_, 'a> {
                         .find_argument_value("flags", flags_position(attr))
                         .map_or(Some(false), |flags| is_verbose(self.checker, flags)),
                     plain_replacement: call.arguments.find_argument_value("repl", 1).is_some_and(is_plain),
+                    node: call,
+                    scope,
+                    flags: call.arguments.find_argument("flags", flags_position(attr)),
                 })
             }
             None => match call.func.as_ref() {
@@ -313,6 +323,9 @@ impl<'a> Facts<'_, 'a> {
                         literal: None,
                         verbose: Some(false),
                         plain_replacement: call.arguments.find_argument_value("repl", 0).is_some_and(is_plain),
+                        node: call,
+                        scope,
+                        flags: None,
                     })
                 }
                 _ => None,
@@ -377,6 +390,18 @@ impl<'a> Facts<'_, 'a> {
             }
             Some(Expr::Compare(compare)) if is_none_test(compare, child) => Context::Test,
             Some(Expr::If(ast::ExprIf { test, .. })) if ptr::eq(test.as_ref(), child) => Context::Test,
+            Some(Expr::ListComp(ast::ExprListComp { generators, .. })) if is_condition(generators, child) => {
+                Context::Test
+            }
+            Some(Expr::SetComp(ast::ExprSetComp { generators, .. })) if is_condition(generators, child) => {
+                Context::Test
+            }
+            Some(Expr::Generator(ast::ExprGenerator { generators, .. })) if is_condition(generators, child) => {
+                Context::Test
+            }
+            Some(Expr::DictComp(ast::ExprDictComp { generators, .. })) if is_condition(generators, child) => {
+                Context::Test
+            }
             Some(_) => Context::Other,
         }
     }
@@ -399,6 +424,11 @@ impl<'a> Facts<'_, 'a> {
                 Context::Test
             }
             Some(Stmt::While(ast::StmtWhile { test, .. }) | Stmt::Assert(ast::StmtAssert { test, .. })) if is(test) => {
+                Context::Test
+            }
+            Some(Stmt::Match(ast::StmtMatch { cases, .. }))
+                if cases.iter().any(|case| case.guard.as_deref().is_some_and(is)) =>
+            {
                 Context::Test
             }
             _ => Context::Other,
@@ -440,7 +470,7 @@ impl<'a> Facts<'_, 'a> {
     // Whether a call, a `re` function or a method on a name, leaves no group readable beyond the fix's reach.
     pub(crate) fn call_flows(&self, call: &Call<'a>) -> bool {
         match call.attr {
-            "compile" | "match" | "search" | "fullmatch" => self.result_flows(call.context),
+            "compile" | "match" | "prefixmatch" | "search" | "fullmatch" => self.result_flows(call.context),
             "sub" | "subn" => call.plain_replacement,
             attr => GROUP_READS.contains(&attr),
         }
@@ -555,6 +585,11 @@ fn subscript_reads(slice: &Expr) -> Reads {
         Some(_) => Reads::NUMBERED,
         None => Reads::NAMED,
     }
+}
+
+// Whether an expression is the condition of one of a comprehension's `if` clauses, which Ruff reads as a boolean test.
+fn is_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
+    generators.iter().any(|generator| generator.ifs.iter().any(|condition| ptr::eq(condition, expr)))
 }
 
 // `expr is None` or `expr is not None`, which a match object reaches only as a truth test.

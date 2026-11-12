@@ -121,6 +121,7 @@ use crate::common;
 #[test_case("single-user-constant", "single_user_constant_source_text.py", None ; "single_user_constant_source_text")]
 #[test_case("single-user-constant", "single_user_constant_debug.py", None ; "single_user_constant_debug")]
 #[test_case("single-user-constant", "single_user_constant_annotated.py", None ; "single_user_constant_annotated")]
+#[test_case("single-user-constant", "single_user_constant_pattern.py", None ; "single_user_constant_compiled_pattern")]
 #[test_case("single-user-constant", "single_user_constant_computed.py", None ; "single_user_constant_computed_write")]
 #[test_case("single-user-constant", "single_user_constant_shared.py", None ; "single_user_constant_shared_state")]
 #[test_case(

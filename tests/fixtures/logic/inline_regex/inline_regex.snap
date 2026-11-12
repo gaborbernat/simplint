@@ -1,0 +1,161 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:12 SMP534 Compile this pattern once at module level and call its `fullmatch` [unsafe fix: Move the pattern to a module-level constant]
+13:16 SMP534 Compile this pattern once at module level and call its `match`
+18:16 SMP534 Compile this pattern once at module level and call its `search`
+24:13 SMP534 Compile this pattern once at module level and call its `findall`
+28:34 SMP534 Compile this pattern once at module level and call its `finditer`
+32:43 SMP534 Compile this pattern once at module level and call its `split`
+36:15 SMP534 Move this `re.compile` to a module-level constant
+41:12 SMP534 Move this `re.compile` to a module-level constant
+45:12 SMP534 Compile this pattern once at module level and call its `match`
+49:12 SMP534 Compile this pattern once at module level and call its `subn`
+53:12 SMP534 Compile this pattern once at module level and call its `sub`
+57:12 SMP534 Compile this pattern once at module level and call its `sub`
+61:12 SMP534 Compile this pattern once at module level and call its `fullmatch`
+72:12 SMP534 Compile this pattern once at module level and call its `split`
+76:12 SMP534 Compile this pattern once at module level and call its `fullmatch`
+80:12 SMP534 Compile this pattern once at module level and call its `search`
+84:12 SMP534 Compile this pattern once at module level and call its `match`
+--- fixed (1 applied, 0 remaining) ---
+import re
+from re import fullmatch
+from typing import Final
+
+import regex
+
+
+_IS_IMAGE_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z0-9]+(?:/[a-z0-9]+)*")
+
+
+def is_image(image_name: str) -> bool:
+    return _IS_IMAGE_PATTERN.fullmatch(image_name) is not None
+
+
+_VALUE_PATTERN: Final[re.Pattern[str]] = re.compile(r"(\w+)=(\w+)")
+
+
+class Parser:
+    def value(self, text):
+        return _VALUE_PATTERN.match(text).group(2)
+
+
+_INNER_PATTERN: Final[re.Pattern[str]] = re.compile(r"#\s*(\d+)")
+
+
+def outer(text):
+    def inner(line):
+        return _INNER_PATTERN.search(line)
+
+    return inner(text)
+
+
+_BUILD_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
+
+
+def build(texts):
+    return [_BUILD_PATTERN.findall(text) for text in texts]
+
+
+_CHECK_PATTERN: Final[re.Pattern[str]] = re.compile(r"a+b")
+
+
+def check(texts):
+    return list(map(lambda text: _CHECK_PATTERN.finditer(text), texts))
+
+
+_PICK_PATTERN: Final[re.Pattern[str]] = re.compile(r"[;,]")
+
+
+def pick(items):
+    return sorted(items, key=lambda item: _PICK_PATTERN.split(item)[0])
+
+
+_STORED_PATTERN: Final[re.Pattern[str]] = re.compile(r"(\w+)=(\w+)")
+
+
+def stored(text):
+    return _STORED_PATTERN.match(text)
+
+
+_INLINE_COMPILE_PATTERN: Final[re.Pattern[str]] = re.compile(r"[a-z]+", re.IGNORECASE)
+
+
+def inline_compile(text):
+    return _INLINE_COMPILE_PATTERN.fullmatch(text)
+
+
+_BYTE_PATTERN: Final[re.Pattern[bytes]] = re.compile(rb"\d+", re.I)
+
+
+def byte_pattern(data):
+    return _BYTE_PATTERN.match(data)
+
+
+_KEYWORD_FLAGS_PATTERN: Final[re.Pattern[str]] = re.compile(r"\s+", flags=re.MULTILINE)
+
+
+def keyword_flags(text):
+    return _KEYWORD_FLAGS_PATTERN.subn(" ", text)
+
+
+_SUB_COUNT_PATTERN: Final[re.Pattern[str]] = re.compile(r"\s+")
+
+
+def sub_count(text):
+    return _SUB_COUNT_PATTERN.sub(" ", text, 1)
+
+
+_SUB_KEYWORD_COUNT_PATTERN: Final[re.Pattern[str]] = re.compile(r"\s+")
+
+
+def sub_keyword_count(text):
+    return _SUB_KEYWORD_COUNT_PATTERN.sub(" ", text, count=2)
+
+
+_VERBOSE_PATTERN: Final[re.Pattern[str]] = re.compile(r"""
+        (\d+)   # major
+        \.(\d+) # minor
+        """, re.VERBOSE | re.MULTILINE)
+
+
+def verbose(text):
+    return _VERBOSE_PATTERN.fullmatch(text)
+
+
+_SPLIT_ITEMS_PATTERN: Final[re.Pattern[str]] = re.compile(r"[;,]")
+
+
+def split_items(text):
+    return _SPLIT_ITEMS_PATTERN.split(text, maxsplit=1)
+
+
+_FROM_IMPORT_PATTERN: Final[re.Pattern[str]] = re.compile(r"v\d+")
+
+
+def from_import(text):
+    return _FROM_IMPORT_PATTERN.fullmatch(text)
+
+
+_REGEX_MODULE_PATTERN: Final[regex.Pattern[str]] = regex.compile(r"x+")
+
+
+def regex_module(text):
+    return _REGEX_MODULE_PATTERN.search(text)
+
+
+_IMPLICIT_PATTERN: Final[re.Pattern[str]] = re.compile(r"(?:alpha)"
+                    r"(?:beta)")
+
+
+def implicit(text):
+    return _IMPLICIT_PATTERN.match(text)
+
+
+class Holder:
+    COUNT = re.compile(r"\d+")
+
+    def count(self, text):
+        return self.COUNT.match(text)

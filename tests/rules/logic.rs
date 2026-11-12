@@ -251,11 +251,23 @@ use crate::common::{self, check, read};
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", None ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", None ; "unnamed_regex_group_default_scope")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", None ; "unnamed_regex_group_escaping")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_prefixmatch.py", None ; "unnamed_regex_group_prefixmatch")]
 #[test_case(
     "unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", None ; "unnamed_regex_group_scoped_verbose"
 )]
 #[test_case("unexplained-regex", "unexplained_regex.py", None ; "unexplained_regex")]
 #[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", None ; "unexplained_regex_unknown_flags")]
+#[test_case("unexplained-regex", "unexplained_regex_prefixmatch.py", None ; "unexplained_regex_prefixmatch")]
+#[test_case("inline-regex", "inline_regex.py", None ; "inline_regex")]
+#[test_case("inline-regex", "inline_regex_skipped.py", None ; "inline_regex_skipped")]
+#[test_case("inline-regex", "inline_regex_imports.py", None ; "inline_regex_imports")]
+#[test_case("inline-regex", "inline_regex_shadowed.py", None ; "inline_regex_shadowed")]
+#[test_case("inline-regex", "inline_regex_after_import.py", None ; "inline_regex_after_import")]
+#[test_case("inline-regex", "inline_regex_typing.py", None ; "inline_regex_typing")]
+#[test_case("inline-regex", "inline_regex_ruff.py", None ; "inline_regex_ruff_plain_text")]
+#[test_case("inline-regex", "inline_regex_names.py", None ; "inline_regex_constant_names")]
+#[test_case("inline-regex", "inline_regex_nested.py", None ; "inline_regex_nested_calls")]
+#[test_case("inline-regex", "inline_regex_alias.py", None ; "inline_regex_alias")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", None ; "utf8_encoding_default_before_python315")]
 #[test_case(
@@ -1487,6 +1499,44 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
              count parentheses\nFound 1 error.\n"
         )
     );
+}
+
+// Constants come out in source order, each above the statement its call sits in, and a later pass adds below the
+// ones an earlier pass added.
+#[test]
+fn inline_regex_fix_keeps_the_constants_in_source_order() {
+    let root = common::project(&[(
+        "module.py",
+        "import re\n\n\ndef first(text):\n    return re.match(r\"a\\d\", text)\n\n\ndef second(text):\n    return \
+         re.search(r\"b\\d\", text) and re.fullmatch(r\"c\\d\", text)\n",
+    )]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP534", "--fix", "--unsafe-fixes"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "module.py")),
+        (
+            0,
+            common::ONE_FIXED,
+            "import re\nfrom typing import Final\n\n\
+             _FIRST_PATTERN: Final[re.Pattern[str]] = re.compile(r\"a\\d\")\n\n\n\
+             def first(text):\n    return _FIRST_PATTERN.match(text)\n\n\n_SECOND_PATTERN: Final[re.Pattern[str]] = \
+             re.compile(r\"b\\d\")\n\n_SECOND_PATTERN_2: Final[re.Pattern[str]] = re.compile(r\"c\\d\")\n\n\n\
+             def second(text):\n    return _SECOND_PATTERN.search(text) and _SECOND_PATTERN_2.fullmatch(text)\n"
+                .to_owned()
+        )
+    );
+}
+
+// The module constant an inline-regex fix writes is one the constant rules leave alone.
+#[test]
+fn inline_regex_fix_leaves_the_constant_clean_of_the_constant_rules() {
+    let root = common::project(&[(
+        "module.py",
+        "import re\n\n\ndef is_image(name):\n    return re.fullmatch(r\"[a-z]+\", name) is not None\n",
+    )]);
+    let (fix_code, fix_stdout, _) =
+        check(root.path(), &["--no-cache", "--select", "SMP534", "--fix", "--unsafe-fixes"]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP202,SMP534,SMP601"]);
+    assert_eq!((fix_code, fix_stdout.as_str(), code, stdout.as_str()), (0, common::ONE_FIXED, 0, common::PASSED));
 }
 
 // A module-level name another module imports, or `__all__` lists, keeps its report, and the fix that removes it is

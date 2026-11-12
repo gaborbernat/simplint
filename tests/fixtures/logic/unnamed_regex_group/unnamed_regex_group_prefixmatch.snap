@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:27 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
+--- fixed (1 applied, 0 remaining) ---
+import re
+
+
+def has_pair(text):
+    return re.prefixmatch(r"(?:\w+)=(?:\w+)", text) is not None

@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP534 Compile this pattern once at module level and call its `match` [unsafe fix: Move the pattern to a module-level constant]
+5:29 SMP534 Compile this pattern once at module level and call its `search`
+--- fixed (2 applied, 0 remaining) ---
+import re
+from typing import Final
+
+
+_OUTER_PATTERN: Final[re.Pattern[str]] = re.compile(r"a\d")
+
+
+_OUTER_PATTERN_2: Final[re.Pattern[str]] = re.compile(r"b\d")
+
+
+def outer(text):
+    return _OUTER_PATTERN.match(_OUTER_PATTERN_2.search(text))

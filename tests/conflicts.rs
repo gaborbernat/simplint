@@ -81,6 +81,17 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
          Ruff's `lint.ignore`, or ignore rst-missing-raises in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first \
          file: module.py"
     ) ; "rst_docstrings")]
+#[test_case(
+    "[tool.ruff]\nlint.preview = true\nlint.select = [\"unnecessary-regular-expression-compile\"]\n",
+    "module.py",
+    &format!(
+        "inline-regex (SMP534) and Ruff's unnecessary-regular-expression-compile work against each other.\n    Why: \
+         inline-regex moves a `re.compile` in a function to a module-level constant, which compiles once; \
+         unnecessary-regular-expression-compile reports the inline compile and suggests `re.match`, advice that holds \
+         only for code that runs once.\n    Fix: \
+         ignore unnecessary-regular-expression-compile in Ruff's `lint.ignore`, or ignore inline-regex in \
+         `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
+    ) ; "inline_regex_compile")]
 fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(conflicts(root.path(), &[]), (2, header(conflict)));

@@ -110,7 +110,8 @@ functions nested in it. These values count:
 
   That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a
   `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another
-  value with `*` or `**`.
+  value with `*` or `**`. A pattern from `re.compile` is the module constant [inline-regex](SMP534.html) asks for when
+  the compile sits inside a function.
 
   ```python ok
   import logging

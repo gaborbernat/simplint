@@ -6,7 +6,7 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::fix_of;
 use crate::rules::logic::regex_pattern::{Context, Facts, scan};
 
-const MATCH_CALLS: [&str; 5] = ["compile", "match", "search", "fullmatch", "finditer"];
+const MATCH_CALLS: [&str; 6] = ["compile", "match", "prefixmatch", "search", "fullmatch", "finditer"];
 
 pub fn unnamed_regex_group(checker: &Checker) {
     let facts = Facts::collect(checker);
