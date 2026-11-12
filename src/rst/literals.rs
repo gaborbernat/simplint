@@ -1,10 +1,5 @@
 use super::blocks::Classified;
-
-// The characters docutils lets before a start-string, besides whitespace, and after an end-string, as ASCII.
-const BEFORE_START: &str = "\"'(<[{\\-/:";
-const AFTER_END: &str = "\0\\.,;!?-/:\"')>]}";
-const OPENERS: &str = "\"'(<[{";
-const CLOSERS: &str = "\"')>]}";
+use super::punctuation::{CLOSER_CHARS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, match_chars};
 
 // What is wrong with an inline literal or a backtick run, and so what the rule says.
 #[derive(Debug, PartialEq, Eq)]
@@ -167,7 +162,8 @@ fn open_literals(units: &[(char, usize)]) -> Vec<Finding> {
             continue;
         };
         // A start at the very beginning of the text is never quoted, so one that ends the paragraph still warns.
-        let quoted = index != segment && units.get(after).is_none_or(|&(next, _)| pair(units[index - 1].0, next));
+        let quoted =
+            index != segment && units.get(after).is_none_or(|&(next, _)| match_chars(units[index - 1].0, next));
         if quoted {
             segment = after;
             index = after;
@@ -199,7 +195,7 @@ fn open_literals(units: &[(char, usize)]) -> Vec<Finding> {
 fn start_at(units: &[(char, usize)], index: usize, segment: usize) -> Option<usize> {
     let double = units.get(index + 1).is_some_and(|&(next, _)| next == '`');
     let after = index + 1 + usize::from(double);
-    let prefixed = index == segment || units[index - 1].0.is_whitespace() || BEFORE_START.contains(units[index - 1].0);
+    let prefixed = index == segment || units[index - 1].0.is_whitespace() || starts_after(units[index - 1].0);
     let spaced = units.get(after).is_some_and(|&(next, _)| next.is_whitespace());
     (prefixed && !spaced).then_some(after)
 }
@@ -264,7 +260,7 @@ fn backtick_runs(units: &[(char, usize)]) -> Vec<(usize, usize)> {
 
 // Whether the backticks at `start` can open markup: whitespace or punctuation before them, and no space after.
 fn opens_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
-    let prefixed = start == 0 || units[start - 1].0.is_whitespace() || BEFORE_START.contains(units[start - 1].0);
+    let prefixed = start == 0 || units[start - 1].0.is_whitespace() || starts_after(units[start - 1].0);
     prefixed && units.get(start + len).is_some_and(|&(next, _)| !next.is_whitespace())
 }
 
@@ -321,11 +317,18 @@ fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
 }
 
 fn ends_at(units: &[(char, usize)], index: usize) -> bool {
-    units.get(index).is_none_or(|&(char, _)| char.is_whitespace() || AFTER_END.contains(char))
+    units.get(index).is_none_or(|&(char, _)| {
+        char.is_whitespace()
+            || char == '\0'
+            || CLOSER_CHARS.contains(&char)
+            || DELIMITER_CHARS.contains(&char)
+            || CLOSING_DELIMITER_CHARS.contains(&char)
+    })
 }
 
-fn pair(open: char, close: char) -> bool {
-    OPENERS.chars().zip(CLOSERS.chars()).any(|(opener, closer)| opener == open && closer == close)
+// Whether a start-string may follow `char`, besides whitespace: an opening bracket or quote, or a delimiter.
+fn starts_after(char: char) -> bool {
+    OPENER_CHARS.contains(&char) || DELIMITER_CHARS.contains(&char)
 }
 
 #[cfg(test)]
