@@ -1,5 +1,8 @@
-Flags functions and classes that open with a `warnings.warn()` call of `DeprecationWarning`, which
-`@warnings.deprecated` replaces from Python 3.13.
+Flags functions and classes that open with a
+[`warnings.warn()`](https://docs.python.org/3/library/warnings.html#warnings.warn) call of
+[`DeprecationWarning`](https://docs.python.org/3/library/exceptions.html#DeprecationWarning), which
+[`@warnings.deprecated`](https://docs.python.org/3/library/warnings.html#warnings.deprecated)
+([PEP 702](https://peps.python.org/pep-0702/)) replaces from Python 3.13.
 
 ## Why is this bad?
 
@@ -63,7 +66,9 @@ def connect(host):
 - **Functions, methods and classes whose first statement after the docstring calls `warnings.warn()` with
   `DeprecationWarning`**, passed as the second argument or as `category=`. The report sits on the call. **Unsafe fix:**
   the call is removed and a `@warnings.deprecated(...)` decorator takes its message, placed below any other decorator,
-  since `@warnings.deprecated` raises `TypeError` on the object `@property` or `@classmethod` returns.
+  since `@warnings.deprecated` raises [`TypeError`](https://docs.python.org/3/library/exceptions.html#TypeError) on the
+  object [`@property`](https://docs.python.org/3/library/functions.html#property) or
+  [`@classmethod`](https://docs.python.org/3/library/functions.html#classmethod) returns.
 
   ```toml config
   [project]
@@ -157,7 +162,8 @@ def connect(host):
       return host
   ```
 
-- **Another category**: a `FutureWarning` or a user warning class is not a deprecation that the decorator marks.
+- **Another category**: a [`FutureWarning`](https://docs.python.org/3/library/exceptions.html#FutureWarning) or a user
+  warning class is not a deprecation that the decorator marks.
 
   ```toml config
   [project]

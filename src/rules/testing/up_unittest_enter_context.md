@@ -1,5 +1,8 @@
-Flags a patch that a `unittest.TestCase` method starts by hand and stops with `addCleanup`. `self.enterContext` starts
-the patch and registers its stop in one call. It exists from Python 3.11.
+Flags a patch that a [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase) method
+starts by hand and stops with
+[`addCleanup`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup).
+[`self.enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) starts the patch
+and registers its stop in one call. It exists from Python 3.11.
 
 ## Why is this bad?
 
@@ -66,7 +69,10 @@ class ConfigTest(TestCase):
 ### Active on
 
 - **Three consecutive statements in a `TestCase` method**: `patcher = patch(...)`, `value = patcher.start()` and
-  `self.addCleanup(patcher.stop)`. The patch can come from `mock.patch`, `mock.patch.object` or `mock.patch.dict`, under
+  `self.addCleanup(patcher.stop)`. The patch can come from
+  [`mock.patch`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch),
+  [`mock.patch.object`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.object) or
+  [`mock.patch.dict`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.dict), under
   `unittest.mock` or the `mock` name, as the module resolves them. The report sits on the first statement.
 
   ```toml config

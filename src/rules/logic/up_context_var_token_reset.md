@@ -1,5 +1,6 @@
-Flags a `ContextVar.set()` token that a `try` block resets in its `finally` clause, which a `with` block does on exit
-from Python 3.14.
+Flags a [`ContextVar.set()`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.set)
+[token](https://docs.python.org/3/library/contextvars.html#contextvars.Token) that a `try` block resets in its `finally`
+clause, which a `with` block does on exit from Python 3.14.
 
 ## Why is this bad?
 
@@ -69,8 +70,10 @@ def handle(value):
 ## What it does
 
 Reports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that
-holds `variable.reset(token)`, with no `except` and no `else`. `variable` is a name the file assigns a
-`contextvars.ContextVar(...)` call to, or a parameter annotated as `ContextVar`.
+holds [`variable.reset(token)`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.reset), with
+no `except` and no `else`. `variable` is a name the file assigns a
+[`contextvars.ContextVar(...)`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar) call to, or a
+parameter annotated as `ContextVar`.
 
 ### Active on
 
@@ -183,7 +186,8 @@ with request_id.set("one"):
       settings.reset(token)
   ```
 
-- **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.
+- **Target versions before 3.14**: the token is not a context manager there, and `with` raises
+  [`TypeError`](https://docs.python.org/3/library/exceptions.html#TypeError).
 
   ```toml config
   [project]

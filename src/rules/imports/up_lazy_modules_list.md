@@ -1,5 +1,6 @@
-Flags a module-level `__lazy_modules__` list whose entries are plain imports in the same module, which Python 3.15
-spells as `lazy import` on each import.
+Flags a module-level [`__lazy_modules__`](https://docs.python.org/3/reference/datamodel.html#module.__lazy_modules__)
+list whose entries are plain imports in the same module, which Python 3.15 spells as `lazy import` on each import
+([PEP 810](https://peps.python.org/pep-0810/)).
 
 ## Why is this bad?
 

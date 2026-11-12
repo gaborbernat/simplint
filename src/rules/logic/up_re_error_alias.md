@@ -1,4 +1,5 @@
-Flags `re.error` references, which `re.PatternError` names from Python 3.13.
+Flags `re.error` references, which [`re.PatternError`](https://docs.python.org/3/library/re.html#re.PatternError) names
+from Python 3.13.
 
 ## Why is this bad?
 

@@ -1,10 +1,15 @@
-Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with
-`date.strptime` and `time.strptime`.
+Flags
+[`datetime.strptime(...)`](https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime).[`date()`](https://docs.python.org/3/library/datetime.html#datetime.datetime.date)
+and `datetime.strptime(...)`.[`time()`](https://docs.python.org/3/library/datetime.html#datetime.datetime.time), which
+Python 3.14 replaces with [`date.strptime`](https://docs.python.org/3/library/datetime.html#datetime.date.strptime) and
+[`time.strptime`](https://docs.python.org/3/library/datetime.html#datetime.time.strptime).
 
 ## Why is this bad?
 
-`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and
-`time` parse their own part, which says what the code reads and skips the intermediate value.
+`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14
+[`date`](https://docs.python.org/3/library/datetime.html#datetime.date) and
+[`time`](https://docs.python.org/3/library/datetime.html#datetime.time) parse their own part, which says what the code
+reads and skips the intermediate value.
 
 ## Example
 

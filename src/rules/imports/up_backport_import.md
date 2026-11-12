@@ -5,7 +5,8 @@ standard library module instead lets the project drop the backport from its depe
 
 A backport exists for the versions that lack a standard library module. Once the lowest supported version has that
 module, the backport only adds an install and a second implementation that can drift from the first. `tomli`, for
-example, is `tomllib` from Python 3.11 on.
+example, is [`tomllib`](https://docs.python.org/3/library/tomllib.html) from Python 3.11 on
+([PEP 680](https://peps.python.org/pep-0680/)).
 
 ## Example
 
@@ -65,7 +66,9 @@ print(loads("name = 'demo'"))
   VALUE = TaskGroup
   ```
 
-- **`exceptiongroup` imports of `ExceptionGroup` and `BaseExceptionGroup`**, which the builtins define from Python 3.11.
+- **`exceptiongroup` imports of [`ExceptionGroup`](https://docs.python.org/3/library/exceptions.html#ExceptionGroup) and
+  [`BaseExceptionGroup`](https://docs.python.org/3/library/exceptions.html#BaseExceptionGroup)**, which the builtins
+  define from Python 3.11 ([PEP 654](https://peps.python.org/pep-0654/)).
 
   ```toml config
   [project]

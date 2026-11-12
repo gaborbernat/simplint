@@ -1,10 +1,12 @@
-Flags `asyncio.iscoroutinefunction()` calls, which `inspect.iscoroutinefunction()` replaces.
+Flags [`asyncio.iscoroutinefunction()`](https://docs.python.org/3/whatsnew/3.14.html#new-deprecations) calls, which
+[`inspect.iscoroutinefunction()`](https://docs.python.org/3/library/inspect.html#inspect.iscoroutinefunction) replaces.
 
 ## Why is this bad?
 
 Python 3.14 deprecates `asyncio.iscoroutinefunction()`. It also accepts functions marked with the `_is_coroutine` marker
-that the `asyncio.coroutine` decorator set, a decorator removed in Python 3.11. `inspect.iscoroutinefunction()` checks
-only the function itself, so the two answer differently for such functions.
+that the [`asyncio.coroutine`](https://docs.python.org/3/whatsnew/3.11.html#whatsnew311-python-api-removed) decorator
+set, a decorator removed in Python 3.11. `inspect.iscoroutinefunction()` checks only the function itself, so the two
+answer differently for such functions.
 
 ## Example
 

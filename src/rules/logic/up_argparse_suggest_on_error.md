@@ -1,10 +1,12 @@
-Flags `suggest_on_error=True` in `argparse.ArgumentParser()` calls, which Python 3.15 makes the default.
+Flags `suggest_on_error=True` in
+[`argparse.ArgumentParser()`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser) calls, which
+Python 3.15 makes the default.
 
 ## Why is this bad?
 
 From Python 3.15 `argparse` suggests the closest valid choice on a mistyped argument without asking, so
 `suggest_on_error=True` repeats the default. Before Python 3.14 the keyword does not exist at all, so the call fails
-there with `TypeError`.
+there with [`TypeError`](https://docs.python.org/3/library/exceptions.html#TypeError).
 
 ## Example
 

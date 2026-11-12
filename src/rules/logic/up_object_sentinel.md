@@ -1,4 +1,6 @@
-Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.
+Flags a module or class constant assigned a bare [`object()`](https://docs.python.org/3/library/functions.html#object)
+placeholder, which [`sentinel`](https://docs.python.org/3/library/functions.html#sentinel) from Python 3.15 names
+([PEP 661](https://peps.python.org/pep-0661/)).
 
 ## Why is this bad?
 

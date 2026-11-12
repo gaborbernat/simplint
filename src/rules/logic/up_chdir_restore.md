@@ -1,5 +1,5 @@
-Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python
-3.11.
+Flags a directory change that a `try` block undoes in its `finally` clause, which
+[`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) does from Python 3.11.
 
 ## Why is this bad?
 
@@ -64,9 +64,10 @@ def build(target):
 
 ## What it does
 
-Reports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose
-only clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear
-nowhere else in its function, or in the module at module level.
+Reports three statements in one body: `old = `[`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd), then
+[`os.chdir(target)`](https://docs.python.org/3/library/os.html#os.chdir) with one argument, then a `try` whose only
+clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear nowhere
+else in its function, or in the module at module level.
 
 ### Active on
 

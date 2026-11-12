@@ -65,12 +65,12 @@ it. A name imported with `from module import name` is not reported, as renaming 
 - **Renames**: the attribute is replaced with the new name, which does the same work. **Safe fix**, except for the
   `calendar` months, where it is unsafe.
 
-  | Name                                    | From | Replacement                             |
-  | --------------------------------------- | ---- | --------------------------------------- |
-  | `threading.currentThread`               | 3.10 | `threading.current_thread`              |
-  | `threading.activeCount`                 | 3.10 | `threading.active_count`                |
-  | `calendar.January`, `calendar.February` | 3.12 | `calendar.JANUARY`, `calendar.FEBRUARY` |
-  | `configparser.SafeConfigParser`         | 3.12 | `configparser.ConfigParser`             |
+  | Name                                    | From | Replacement                                                                                                                                                                      |
+  | --------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | `threading.currentThread`               | 3.10 | [`threading.current_thread`](https://docs.python.org/3/library/threading.html#threading.current_thread)                                                                          |
+  | `threading.activeCount`                 | 3.10 | [`threading.active_count`](https://docs.python.org/3/library/threading.html#threading.active_count)                                                                              |
+  | `calendar.January`, `calendar.February` | 3.12 | [`calendar.JANUARY`](https://docs.python.org/3/library/calendar.html#calendar.JANUARY), [`calendar.FEBRUARY`](https://docs.python.org/3/library/calendar.html#calendar.FEBRUARY) |
+  | `configparser.SafeConfigParser`         | 3.12 | [`configparser.ConfigParser`](https://docs.python.org/3/library/configparser.html#configparser.ConfigParser)                                                                     |
 
   ```toml config
   [project]
@@ -95,11 +95,11 @@ it. A name imported with `from module import name` is not reported, as renaming 
 
 - **Replacements that need a review**: the replacement works differently, so the rule names it and offers no fix.
 
-  | Name                                                                        | From | Replacement                   |
-  | --------------------------------------------------------------------------- | ---- | ----------------------------- |
-  | `pkgutil.find_loader`, `pkgutil.get_loader`                                 | 3.12 | `importlib.util.find_spec`    |
-  | `unittest.findTestCases`, `unittest.makeSuite`, `unittest.getTestCaseNames` | 3.11 | `unittest.TestLoader` methods |
-  | `glob.glob0`, `glob.glob1`                                                  | 3.13 | `glob.glob`                   |
+  | Name                                                                        | From | Replacement                                                                                             |
+  | --------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------- |
+  | `pkgutil.find_loader`, `pkgutil.get_loader`                                 | 3.12 | [`importlib.util.find_spec`](https://docs.python.org/3/library/importlib.html#importlib.util.find_spec) |
+  | `unittest.findTestCases`, `unittest.makeSuite`, `unittest.getTestCaseNames` | 3.11 | [`unittest.TestLoader`](https://docs.python.org/3/library/unittest.html#unittest.TestLoader) methods    |
+  | `glob.glob0`, `glob.glob1`                                                  | 3.13 | [`glob.glob`](https://docs.python.org/3/library/glob.html#glob.glob)                                    |
 
   ```toml config
   [project]
@@ -121,8 +121,10 @@ it. A name imported with `from module import name` is not reported, as renaming 
 safe.
 
 The `calendar` fix is unsafe: `calendar.January` is the plain integer `1`, while `calendar.JANUARY` is the
-`calendar.Month.JANUARY` member. The two compare equal, but `repr()` and `type()` differ, which shows in output and in
-`type(value) is int` checks.
+[`calendar.Month`](https://docs.python.org/3/library/calendar.html#calendar.Month)`.JANUARY` member. The two compare
+equal, but [`repr()`](https://docs.python.org/3/library/functions.html#repr) and
+[`type()`](https://docs.python.org/3/library/functions.html#type) differ, which shows in output and in
+`type(value) is `[`int`](https://docs.python.org/3/library/functions.html#int) checks.
 
 No fix is offered for replacements that need a review.
 
@@ -157,9 +159,11 @@ No fix is offered for replacements that need a review.
       threading.activeCount = counter
   ```
 
-- **`sys.last_value`, `sys.last_type` and `sys.last_traceback`**: the documentation deprecates them for `sys.last_exc`,
-  but they never warn, and code that sets them for tools that read them, or reads them when `sys.last_exc` is missing,
-  keeps them on purpose.
+- **[`sys.last_value`](https://docs.python.org/3/library/sys.html#sys.last_value),
+  [`sys.last_type`](https://docs.python.org/3/library/sys.html#sys.last_type) and
+  [`sys.last_traceback`](https://docs.python.org/3/library/sys.html#sys.last_traceback)**: the documentation deprecates
+  them for [`sys.last_exc`](https://docs.python.org/3/library/sys.html#sys.last_exc), but they never warn, and code that
+  sets them for tools that read them, or reads them when `sys.last_exc` is missing, keeps them on purpose.
 
   ```toml config
   [project]

@@ -1,4 +1,5 @@
-Flags `re.match()` references, which `re.prefixmatch()` names from Python 3.15.
+Flags [`re.match()`](https://docs.python.org/3/library/re.html#re.match) references, which
+[`re.prefixmatch()`](https://docs.python.org/3/library/re.html#re.prefixmatch) names from Python 3.15.
 
 ## Why is this bad?
 
@@ -100,8 +101,8 @@ def parse_version(text):
       return re.match(r"\d+\.\d+", text)
   ```
 
-- **Pattern methods**: `pattern.match()` is not reported, since the receiver's type is not known and a method of that
-  name may belong to any class.
+- **Pattern methods**: [`pattern.match()`](https://docs.python.org/3/library/re.html#re.Pattern.match) is not reported,
+  since the receiver's type is not known and a method of that name may belong to any class.
 
   ```toml config
   [project]
@@ -151,7 +152,8 @@ def parse_version(text):
 - **Truth tests with a plain-text pattern Ruff rewrites**:
   [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) rewrites a `re.match` call whose pattern
   has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
-  `str.startswith`, so this rule leaves that call to Ruff.
+  [`str.startswith`](https://docs.python.org/3/library/stdtypes.html#str.startswith), so this rule leaves that call to
+  Ruff.
 
   ```toml config
   [project]
