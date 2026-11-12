@@ -332,6 +332,7 @@ rules! {
     UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
     InlineRegex => ("SMP534", "inline-regex", "Regular expressions compiled inside a function", Sometimes, logic::inline_regex { module }),
     UnreachableCode => ("SMP535", "unreachable-code", "Statements that never run, after a `return`, `raise`, `break` or `continue` or under a false test", Sometimes, logic::unreachable_code { module }),
+    DeadStore => ("SMP536", "dead-store", "Values assigned to a local that the next assignment replaces before anything reads them", Sometimes, logic::dead_store { module }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
