@@ -4,8 +4,14 @@ keeps the caller short.
 ## Why is this bad?
 
 A helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn
-what the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements
-keeps the work in one function, as long as the caller stays short enough to read at once.
+what the caller does, and the helper's name adds little when only one place uses it.
+[John Ousterhout](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) argues that many short functions
+are harder to read: each split adds an interface to learn while hiding little, and functions that only make sense
+together read better combined. Inlining the helper's statements keeps the work in one function, as long as the caller
+stays short enough to read at once. [Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) and
+[Robert Martin](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) favor small functions named by
+intent. simplint still reports short helpers with one caller, but only where the caller stays within its limits after
+inlining.
 
 ## Example
 

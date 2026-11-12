@@ -4,7 +4,10 @@ Flags a directory change that a `try` block undoes in its `finally` clause, whic
 ## Why is this bad?
 
 Saving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,
-where `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.
+where [`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) needs one `with` block.
+[PEP 343](https://peps.python.org/pep-0343/#abstract) added `with` to factor out such `try`/`finally` pairs. The block
+cannot forget the restore, and it leaves no saved name in scope. Both forms change process-wide state, so neither is
+parallel-safe, as the `contextlib.chdir` docs note.
 
 ## Example
 

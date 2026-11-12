@@ -2,9 +2,14 @@ Flags attribute references to deprecated standard library names that name a repl
 
 ## Why is this bad?
 
-Each name warns when it is used, or is gone in a later Python release, and a replacement does the same work. A project
-that targets the version where the name is deprecated or removed should use the replacement, since the old name fails
-there or keeps warning on every use.
+Each name warns when it is used, or is gone in a later Python release, and a replacement does the same work. A removed
+name raises `AttributeError` on the versions where it is gone. A deprecated name emits a `DeprecationWarning` that
+Python [hides by default](https://docs.python.org/3/library/warnings.html#default-warning-filter) outside `__main__`,
+while
+[pytest shows](https://docs.pytest.org/en/stable/how-to/capture-warnings.html#deprecationwarning-and-pendingdeprecationwarning)
+it, so a suite that turns warnings into errors fails.
+[PEP 387](https://peps.python.org/pep-0387/#making-incompatible-changes) allows removal after the warning period, so the
+replacement is the name that keeps working.
 
 ## Example
 

@@ -3,8 +3,11 @@ the project's required dependencies.
 
 ## Why is this bad?
 
-A required dependency is always installed, so the fallback never runs in a working environment. When the install is
-broken, the guard hides the import error until something later fails with a less clear message.
+A required dependency is installed with the project. The standard library ships with Python, and an installer puts each
+entry of [`dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) in place.
+The fallback does not run in a working environment. When the install is broken, the guard hides the import error until
+something later fails with a less clear message, against the [Zen of Python](https://peps.python.org/pep-0020/)'s rule
+that errors should not pass silently.
 
 ## Example
 

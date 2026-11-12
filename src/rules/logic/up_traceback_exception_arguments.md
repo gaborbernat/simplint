@@ -3,8 +3,12 @@ the exception itself.
 
 ## Why is this bad?
 
-Since Python 3.10 the `traceback` functions take the exception alone, and read its type and traceback from it. The
-three-argument form repeats what the exception already carries, and makes the call longer to read.
+Since Python 3.10 the `traceback` functions take the exception alone and read its type and traceback from it, as
+[bpo-26389](https://bugs.python.org/issue26389) proposed, because one exception object holds all three. The type
+argument has been ignored since Python 3.5, and the
+[docs](https://docs.python.org/3/library/traceback.html#traceback.print_exception) say the first argument is ignored
+when the value and traceback follow it. The three-argument form therefore spells out a value nothing reads, which makes
+the call longer to read.
 
 ## Example
 

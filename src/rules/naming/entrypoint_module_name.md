@@ -2,10 +2,14 @@ Flags `main.py` and `_main.py` when they serve as command entrypoints.
 
 ## Why is this bad?
 
-Python looks for a package's [`__main__.py`](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages)
-when it runs `python -m package`. Keeping the command's entrypoint there makes the executable module easy to find and
-lets the same package run through `-m`. Keep the command's code in `__main__.py` too; move it to a separate module only
-when `__main__.py` grows too large to read, and have `__main__.py` import and call it.
+Python runs a package's [`__main__.py`](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages) for
+`python -m package`, and `main.py` means nothing to the interpreter. Keeping the command's entrypoint there makes it
+easy to find and lets the same package run through `-m`. The
+[`__main__` docs](https://docs.python.org/3/library/__main__.html#id1) and the
+[PyPA guide](https://packaging.python.org/en/latest/guides/creating-command-line-tools/) keep `__main__.py` short and
+put the command in another module. simplint keeps the command in `__main__.py` for that same ease of finding, and moves
+it out only when the file grows too large to read; a separate `_main.py` can then hold the implementation, and
+`__main__.py` imports and calls it.
 
 ## Example
 

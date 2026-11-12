@@ -5,7 +5,10 @@ test module of a project that depends on pytest-mock.
 
 pytest-mock provides the `mocker` fixture, which undoes each patch when its test ends. A test that imports
 `unittest.mock` must manage the patch itself, with a `with` block or a decorator, and the project then has two ways to
-patch. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.
+patch. The pytest-mock docs
+[list what those forms cost](https://pytest-mock.readthedocs.io/en/latest/remarks.html#why-bother-with-a-plugin): each
+`with` adds a level of nesting, and a decorator passes its mock as a parameter in decorator order, which mixes poorly
+with fixtures and `parametrize`. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.
 
 ## Example
 

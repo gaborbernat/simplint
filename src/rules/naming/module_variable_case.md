@@ -3,9 +3,13 @@ it is: [module-variable-prefix](SMP404.html) checks it.
 
 ## Why is this bad?
 
-Upper case tells a reader the name is a module-level value rather than a local, as
-[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants. A module that keeps the same case for all its
-constants makes them easy to pick out at every use.
+Upper case tells a reader the name is a module-level value rather than a local, the way
+[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants, so a use deep inside a function shows that it
+reads module state. pylint's
+[invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html) applies the
+same idea to names assigned once. [PEP 8](https://peps.python.org/pep-0008/#global-variable-names) and the
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.5.4-decision) give module globals
+`lower_case`; simplint reports every module-level variable, so each use shows the module state it reads.
 
 ## Example
 

@@ -3,9 +3,15 @@ and a `self` that most tests never use, and invites shared state.
 
 ## Why is this bad?
 
-A test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through
-attributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with
-the class name folded into a prefix keep the grouping visible in the test name.
+A test class adds a level of nesting and a `self` that most tests never use. It also invites shared state: pytest gives
+each test its own instance, but
+[attributes set in the class body are shared](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class)
+by every test, and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html) move values a test depends
+on out of the test, where [Google's testing guide](https://abseil.io/resources/swe-book/html/ch12.html) asks to keep
+them. pytest's
+[getting-started guide](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class) lists
+grouping and class-scoped fixtures among the benefits of a class; simplint reports classes anyway, since a module-level
+prefix keeps the grouping visible in the test name without the shared state.
 
 ## Example
 

@@ -6,7 +6,10 @@ standard library module instead lets the project drop the backport from its depe
 A backport exists for the versions that lack a standard library module. Once the lowest supported version has that
 module, the backport only adds an install and a second implementation that can drift from the first. `tomli`, for
 example, is [`tomllib`](https://docs.python.org/3/library/tomllib.html) from Python 3.11 on
-([PEP 680](https://peps.python.org/pep-0680/)).
+([PEP 680](https://peps.python.org/pep-0680/)), and its
+[README](https://github.com/hukkin/tomli#building-a-tomlitomllib-compatibility-layer) asks projects to require it only
+on older versions. The [Scientific Python guide](https://learn.scientific-python.org/development/patterns/backports/)
+says the same of any backport: it stops being a dependency once the project drops those versions.
 
 ## Example
 

@@ -5,12 +5,15 @@ methods. A member that sits above a member of an earlier section is reported, an
 ## Why is this bad?
 
 A class is read to learn how its instances come to be, what they hold and what they can do. The layout puts each kind of
-member where a reader looks for it: the constructors near the top, where the instance is made, the protocol methods
-together, the properties next, and the methods last. A constructor placed after a dozen methods sends the reader past
-all of them, and a property defined between two methods splits the list of the methods the class offers.
+member where a reader looks for it. A constructor placed after a dozen methods sends the reader past all of them, and a
+property defined between two methods splits the list of the methods the class offers.
 
-The same order in every class also means a reader who knows one class knows where to look in the next. It follows the
-life of an object: it is created, it gets its protocol, and then it is used.
+The same order in every class means a reader who knows one class knows where to look in the next. Other guides order
+members in a similar way.
+[wemake-python-styleguide](https://wemake-python-styleguide.readthedocs.io/en/1.7.1/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.WrongMethodOrderViolation)
+wants the important parts before the details, and
+[Django's model style](https://docs.djangoproject.com/en/dev/internals/contributing/writing-code/coding-style/#model-style)
+lists fields, `Meta` and dunder methods before custom methods.
 
 ## Example
 

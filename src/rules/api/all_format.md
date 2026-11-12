@@ -4,11 +4,16 @@ Flags an `__all__` written as a tuple, or as a list without a trailing comma aft
 
 A trailing comma after the last name makes Ruff's formatter put each name on its own line, unless
 [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) is set. Adding or
-removing an export then changes one line, so the diff shows exactly which name changed.
+removing an export then changes one line, so the diff shows which name changed and `git blame` shows which commit added
+it, the layout
+[Black](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#how-black-wraps-lines) and
+[PEP 8](https://peps.python.org/pep-0008/#when-to-use-trailing-commas) recommend.
 
-Using a list in every module gives `__all__` one shape to read and edit, and it is the shape the
-[missing-from-all](SMP401.html) fix writes for a new `__all__`. To also sort the names, see Ruff's
-[unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).
+A list is the form the [tutorial](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) shows. It is
+also the only form that accepts the `.append`, `.extend` and `.remove` calls that the
+[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+lets type checkers follow, and the shape the [missing-from-all](SMP401.html) fix writes for a new `__all__`. To also
+sort the names, see Ruff's [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).
 
 ## Example
 

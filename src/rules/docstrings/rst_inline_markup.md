@@ -2,8 +2,12 @@ Flags Sphinx roles whose target lacks backticks and inline literals left unclose
 
 ## Why is this bad?
 
-Without backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal
-turns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.
+reStructuredText reads a role only on
+[text in backquotes](https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#interpreted-text). Without them
+the role is plain text: the reference shows `:class:Path` instead of a link. An inline literal needs its closing
+backticks in the same paragraph. If they are missing, docutils warns that the start-string has no end-string and shows
+the backticks as written, with the rest of the paragraph as plain text. A build run with Sphinx's
+[`-W`](https://www.sphinx-doc.org/en/master/man/sphinx-build.html#cmdoption-sphinx-build-W) fails on that warning.
 
 ## Example
 

@@ -2,9 +2,11 @@ Flags modules where the last top-level statement that binds `__all__` is not the
 
 ## Why is this bad?
 
-Readers look for the export list in one place. At the end of the module it comes after every definition it names, so it
-reads as a summary of what the module provides. [missing-from-all](SMP401.html) and [all-format](SMP405.html) also check
-`__all__`.
+Readers look for the export list in one place. At the end of the module it comes after the definitions it names, so it
+reads as a summary of what the module provides. [PEP 8](https://peps.python.org/pep-0008/#module-level-dunder-names)
+asks for `__all__` after the docstring and before the imports, the placement this rule reports; simplint keeps the
+report because a list at the top cannot summarize the definitions below it. [missing-from-all](SMP401.html) and
+[all-format](SMP405.html) also check `__all__`.
 
 ## Example
 

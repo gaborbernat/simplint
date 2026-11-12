@@ -5,8 +5,15 @@ touch.
 ## Why is this bad?
 
 `object` accepts anything and permits almost no operations, so the code behind it narrows with `isinstance` or casts at
-runtime. `Any` skips type checking altogether for each value it touches. A precise type moves that check to the type
-checker and documents what callers pass.
+runtime. `Any` skips type checking for each value it touches, and
+[values derived from it](https://mypy.readthedocs.io/en/stable/dynamic_typing.html#operations-on-any-values) are usually
+`Any` too, so one annotation can switch off checks far from where it is written. A precise type moves that check to the
+type checker and documents what callers pass.
+
+The
+[typing best practices](https://typing.python.org/en/latest/reference/best_practices.html#arguments-and-return-types)
+recommend `object` for a parameter that accepts any value. simplint reports such parameters anyway, because `object`
+leaves each use to narrow the value at runtime.
 
 ## Example
 

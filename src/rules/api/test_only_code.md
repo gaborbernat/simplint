@@ -3,8 +3,12 @@ Flags module-level functions and classes that only test modules use, since they 
 ## Why is this bad?
 
 Code that only tests call is test support, and it ships with the product. Readers take it for part of the package, and
-it outlives the tests that needed it. Moving it into the tests, or into a test helper module, keeps the package to what
-the program runs.
+it outlives the tests that needed it. Gerard Meszaros catalogs this as
+[Test Logic in Production](http://xunitpatterns.com/Test%20Logic%20in%20Production.html), a smell in *xUnit Test
+Patterns*. Moving it into the tests, or into a test helper module, keeps the package to what the program runs.
+[Chromium](https://chromium.googlesource.com/chromium/src/+/0617fa211418e43df39b94de1d10bbcf6bbe0fe6/docs/patterns/fortesting-methods.md)
+accepts clearly named `ForTesting` methods on widely used objects, but simplint still reports code that only tests call,
+since it ships with the package.
 
 ## Example
 

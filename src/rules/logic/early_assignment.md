@@ -8,6 +8,11 @@ A value set at the top of a function and read many statements later makes the re
 between. The assignment looks like it matters to the code around it, when only the later read does. Assigning the
 constant just before its first use shows where the value comes from.
 
+[Sourcery's move-assign refactoring](https://docs.sourcery.ai/reference/refactorings/python/move-assign/) gives the
+reasons: a tight scope leaves less to track, is easier to split into functions, and strands fewer assignments.
+[Google's C++ style guide](https://google.github.io/styleguide/cppguide.html#Local_Variables) asks for the same,
+declaring each variable in the narrowest scope and close to its first use.
+
 ## Example
 
 ```python report

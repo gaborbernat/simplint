@@ -4,10 +4,13 @@ list whose entries are plain imports in the same module, which Python 3.15 spell
 
 ## Why is this bad?
 
-`__lazy_modules__` is the compatibility spelling of lazy imports for code that still supports older versions, where the
-list is the only way to ask for lazy loading without a syntax error. A project that targets Python 3.15 has the `lazy`
-keyword, which puts the request on each import where a reader sees it. The list then only tells readers which imports
-are lazy, one line away from the imports it governs.
+`__lazy_modules__` is the
+[compatibility spelling](https://docs.python.org/3/reference/simple_stmts.html#compatibility-via-lazy-modules) of lazy
+imports for code that still supports Python before 3.15, where the list is the only way to ask for lazy loading without
+a syntax error. [PEP 810](https://peps.python.org/pep-0810/#rationale) calls it a transitional mechanism, kept until
+code can rely on the keyword. A project that targets Python 3.15 has the `lazy` keyword, which puts the request on each
+import where a reader sees it. The list says which imports are lazy from a line away, and an import that drifts out of
+sync with it loads eagerly without notice.
 
 ## Example
 

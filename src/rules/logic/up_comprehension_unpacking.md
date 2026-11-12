@@ -4,8 +4,9 @@ allows.
 ## Why is this bad?
 
 A second `for` clause that only unpacks the outer item can move into the element.
-[PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and with
-`**` for dicts.
+[PEP 798](https://peps.python.org/pep-0798/#rationale) lets the element unpack with `*` for lists, sets and generators,
+and with `**` for dicts, as `[*a, *b]` already does in a display. The PEP notes that students often reverse the two
+`for` clauses, a mistake one clause rules out.
 
 ## Example
 

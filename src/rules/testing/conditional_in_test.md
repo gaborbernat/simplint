@@ -3,8 +3,10 @@ Flags `if` statements, `match` statements and conditional expressions in test fu
 ## Why is this bad?
 
 A branching test runs a different check depending on its input or environment, so a passing run does not say which path
-was verified. With one [parametrized](https://docs.pytest.org/en/stable/how-to/parametrize.html) case per path, pytest
-reports each path on its own.
+was verified. Google's testing guide asks for tests that are
+[correct at a glance, with no conditionals or loops](https://abseil.io/resources/swe-book/html/ch12.html), since a bug
+in test logic is easy to miss. With one [parametrized](https://docs.pytest.org/en/stable/how-to/parametrize.html) case
+per path, pytest reports each path on its own.
 
 ## Example
 

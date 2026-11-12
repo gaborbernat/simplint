@@ -6,9 +6,13 @@ and registers its stop in one call. It exists from Python 3.11.
 
 ## Why is this bad?
 
-Starting a patch, then registering its stop, takes three statements that must stay in step. Forgetting the cleanup leaks
-the patch into other tests. `enterContext` enters the context manager and cleans it up with the test, in the order the
-test case expects, so the statement that starts the patch is the one that stops it.
+Starting a patch, then registering its stop, takes three statements that must stay in step, and a patch started this way
+[stays active until `stop` runs](https://docs.python.org/3/library/unittest.mock.html#patch-methods-start-and-stop).
+Forgetting the cleanup leaks the patch into other tests. Python 3.11 added
+[`enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) to
+[remove this boilerplate](https://mail.python.org/pipermail/new-bugs-announce/2021-August/043809.html): it enters the
+context manager and registers its exit with `addCleanup`, so the statement that starts the patch is the one that stops
+it.
 
 ## Example
 

@@ -2,8 +2,13 @@ Flags dataclasses declared without `kw_only=True`, and the calls that pass their
 
 ## Why is this bad?
 
-Positional construction ties every caller to the field order, so reordering or inserting a field silently shifts values
-into the wrong fields. Keyword-only fields name each value at the call site.
+Positional construction ties callers to the field order, so reordering or inserting a field silently shifts values into
+the wrong fields when their types match. Keyword-only fields name each value at the call site, the same clarity that
+[too-many-positional-arguments](https://docs.astral.sh/ruff/rules/too-many-positional-arguments/) asks of functions.
+They also lift the
+[ordering rule](https://docs.python.org/3/library/dataclasses.html#re-ordering-of-keyword-only-parameters-in-init) for
+defaults: a field without a default may follow one with a default, in the same class or through a subclass, where
+positional fields raise `TypeError`.
 
 ## Example
 

@@ -3,26 +3,19 @@ calls it, the file reads top-down, from the entry point into the details.
 
 ## Why is this bad?
 
-This order lets the reader start with the high-level overview, the entry point or caller, and then drill down into the
-details, the helpers, as they read ahead, top to bottom.
+Code reads top-down when each function is followed by the helpers it calls, so the reader starts at the entry point and
+drills into details. This is the stepdown rule of Robert C. Martin's *Clean Code*, which
+[flake8-stepdown](https://github.com/didmar/flake8-stepdown) also enforces. A helper far from its caller makes the
+reader jump around the file.
 
-Code reads top-down when each function is followed by the helpers it calls. A helper above its caller, or far from it,
-makes the reader jump around the file.
+Putting helpers first is a habit from compiled languages such as C, where a function has to be
+[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python looks up a name in a
+function body [when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), so
+a helper can sit anywhere in the module.
 
-The habit of putting helpers first comes from compiled languages such as C, where a function has to be
-[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python has no such rule: a
-name inside a function body is looked up
-[when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), not when it is
-defined, so a helper can sit anywhere in the module.
-
-That leaves the order free to serve the reader. A file that starts with its entry point and then explains each step lets
-a reviewer follow the change the way it runs.
-
-The order is depth first, like reading a book: each helper follows its first caller, and a helper's own helpers come
-before the caller's next one. For this call tree the file reads `load`, `_parse`, `_split`, `_validate`:
-
-- `load` calls `_parse` first, then `_validate`
-  - `_parse` calls `_split`
+[ssort](https://github.com/bwhmather/ssort) argues for the opposite order, definitions first, because import-time
+lookups such as decorators and base classes need the definition to exist. The rule's exceptions keep those definitions
+in place.
 
 ## Example
 

@@ -4,7 +4,12 @@ expression, without `+`.
 ## Why is this bad?
 
 A chain of `+` scatters the text across quotes and operators, and every non-string operand needs an explicit `str()`. An
-f-string ([PEP 498](https://peps.python.org/pep-0498/)) shows the final text in one piece.
+f-string ([PEP 498](https://peps.python.org/pep-0498/)) shows the final text in one piece and formats each value itself.
+
+The f-string is also faster. Each `+` builds a
+[new string](https://docs.python.org/3/builtins/stdtypes.html#common-sequence-operations) that the next `+` copies
+again, while an f-string formats its fields and joins every piece in one
+[`BUILD_STRING`](https://docs.python.org/3/library/dis.html#opcode-BUILD_STRING) step.
 
 ## Example
 

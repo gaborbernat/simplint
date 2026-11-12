@@ -4,8 +4,12 @@ assert on each result, in a test module.
 ## Why is this bad?
 
 A loop of assertions stops at its first failure, so the report names one case and hides the others, and the test does
-not show which cases it covered. A parameterized test runs every case as its own test, and a failure names the case that
-broke.
+not show which cases it covered. The
+[`unittest` docs](https://docs.python.org/3/library/unittest.html#distinguishing-test-iterations-using-subtests) make
+the same point when they introduce subtests: without them, the run stops at the first failure and hides the failing
+value. A loop is also logic the reader has to trace, which
+[Google's testing guide](https://abseil.io/resources/swe-book/html/ch12.html) advises against. A parameterized test runs
+every case as its own test, and a failure names the case that broke.
 
 ## Example
 

@@ -4,8 +4,12 @@ placeholder, which [`sentinel`](https://docs.python.org/3/builtins/functions.htm
 
 ## Why is this bad?
 
-A bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name
-would tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.
+A bare `object()` reprs as an address, so a traceback, a debugger or a function signature shows
+`<object object at 0x7f...>` instead of the placeholder's name. [PEP 661](https://peps.python.org/pep-0661/) lists two
+more problems: a copy or a pickle round trip gives a new object, so an `is` test fails, and the placeholder has no type
+of its own to annotate with. [`sentinel`](https://docs.python.org/3/builtins/functions.html#sentinel) fixes all three.
+Its repr is the name, a copy or an unpickled sentinel is the same object, and it works in a type hint such as
+`int | MISSING`.
 
 ## Example
 

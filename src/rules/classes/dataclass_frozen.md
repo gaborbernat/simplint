@@ -7,8 +7,13 @@ choice to make.
 
 Any code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at
 construction time. A [frozen](https://docs.python.org/3/library/dataclasses.html#frozen-instances) instance raises on
-attribute assignment. With the default `eq=True` it gets a `__hash__`, so it can go in a set or serve as a dict key when
-its fields are hashable.
+attribute assignment, and
+[`dataclasses.replace()`](https://docs.python.org/3/library/dataclasses.html#dataclasses.replace) builds a changed copy
+instead. With the default `eq=True`, a frozen instance gets a `__hash__`, so it can go in a set or serve as a dict key
+when its fields are hashable. A mutable dataclass with `eq=True` gets
+[`__hash__` set to `None`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass), since a key whose
+hash changes
+[can no longer be found in a dict](https://docs.python.org/3/faq/design.html#why-must-dictionary-keys-be-immutable).
 
 ## Example
 

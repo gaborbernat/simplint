@@ -4,8 +4,12 @@ module whose argument is not the literal `0`.
 ## Why is this bad?
 
 A test that sleeps waits a fixed time whether the code is ready or not. The wait is long enough to slow the suite, and
-too short on a loaded machine, where the test then fails for no real reason. Waiting on an event the code sets returns
-as soon as the code is ready and fails at once if it never is.
+too short on a loaded machine, where the test then fails for no real reason. Martin Fowler's
+[article on non-deterministic tests](https://martinfowler.com/articles/nonDeterminism.html#AsynchronousBehavior) names
+bare sleeps as a cause of both and asks for a callback or polling instead, and warns that flaky tests teach people to
+ignore failures. Waiting on an event the code sets, with
+[`Event.wait`](https://docs.python.org/3/library/threading.html#threading.Event.wait), returns as soon as the code is
+ready, and its timeout bounds the wait if it never is.
 
 ## Example
 

@@ -4,7 +4,11 @@ Enable it with `--extend-select SMP009` when checking for obsolete ignores.
 ## Why is this bad?
 
 An obsolete ignore makes it harder to tell which exceptions still matter. It can also hide a new report if the same rule
-starts applying to that line later.
+starts applying to that line later. Other checkers report obsolete ignores too: Ruff's
+[unused-noqa](https://docs.astral.sh/ruff/rules/unused-noqa/), mypy's
+[`--warn-unused-ignores`](https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-warn-unused-ignores)
+and pyright's
+[`reportUnnecessaryTypeIgnoreComment`](https://microsoft.github.io/pyright/#/configuration?id=reportUnnecessaryTypeIgnoreComment).
 
 ## Example
 

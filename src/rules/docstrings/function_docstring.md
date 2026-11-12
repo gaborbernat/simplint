@@ -3,13 +3,11 @@ mostly repeats the name and signature.
 
 ## Why is this bad?
 
-[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public modules, functions,
-classes and methods, and for a comment after the `def` line of the rest; the fix writes that comment. Many projects
-document internal code with docstrings anyway, so this rule is a choice of style rather than common practice.
-
-A docstring restates what the name, signature and type annotations already say, and nothing checks that it stays
-accurate when the code changes. When the reason behind a piece of code is not obvious, a short comment next to that code
-explains it better.
+[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public code and, for a
+non-public method, only a comment after the `def` line; the fix writes that comment.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a docstring
+on any nontrivial or non-obvious function. simplint reports docstrings on internal code anyway, since such a docstring
+restates the name, signature and annotations, and nothing checks it as the code changes.
 
 A longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a
 comment.

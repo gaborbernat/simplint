@@ -3,8 +3,13 @@ Flags attributes of a library's public classes that the reStructuredText class d
 
 ## Why is this bad?
 
-Users read a class's attributes in the rendered reference, where autodoc lists only those with documentation. An
-undocumented attribute is either invisible there or shown without saying what it holds.
+Users read a class's attributes in the rendered reference, where autodoc by default
+[lists only members with a docstring or `#:` comment](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-autoclass-undoc-members).
+An undocumented attribute is either missing there or, with `:undoc-members:`, shown without saying what it holds. The
+[Google style guide](https://google.github.io/styleguide/pyguide.html#384-classes) and
+[numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) both list a class's public attributes in its
+docstring, and pydoclint [checks that list against the class body](https://jsh9.github.io/pydoclint/config_options.html)
+by default.
 
 ## Example
 

@@ -5,7 +5,10 @@ clause, which a `with` block does on exit from Python 3.14.
 ## Why is this bad?
 
 Since Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block
-ends. The `try`/`finally` pair repeats that by hand, and leaves a name in scope that nothing else reads.
+ends. The [documentation](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.set) shows
+`with var.set(value):` as shorthand for the `try`/`finally` pair. [PEP 343](https://peps.python.org/pep-0343/#abstract)
+added `with` to factor out such pairs. The hand-written pair repeats the reset and leaves a name in scope that nothing
+else reads.
 
 ## Example
 

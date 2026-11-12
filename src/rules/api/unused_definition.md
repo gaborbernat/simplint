@@ -2,9 +2,11 @@ Flags functions, classes, methods and class attributes that nothing in the run u
 
 ## Why is this bad?
 
-Code nothing calls still has to be read, kept compiling and updated when its neighbors change. Readers spend time
-working out whether it matters, and the test suite rarely covers it, so it drifts. Removing it keeps the module to what
-the program does.
+Code nothing calls still has to be read, kept working and updated when its neighbors change. Readers spend time working
+out whether it matters. In a [controlled experiment](https://doi.org/10.1109/ICPC.2016.7503723) with students,
+comprehension improved once the unreachable methods were removed. The test suite rarely covers such code, so it drifts.
+An unused definition can also point at a bug, and [vulture](https://github.com/jendrikseipp/vulture) lists finding
+errors among the reasons to look for unused code. Removing it keeps the module to what the program does.
 
 ## Example
 

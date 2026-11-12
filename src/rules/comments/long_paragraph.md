@@ -3,8 +3,9 @@ skimmed.
 
 ## Why is this bad?
 
-A paragraph that long usually covers more than one topic, and readers skim it. Split at a change of topic, each part is
-easier to find and to keep accurate.
+A paragraph that long usually covers more than one topic, and readers skim it. Split it at a change of topic, and each
+part is easier to find and to keep accurate. [PEP 8](https://peps.python.org/pep-0008/#block-comments) structures block
+comments as paragraphs, separated by a line that holds a single `#`.
 
 ## Example
 

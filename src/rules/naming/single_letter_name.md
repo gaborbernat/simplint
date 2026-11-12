@@ -3,7 +3,11 @@ Flags single-letter names outside comprehensions and conventional type parameter
 ## Why is this bad?
 
 A single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it.
-Comprehensions are exempt because the iterable the names come from sits right next to them.
+[PEP 8](https://peps.python.org/pep-0008/#names-to-avoid) bans only `l`, `O` and `I`, which some fonts confuse with
+digits. The [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.16.1-names-to-avoid) allows
+`i` for loop counters and `e` and `f` in `except` and `with`; simplint reports those forms too, since the letter alone
+still says nothing about the value. Comprehensions are exempt because the iterable the names come from sits right next
+to them.
 
 ## Example
 

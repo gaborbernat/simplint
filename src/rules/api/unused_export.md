@@ -2,9 +2,14 @@ Flags names in `__all__` that no other module of the run imports.
 
 ## Why is this bad?
 
-`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A
-name nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale
-entry after its last user is gone.
+`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers:
+Sphinx's
+[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+documents those names, and the
+[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+makes each one public. A name nothing imports is not part of any interface. Listing it makes the module look larger than
+it is and leaves a stale entry after its last user is gone. The entry also hides dead code, since
+[unused-definition](SMP409.html) does not report a name that `__all__` lists.
 
 ## Example
 

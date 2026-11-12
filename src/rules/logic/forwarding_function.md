@@ -3,7 +3,12 @@ Flags private functions and methods whose body only forwards their parameters to
 ## Why is this bad?
 
 The wrapper adds a name and an extra hop without adding behavior, and a reader has to open it to learn that it calls
-something else. Calling the target directly removes the indirection.
+something else. [John Ousterhout](https://web.stanford.edu/~ouster/cgi-bin/book.php) lists such pass-through methods as
+a red flag: they add an interface without adding function, and a change to the target's parameters must be repeated in
+the wrapper. Calling the target itself removes the indirection. Ruff's
+[unnecessary-lambda](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) asks the same when the forward is a lambda.
+[Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) defends one-line functions whose name states their
+intent. simplint reports a private forward anyway, since it cannot judge whether a name adds meaning.
 
 ## Example
 

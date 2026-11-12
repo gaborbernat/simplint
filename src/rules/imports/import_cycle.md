@@ -2,10 +2,14 @@ Flags a runtime import that closes a cycle of modules which import each other wh
 
 ## Why is this bad?
 
-A module runs its imports before its own body. When two modules import each other at load time, whichever loads first
-sees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module
-the program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its
-own.
+A module runs its imports before its own body, and Python adds it to
+[`sys.modules`](https://docs.python.org/3/reference/import.html#loading) before running it. When two modules import each
+other at load time, the one that loads second finds the first half-built: a name it imports from the first may not exist
+yet, and which import fails depends on which module the program imports first. The
+[Python FAQ](https://docs.python.org/3/faq/programming.html#how-can-i-have-modules-that-mutually-import-each-other)
+walks through this failure. It also quotes McMillan that `import module` cycles work when attributes are read only
+inside functions; simplint reports those too, since the modules stay coupled. The cycle also ties the two modules
+together, so neither can be read, tested or moved on its own.
 
 In the example below, `orders.py` and `cart.py` import each other at the top of their files.
 

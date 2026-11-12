@@ -2,10 +2,16 @@ Flags `__init__.py` files that hold code beyond a module docstring and deliberat
 
 ## Why is this bad?
 
-Python runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore
-also runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.
-Unplanned re-exports give one object two import paths and invite circular imports. A package can deliberately expose
-selected names from private modules through `__all__`.
+Python runs a package's `__init__.py` before any of its submodules:
+[importing `pkg.sub` runs `pkg/__init__.py` first](https://docs.python.org/3/reference/import.html#regular-packages). A
+slow or failing import there slows down or breaks every module of the package, the import cost that
+[Scientific Python's SPEC 1](https://scientific-python.org/specs/spec-0001/) cites for lazy loading. Code in a file that
+is usually empty is also [easy to overlook when debugging](https://docs.astral.sh/ruff/rules/non-empty-init-module/).
+
+Unplanned re-exports give one object two import paths and invite circular imports.
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) treats imported names as internal unless a
+package's `__init__` documents them as its API, so a package can still expose selected names from private modules
+through `__all__`.
 
 ## Example
 

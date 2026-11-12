@@ -2,10 +2,14 @@ Flags type information in reStructuredText docstrings, which belongs in annotati
 
 ## Why is this bad?
 
-An annotation is the type a type checker verifies; a type in the docstring is checked by nothing and drifts from the
+An annotation is the type a type checker verifies. A type written in the docstring repeats it and can drift from the
 code. Sphinx shows annotations itself, in the signature or, with
 [`autodoc_typehints = "description"`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_typehints),
-in the parameter list.
+in the parameter list. The
+[Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a type in the
+description only where the code has no annotation. [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)
+requires types in Returns and Yields, and [pydoclint](https://jsh9.github.io/pydoclint/config_options.html) requires
+argument types in docstrings by default; simplint reports them anyway, since Sphinx already shows the annotation.
 
 ## Example
 

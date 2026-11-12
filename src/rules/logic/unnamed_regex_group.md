@@ -3,9 +3,11 @@ number, so the groups are named with `(?P<name>...)`.
 
 ## Why is this bad?
 
-A reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A
-named group says what the part is in the pattern, and `match["text"]` says it again where the code reads it. The numbers
-also shift when a group is added or moved, which a name survives.
+A reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds.
+The [regex HOWTO](https://docs.python.org/3/howto/regex.html#non-capturing-and-named-groups) says group numbers become
+hard to track in a complex pattern. A name says what the part is where the pattern is written, and `match["text"]` says
+it again where the code reads it. Numbers also shift when a group is added or moved, while code that reads a name keeps
+working. A group nothing reads is clearer as `(?:...)`, which takes no number, so the groups around it keep theirs.
 
 ## Example
 

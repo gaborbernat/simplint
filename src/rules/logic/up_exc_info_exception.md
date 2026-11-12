@@ -3,9 +3,12 @@ which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.excepti
 
 ## Why is this bad?
 
-`sys.exc_info()` returns a tuple of three values, and code that reads its second value, or unpacks all three into
-[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception), only needs
-the exception. `sys.exception()` names that value and returns it alone.
+`sys.exc_info()` returns what the [docs](https://docs.python.org/3/library/sys.html#sys.exc_info) call the old-style
+representation of the handled exception: the tuple `(type(e), e, e.__traceback__)`. Since Python 3.11 the type and
+traceback in it derive from the exception, so the tuple holds nothing the exception lacks. Code that reads its second
+value, or unpacks all three into
+[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception), needs only
+the exception, which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns.
 
 ## Example
 

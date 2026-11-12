@@ -2,8 +2,11 @@ Flags module-level variables that are assigned once and not annotated `Final`.
 
 ## Why is this bad?
 
-Without `Final`, a reader has to search the codebase to learn that a module variable never changes. With it, the type
-checker rejects any reassignment, here or in another module ([PEP 591](https://peps.python.org/pep-0591/)).
+Without `Final`, a reader has to search the codebase to learn that a module variable never changes, or trust an ALL_CAPS
+name that nothing enforces. With it, the type checker rejects any reassignment, here or in another module, which
+documents the constant [in a checkable way](https://peps.python.org/pep-0591/#the-final-annotation). Compilers can use
+it too: [mypyc](https://mypyc.readthedocs.io/en/latest/performance_tips_and_tricks.html#using-fast-native-features)
+lists reads of final module attributes among its fast operations.
 
 ## Example
 

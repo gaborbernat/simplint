@@ -3,9 +3,15 @@ Flags exception classes that no `except` clause in the run names by name.
 ## Why is this bad?
 
 Callers handle an error by the type they catch. A class that nothing catches by name adds a name to import and a type to
-document, yet callers cannot tell it from a built-in exception, which says the same thing. Raising a built-in such as
-[`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError) keeps the program to the types Python
-already has.
+document, yet callers cannot tell it from a built-in exception, which says the same thing. The
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#244-decision) asks for built-in exception
+classes where they fit, and Jack Diederich's
+[Stop Writing Classes](https://us.pycon.org/2012/schedule/presentation/352/) removes needless exception classes from
+real code. Raising a built-in such as [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError)
+keeps the program to the types Python already has. A
+[style-guide discussion](https://github.com/amontalenti/elements-of-python-style/issues/9) records David Beazley and
+others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs; simplint still reports a
+class that no handler names, since no caller tells it apart from a built-in.
 
 ## Example
 

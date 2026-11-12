@@ -3,9 +3,12 @@ from Python 3.13.
 
 ## Why is this bad?
 
-`re.PatternError` is the name the standard library documents for the exception `re` raises on an invalid pattern. From
-Python 3.13 it is the same class as `re.error`, so the new name says what the exception is. `re.error` is not deprecated
-and keeps working.
+`re.PatternError` is the name the [`re` docs](https://docs.python.org/3/library/re.html#re.PatternError) give the
+exception raised for an invalid pattern. From Python 3.13 `re.error` is an alias kept for backward compatibility. The
+lowercase name reads like a function or a value rather than an exception class, as the
+[issue that led to the rename](https://github.com/python/cpython/issues/83162) argued. Serhiy Storchaka, the `re`
+maintainer, replied there that a module-level exception named `error` is common practice; simplint reports the old name
+anyway because the docs use `PatternError`. `re.error` is not deprecated and keeps working.
 
 ## Example
 

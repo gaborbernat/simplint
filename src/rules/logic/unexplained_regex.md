@@ -3,10 +3,11 @@ Flags a regular expression pattern of four or more parts that has no comment, a 
 
 ## Why is this bad?
 
-A reader of a pattern works out each part from its punctuation, and a long pattern holds many parts to work out. A `#`
-comment in a verbose pattern names what a part matches, and it sits on the line of that part, where a note above the
-pattern drifts away from the part it describes. The verbose flag alone says nothing about the parts, so it needs a
-comment to be read.
+A reader of a pattern works out each part from its punctuation, and a long pattern holds many parts to work out. The
+[regex HOWTO](https://docs.python.org/3/howto/regex.html#using-re-verbose) says compact patterns are not very readable
+and recommends [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE) with a `#` comment on each part. A
+comment on the part's own line stays with that part, where a note above the pattern drifts away from it. The verbose
+flag alone says nothing about the parts, so the pattern still needs a comment to be read.
 
 ## Example
 

@@ -2,9 +2,14 @@ Flags top-level functions and classes that look public, with no leading undersco
 
 ## Why is this bad?
 
-`__all__` declares the public API. A name that looks public but is missing from it leaves readers unsure whether they
-may depend on it. A leading underscore answers that question at every use
-([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)).
+`__all__` declares the public API, and the
+[language reference](https://docs.python.org/3/reference/simple_stmts.html#the-import-statement) asks it to contain all
+of it. A name that looks public but is missing from `__all__` gets conflicting answers: a star import and Sphinx's
+[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+skip it, while the
+[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+does not make it private. [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) settles it with a
+leading underscore on internal names, even when `__all__` is set, so readers see the answer wherever the name appears.
 
 ## Example
 

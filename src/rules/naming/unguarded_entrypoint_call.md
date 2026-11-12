@@ -2,10 +2,19 @@ Flags a trailing call in a runnable module when importing that module would exec
 
 ## Why is this bad?
 
-Python executes top-level statements when it imports a module. A command can run during import if its final statement
-calls its entrypoint without an `if __name__ == "__main__":` guard. A
+Python executes top-level statements when it imports a module, so a final call to the entrypoint without an
+`if __name__ == "__main__":` guard runs the command whenever something imports the file. A
 [console script](https://packaging.python.org/en/latest/specifications/entry-points/#use-for-scripts) imports the
-configured callable before calling it, so an unguarded call can run the command twice.
+configured callable before calling it, so the command runs twice. A test that imports the module to check one function
+also runs the whole command, the case the
+[`__main__` docs](https://docs.python.org/3/library/__main__.html#idiomatic-usage) give for the guard.
+
+Under multiprocessing's
+[spawn and forkserver start methods](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods),
+each child imports the main module again, so an unguarded call starts the command in every child process.
+
+The [`__main__` docs](https://docs.python.org/3/library/__main__.html#id1) leave a package's `__main__.py` unguarded for
+consistency. This rule still requires the guard, since that file can also be imported as a module.
 
 ## Example
 

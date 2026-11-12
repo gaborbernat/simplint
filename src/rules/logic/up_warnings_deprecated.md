@@ -6,10 +6,14 @@ Flags functions and classes that open with a
 
 ## Why is this bad?
 
-`warnings.deprecated()` is a decorator that marks a function, class or overload as deprecated. Type checkers report its
-uses, and the decorator emits the `DeprecationWarning` when the object is called, instantiated or subclassed. A
-`warnings.warn()` call in the body only warns at runtime, so a type checker cannot tell which code is deprecated, and
-the warning's location is set by a `stacklevel` argument that each project has to get right.
+[`warnings.deprecated()`](https://docs.python.org/3/library/warnings.html#warnings.deprecated) marks a function or class
+as deprecated where both the runtime and the tools see it. [PEP 702](https://peps.python.org/pep-0702/) argues that
+runtime warnings are often insufficient: they get silenced, and a call on an untested path never warns. With the
+decorator, [type checkers](https://typing.python.org/en/latest/spec/directives.html#deprecated) report each use, and
+editors show it as the code is written.
+
+The decorator still emits the `DeprecationWarning` on call, instantiation or subclassing. It points the warning at the
+caller itself, where a `warnings.warn()` call needs a `stacklevel` that each project has to get right.
 
 ## Example
 

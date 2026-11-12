@@ -3,10 +3,13 @@ the default in Python 3.15.
 
 ## Why is this bad?
 
-Python 3.15 turns on UTF-8 mode by default, so [`open()`](https://docs.python.org/3/builtins/functions.html#open) and
-the `pathlib` text methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding
-repeats the default, and a reader has to check whether it changes anything. The default can be switched off with
-`PYTHONUTF8=0` or `-X utf8=0`, though, and then the argument is what keeps the file in UTF-8.
+[PEP 686](https://peps.python.org/pep-0686/) turns on [UTF-8 mode](https://docs.python.org/3/library/os.html#utf8-mode)
+by default in Python 3.15, so [`open()`](https://docs.python.org/3/builtins/functions.html#open) and the `pathlib` text
+methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding repeats the
+default, and a reader has to check whether it changes anything. The default can be switched off with `PYTHONUTF8=0` or
+`-X utf8=0`, though, and then the argument is what keeps the file in UTF-8. The PEP's migration advice suggests an
+explicit `encoding="utf-8"` where code relies on the default. simplint reports the argument anyway, since the rule only
+fires for targets of 3.15 or newer, where the default is UTF-8.
 
 ## Example
 
