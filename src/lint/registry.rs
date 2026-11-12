@@ -334,6 +334,7 @@ rules! {
     UnreachableCode => ("SMP535", "unreachable-code", "Statements that never run, after a `return`, `raise`, `break` or `continue` or under a false test", Sometimes, logic::unreachable_code { module }),
     DeadStore => ("SMP536", "dead-store", "Values assigned to a local that the next assignment replaces before anything reads them", Sometimes, logic::dead_store { module }),
     LoopVariableAfterLoop => ("SMP537", "loop-variable-after-loop", "`for` loop variables read after the loop ends", None, logic::loop_variable_after_loop { module }),
+    SideEffectExpression => ("SMP538", "side-effect-expression", "Comprehensions and `and`/`or` expressions used as statements for their side effects", Sometimes, logic::side_effect_expression { module }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
