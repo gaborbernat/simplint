@@ -17,7 +17,7 @@ use ty_module_resolver::{
 };
 
 use crate::project::constructors::{NameUse, UseKind};
-use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames};
+use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames, Signature};
 use crate::project::{Ending, FileFacts};
 use crate::syntax::is_stdlib_root;
 
@@ -201,6 +201,7 @@ pub(super) struct ModuleFacts<F> {
     pub(super) class_tuples: Vec<(String, Vec<(F, String)>)>,
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
     pub(super) functions: Vec<String>,
+    pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<(String, String, F)>,
     pub(super) runtime: Vec<(F, TextRange)>,
     pub(super) computed_writes: Vec<F>,
@@ -242,6 +243,7 @@ impl<F> ModuleFacts<F> {
                 })
                 .collect(),
             functions: self.functions,
+            signatures: self.signatures,
             plain_modules: self
                 .plain_modules
                 .into_iter()
@@ -356,6 +358,7 @@ impl ModuleFacts<PathBuf> {
             class_tuples,
             classes,
             functions: facts.functions.clone(),
+            signatures: facts.signatures.clone(),
             plain_modules: facts
                 .plain_modules
                 .iter()

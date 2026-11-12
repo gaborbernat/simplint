@@ -76,6 +76,8 @@ pub struct FileFacts {
     pub(super) classes: Vec<ClassBases>,
     // An import of one of these names may bind a function rather than a class.
     pub(super) functions: Vec<String>,
+    // The shape of each module-level function, which a call from another module checks its arguments against.
+    pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<String>,
     pub(super) interface: Vec<Definition>,
     pub(super) runtime_imports: Vec<ImportSite>,
@@ -180,6 +182,7 @@ impl FileFacts {
             class_tuples: visitor.class_tuples,
             classes,
             functions: module_functions(&parsed.syntax().body),
+            signatures: module_signatures(&parsed.syntax().body),
             plain_modules: visitor.plain_modules,
             interface: interface(&parsed.syntax().body),
             fixture_requests: visitor.fixture_requests.into_iter().collect(),
@@ -280,6 +283,46 @@ fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
                 .collect(),
         })
         .collect()
+}
+
+// A function's name, whether calling it makes a coroutine (an `async def` that does not yield), the names of its
+// positional parameters in order, and whether a decorator stands between its definition and what the name binds.
+#[derive(Clone, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct Signature {
+    pub name: String,
+    pub coroutine: bool,
+    pub positional: Vec<String>,
+    pub decorated: bool,
+}
+
+impl ruff_cache::CacheKey for Signature {
+    fn cache_key(&self, state: &mut ruff_cache::CacheKeyHasher) {
+        self.name.cache_key(state);
+        self.coroutine.cache_key(state);
+        self.positional.cache_key(state);
+        self.decorated.cache_key(state);
+    }
+}
+
+impl Signature {
+    pub fn of(function: &ast::StmtFunctionDef) -> Self {
+        let parameters = &function.parameters;
+        Self {
+            name: function.name.to_string(),
+            coroutine: function.is_async && !crate::syntax::yields(&function.body),
+            positional: parameters
+                .posonlyargs
+                .iter()
+                .chain(&parameters.args)
+                .map(|parameter| parameter.name().to_string())
+                .collect(),
+            decorated: !function.decorator_list.is_empty(),
+        }
+    }
+}
+
+fn module_signatures(body: &[Stmt]) -> Vec<Signature> {
+    module_statements(body).filter_map(Stmt::as_function_def_stmt).map(Signature::of).collect()
 }
 
 fn module_functions(body: &[Stmt]) -> Vec<String> {

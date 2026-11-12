@@ -285,6 +285,24 @@ impl<'a> Semantic<'a> {
         binding.statement(&self.model)?.as_function_def_stmt()
     }
 
+    // The `def` a load of `name` reads, when its scope binds the name once, and to that `def`.
+    pub fn function_of(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
+        let bindings = self.resolved_bindings(name);
+        let [binding] = bindings.as_slice() else {
+            return None;
+        };
+        if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) {
+            return None;
+        }
+        binding.statement(&self.model)?.as_function_def_stmt()
+    }
+
+    // Whether a load of `name` reads a `from ... import`, the only binding of the name in its scope.
+    pub fn reads_from_import(&self, name: &ast::ExprName) -> bool {
+        let bindings = self.resolved_bindings(name);
+        matches!(bindings.as_slice(), [binding] if matches!(binding.kind, RuffBindingKind::FromImport(_)))
+    }
+
     pub fn is_rebound(&self, name: &str) -> bool {
         self.bindings(name).len() > 1
     }
