@@ -25,8 +25,7 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
             None => true,
             Some(arg) => {
                 kind.is_patch()
-                    && (arg == "new"
-                        || (matches!(arg.as_str(), "autospec" | "new_callable") && is_set(&keyword.value)))
+                    && (arg == "new" || (matches!(arg.as_str(), "autospec" | "new_callable") && is_set(&keyword.value)))
             }
         });
     if replaced {

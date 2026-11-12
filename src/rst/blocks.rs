@@ -193,8 +193,8 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
             let rest = trimmed[len..].trim_start();
             return self.list_item(index, rest, &trimmed[..trimmed.len() - rest.len()]);
         }
-        if trimmed == ".." || trimmed.starts_with(".. ") {
-            return self.explicit(index, trimmed);
+        if let Some(rest) = explicit_start(trimmed) {
+            return self.explicit(index, trimmed, rest);
         }
         if trimmed == "__" || trimmed.starts_with("__ ") {
             return self.non_prose(index, trimmed);
@@ -249,19 +249,17 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
         self.pending.push(Body { start, end, base, first, top: false });
     }
 
-    fn explicit(&mut self, index: usize, trimmed: &'a str) -> usize {
-        if let Some(rest) = trimmed.strip_prefix(".. |").filter(|rest| !rest.starts_with(BLANKS)) {
-            return match substitution_directive(rest) {
+    fn explicit(&mut self, index: usize, trimmed: &'a str, rest: &'a str) -> usize {
+        if let Some(substitution) = rest.strip_prefix('|').filter(|rest| !rest.starts_with(BLANKS)) {
+            return match substitution_directive(substitution) {
                 Some((name, _)) => self.directive(index, name, true),
                 None => self.non_prose(index, trimmed),
             };
         }
-        if let Some(name) = trimmed.strip_prefix(".. ").and_then(directive_name) {
+        if let Some(name) = directive_name(rest) {
             return self.directive(index, name, false);
         }
-        if let Some(rest) = trimmed.strip_prefix(".. ")
-            && let Some(close) = note_label_end(rest)
-        {
+        if let Some(close) = note_label_end(rest) {
             let body = rest[close..].trim_start();
             return self.list_item(index, body, &trimmed[..trimmed.len() - body.len()]);
         }
@@ -564,6 +562,12 @@ fn underline(text: &str) -> Option<&str> {
     (first.is_ascii_punctuation() && line.chars().all(|char| char == first)).then_some(line)
 }
 
+// The text after the `..` that starts explicit markup, which docutils wants followed by whitespace or the line end.
+fn explicit_start(trimmed: &str) -> Option<&str> {
+    let after = trimmed.strip_prefix("..")?;
+    (after.is_empty() || after.starts_with(BLANKS)).then(|| after.trim_start_matches(BLANKS))
+}
+
 // The name of the directive that `name:: argument` opens, once the `..` before it is gone.
 fn directive_name(text: &str) -> Option<&str> {
     directive_header(text.trim_start_matches(BLANKS)).map(|(name, _)| name)
@@ -604,6 +608,9 @@ mod tests {
     #[test_case("Summary.\n\n.. |sub| code-block  :: python\n\n    x = 1\n", &[false, false, true, true, true] ; "substitution_with_two_spaces_before_colons_is_a_comment")]
     #[test_case("Summary.\n\n.. | sub| code-block:: python\n\n    x = 1\n", &[false, false, true, true, true] ; "substitution_with_a_space_after_the_bar_is_a_comment")]
     #[test_case(".. code-block:: python\n\n    x = 1\n\nText\n", &[false, true, true, true, false] ; "code_directive")]
+    #[test_case("..  code-block:: python\n\n    x = 1\n\nText\n", &[false, true, true, true, false] ; "two_spaces_after_the_dots")]
+    #[test_case("..\tcode-block:: python\n\n    x = 1\n\nText\n", &[false, true, true, true, false] ; "tab_after_the_dots")]
+    #[test_case("..code-block:: python\n\n    x = 1\n", &[false, false, false] ; "no_space_after_the_dots_is_text")]
     #[test_case(".. note::\n\n    Body\n", &[false, false, false] ; "prose_directive")]
     #[test_case(">>> f()\n1\n\nText\n", &[true, true, false, false] ; "doctest_block")]
     #[test_case(">>> x::\n\n    y\n", &[true, false, false] ; "doctest_line_does_not_open_a_literal_block")]
