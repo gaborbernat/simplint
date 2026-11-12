@@ -119,8 +119,9 @@ class Release:
 
 - **Target versions before 3.14, for a class whose body uses zero-argument `super()` or `__class__`**: nothing is
   reported. `slots=True` builds a new class, and the methods keep their `__class__` cell on the old one, so `super()`
-  raises `TypeError` until CPython 3.14 fixes it ([gh-90562](https://github.com/python/cpython/issues/90562)). The fix
-  reached 3.13 only in 3.13.14, which `requires-python = ">=3.13"` also admits, so 3.13 counts as unfixed.
+  raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) until CPython 3.14 fixes it
+  ([gh-90562](https://github.com/python/cpython/issues/90562)). The fix reached 3.13 only in 3.13.14, which
+  `requires-python = ">=3.13"` also admits, so 3.13 counts as unfixed.
 
   ```toml config
   [tool.ruff]

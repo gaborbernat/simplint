@@ -340,11 +340,11 @@ unpacks `**kwargs`, which may pass any keyword.
     parameter or reads an attribute of it, such as `mailer.send(address)`. A name bound to a literal, such as a `dict`,
     or to a call of a data constructor, such as `dict()`, is data, and so is a name that cannot be resolved.
 
-  The data types are the builtins, such as `dict`, `list` and `str`, and the collection types of `collections.abc` and
-  `typing`, such as `Mapping` and `Sequence`. A parameter annotated `bool`, `int`, `float`, `str`, `bytes`, `complex` or
-  `Literal[...]` stays reported, and so does one annotated with an enum, which the project defines or imports, as
-  `Mode`, `Mode | None`, `Optional[Mode]` or `module.Mode`. So does one whose default is an enum member, such as
-  `Mode.FAST`.
+  The data types are the builtins, such as `dict`, `list` and `str`, and the collection types of
+  [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc) and `typing`, such
+  as `Mapping` and `Sequence`. A parameter annotated `bool`, `int`, `float`, `str`, `bytes`, `complex` or `Literal[...]`
+  stays reported, and so does one annotated with an enum, which the project defines or imports, as `Mode`,
+  `Mode | None`, `Optional[Mode]` or `module.Mode`. So does one whose default is an enum member, such as `Mode.FAST`.
 
   ```python context file=app/service.py
   from app.mail import send

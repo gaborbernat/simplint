@@ -1,5 +1,6 @@
-Flags a regular expression compiled inside a function, a method or a lambda, such as `re.fullmatch(r"...", text)`, whose
-pattern a module-level constant can hold instead, compiled once.
+Flags a regular expression compiled inside a function, a method or a lambda, such as
+[`re.fullmatch(r"...", text)`](https://docs.python.org/3/library/re.html#re.fullmatch), whose pattern a module-level
+constant can hold instead, compiled once.
 
 ## Why is this bad?
 
@@ -53,7 +54,8 @@ def is_image(image_name: str) -> bool:
   concatenation. The functions are `compile`, `match`, `prefixmatch`, `search`, `fullmatch`, `finditer`, `findall`,
   `split`, `sub` and `subn`, called through `re`, an alias of it, or a name imported from it with `from re import`. A
   call in a nested function, a method, a lambda or a comprehension inside one is reported too. The `regex` module counts
-  the same way. The flags, if any, must be constant, as `re.I`, `re.VERBOSE | re.M` or `flags=re.I`.
+  the same way. The flags, if any, must be constant, as [`re.I`](https://docs.python.org/3/library/re.html#re.I),
+  `re.VERBOSE | re.M` or `flags=re.I`.
 
   **Unsafe fix:** the pattern compiles when the module loads, so an invalid pattern raises at import instead of at the
   call. The fix adds the `Final` and `re` imports the file lacks.
@@ -150,7 +152,8 @@ def is_image(image_name: str) -> bool:
 
 Ruff's preview rule
 [unnecessary-regular-expression-compile](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/)
-reports an inline `re.compile(p).match(s)` used once and suggests `re.match(p, s)`. That advice only holds for code that
+reports an inline [`re.compile(p).match(s)`](https://docs.python.org/3/library/re.html#re.compile) used once and
+suggests [`re.match(p, s)`](https://docs.python.org/3/library/re.html#re.match). That advice only holds for code that
 runs once. Inside a function or method that gets called repeatedly, and inside a loop, both forms pay the compile or the
 cache lookup on every call. The measurements under Why is this bad? put an inline call at about 2.2 times a precompiled
 one on a warm cache, and at about 310 to 320 times once the cache is evicted. Only a module-level constant avoids that.

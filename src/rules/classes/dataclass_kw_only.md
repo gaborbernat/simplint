@@ -8,7 +8,7 @@ the wrong fields when their types match. Keyword-only fields name each value at 
 They also lift the
 [ordering rule](https://docs.python.org/3/library/dataclasses.html#re-ordering-of-keyword-only-parameters-in-init) for
 defaults: a field without a default may follow one with a default, in the same class or through a subclass, where
-positional fields raise `TypeError`.
+positional fields raise [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError).
 
 ## Example
 

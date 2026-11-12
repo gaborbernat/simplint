@@ -7,7 +7,7 @@ A missing field leaves the result to the annotation, which gives its type but no
 documents. A `:returns:` on a function that returns nothing, or on a generator, describes a value no caller receives.
 The [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) and
 [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html#yields) give generators their own section for what
-`next()` hands out.
+[`next()`](https://docs.python.org/3/builtins/functions.html#next) hands out.
 
 ## Example
 

@@ -59,8 +59,10 @@ __all__ = ["LIMIT", "local", "shared"]
 
 Ruff's [unused-import](https://docs.astral.sh/ruff/rules/unused-import/) (F401) reports an import this rule also reports
 when another module imports it, and its safe fix deletes that import. Ruff cannot see the importer, so after
-`ruff check --fix` the importer fails with an `ImportError`, and neither tool reports anything. The run does not stop
-for this pair, since the fixes do not undo each other: once this rule's fix lists the name, F401 stops reporting it.
+`ruff check --fix` the importer fails with an
+[`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError), and neither tool reports anything. The
+run does not stop for this pair, since the fixes do not undo each other: once this rule's fix lists the name, F401 stops
+reporting it.
 
 Keep the import with `# noqa: F401  # <reason>` on its line: F401 respects the comment, and this rule's fix removes it
 once it lists every name on that line. Without the comment, `simplint check --fix` must run before `ruff check --fix`,

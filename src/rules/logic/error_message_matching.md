@@ -10,9 +10,11 @@ version. CPython makes no promise about it: core developers
 A check on the text stops matching without any error, and the handler then takes the wrong branch.
 
 A specific exception type says what happened, and it does not change with the text.
-[PEP 3151](https://peps.python.org/pep-3151/#lack-of-fine-grained-exceptions) added subclasses such as `TimeoutError`
-and `FileNotFoundError`, so handlers no longer inspect a caught `OSError`. Where no subclass exists, a data attribute
-such as `errno` is the value to test.
+[PEP 3151](https://peps.python.org/pep-3151/#lack-of-fine-grained-exceptions) added subclasses such as
+[`TimeoutError`](https://docs.python.org/3/builtins/exceptions.html#TimeoutError) and
+[`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), so handlers no longer
+inspect a caught [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError). Where no subclass exists, a
+data attribute such as `errno` is the value to test.
 
 ## Example
 

@@ -11,8 +11,8 @@ turn annotations into strings, which code that inspects them at runtime then has
 [evaluate back](https://docs.python.org/3/howto/annotations.html#manually-un-stringizing-stringized-annotations).
 
 The import is also scheduled for removal. Once Python 3.13 reaches its end of life, compiling it emits a
-`DeprecationWarning`, and it is removed at least two releases later
-([PEP 749](https://peps.python.org/pep-0749/#the-future-of-from-future-import-annotations)).
+[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), and it is removed at
+least two releases later ([PEP 749](https://peps.python.org/pep-0749/#the-future-of-from-future-import-annotations)).
 
 ## Example
 

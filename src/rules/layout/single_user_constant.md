@@ -123,7 +123,7 @@ functions nested in it. These values count:
   That covers a call result such as a cache, a logger from
   [`logging.getLogger(__name__)`](https://docs.python.org/3/library/logging.html#logging.getLogger), a pattern from
   [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), a `Path`, a
-  [`frozenset`](https://docs.python.org/3/library/stdtypes.html#frozenset) or a client instance; a name or attribute
+  [`frozenset`](https://docs.python.org/3/builtins/stdtypes.html#frozenset) or a client instance; a name or attribute
   such as [`logging.INFO`](https://docs.python.org/3/library/logging.html#logging.INFO); and an f-string. A pattern from
   `re.compile` is the module constant [inline-regex](SMP534.html) asks for when the compile sits inside a function.
 

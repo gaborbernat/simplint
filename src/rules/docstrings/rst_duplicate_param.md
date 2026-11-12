@@ -131,8 +131,9 @@ they do not, the rule reports nothing for that project.
 The rule reads each option from a top-level assignment, plain, annotated, or as one target of a tuple assignment, and a
 `class-doc-from` key from a dict literal. The docstring is unknown, and the rule reports nothing for the class, when the
 option holds a value other than `class`, `init` or `both`, or a value that is not a literal, when the name is bound
-another way (in a block, a chained assignment, an import, a star import, `exec`, or through `globals()`), and when the
-`conf.py` cannot be read, does not parse, or is over 8 MiB.
+another way (in a block, a chained assignment, an import, a star import, `exec`, or through
+[`globals()`](https://docs.python.org/3/builtins/functions.html#globals)), and when the `conf.py` cannot be read, does
+not parse, or is over 8 MiB.
 
 The examples below show each case:
 
