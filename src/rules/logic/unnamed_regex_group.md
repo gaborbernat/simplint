@@ -43,8 +43,9 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
   concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and
   `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,
-  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other
-  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
+  reading the verbose flag from [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
+  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
 
   - **Two or more unnamed groups** are reported at the pattern.
   - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call

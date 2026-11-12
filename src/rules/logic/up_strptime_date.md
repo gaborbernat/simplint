@@ -84,8 +84,9 @@ def parse_day(text):
     return datetime.date.strptime(text, "%Y-%m-%d")
 ```
 
-- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`
-  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.
+- **`.time()` with a format that has `%:z`**: the fix is unsafe, since
+  [`time.strptime`](https://docs.python.org/3/library/time.html#time.strptime) reads the zone that `.time()` drops.
+  **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.
 
   ```toml config
   [project]

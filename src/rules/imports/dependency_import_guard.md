@@ -116,7 +116,8 @@ A module is required when its top-level package is one of these:
   [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
   [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every
   supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule
-  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.
+  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and
+  [`string.templatelib`](https://docs.python.org/3/library/string.templatelib.html#module-string.templatelib) from 3.14.
 
   ```toml config
   [project]

@@ -122,9 +122,9 @@ safe.
 
 The `calendar` fix is unsafe: `calendar.January` is the plain integer `1`, while `calendar.JANUARY` is the
 [`calendar.Month`](https://docs.python.org/3/library/calendar.html#calendar.Month)`.JANUARY` member. The two compare
-equal, but [`repr()`](https://docs.python.org/3/library/functions.html#repr) and
-[`type()`](https://docs.python.org/3/library/functions.html#type) differ, which shows in output and in
-`type(value) is `[`int`](https://docs.python.org/3/library/functions.html#int) checks.
+equal, but [`repr()`](https://docs.python.org/3/builtins/functions.html#repr) and
+[`type()`](https://docs.python.org/3/builtins/functions.html#type) differ, which shows in output and in
+`type(value) is `[`int`](https://docs.python.org/3/builtins/functions.html#int) checks.
 
 No fix is offered for replacements that need a review.
 

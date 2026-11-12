@@ -62,7 +62,9 @@ asserts may check the messages the code raises.
           return exc
   ```
 
-- **`re` functions matching the text**: `re.search`, `re.match` and `re.fullmatch` with `str(exc)` as an argument.
+- **`re` functions matching the text**: [`re.search`](https://docs.python.org/3/library/re.html#re.search),
+  [`re.match`](https://docs.python.org/3/library/re.html#re.match) and
+  [`re.fullmatch`](https://docs.python.org/3/library/re.html#re.fullmatch) with `str(exc)` as an argument.
 
   ```python report
   import re

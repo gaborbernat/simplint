@@ -36,8 +36,9 @@ if __name__ == "__main__":
 
 ## What it does
 
-The rule checks the final top-level statement of a module. A direct call, a call inside `sys.exit(...)`, and a call
-inside `raise SystemExit(...)` count. The callable's name does not matter.
+The rule checks the final top-level statement of a module. A direct call, a call inside
+[`sys.exit(...)`](https://docs.python.org/3/library/sys.html#sys.exit), and a call inside `raise SystemExit(...)` count.
+The callable's name does not matter.
 
 ### Active on
 

@@ -47,9 +47,10 @@ def parse_date(text):
 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
   concatenation. The calls are the same as in [unnamed-regex-group](SMP532.html): the module functions and the methods
-  of a compiled pattern. The rule counts the parts of the pattern, reading the verbose flag from `re.VERBOSE`, `re.X` or
-  an inline `(?x)`. A `flags` argument that is a name or other expression not resolving to a `re` flag leaves the
-  pattern unchecked, since its value may turn verbose mode on.
+  of a compiled pattern. The rule counts the parts of the pattern, reading the verbose flag from
+  [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
+  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
 
   A part is:
 

@@ -129,10 +129,12 @@ functions nested in it. These values count:
 - **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and
   moving it into the function would build a new one on every call.
 
-  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a
-  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another
-  value with `*` or `**`. A pattern from `re.compile` is the module constant [inline-regex](SMP534.html) asks for when
-  the compile sits inside a function.
+  That covers a call result such as a cache, a logger from
+  [`logging.getLogger(__name__)`](https://docs.python.org/3/library/logging.html#logging.getLogger), a pattern from
+  [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), a `Path` or a client instance; a name or
+  attribute such as [`logging.INFO`](https://docs.python.org/3/library/logging.html#logging.INFO); an f-string; and a
+  display unpacking another value with `*` or `**`. A pattern from `re.compile` is the module constant
+  [inline-regex](SMP534.html) asks for when the compile sits inside a function.
 
   ```python ok
   import logging
@@ -534,7 +536,8 @@ No fix is offered when:
           print(_MESSAGE)
   ```
 
-- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
+- a file of the run sets an attribute of the module under a computed name, as
+  [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does
 
 ## Other tools
 

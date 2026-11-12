@@ -1,5 +1,6 @@
 Flags own-line comments whose every word is an identifier or keyword of the statement below, such as `# close file`
-above `file.close()`. A statement across several lines counts in full.
+above [`file.close()`](https://docs.python.org/3/reference/datamodel.html#file.close). A statement across several lines
+counts in full.
 
 ## Why is this bad?
 

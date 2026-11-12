@@ -136,8 +136,9 @@ signature reaches it:
   __all__ = ["helper"]
   ```
 
-- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with
-  `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
+- **String-named handlers** passed to
+  [`pkgutil.resolve_name`](https://docs.python.org/3/library/pkgutil.html#pkgutil.resolve_name) as `module:attribute`,
+  or stored with `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
 
   ```python report file=config.py
   def main() -> None:
@@ -388,7 +389,8 @@ signature reaches it:
   ```
 
 - **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes
-  `from module import *` raise `AttributeError` at run time.
+  `from module import *` raise [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) at
+  run time.
 
   ```python ok file=pkg/typed.py
   from typing import TYPE_CHECKING

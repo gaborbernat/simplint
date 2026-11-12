@@ -187,7 +187,7 @@ with request_id.set("one"):
   ```
 
 - **Target versions before 3.14**: the token is not a context manager there, and `with` raises
-  [`TypeError`](https://docs.python.org/3/library/exceptions.html#TypeError).
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError).
 
   ```toml config
   [project]

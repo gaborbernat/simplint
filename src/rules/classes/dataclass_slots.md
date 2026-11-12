@@ -351,7 +351,8 @@ class Release:
       release.__delattr__("marked")
   ```
 
-- code sets an attribute under a name computed at run time through `setattr`, such as `setattr(self, key, value)` or
+- code sets an attribute under a name computed at run time through `setattr`, such as
+  [`setattr(self, key, value)`](https://docs.python.org/3/builtins/functions.html#setattr) or
   `setattr(release, key, value)` on an annotated parameter, which may name any attribute
 
   ```python report
@@ -388,10 +389,12 @@ class Release:
       setattr(release, key, value)
   ```
 
-- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, or an instance a weak
-  container holds, the item added to a `weakref.WeakSet`, a key of a `WeakKeyDictionary`, a value of a
-  `WeakValueDictionary` or the object of a `WeakMethod`, in any checked file; each needs a `__weakref__` slot the class
-  does not have
+- a weak reference to an instance, from [`weakref.ref`](https://docs.python.org/3/library/weakref.html#weakref.ref),
+  [`weakref.proxy`](https://docs.python.org/3/library/weakref.html#weakref.proxy) or
+  [`weakref.finalize`](https://docs.python.org/3/library/weakref.html#weakref.finalize), or an instance a weak container
+  holds, the item added to a [`weakref.WeakSet`](https://docs.python.org/3/library/weakref.html#weakref.WeakSet), a key
+  of a `WeakKeyDictionary`, a value of a `WeakValueDictionary` or the object of a `WeakMethod`, in any checked file;
+  each needs a `__weakref__` slot the class does not have
 
   ```python report
   import weakref
@@ -475,8 +478,10 @@ class Release:
 - the class has a field with a default that code reads or assigns through the class name, such as `Config.timeout`, or
   through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor. The class name may be
   an import alias, a name bound to the class, or a subclass of it; an access simplint cannot tie to one class, such as
-  `type(obj).timeout`, `obj.__class__.timeout`, `getattr(obj, "timeout")` or `setattr(obj, "timeout", value)` on an
-  object of unknown class, counts against every dataclass of the run with a default of that name
+  `type(obj).timeout`, `obj.__class__.timeout`,
+  [`getattr(obj, "timeout")`](https://docs.python.org/3/builtins/functions.html#getattr) or
+  `setattr(obj, "timeout", value)` on an object of unknown class, counts against every dataclass of the run with a
+  default of that name
 
   ```python report
   from dataclasses import dataclass
@@ -555,7 +560,8 @@ class Release:
       version: str
   ```
 
-- code reaches the instance `__dict__`, as `self.__dict__.update(...)` or `vars(config)` do
+- code reaches the instance `__dict__`, as `self.__dict__.update(...)` or
+  [`vars(config)`](https://docs.python.org/3/builtins/functions.html#vars) do
 
   ```python report
   from dataclasses import dataclass
@@ -570,9 +576,9 @@ class Release:
   ```
 
 - the class stays mutable and any checked file pickles with a protocol that may be 0 or 1, such as
-  `pickle.dumps(obj, protocol)` in a loop over every protocol: those protocols refuse a slotted class without
-  `__getstate__`, which a dataclass gets only when frozen. Here a method writes `self`, so `frozen` is left out too, and
-  no fix is offered.
+  [`pickle.dumps(obj, protocol)`](https://docs.python.org/3/library/pickle.html#pickle.dumps) in a loop over every
+  protocol: those protocols refuse a slotted class without `__getstate__`, which a dataclass gets only when frozen. Here
+  a method writes `self`, so `frozen` is left out too, and no fix is offered.
 
   ```python report
   import pickle
@@ -889,8 +895,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
           Marker().mark()
   ```
 
-  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a class writes its own fields, so they do not
-  count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:
+  [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
+  `super().__setattr__(...)` are how a class writes its own fields, so they do not count as writes and keep the fix
+  offered, but naming `__setattr__` or `super` still makes it unsafe:
 
   ```python report
   from dataclasses import dataclass

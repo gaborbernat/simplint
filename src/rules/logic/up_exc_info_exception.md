@@ -1,9 +1,11 @@
-Flags `sys.exc_info()` reads of the exception being handled, which `sys.exception()` returns directly from Python 3.11.
+Flags [`sys.exc_info()`](https://docs.python.org/3/library/sys.html#sys.exc_info) reads of the exception being handled,
+which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns directly from Python 3.11.
 
 ## Why is this bad?
 
 `sys.exc_info()` returns a tuple of three values, and code that reads its second value, or unpacks all three into
-`traceback.print_exception`, only needs the exception. `sys.exception()` names that value and returns it alone.
+[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception), only needs
+the exception. `sys.exception()` names that value and returns it alone.
 
 ## Example
 

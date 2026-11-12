@@ -66,9 +66,9 @@ print(loads("name = 'demo'"))
   VALUE = TaskGroup
   ```
 
-- **`exceptiongroup` imports of [`ExceptionGroup`](https://docs.python.org/3/library/exceptions.html#ExceptionGroup) and
-  [`BaseExceptionGroup`](https://docs.python.org/3/library/exceptions.html#BaseExceptionGroup)**, which the builtins
-  define from Python 3.11 ([PEP 654](https://peps.python.org/pep-0654/)).
+- **`exceptiongroup` imports of [`ExceptionGroup`](https://docs.python.org/3/builtins/exceptions.html#ExceptionGroup)
+  and [`BaseExceptionGroup`](https://docs.python.org/3/builtins/exceptions.html#BaseExceptionGroup)**, which the
+  builtins define from Python 3.11 ([PEP 654](https://peps.python.org/pep-0654/)).
 
   ```toml config
   [project]

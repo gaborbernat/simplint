@@ -161,7 +161,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
         pass
     ```
 
-  - names a file reads off a module loaded by a computed name, such as the result of `importlib.import_module`, off a
+  - names a file reads off a module loaded by a computed name, such as the result of
+    [`importlib.import_module`](https://docs.python.org/3/library/importlib.html#importlib.import_module), off a
     parameter annotated `ModuleType`, or off a module whose spec loads from a path no static expression names:
 
     ```python ok
@@ -195,8 +196,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
     helper = pytest.importorskip("plugins").helper
     ```
 
-  - names read off a module loaded from a file path with `importlib.util.spec_from_file_location` and
-    `module_from_spec`, when the path names a project module, as `Path(__file__).parent / "plugins.py"` does:
+  - names read off a module loaded from a file path with
+    [`importlib.util.spec_from_file_location`](https://docs.python.org/3/library/importlib.html#importlib.util.spec_from_file_location)
+    and `module_from_spec`, when the path names a project module, as `Path(__file__).parent / "plugins.py"` does:
 
     ```python ok file=plugins.py
     __all__ = []
@@ -487,7 +489,8 @@ No fix is offered when:
           return type(self).__name__
   ```
 
-- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
+- a file of the run sets an attribute of the module under a computed name, as
+  [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does
 
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a
   keyword argument or an attribute access

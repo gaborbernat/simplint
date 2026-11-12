@@ -42,7 +42,8 @@ No fix is offered: the real signature has to be written by hand.
   is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.
   The matched names are:
 
-  - a bare `Callable` imported from `typing` or `collections.abc`.
+  - a bare `Callable` imported from `typing` or
+    [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc).
 
     ```python report
     from collections.abc import Callable

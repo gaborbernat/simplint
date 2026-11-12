@@ -202,8 +202,8 @@ definition a Sphinx page names is used.
   are documented too, and so is every member of an `.. autoclass::` with `:members:`.
 
   Names match by their dotted ending, so a page under `.. currentmodule::`, or one whose `conf.py` puts another
-  directory on `sys.path`, still matches. The files are read from the directory of each `pyproject.toml`, outside hidden
-  directories and the paths Ruff excludes.
+  directory on [`sys.path`](https://docs.python.org/3/library/sys.html#sys.path), still matches. The files are read from
+  the directory of each `pyproject.toml`, outside hidden directories and the paths Ruff excludes.
 
   ```toml config
   [project]
@@ -365,11 +365,14 @@ definition a Sphinx page names is used.
       return "alice"
   ```
 
-- **Computed attribute reads**: a read under a name computed at run time, such as `getattr(obj, name)`, `vars(obj)` or
-  `dir(obj)`, may reach any name of the module it sits in, and any public name of the run. A private name is therefore
-  kept only when its own file makes such a read. A name built on a literal start, as `getattr(self, "_handle_" + kind)`
-  or `getattr(self, f"_handle_{kind}")` builds for a dispatch table, reaches only the names with that start, wherever
-  they are defined; a start of underscores alone picks out no family, so it counts as any name.
+- **Computed attribute reads**: a read under a name computed at run time, such as
+  [`getattr(obj, name)`](https://docs.python.org/3/builtins/functions.html#getattr),
+  [`vars(obj)`](https://docs.python.org/3/builtins/functions.html#vars) or
+  [`dir(obj)`](https://docs.python.org/3/builtins/functions.html#dir), may reach any name of the module it sits in, and
+  any public name of the run. A private name is therefore kept only when its own file makes such a read. A name built on
+  a literal start, as `getattr(self, "_handle_" + kind)` or `getattr(self, f"_handle_{kind}")` builds for a dispatch
+  table, reaches only the names with that start, wherever they are defined; a start of underscores alone picks out no
+  family, so it counts as any name.
 
   ```python ok
   class Client:

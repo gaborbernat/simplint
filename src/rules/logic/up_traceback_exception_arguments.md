@@ -64,8 +64,11 @@ def report(run):
 
 ### Active on
 
-Reports a call that resolves to `traceback.print_exception`, `traceback.format_exception` or
-`traceback.format_exception_only` and passes:
+Reports a call that resolves to
+[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception),
+[`traceback.format_exception`](https://docs.python.org/3/library/traceback.html#traceback.format_exception) or
+[`traceback.format_exception_only`](https://docs.python.org/3/library/traceback.html#traceback.format_exception_only)
+and passes:
 
 - **Three positional arguments** to the first two functions: `type(error)` or `error.__class__`, then `error`, then
   `error.__traceback__`, all for the same name.
@@ -132,7 +135,8 @@ Reports a call that resolves to `traceback.print_exception`, `traceback.format_e
       return traceback.format_exception(type(error), error, saved)
   ```
 
-- **Target versions before 3.10**: the single-argument form raises `TypeError` there.
+- **Target versions before 3.10**: the single-argument form raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) there.
 
   ```toml config
   [project]

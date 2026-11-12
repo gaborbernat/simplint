@@ -152,7 +152,7 @@ def parse_version(text):
 - **Truth tests with a plain-text pattern Ruff rewrites**:
   [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) rewrites a `re.match` call whose pattern
   has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
-  [`str.startswith`](https://docs.python.org/3/library/stdtypes.html#str.startswith), so this rule leaves that call to
+  [`str.startswith`](https://docs.python.org/3/builtins/stdtypes.html#str.startswith), so this rule leaves that call to
   Ruff.
 
   ```toml config

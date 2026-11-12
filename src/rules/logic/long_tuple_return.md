@@ -77,7 +77,8 @@ its own `return` statements, so a nested function's return belongs to the nested
 ### Exceptions
 
 - **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes
-  compatibility imports of `override` that forward to `typing.override`.
+  compatibility imports of `override` that forward to
+  [`typing.override`](https://docs.python.org/3/library/typing.html#typing.override).
 
   ```python ok
   from typing import override

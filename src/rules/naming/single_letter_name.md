@@ -147,7 +147,10 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 
 - **Uppercase type parameters**: names such as `T` and `P` are conventional in generic signatures. This includes
   parameters in [PEP 695 syntax](https://docs.python.org/3/reference/compound_stmts.html#type-params) and assignments to
-  `typing.TypeVar`, `typing.TypeVarTuple` or `typing.ParamSpec` when the string argument matches the assigned name.
+  [`typing.TypeVar`](https://docs.python.org/3/library/typing.html#typing.TypeVar),
+  [`typing.TypeVarTuple`](https://docs.python.org/3/library/typing.html#typing.TypeVarTuple) or
+  [`typing.ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec) when the string argument matches
+  the assigned name.
 
   ```toml config
   [project]

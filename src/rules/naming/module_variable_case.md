@@ -400,7 +400,8 @@ No fix is offered when:
   third-party import, or a doctest spells it. The report stays, since such a read does not show what it reads
 
 - another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns
-  it as an attribute of its module, as `module.NAME = value` or `setattr(module, "NAME", value)` does, since the rename
+  it as an attribute of its module, as `module.NAME = value` or
+  [`setattr(module, "NAME", value)`](https://docs.python.org/3/builtins/functions.html#setattr) does, since the rename
   would leave that write pointing at the old name
 
   ```python report file=config.py
@@ -414,8 +415,8 @@ No fix is offered when:
   ```
 
 - a file of the run reads an attribute by that name off a module it loads by a computed name: the result of
-  `importlib.import_module`, `__import__` or `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture
-  that returns such a module
+  [`importlib.import_module`](https://docs.python.org/3/library/importlib.html#importlib.import_module), `__import__` or
+  `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture that returns such a module
 
   ```python report file=loader.py
   limit = 3

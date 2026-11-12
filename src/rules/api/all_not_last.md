@@ -185,7 +185,9 @@ The fix is offered only when:
 - a single statement binds `__all__`, to a list or tuple of string literals
 - no later statement reads `__all__` or calls a method on it
 - no later statement reads `__all__` at run time, through an attribute such as `sys.modules[__name__].__all__`, a
-  `"__all__"` string or a call to `globals()`, `vars()` or `dir()`
+  `"__all__"` string or a call to [`globals()`](https://docs.python.org/3/builtins/functions.html#globals),
+  [`vars()`](https://docs.python.org/3/builtins/functions.html#vars) or
+  [`dir()`](https://docs.python.org/3/builtins/functions.html#dir)
 - no function or lambda reads `__all__`, by name or at run time, wherever it is defined
 - the statement shares no line with other code
 - no comment sits on the line above it, or above the `# fmt: off` / `# fmt: on` pair around it
@@ -264,7 +266,8 @@ the module reads it through:
   print(sys.modules[__name__].__all__)
   ```
 
-- the string `"__all__"`, such as in `getattr(sys.modules[__name__], "__all__")`:
+- the string `"__all__"`, such as in
+  [`getattr(sys.modules[__name__], "__all__")`](https://docs.python.org/3/builtins/functions.html#getattr):
 
   ```python report
   import sys

@@ -125,8 +125,10 @@ field until they do.
   ```
 
 - **Attributes a regular method sets on its first parameter**: these are instance attributes. A method sets them at any
-  depth of its body, directly or through `object.__setattr__(self, "name", value)` as a frozen dataclass does. A class
-  defined inside a method has its own `self`, so its attributes belong to that class instead.
+  depth of its body, directly or through
+  [`object.__setattr__(self, "name", value)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) as
+  a frozen dataclass does. A class defined inside a method has its own `self`, so its attributes belong to that class
+  instead.
 
   ```toml config
   [project]

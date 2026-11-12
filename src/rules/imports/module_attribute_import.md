@@ -248,8 +248,10 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
-- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, "DbWriter")` or
-  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.
+- **A module used as a value**: passed to a function, assigned or returned, as in
+  [`getattr(findings, "DbWriter")`](https://docs.python.org/3/builtins/functions.html#getattr) or
+  [`importlib.reload(findings)`](https://docs.python.org/3/library/importlib.html#importlib.reload), the module is an
+  object of its own, so the file keeps it.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -443,9 +445,10 @@ writer = DbWriter()
 patches the module attribute later no longer reaches the name.
 
 The fix replaces the import and every `findings.Name` access in the file. It is offered only when every use of the
-module is such an access to a name the module defines, no computed write, such as `setattr(module, name, value)`, may
-set a name of the module, no other module of the run imports or reads the module's name, and `__all__` does not list it,
-since the replaced import would no longer bind it.
+module is such an access to a name the module defines, no computed write, such as
+[`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr), may set a name of the
+module, no other module of the run imports or reads the module's name, and `__all__` does not list it, since the
+replaced import would no longer bind it.
 
 The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
 report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries

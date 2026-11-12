@@ -155,11 +155,14 @@ No fix is offered: a meaningful id describes what the case tests, which cannot b
   [`pytest.param(..., id=...)`](https://docs.pytest.org/en/stable/reference/reference.html#pytest-param) or a `raise`,
   or an `if`, `match`, `try` or `with` whose branches all end that way, and every `return` in it gives a `pytest.param`
   with an id. Loops don't count, and neither does a `with` around a manager that can swallow exceptions:
-  `contextlib.suppress`, `pytest.raises`, `contextlib.ExitStack` and `contextlib.AsyncExitStack`, or any manager that is
-  not a call, such as a name. A helper that returns a tuple or a row without an id, an `async` helper, one that yields,
-  one whose last statement does not end that way, or a call to a function the module does not define is reported where
-  the call is written. Decorated helpers stay reported, except `functools.cache` and `functools.lru_cache`, and so do
-  lambdas.
+  [`contextlib.suppress`](https://docs.python.org/3/library/contextlib.html#contextlib.suppress), `pytest.raises`,
+  [`contextlib.ExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.ExitStack) and
+  [`contextlib.AsyncExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack), or any
+  manager that is not a call, such as a name. A helper that returns a tuple or a row without an id, an `async` helper,
+  one that yields, one whose last statement does not end that way, or a call to a function the module does not define is
+  reported where the call is written. Decorated helpers stay reported, except
+  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache) and
+  [`functools.lru_cache`](https://docs.python.org/3/library/functools.html#functools.lru_cache), and so do lambdas.
 
   ```python ok
   import pytest

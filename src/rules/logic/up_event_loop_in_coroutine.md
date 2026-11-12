@@ -7,7 +7,7 @@ in Python 3.7) returns the loop the coroutine runs on.
 
 A coroutine runs on a loop that is always running, so `get_event_loop()` only has to return that loop.
 `get_running_loop()` returns it directly and raises
-[`RuntimeError`](https://docs.python.org/3/library/exceptions.html#RuntimeError) when no loop runs, which surfaces a
+[`RuntimeError`](https://docs.python.org/3/builtins/exceptions.html#RuntimeError) when no loop runs, which surfaces a
 mistake that `get_event_loop()` would hide. `get_event_loop()` also serves code outside a loop, where Python 3.10
 deprecated the implicit loop creation and Python 3.14 made the call raise `RuntimeError`.
 

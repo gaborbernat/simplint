@@ -2,12 +2,14 @@ Flags attribute names that are mock assertion methods written without their `ass
 
 ## Why is this bad?
 
-`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or
-`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the
-mock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without
-their prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such
-as `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a
-misspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.
+[`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) raises
+[`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) for an unknown name that starts
+with `assert`, `assret`, `asert`, `aseert` or `assrt`, so a misspelled assertion with one of those prefixes fails the
+test. Other names are ordinary attributes to the mock: the call returns a child mock and checks nothing. Python 3.12
+added the names of the `Mock` assertions without their prefix, such as `called_once_with`, to the names a mock rejects,
+but not those of the `AsyncMock` assertions, such as `awaited_once_with`. So `called_once_with` passes silently on
+Python 3.11 and older, and `awaited_once_with` or a misspelling such as `asssert_called_once` passes silently on every
+version. The lint reports these before the test runs.
 
 ## Example
 

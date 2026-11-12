@@ -1,4 +1,5 @@
-Flags imports from `unittest.mock` in a test module of a project that depends on pytest-mock.
+Flags imports from [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) in a
+test module of a project that depends on pytest-mock.
 
 ## Why is this bad?
 

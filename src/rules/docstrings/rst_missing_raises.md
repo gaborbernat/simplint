@@ -171,8 +171,13 @@ field until they do.
     ```
 
 - **An exception a surrounding `try` of the same function catches**: it does not escape the function. The `try` catches
-  it by name, through a built-in base such as `OSError` for `FileNotFoundError`, through `Exception`, which does not
-  catch `SystemExit`, `KeyboardInterrupt` or `GeneratorExit`, or through `BaseException`.
+  it by name, through a built-in base such as [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError)
+  for [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), through
+  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception), which does not catch
+  [`SystemExit`](https://docs.python.org/3/builtins/exceptions.html#SystemExit),
+  [`KeyboardInterrupt`](https://docs.python.org/3/builtins/exceptions.html#KeyboardInterrupt) or
+  [`GeneratorExit`](https://docs.python.org/3/builtins/exceptions.html#GeneratorExit), or through
+  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException).
 
   ```toml config
   [project]
@@ -247,7 +252,8 @@ field until they do.
       raise FileNotFoundError(path)
   ```
 
-- **`NotImplementedError`**: it marks a method for subclasses to override.
+- **[`NotImplementedError`](https://docs.python.org/3/builtins/exceptions.html#NotImplementedError)**: it marks a method
+  for subclasses to override.
 
   ```toml config
   [project]

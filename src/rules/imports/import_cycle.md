@@ -231,10 +231,10 @@ first eight, then how many it leaves out, before the module it closes on.
       import a
   ```
 
-- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as
-  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of
-  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or
-  `sys.version_info.major < 3`, counts too.
+- **Imports under a [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info) check that only
+  older Pythons than the project's target pass**, such as `if sys.version_info < (3, 8):` for a project that targets
+  Python 3.11, or the `else` of `if sys.version_info >= (3, 8):`. A check of the first item, as
+  `sys.version_info[0] == 2` or `sys.version_info.major < 3`, counts too.
 
   ```python context file=a.py
   import b
@@ -305,8 +305,9 @@ first eight, then how many it leaves out, before the module it closes on.
 
 ### Undetected cases
 
-Imports that a program runs by name, such as `importlib.import_module("a")`, are not in the graph, and neither is the
-import of a package's `__init__.py` that Python runs before a submodule.
+Imports that a program runs by name, such as
+[`importlib.import_module("a")`](https://docs.python.org/3/library/importlib.html#importlib.import_module), are not in
+the graph, and neither is the import of a package's `__init__.py` that Python runs before a submodule.
 
 ## Other tools
 

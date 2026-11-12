@@ -1,4 +1,5 @@
-Flags `time.sleep` and `await asyncio.sleep` calls in a test module whose argument is not the literal `0`.
+Flags [`time.sleep`](https://docs.python.org/3/library/time.html#time.sleep) and `await asyncio.sleep` calls in a test
+module whose argument is not the literal `0`.
 
 ## Why is this bad?
 
@@ -34,9 +35,9 @@ def test_worker_finishes():
 
 ### Active on
 
-- **`time.sleep` and `asyncio.sleep` calls**: the call resolves through the module's imports, so
-  `from time import sleep` and `await asyncio.sleep(...)` are reported too. Every call counts, in a test function or in
-  a helper of the module, as the helper runs for the tests too.
+- **`time.sleep` and [`asyncio.sleep`](https://docs.python.org/3/library/asyncio-task.html#asyncio.sleep) calls**: the
+  call resolves through the module's imports, so `from time import sleep` and `await asyncio.sleep(...)` are reported
+  too. Every call counts, in a test function or in a helper of the module, as the helper runs for the tests too.
 
   ```python report file=tests/test_sleep.py
   import asyncio

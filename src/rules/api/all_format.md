@@ -95,8 +95,8 @@ literal.
   __all__ = []
   ```
 
-- **Other values**, such as `sorted([...])`: they are not a list or tuple literal, so there are no brackets or comma to
-  check.
+- **Other values**, such as [`sorted([...])`](https://docs.python.org/3/builtins/functions.html#sorted): they are not a
+  list or tuple literal, so there are no brackets or comma to check.
 
   ```python ok
   __all__ = sorted(["load", "save"])

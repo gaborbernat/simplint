@@ -149,7 +149,8 @@ estimates, so a caller they might report is left as it is.
       return _parse_header(text)
   ```
 
-- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.
+- **Helpers passed as a value**: [`map(_parse_header, texts)`](https://docs.python.org/3/builtins/functions.html#map)
+  does not call the helper where it stands.
 
   ```python ok
   def load(texts: list[str]) -> list[str]:

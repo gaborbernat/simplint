@@ -127,8 +127,11 @@ that statement comes at least two statements below the assignment in the same bl
       return out
   ```
 
-- **A function that reads its locals by name**, such as with `locals()`, `vars()`, `eval()` or `exec()`: moving the
-  assignment changes what they see.
+- **A function that reads its locals by name**, such as with
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals),
+  [`vars()`](https://docs.python.org/3/builtins/functions.html#vars),
+  [`eval()`](https://docs.python.org/3/builtins/functions.html#eval) or
+  [`exec()`](https://docs.python.org/3/builtins/functions.html#exec): moving the assignment changes what they see.
 
   ```python ok
   def run(items: list[int]) -> None:

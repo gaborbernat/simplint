@@ -422,8 +422,10 @@ No fix is offered while any use could still pass fields by position, or while a 
       return Release(*args)
   ```
 
-- the class used as a value, as in `functools.partial(Partition, topic)`, matched by position in a `case` pattern, or
-  named in the metadata of an `Annotated[...]` type, where a caller may call it by position later;
+- the class used as a value, as in
+  [`functools.partial(Partition, topic)`](https://docs.python.org/3/library/functools.html#functools.partial), matched
+  by position in a `case` pattern, or named in the metadata of an `Annotated[...]` type, where a caller may call it by
+  position later;
 
   ```python report
   from dataclasses import dataclass
@@ -453,8 +455,8 @@ No fix is offered while any use could still pass fields by position, or while a 
   make = partial(Release, "simplint")
   ```
 
-- the class read by `getattr(module, "Name")` from another file, which calls it by position under a name no import
-  shows;
+- the class read by [`getattr(module, "Name")`](https://docs.python.org/3/builtins/functions.html#getattr) from another
+  file, which calls it by position under a name no import shows;
 
   ```python report file=app/models.py
   from dataclasses import dataclass

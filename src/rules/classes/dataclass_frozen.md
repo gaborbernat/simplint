@@ -420,8 +420,8 @@ class Release:
   ```
 
 - other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time,
-  such as the `setattr(self, key, value)` of a method that updates its fields from a dict, or
-  `setattr(release, key, value)` on an annotated parameter
+  such as the [`setattr(self, key, value)`](https://docs.python.org/3/builtins/functions.html#setattr) of a method that
+  updates its fields from a dict, or `setattr(release, key, value)` on an annotated parameter
 
   ```python report
   from dataclasses import dataclass
@@ -822,8 +822,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
           Marker().mark()
   ```
 
-  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a frozen class writes its own fields, so they
-  do not count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:
+  [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
+  `super().__setattr__(...)` are how a frozen class writes its own fields, so they do not count as writes and keep the
+  fix offered, but naming `__setattr__` or `super` still makes it unsafe:
 
   ```python report
   from dataclasses import dataclass

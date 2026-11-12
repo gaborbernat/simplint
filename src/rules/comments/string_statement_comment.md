@@ -80,7 +80,9 @@ line numbers. It is safe for the program: a string statement does nothing when i
 - a comment line would run past the comment width, which [Ruff E501](https://docs.astral.sh/ruff/rules/line-too-long/)
   then reports
 
-Tools that read the source text, such as `inspect.getsource`, see the comments where the string was.
+Tools that read the source text, such as
+[`inspect.getsource`](https://docs.python.org/3/library/inspect.html#inspect.getsource), see the comments where the
+string was.
 
 ```python report
 def run() -> None:

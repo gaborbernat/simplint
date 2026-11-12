@@ -3,8 +3,8 @@ the default in Python 3.15.
 
 ## Why is this bad?
 
-Python 3.15 turns on UTF-8 mode by default, so [`open()`](https://docs.python.org/3/library/functions.html#open) and the
-`pathlib` text methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding
+Python 3.15 turns on UTF-8 mode by default, so [`open()`](https://docs.python.org/3/builtins/functions.html#open) and
+the `pathlib` text methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding
 repeats the default, and a reader has to check whether it changes anything. The default can be switched off with
 `PYTHONUTF8=0` or `-X utf8=0`, though, and then the argument is what keeps the file in UTF-8.
 
@@ -100,8 +100,8 @@ before linting while both apply to a file that targets Python 3.15 or newer; ign
 
 The fix is unsafe because the default is not always UTF-8. With UTF-8 mode off, `open()` uses the locale's encoding,
 which is ASCII under `LC_ALL=C`, so the file that the argument read as UTF-8 raises
-[`UnicodeDecodeError`](https://docs.python.org/3/library/exceptions.html#UnicodeDecodeError) once the argument is gone.
-Python 3.15 also still emits [`EncodingWarning`](https://docs.python.org/3/library/exceptions.html#EncodingWarning) for
+[`UnicodeDecodeError`](https://docs.python.org/3/builtins/exceptions.html#UnicodeDecodeError) once the argument is gone.
+Python 3.15 also still emits [`EncodingWarning`](https://docs.python.org/3/builtins/exceptions.html#EncodingWarning) for
 a call without `encoding` under `-X warn_default_encoding` or `PYTHONWARNDEFAULTENCODING`, so a test suite that turns
 that warning into an error fails after the fix.
 

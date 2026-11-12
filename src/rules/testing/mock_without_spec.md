@@ -36,7 +36,8 @@ No fix is offered: the spec is the real object the mock stands in for, and that 
     client = MagicMock()
     ```
 
-  - A dotted name, such as `unittest.mock.NonCallableMock()`
+  - A dotted name, such as
+    [`unittest.mock.NonCallableMock()`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.NonCallableMock)
 
     ```python report
     import unittest.mock
@@ -71,7 +72,8 @@ No fix is offered: the spec is the real object the mock stands in for, and that 
   unittest.mock.patch("app.service.fetch")
   ```
 
-- `patch` imported from `unittest.mock` or `mock`, under any alias.
+- `patch` imported from [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) or
+  `mock`, under any alias.
 
   ```python report
   from unittest.mock import patch as mock_patch

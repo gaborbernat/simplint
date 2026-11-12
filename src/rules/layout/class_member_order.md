@@ -49,9 +49,9 @@ The rule checks the members of each class body, in the order of these sections:
 1. **Constructors**: `__init_subclass__`, `__new__`, `__init__` and `__post_init__`, in the order Python runs them.
 1. **Alternative constructors**: classmethods that return a call of the class, such as `return cls(...)`, that return
    the result of another alternative constructor through `cls`, such as `return cls.fromordinal(...)`, or whose return
-   annotation is `Self`, `typing.Self` or the class's own name. A returned local name counts as the call it holds when
-   that assignment, such as `result = cls(...)`, is the only one outside a branch that binds the name; a branch may
-   rebind it, as `result = tz.fromutc(result)` does.
+   annotation is `Self`, [`typing.Self`](https://docs.python.org/3/library/typing.html#typing.Self) or the class's own
+   name. A returned local name counts as the call it holds when that assignment, such as `result = cls(...)`, is the
+   only one outside a branch that binds the name; a branch may rebind it, as `result = tz.fromutc(result)` does.
 1. **Other dunder methods**, such as `__repr__` and `__eq__`.
 1. **Properties**: a `property` or `cached_property` with its setter and deleter right after it.
 1. **Methods**: instance, static and class methods alike, public or private.
@@ -389,7 +389,8 @@ Some members stay where they are, and some reports come without a fix:
   ```
 
 - **An enum's `_generate_next_value_`** stays where it is. `auto()` reads it from the class namespace rather than by
-  name, and `Enum` raises `TypeError` when it is defined after a member that called `auto()`:
+  name, and `Enum` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) when it is defined
+  after a member that called `auto()`:
 
   ```python report
   from enum import Enum, auto
@@ -446,7 +447,8 @@ The fix is safe when every moved member is undecorated or has only pure decorato
 a moved class, a moved method with any other decorator, such as `@cache` or `@functools.lru_cache()`, or a call in a
 moved method's default values or in a moved statement, because
 [decorators](https://docs.python.org/3/glossary.html#term-decorator), calls and class creation then run in a different
-order. A call can also see which names the class body has bound so far, as `locals()` does:
+order. A call can also see which names the class body has bound so far, as
+[`locals()`](https://docs.python.org/3/builtins/functions.html#locals) does:
 
 ```python report
 import itertools

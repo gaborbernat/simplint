@@ -234,8 +234,8 @@ def total_price(prices: list[float]) -> str:
       print(data)
   ```
 
-- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or
-  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
+- **A read as the argument of [`next`](https://docs.python.org/3/builtins/functions.html#next) or
+  [`anext`](https://docs.python.org/3/builtins/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
   `__next__`**: the call steps or closes the object the name holds. Without the name, the call holds the last reference
   to the object, so the object is released when the call returns, which runs a generator's `finally` early. Keeping the
   name keeps the object alive, so the variable is not reported.
@@ -293,11 +293,13 @@ def total_price(prices: list[float]) -> str:
   [function-call-in-default-argument](https://docs.astral.sh/ruff/rules/function-call-in-default-argument/) (B008)
   runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports
   would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a
-  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as
-  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee
-  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated
-  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff
-  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff
+  mutable type such as `list()` or
+  [`collections.Counter()`](https://docs.python.org/3/library/collections.html#collections.Counter). B008 reports a
+  call, except one of an immutable type such as `tuple()`, a
+  [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee listed in
+  `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated with an
+  immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff runs the
+  rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff
   configuration runs neither rule.
 
   ```toml config
@@ -457,8 +459,9 @@ def total_price(prices: list[float]) -> str:
       print(count)
   ```
 
-- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they
-  see.
+- **Functions that read their locals by name, such as
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals) or `eval`**: a removed name would vanish from
+  what they see.
 
   ```python ok
   def run(items: list[str]) -> None:
@@ -531,7 +534,8 @@ def run(items: list[str], log: Log) -> None:
     log.write(len(items))
 ```
 
-Here `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.
+Here `log.write` is looked up before [`len(items)`](https://docs.python.org/3/builtins/functions.html#len) runs, which
+differs only when that lookup has side effects.
 
 The fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read
 that sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the

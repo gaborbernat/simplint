@@ -1,11 +1,11 @@
 Flags [`codecs.open()`](https://docs.python.org/3/library/codecs.html#codecs.open) calls, which the builtin
-[`open()`](https://docs.python.org/3/library/functions.html#open) replaces.
+[`open()`](https://docs.python.org/3/builtins/functions.html#open) replaces.
 
 ## Why is this bad?
 
 Python 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,
 `codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the
-characters [`str.splitlines()`](https://docs.python.org/3/library/stdtypes.html#str.splitlines) honors, such as form
+characters [`str.splitlines()`](https://docs.python.org/3/builtins/stdtypes.html#str.splitlines) honors, such as form
 feeds and U+2028, where `open()` splits only at line endings. With `newline=""`, `open()` also keeps the line endings as
 they are, as `codecs.open()` does.
 

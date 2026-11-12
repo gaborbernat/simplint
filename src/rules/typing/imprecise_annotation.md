@@ -58,8 +58,8 @@ No fix is offered: the precise type depends on what callers pass.
     ```
 
 - **`Any` in variable annotations and in nested positions**, such as `CACHE: Any`, `dict[str, Any]` or `-> list[Any]`:
-  each one turns off type checking for the values it touches. Spelled `Any`, `typing.Any`, an import alias or
-  `typing_extensions.Any`.
+  each one turns off type checking for the values it touches. Spelled `Any`,
+  [`typing.Any`](https://docs.python.org/3/library/typing.html#typing.Any), an import alias or `typing_extensions.Any`.
 
   - `CACHE: Any`: a variable annotation.
 
@@ -182,8 +182,8 @@ ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload i
 otherwise.
 
 - **`object` as the return type of a `Callable`**, such as `Callable[..., object]` or `Callable[[int], object]`, from
-  `typing` or `collections.abc`: the callable's result is ignored, which is what `object` says there. `object` in its
-  parameter types is still reported.
+  `typing` or [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc): the
+  callable's result is ignored, which is what `object` says there. `object` in its parameter types is still reported.
 
   ```python ok
   from collections.abc import Callable

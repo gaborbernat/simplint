@@ -73,7 +73,8 @@ class ConfigTest(TestCase):
   [`mock.patch`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch),
   [`mock.patch.object`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.object) or
   [`mock.patch.dict`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.dict), under
-  `unittest.mock` or the `mock` name, as the module resolves them. The report sits on the first statement.
+  [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) or the `mock` name, as
+  the module resolves them. The report sits on the first statement.
 
   ```toml config
   [project]

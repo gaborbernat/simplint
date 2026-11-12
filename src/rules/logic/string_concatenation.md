@@ -187,15 +187,23 @@ Builtins and the standard library:
 - a call to the builtin `str`, `repr`, `ascii`, `format`, `chr`, `hex`, `oct` or `bin`
 - a `str` method such as `join`, `format` or `upper` called on a `str`, or `decode` on `bytes`
 - `__name__`, `__qualname__` and `__module__` of anything, and the module's `__name__` and `__file__`
-- standard library values the module imports: `os.sep`, `os.linesep`, `sys.platform`, the `string` constants,
-  `os.getcwd()`, `platform.system()`, `json.dumps(...)`, `textwrap.dedent(...)`, `os.environ[...]`,
-  `os.environ.get(key, "default")`, `os.getenv(key, "default")`, `uuid.uuid4().hex`, `os.path.join(...)` and the other
-  `os.path` functions given a `str`, `re.escape` given a `str`, and the `name`, `stem`, `suffix` and `as_posix()` of a
-  `pathlib.Path`
+- standard library values the module imports: [`os.sep`](https://docs.python.org/3/library/os.html#os.sep),
+  [`os.linesep`](https://docs.python.org/3/library/os.html#os.linesep),
+  [`sys.platform`](https://docs.python.org/3/library/sys.html#sys.platform), the `string` constants,
+  [`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd),
+  [`platform.system()`](https://docs.python.org/3/library/platform.html#platform.system),
+  [`json.dumps(...)`](https://docs.python.org/3/library/json.html#json.dumps),
+  [`textwrap.dedent(...)`](https://docs.python.org/3/library/textwrap.html#textwrap.dedent), `os.environ[...]`,
+  `os.environ.get(key, "default")`, [`os.getenv(key, "default")`](https://docs.python.org/3/library/os.html#os.getenv),
+  `uuid.uuid4().hex`, [`os.path.join(...)`](https://docs.python.org/3/library/os.path.html#os.path.join) and the other
+  [`os.path`](https://docs.python.org/3/library/os.path.html#module-os.path) functions given a `str`,
+  [`re.escape`](https://docs.python.org/3/library/re.html#re.escape) given a `str`, and the `name`, `stem`, `suffix` and
+  `as_posix()` of a [`pathlib.Path`](https://docs.python.org/3/library/pathlib.html#pathlib.Path)
 
 Code of the module:
 
-- a call to a function or method of the module annotated `-> str`, undecorated or with `functools.cache`
+- a call to a function or method of the module annotated `-> str`, undecorated or with
+  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache)
 - an attribute of an instance of a class of the module that annotates it `str`, or a property annotated `-> str`
 - on `self`, also an attribute that the class body and its methods only ever set to such values, when nothing else
   writes it and no subclass may override it
@@ -326,4 +334,5 @@ No fix is offered when:
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports explicit string
   concatenation as
   [WPS336](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.ExplicitStringConcatViolation)
-  and prefers `str.format`, where this rule prefers an f-string.
+  and prefers [`str.format`](https://docs.python.org/3/builtins/stdtypes.html#str.format), where this rule prefers an
+  f-string.

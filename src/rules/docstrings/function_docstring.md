@@ -248,9 +248,10 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **Every docstring of a run in which some file reads docstrings off objects**: through `obj.__doc__`,
-  `getattr(obj, "__doc__")` or a `getdoc` call such as `inspect.getdoc`. A test asserting a function's `__doc__`, or a
-  framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the module's own
-  docstring, does not count.
+  [`getattr(obj, "__doc__")`](https://docs.python.org/3/builtins/functions.html#getattr) or a `getdoc` call such as
+  [`inspect.getdoc`](https://docs.python.org/3/library/inspect.html#inspect.getdoc). A test asserting a function's
+  `__doc__`, or a framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the
+  module's own docstring, does not count.
 
   ```python ok file=run.py
   def run() -> None:

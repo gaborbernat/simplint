@@ -212,9 +212,9 @@ The fix depends on the constant:
   assert (ready := True), "message"
   ```
 
-- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first
-  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any
-  error it raises.
+- A generator becomes [`all(...)`](https://docs.python.org/3/builtins/functions.html#all) around the same expression.
+  **Unsafe fix:** the restored check may now fail. Its first iterable is evaluated when the generator is built, so
+  deleting the assertion would also drop that evaluation and any error it raises.
 
   ```python report
   values = [1, 2]
