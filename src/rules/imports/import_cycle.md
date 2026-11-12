@@ -2,10 +2,14 @@ Flags a runtime import that closes a cycle of modules which import each other wh
 
 ## Why is this bad?
 
-A module runs its imports before its own body. When two modules import each other at load time, whichever loads first
-sees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module
-the program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its
-own.
+A module runs its imports before its own body, and Python adds it to
+[`sys.modules`](https://docs.python.org/3/reference/import.html#loading) before running it. When two modules import each
+other at load time, the one that loads second finds the first half-built: a name it imports from the first may not exist
+yet, and which import fails depends on which module the program imports first. The
+[Python FAQ](https://docs.python.org/3/faq/programming.html#how-can-i-have-modules-that-mutually-import-each-other)
+walks through this failure. It also quotes McMillan that `import module` cycles work when attributes are read only
+inside functions; simplint reports those too, since the modules stay coupled. The cycle also ties the two modules
+together, so neither can be read, tested or moved on its own.
 
 In the example below, `orders.py` and `cart.py` import each other at the top of their files.
 
@@ -51,10 +55,6 @@ def checkout(items):
 
     return place(items)
 ```
-
-## Conflicts with Ruff
-
-Ruff has no lint rule for import cycles, so the two do not overlap.
 
 ## What it does
 
@@ -235,10 +235,10 @@ first eight, then how many it leaves out, before the module it closes on.
       import a
   ```
 
-- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as
-  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of
-  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or
-  `sys.version_info.major < 3`, counts too.
+- **Imports under a [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info) check that only
+  older Pythons than the project's target pass**, such as `if sys.version_info < (3, 8):` for a project that targets
+  Python 3.11, or the `else` of `if sys.version_info >= (3, 8):`. A check of the first item, as
+  `sys.version_info[0] == 2` or `sys.version_info.major < 3`, counts too.
 
   ```python context file=a.py
   import b
@@ -309,8 +309,9 @@ first eight, then how many it leaves out, before the module it closes on.
 
 ### Undetected cases
 
-Imports that a program runs by name, such as `importlib.import_module("a")`, are not in the graph, and neither is the
-import of a package's `__init__.py` that Python runs before a submodule.
+Imports that a program runs by name, such as
+[`importlib.import_module("a")`](https://docs.python.org/3/library/importlib.html#importlib.import_module), are not in
+the graph, and neither is the import of a package's `__init__.py` that Python runs before a submodule.
 
 ## Other tools
 

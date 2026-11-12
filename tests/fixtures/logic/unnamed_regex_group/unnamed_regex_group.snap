@@ -44,13 +44,13 @@ expression: "lint_fixture(rule, fixture, target_version)"
 283:43 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 288:29 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 292:20 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
-296:48 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+296:48 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
 300:21 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 304:26 SMP532 regex has 1 unnamed capture group that the code reads by index; name it with `(?P<name>...)` so readers do not count parentheses
 310:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 314:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 318:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
---- fixed (22 applied, 26 remaining) ---
+--- fixed (23 applied, 25 remaining) ---
 import re
 import regex
 from re import compile as compile_pattern
@@ -346,7 +346,7 @@ def passed_to_print(text):
 
 
 def comprehension(items):
-    return [item for item in items if re.match(r"(a)(b)", item)]
+    return [item for item in items if re.match(r"(?:a)(?:b)", item)]
 
 
 def returned(text):

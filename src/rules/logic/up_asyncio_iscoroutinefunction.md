@@ -1,10 +1,16 @@
-Flags `asyncio.iscoroutinefunction()` calls, which `inspect.iscoroutinefunction()` replaces.
+Flags [`asyncio.iscoroutinefunction()`](https://docs.python.org/3/whatsnew/3.14.html#new-deprecations) calls, which
+[`inspect.iscoroutinefunction()`](https://docs.python.org/3/library/inspect.html#inspect.iscoroutinefunction) replaces.
 
 ## Why is this bad?
 
-Python 3.14 deprecates `asyncio.iscoroutinefunction()`. It also accepts functions marked with the `_is_coroutine` marker
-that the `asyncio.coroutine` decorator set, a decorator removed in Python 3.11. `inspect.iscoroutinefunction()` checks
-only the function itself, so the two answer differently for such functions.
+Python 3.14 [deprecates](https://docs.python.org/3/whatsnew/3.14.html#new-deprecations) `asyncio.iscoroutinefunction()`,
+a duplicate of `inspect.iscoroutinefunction()`, for removal in 3.16. The asyncio version calls the `inspect` one and
+adds one check, for the `_is_coroutine` marker that the
+[`asyncio.coroutine`](https://docs.python.org/3/whatsnew/3.11.html#whatsnew311-python-api-removed) decorator set before
+it was removed in Python 3.11. The two differ only for functions carrying that marker. A sync function that returns a
+coroutine can use
+[`inspect.markcoroutinefunction()`](https://docs.python.org/3/library/inspect.html#inspect.markcoroutinefunction),
+available from 3.12.
 
 ## Example
 

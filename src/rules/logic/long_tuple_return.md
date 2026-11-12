@@ -5,7 +5,14 @@ more values that travel together is a record, and a dataclass or a named tuple g
 
 Callers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or
 three elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it
-is defined and where it is read.
+is defined and where it is read. The
+[`namedtuple` docs](https://docs.python.org/3/library/collections.html#collections.namedtuple) describe that as
+self-documenting code.
+
+The standard library returns named tuples for several multi-field results, such as
+[`os.stat()` and `time.localtime()`](https://docs.python.org/3/glossary.html#term-named-tuple) and
+[`urllib.parse.urlparse()`](https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlparse). A named tuple
+still unpacks and indexes like a tuple, so callers that unpack it keep working.
 
 ## Example
 
@@ -77,7 +84,20 @@ its own `return` statements, so a nested function's return belongs to the nested
 ### Exceptions
 
 - **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes
-  compatibility imports of `override` that forward to `typing.override`.
+  compatibility imports of `override` that forward to
+  [`typing.override`](https://docs.python.org/3/library/typing.html#typing.override).
+
+  ```python ok
+  from typing import override
+
+  from parsing import Base
+
+
+  class Parser(Base):
+      @override
+      def span(self, text: str) -> tuple[int, int, int]:
+          return 0, len(text), 1
+  ```
 
 - **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and
   `__getnewargs_ex__` must return a tuple of the shape those protocols read.

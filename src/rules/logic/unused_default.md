@@ -2,8 +2,11 @@ Flags a parameter default that every call of the function in the run passes expl
 
 ## Why is this bad?
 
-A default that no call relies on documents a value nobody uses. A reader looks at the signature to learn what the
-function falls back to, and the fallback misleads once every caller supplies its own value.
+A default that no call relies on documents a value nobody uses. A reader looks at the signature to learn the fallback,
+and that fallback misleads once every caller passes its own value. A required parameter also guards the next caller: a
+call that omits it is [rejected](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments) with a
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), where a default would quietly pass a value
+no current caller chose.
 
 ## Example
 

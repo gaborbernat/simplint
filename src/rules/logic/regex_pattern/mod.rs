@@ -1,5 +1,5 @@
 mod facts;
 mod scan;
 
-pub(crate) use facts::{Context, Facts};
+pub(crate) use facts::{Call, Context, Facts, Literal};
 pub(crate) use scan::scan;

@@ -4,6 +4,8 @@ the class does not have.
 ## Why is this bad?
 
 A field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.
+Neither Sphinx nor a type checker compares the field with the class, so it stays until a reader relies on it.
+[PEP 8](https://peps.python.org/pep-0008/#comments) says comments that contradict the code are worse than no comments.
 
 ## Example
 

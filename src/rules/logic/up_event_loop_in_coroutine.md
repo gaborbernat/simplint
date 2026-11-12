@@ -1,12 +1,20 @@
-Flags `asyncio.get_event_loop()` calls inside coroutines, where `asyncio.get_running_loop()` returns the loop the
-coroutine runs on.
+Flags [`asyncio.get_event_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop)
+calls inside coroutines, where
+[`asyncio.get_running_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_running_loop) (added
+in Python 3.7) returns the loop the coroutine runs on.
 
 ## Why is this bad?
 
-A coroutine runs on a loop that is always running, so `get_event_loop()` only has to return that loop.
-`get_running_loop()` returns it directly and raises `RuntimeError` when no loop runs, which surfaces a mistake that
-`get_event_loop()` would hide. `get_event_loop()` also serves code outside a loop, where Python 3.10 deprecated the
-implicit loop creation and Python 3.14 made the call raise `RuntimeError`.
+Inside a coroutine, a loop is running. The
+[asyncio docs](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop) prefer
+`get_running_loop()` there and in callbacks, because `get_event_loop()` behaves in more complex ways, especially with
+custom event loop policies. `get_running_loop()` returns the running loop or raises
+[`RuntimeError`](https://docs.python.org/3/builtins/exceptions.html#RuntimeError), and it consults no policy.
+
+`get_event_loop()` serves code outside a loop, and that part keeps changing: Python
+[3.10](https://docs.python.org/3.10/library/asyncio-eventloop.html#asyncio.get_event_loop) deprecated the call without a
+running loop, Python 3.14 made it raise `RuntimeError`, and the policy system it consults is deprecated for removal in
+Python 3.16.
 
 ## Example
 

@@ -157,11 +157,13 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 
 #[test_case("from ._api import API\n", 0 ; "direct_private_sibling")]
 #[test_case("from . import _api\n", 1 ; "direct_private_module_object")]
-#[test_case("from .public import _helper\n", 1 ; "direct_private_symbol")]
+#[test_case("from .public import _helper\n", 1 ; "private_symbol_from_public_module")]
 #[test_case("from .public.deep import API\n", 0 ; "deep_public_path")]
 #[test_case("from package import API\n", 0 ; "public_import")]
 #[test_case("from package import __version__\n", 0 ; "dunder_import")]
 #[test_case("from os import _exit\n", 0 ; "public_underscore_name")]
+#[test_case("from ._api import _\n", 0 ; "gettext_alias")]
+#[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from _typeshed import StrPath\n", 0 ; "typeshed_types")]
 #[test_case("from ._api import helper\nVALUE = helper\n", 0 ; "public_name_from_private_module")]
 #[test_case("from ._api import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_private_child")]
 #[test_case("from .public import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_public_sibling")]
@@ -226,6 +228,526 @@ fn private_import_path_nested(source: &str, expected: usize) {
         ("package/sub/consumer.py", source),
     ]);
     common::assert_report_count(root.path(), "SMP310", expected);
+}
+
+// Each hint names a fix, which the `fixed` files apply: SMP310 must accept the result, so a hint never leads to another
+// report. An import the hint writes in backticks must be a line of the fixed files, so a wrong hint fails here.
+fn hinted_imports(message: &str) -> Vec<&str> {
+    message
+        .split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|item| item.starts_with("from ") || item.starts_with("lazy from ") || item.starts_with("import "))
+        .collect()
+}
+
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_internal/_helpers.py", "API = 1\n"),
+        ("package/consumer.py", "from ._internal._helpers import API\n\nVALUE = API\n"),
+    ],
+    &[
+        ("package/_internal/__init__.py", "from ._helpers import API\n"),
+        ("package/consumer.py", "from ._internal import API\n\nVALUE = API\n"),
+    ],
+    "Private import `._internal._helpers`; re-export `API` in `_internal/__init__.py` and import it with `from ._internal import API`"
+    ; "re_export_from_private_package"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_internal/_helpers.py", "API = 1\nmake = 2\n"),
+        ("package/consumer.py", "from ._internal._helpers import API, make\n\nVALUE = API\n"),
+    ],
+    &[
+        ("package/_internal/__init__.py", "from ._helpers import API, make\n"),
+        ("package/consumer.py", "from ._internal import API, make\n\nVALUE = API\n"),
+    ],
+    "Private import `._internal._helpers`; re-export `API, make` in `_internal/__init__.py` and import them with \
+     `from ._internal import API, make`"
+    ; "re_export_of_several_names"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_internal.py", "_helper = 1\n"),
+        ("package/consumer.py", "from ._internal import _helper\n\nVALUE = _helper\n"),
+    ],
+    &[
+        ("package/_internal.py", "helper = 1\n"),
+        ("package/consumer.py", "from ._internal import helper\n\nVALUE = helper\n"),
+    ],
+    "Private import `_helper`; rename it to a public name in `._internal` and import it under that name"
+    ; "private_name_from_private_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "API = 1\n"),
+        ("package/module.py", "from package._api import API\n\nVALUE = API\n"),
+    ],
+    &[
+        ("package/_api.py", "API = 1\n"),
+        ("package/module.py", "from ._api import API\n\nVALUE = API\n"),
+    ],
+    "Private import `package._api`; inside `package` import it with `from ._api import API`; elsewhere import it from a \
+     public module that re-exports it"
+    ; "absolute_private_module_inside_package"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def _h() -> None: ...\n"),
+        ("package/module.py", "from package._api import _h\n\n_h()\n"),
+    ],
+    &[
+        ("package/_api.py", "def h() -> None: ...\n"),
+        ("package/module.py", "from ._api import h\n\nh()\n"),
+    ],
+    "Private import `package._api`; rename `_h` to public names in `package._api`; inside `package` import it from \
+     `._api`, elsewhere from a public module that re-exports it"
+    ; "absolute_private_name_inside_package"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api/__init__.py", ""),
+        ("package/_api/helpers.py", "def _h() -> None: ...\n"),
+        ("package/module.py", "from package._api.helpers import _h\n\n_h()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import h\n"),
+        ("package/_api/__init__.py", "from .helpers import h\n"),
+        ("package/_api/helpers.py", "def h() -> None: ...\n"),
+        ("package/module.py", "from package import h\n\nh()\n"),
+    ],
+    "Private import `package._api.helpers`; rename `_h` to public names in `package._api.helpers`, and import it from a \
+     public module that re-exports it"
+    ; "absolute_private_name_below_sibling"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api/__init__.py", ""),
+        ("package/_api/helpers.py", "API = 1\n"),
+        ("package/module.py", "from package._api.helpers import API\n\nVALUE = API\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import API\n"),
+        ("package/_api/__init__.py", "from .helpers import API\n"),
+        ("package/module.py", "from package import API\n\nVALUE = API\n"),
+    ],
+    "Private import `package._api.helpers`; import it from a public module that re-exports it"
+    ; "absolute_private_parent_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/_api.py", "API = 1\n"),
+        ("package/sub/module.py", "from .._api import API\n\nVALUE = API\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import API\n"),
+        ("package/sub/module.py", "from .. import API\n\nVALUE = API\n"),
+    ],
+    "Private import `.._api`; re-export `API` in the `__init__.py` of the package that holds it, and import it from there"
+    ; "parent_relative_private_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/_api.py", "def _h() -> None: ...\n"),
+        ("package/sub/module.py", "from .._api import _h\n\n_h()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import h\n"),
+        ("package/_api.py", "def h() -> None: ...\n"),
+        ("package/sub/module.py", "from .. import h\n\nh()\n"),
+    ],
+    "Private import `.._api`; rename `_h` to public names in `.._api`, re-export it in the `__init__.py` of the package \
+     that holds it, and import it from there"
+    ; "parent_relative_private_name"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_x.py", "def what() -> None: ...\n"),
+        ("package/b.py", "from ._a._x import what\n\nwhat()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._x import what\n"),
+        ("package/b.py", "from ._a import what\n\nwhat()\n"),
+    ],
+    "Private import `._a._x`; re-export `what` in `_a/__init__.py` and import it with `from ._a import what`"
+    ; "re_export_of_two_private_layers"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/b/__init__.py", ""),
+        ("package/_a/b/_c.py", "def what() -> None: ...\n"),
+        ("package/m3.py", "from ._a.b._c import what\n\nwhat()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from .b import what\n"),
+        ("package/_a/b/__init__.py", "from ._c import what\n"),
+        ("package/m3.py", "from ._a import what\n\nwhat()\n"),
+    ],
+    "Private import `._a.b._c`; re-export `what` in every package along `._a.b._c`: `_a/b/__init__.py`, \
+     `_a/__init__.py` and import it with `from ._a import what`"
+    ; "re_export_through_every_package"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_b.py", "def _c() -> None: ...\n"),
+        ("package/b.py", "from ._a._b import _c\n\n_c()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._b import c\n"),
+        ("package/_a/_b.py", "def c() -> None: ...\n"),
+        ("package/b.py", "from ._a import c\n\nc()\n"),
+    ],
+    "Private import `._a._b`; rename `_c` to public names in `._a._b`, re-export it in `_a/__init__.py` and import it from \
+     `._a`"
+    ; "rename_private_name_of_two_private_layers"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_b.py", "def _c() -> None: ...\n"),
+        ("package/b.py", "from ._a._b import _c as c\n\nc()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._b import c\n"),
+        ("package/_a/_b.py", "def c() -> None: ...\n"),
+        ("package/b.py", "from ._a import c\n\nc()\n"),
+    ],
+    "Private import `._a._b`; rename `_c` to public names in `._a._b`, re-export it in `_a/__init__.py` and import it from \
+     `._a`"
+    ; "private_name_with_alias"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_b.py", "def _c() -> None: ...\ndef _d() -> None: ...\n"),
+        ("package/b.py", "from ._a._b import _c, _d\n\n_c()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._b import c, d\n"),
+        ("package/_a/_b.py", "def c() -> None: ...\ndef d() -> None: ...\n"),
+        ("package/b.py", "from ._a import c, d\n\nc()\n"),
+    ],
+    "Private import `._a._b`; rename `_c, _d` to public names in `._a._b`, re-export them in `_a/__init__.py` and import \
+     them from `._a`"
+    ; "private_names_of_several"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_x.py", "def what() -> None: ...\ndef _priv() -> None: ...\n"),
+        ("package/m1.py", "from ._a._x import what, _priv\n\nwhat()\n_priv()\n"),
+    ],
+    &[
+        ("package/_a/_x.py", "def what() -> None: ...\ndef priv() -> None: ...\n"),
+        ("package/_a/__init__.py", "from ._x import what, priv\n"),
+        ("package/m1.py", "from ._a import what, priv\n\nwhat()\npriv()\n"),
+    ],
+    "Private import `._a._x`; rename `_priv` to public names in `._a._x`, re-export them in `_a/__init__.py` and import \
+     them from `._a`"
+    ; "mixed_public_and_private_names"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_x.py", "def what() -> None: ...\n"),
+        ("package/b.py", "from ._a import _x\n\n_x.what()\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._x import what\n"),
+        ("package/b.py", "from ._a import what\n\nwhat()\n"),
+    ],
+    "Private import `_x`; re-export the names you use in `_a/__init__.py` and import them from `._a`"
+    ; "submodule_of_private_package"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def make() -> None: ...\n"),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/m2.py", "from package._api import make\n\nmake()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import make\n"),
+        ("package/sub/m2.py", "from package import make\n\nmake()\n"),
+    ],
+    "Private import `package._api`; re-export `make` in `package/__init__.py` and import it with `from package import make`"
+    ; "absolute_import_from_subpackage"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def make() -> None: ...\n"),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/m2.py", "import package._api as api\n\napi.make()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import make\n"),
+        ("package/sub/m2.py", "from package import make\n\nmake()\n"),
+    ],
+    "Private import `package._api`; re-export the names you use in `package/__init__.py` and import them from `package`"
+    ; "module_object_from_subpackage"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_x.py", "def what() -> None: ...\n"),
+        ("package/m5.py", "from ._a._x import *\n"),
+    ],
+    &[
+        ("package/_a/__init__.py", "from ._x import *\n"),
+        ("package/m5.py", "from ._a import *\n"),
+    ],
+    "Private import `._a._x`; re-export the names you use in `_a/__init__.py` and import them from `._a`"
+    ; "star_of_private_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/_api.py", "def make() -> None: ...\n"),
+        ("package/sub/module.py", "from .._api import *\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import *\n"),
+        ("package/sub/module.py", "from .. import *\n"),
+    ],
+    "Private import `.._api`; re-export the names you use in the `__init__.py` of the package that holds them, and import \
+     them from there"
+    ; "star_of_parent_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/module.py", "from . import _api\n\nVALUE = _api.make()\n"),
+    ],
+    &[
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/module.py", "from ._api import make\n\nVALUE = make()\n"),
+    ],
+    "Private import `_api`; import the names you use from `._api`"
+    ; "module_object_of_private_sibling"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/module.py", "import package._api as api\n\nVALUE = api.make()\n"),
+    ],
+    &[
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/module.py", "from ._api import make\n\nVALUE = make()\n"),
+    ],
+    "Private import `package._api`; import the names you use from `._api` inside `package`, or from a public module \
+     that re-exports them elsewhere"
+    ; "module_object_absolute_import"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api/__init__.py", ""),
+        ("package/_api/helpers.py", "def make() -> object:\n    return object()\n"),
+        ("package/module.py", "import package._api.helpers as helpers\n\nVALUE = helpers.make()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import make\n"),
+        ("package/_api/__init__.py", "from .helpers import make\n"),
+        ("package/module.py", "from package import make\n\nVALUE = make()\n"),
+    ],
+    "Private import `package._api.helpers`; import the names you use from a public module that re-exports them"
+    ; "module_object_absolute_deep_import"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/sub/module.py", "from .. import _api\n\nVALUE = _api.make()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import make\n"),
+        ("package/sub/module.py", "from .. import make\n\nVALUE = make()\n"),
+    ],
+    "Private import `_api`; re-export the names you use in the `__init__.py` of the package that holds them, and import \
+     them from there"
+    ; "module_object_parent_relative"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/public.py", "_helper = 1\n"),
+        ("package/sub/module.py", "from ..public import _helper\n\nVALUE = _helper\n"),
+    ],
+    &[
+        ("package/public.py", "helper = 1\n"),
+        ("package/sub/module.py", "from ..public import helper\n\nVALUE = helper\n"),
+    ],
+    "Private import `_helper`; rename it to a public name in `..public` and import it under that name"
+    ; "private_name_from_public_module"
+)]
+#[test_case(
+    &[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def _h() -> None: ...\n"),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/m.py", "from package._api import _h\n\n_h()\n"),
+    ],
+    &[
+        ("package/__init__.py", "from ._api import h\n"),
+        ("package/_api.py", "def h() -> None: ...\n"),
+        ("package/sub/m.py", "from package import h\n\nh()\n"),
+    ],
+    "Private import `package._api`; rename `_h` to public names in `package._api`, re-export it in `package/__init__.py` \
+     and import it from `package`"
+    ; "absolute_private_name_from_subpackage"
+)]
+fn private_import_path_hint(report: &[(&str, &str)], fixed: &[(&str, &str)], hint: &str) {
+    let root = common::project(report);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
+    assert!(stdout.contains(hint), "{stdout}");
+    let written: Vec<&str> = fixed.iter().flat_map(|(_, content)| content.lines()).collect();
+    for import in hinted_imports(hint) {
+        assert!(written.contains(&import), "the hint writes `{import}`, which the fix does not contain:\n{stdout}");
+    }
+    let root = common::project(&[report, fixed].concat());
+    common::assert_report_count(root.path(), "SMP310", 0);
+}
+
+#[test]
+fn lazy_private_name_hint_applies_its_import() {
+    let report: &[(&str, &str)] = &[
+        ("package/__init__.py", ""),
+        ("package/_a/__init__.py", ""),
+        ("package/_a/_x.py", "def what() -> None: ...\n"),
+        ("package/b.py", "lazy from ._a._x import what as w\n\nw()\n"),
+    ];
+    let fixed: &[(&str, &str)] = &[
+        ("package/_a/__init__.py", "from ._x import what\n"),
+        ("package/b.py", "lazy from ._a import what as w\n\nw()\n"),
+    ];
+    let args = ["--no-cache", "--select", "SMP310", "--target-version", "py315"];
+    let hint = "re-export `what` in `_a/__init__.py` and import it with `lazy from ._a import what as w`";
+    let stdout = common::check(common::project(report).path(), &args).1;
+    assert!(stdout.contains(hint), "{stdout}");
+    let written: Vec<&str> = fixed.iter().flat_map(|(_, content)| content.lines()).collect();
+    assert!(written.contains(&"lazy from ._a import what as w"), "{written:?}");
+    let stdout = common::check(common::project(&[report, fixed].concat()).path(), &args).1;
+    assert!(common::reports(&stdout, "SMP310").is_empty(), "{stdout}");
+}
+
+#[test]
+fn private_package_with_reexport_is_clean() {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_a/__init__.py", "from ._x import what\n"),
+        ("pkg/_a/_x.py", "def what() -> None: ...\n"),
+        ("pkg/b.py", "from ._a import what\n\nwhat()\n"),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", 0);
+    common::assert_report_count(root.path(), "SMP311", 0);
+}
+
+#[test_case(&[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_html_c.py", "")], 3 ; "three_modules")]
+#[test_case(&[("pkg/_html_a.py", ""), ("pkg/_html_b.py", "")], 0 ; "two_modules")]
+#[test_case(
+    &[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_html_c.py", ""), ("pkg/_html/__init__.py", "")],
+    0
+    ; "package_exists"
+)]
+#[test_case(&[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_html.py", "")], 0 ; "module_without_rest")]
+#[test_case(&[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/html_c.py", "")], 0 ; "public_module")]
+#[test_case(&[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_htmlx_c.py", "")], 0 ; "other_prefix")]
+#[test_case(
+    &[("pkg/__html_a.py", ""), ("pkg/__html_b.py", ""), ("pkg/__html_c.py", "")],
+    0
+    ; "leading_double_underscore"
+)]
+#[test_case(&[("pkg/__init__.py", ""), ("pkg/_html_a.py", ""), ("pkg/_html_b.py", "")], 0 ; "dunder_init")]
+#[test_case(
+    &[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_html_c.pyi", "")],
+    2
+    ; "stub_counts_toward_prefix"
+)]
+#[test_case(
+    &[("pkg/_html_a.py", ""), ("pkg/_html_b.py", ""), ("pkg/_html_c.py", ""), ("pkg/_html_c.pyi", "")],
+    3
+    ; "stub_beside_module_counts_once"
+)]
+#[test_case(
+    &[("pkg/_io_a.py", ""), ("pkg/_io_b.py", ""), ("pkg/_io_c.py", ""), ("pkg/_io/data.txt", "x\n")],
+    3
+    ; "data_directory_is_not_a_package"
+)]
+fn flattened_package(files: &[(&str, &str)], expected: usize) {
+    let root = common::project(files);
+    common::assert_report_count(root.path(), "SMP311", expected);
+}
+
+#[test]
+fn flattened_package_message_names_the_prefix_and_its_siblings() {
+    let root = common::project(&[("pkg/_html_url.py", ""), ("pkg/_html_parse.py", ""), ("pkg/_html_css.py", "")]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP311"]).1;
+    assert!(
+        stdout.contains(
+            "SMP311 `_html_css.py` shares the `_html_` prefix with 2 other modules; group them in a `_html` package \
+             that re-exports their names from its `__init__.py`"
+        ),
+        "{stdout}"
+    );
+}
+
+#[test_case("py" ; "module")]
+#[test_case("pyi" ; "stub")]
+fn flattened_package_moves_a_conflicting_prefix_module_into_the_package(extension: &str) {
+    let module = format!("pkg/_csv.{extension}");
+    let root =
+        common::project(&[(module.as_str(), ""), ("pkg/_csv_a.py", ""), ("pkg/_csv_b.py", ""), ("pkg/_csv_c.py", "")]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP311"]).1;
+    assert!(
+        stdout.contains(&format!(
+            "SMP311 `_csv_a.py` shares the `_csv_` prefix with 2 other modules; move `_csv.{extension}` into a `_csv` \
+             package as its `__init__.py`, which re-exports their names"
+        )),
+        "{stdout}"
+    );
+    assert_eq!(common::reports(&stdout, "SMP311").len(), 3, "{stdout}");
+}
+
+#[test]
+fn flattened_package_counts_a_package_the_run_leaves_out() {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_h/__init__.py", ""),
+        ("pkg/_h_a.py", ""),
+        ("pkg/_h_b.py", ""),
+        ("pkg/_h_c.py", ""),
+    ]);
+    let files = ["--no-cache", "--select", "SMP311", "pkg/_h_a.py", "pkg/_h_b.py", "pkg/_h_c.py"];
+    let stdout = common::check(root.path(), &files).1;
+    assert!(common::reports(&stdout, "SMP311").is_empty(), "{stdout}");
 }
 
 #[test_case("tests/a/b/test_x.py", "from a.b._x import Name\nVALUE: Name\n", 0 ; "paired_mirrored")]
@@ -345,6 +867,12 @@ fn private_module_object_import_reports_both_import_and_attribute() {
 #[test_case(
     "consumer.py", "from typing import cast\n\nfrom pkg._api import API\n\nVALUE = cast(\"API\", 1)\n", true
     ; "string_cast"
+)]
+#[test_case(
+    "consumer.py",
+    "from typing import cast\n\nfrom pkg._api import API\n\nVALUE = cast(\"API\", 1)\nKNOWN = isinstance(VALUE, API)\n",
+    false
+    ; "string_cast_with_runtime_use"
 )]
 #[test_case(
     "consumer.py", "from pkg._api import API\n\nVALUE: \"list[API]\" = []\n", true
@@ -635,6 +1163,28 @@ fn module_attribute_import_fixes_after_first_report_is_suppressed() {
         common::read(root.path(), "pkg/use.py"),
         "from .mod import alpha, beta\n\nprint(alpha())  # noqa: SMP304\nprint(beta())\n"
     );
+}
+
+// `from . import b` at import time reads `VALUE` before `a` has defined it when `b` imports `a` back, so the cycle keeps
+// the reports and withholds the fix. A back-import under `TYPE_CHECKING` is not a runtime import, so no cycle forms.
+#[test_case(
+    "from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n", false
+    ; "runtime_back_import"
+)]
+#[test_case(
+    "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n",
+    true
+    ; "type_checking_back_import"
+)]
+fn module_attribute_import_withholds_the_fix_in_an_import_cycle(partner: &str, fixable: bool) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", "from . import b\n\nVALUE = 1\n\n\ndef run() -> int:\n    return b.helper()\n"),
+        ("pkg/b.py", partner),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
+    assert_eq!(stdout.matches("SMP304 Import").count(), 2, "{stdout}");
+    assert_eq!(stdout.contains("unsafe fix"), fixable, "{stdout}");
 }
 
 // The fix rewrites the reads of the module only, so a parameter, local, loop or comprehension variable of the same name
@@ -995,4 +1545,17 @@ fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str
     let root =
         common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
     common::assert_report_count(root.path(), "SMP303", reports);
+}
+
+#[test_case("import json\n\nTEXT = json.dumps([])\n", true ; "attribute")]
+#[test_case("import json\nimport json\n\nTEXT = json.dumps([])\n", false ; "bound_twice")]
+#[test_case("import json\n\nTEXT = json.dumps([])\nprint(json)\n", false ; "used_as_value")]
+#[test_case("import json\n\nTEXT = json.__name__\n", false ; "dunder")]
+fn module_attribute_import_outside_modules(source: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint.imports]\nmodule-attribute-scope = [\"stdlib\"]\n"),
+        ("consumer.py", source),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304"]).1;
+    assert_eq!(stdout.contains("Import `"), reported, "{stdout}");
 }

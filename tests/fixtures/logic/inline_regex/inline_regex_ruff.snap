@@ -1,0 +1,182 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+14:12 SMP534 Compile this pattern once at module level and call its `split` [unsafe fix: Move the pattern to a module-level constant]
+18:12 SMP534 Compile this pattern once at module level and call its `split`
+26:12 SMP534 Compile this pattern once at module level and call its `sub`
+34:12 SMP534 Compile this pattern once at module level and call its `sub`
+38:12 SMP534 Compile this pattern once at module level and call its `sub`
+85:13 SMP534 Compile this pattern once at module level and call its `match`
+90:5 SMP534 Compile this pattern once at module level and call its `search`
+94:12 SMP534 Compile this pattern once at module level and call its `match`
+98:12 SMP534 Compile this pattern once at module level and call its `match`
+102:8 SMP534 Compile this pattern once at module level and call its `match`
+108:12 SMP534 Compile this pattern once at module level and call its `match`
+116:12 SMP534 Compile this pattern once at module level and call its `sub`
+--- fixed (1 applied, 0 remaining) ---
+import re
+from typing import Final
+
+import regex
+
+REPLACEMENT = "_"
+ESCAPED_REPLACEMENT = r"\d"
+
+
+def split_plain(text):
+    return re.split(",", text)
+
+
+_SPLIT_MAXSPLIT_PATTERN: Final[re.Pattern[str]] = re.compile(",")
+
+
+def split_maxsplit(text):
+    return _SPLIT_MAXSPLIT_PATTERN.split(text, maxsplit=1)
+
+
+_SPLIT_EMPTY_PATTERN: Final[re.Pattern[str]] = re.compile("")
+
+
+def split_empty(text):
+    return _SPLIT_EMPTY_PATTERN.split(text)
+
+
+def sub_plain(text):
+    return re.sub("-", "_", text)
+
+
+_SUB_NAME_REPLACEMENT_PATTERN: Final[re.Pattern[str]] = re.compile("-")
+
+
+def sub_name_replacement(text, repl):
+    return _SUB_NAME_REPLACEMENT_PATTERN.sub(repl, text)
+
+
+def sub_escape_without_fix(text):
+    return re.sub("-", r"\n", text)
+
+
+_SUB_UNESCAPABLE_PATTERN: Final[re.Pattern[str]] = re.compile("-")
+
+
+def sub_unescapable(text):
+    return _SUB_UNESCAPABLE_PATTERN.sub(r"\d", text)
+
+
+_SUB_COUNT_PATTERN: Final[re.Pattern[str]] = re.compile("-")
+
+
+def sub_count(text):
+    return _SUB_COUNT_PATTERN.sub("_", text, count=1)
+
+
+def match_test(text):
+    if re.match("abc", text):
+        return True
+    return False
+
+
+def search_negated(text):
+    return not re.search("abc", text)
+
+
+def fullmatch_none(text):
+    return re.fullmatch("abc", text) is None
+
+
+def prefixmatch_bool(text):
+    return bool(re.prefixmatch("abc", text))
+
+
+def and_test(text):
+    if text and re.search("abc", text):
+        return True
+    return False
+
+
+def ternary(text):
+    return 1 if re.match("abc", text) else 0
+
+
+def comprehension(items):
+    return [item for item in items if re.fullmatch("abc", item)]
+
+
+def asserted(text):
+    assert re.search("abc", text)
+
+
+def guarded(value):
+    match value:
+        case str() if re.match("abc", value):
+            return True
+    return False
+
+
+_FOUND_PATTERN: Final[re.Pattern[str]] = re.compile("abc")
+
+
+def match_value(text):
+    found = _FOUND_PATTERN.match(text)
+    return found
+
+
+_SEARCH_STATEMENT_PATTERN: Final[re.Pattern[str]] = re.compile("abc")
+
+
+def search_statement(text):
+    _SEARCH_STATEMENT_PATTERN.search(text)
+
+
+_MATCH_RETURN_PATTERN: Final[re.Pattern[str]] = re.compile("abc")
+
+
+def match_return(text):
+    return _MATCH_RETURN_PATTERN.match(text)
+
+
+_FLAGS_PLAIN_PATTERN: Final[re.Pattern[str]] = re.compile("abc", re.I)
+
+
+def flags_plain(text):
+    return _FLAGS_PLAIN_PATTERN.match(text)
+
+
+_METACHARACTER_TEST_PATTERN: Final[re.Pattern[str]] = re.compile("a.c")
+
+
+def metacharacter_test(text):
+    if _METACHARACTER_TEST_PATTERN.match(text):
+        return True
+    return False
+
+
+_REGEX_MODULE_PATTERN: Final[regex.Pattern[str]] = regex.compile("abc")
+
+
+def regex_module(text):
+    return _REGEX_MODULE_PATTERN.match(text)
+
+
+def sub_named_replacement(text):
+    return re.sub("-", REPLACEMENT, text)
+
+
+_SUB_NAMED_ESCAPE_PATTERN: Final[re.Pattern[str]] = re.compile("-")
+
+
+def sub_named_escape(text):
+    return _SUB_NAMED_ESCAPE_PATTERN.sub(ESCAPED_REPLACEMENT, text)
+
+
+def set_comprehension(items):
+    return {item for item in items if re.search("abc", item)}
+
+
+def generator_condition(items):
+    return any(item for item in items if re.search("abc", item))
+
+
+def dict_comprehension(items):
+    return {item: 1 for item in items if re.search("abc", item)}

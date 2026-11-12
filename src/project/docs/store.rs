@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use super::{DocReferences, Module};
+use super::{AutoclassContent, Directives, DocReferences, Module, RootDocs};
 use crate::project::cache;
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -9,6 +9,16 @@ struct CachedDocs {
     names: Vec<String>,
     scopes: Vec<String>,
     modules: Vec<Module>,
+    roots: Vec<CachedRoot>,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct CachedRoot {
+    root: String,
+    default: AutoclassContent,
+    named: AutoclassContent,
+    qualified: Vec<(String, Option<AutoclassContent>)>,
+    simple: Vec<(String, Option<AutoclassContent>)>,
 }
 
 impl DocReferences {
@@ -19,6 +29,18 @@ impl DocReferences {
             names: cached.names.into_iter().collect(),
             scopes: cached.scopes.into_iter().collect(),
             modules: cached.modules.into_iter().collect(),
+            roots: cached
+                .roots
+                .into_iter()
+                .map(|root| {
+                    let directives = Directives {
+                        qualified: root.qualified.into_iter().collect(),
+                        simple: root.simple.into_iter().collect(),
+                    };
+                    let docs = RootDocs { default: root.default, named: root.named, directives };
+                    (PathBuf::from(root.root), docs)
+                })
+                .collect(),
         })
     }
 
@@ -29,6 +51,22 @@ impl DocReferences {
             names: self.names.iter().cloned().collect(),
             scopes: self.scopes.iter().cloned().collect(),
             modules: self.modules.iter().cloned().collect(),
+            roots: self
+                .roots
+                .iter()
+                .map(|(root, docs)| CachedRoot {
+                    root: root.to_string_lossy().into_owned(),
+                    default: docs.default,
+                    named: docs.named,
+                    qualified: docs
+                        .directives
+                        .qualified
+                        .iter()
+                        .map(|(name, content)| (name.clone(), *content))
+                        .collect(),
+                    simple: docs.directives.simple.iter().map(|(name, content)| (name.clone(), *content)).collect(),
+                })
+                .collect(),
         };
         let written = rkyv::to_bytes::<rkyv::rancor::Error>(&cached)
             .map_err(anyhow::Error::from)

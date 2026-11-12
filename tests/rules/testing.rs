@@ -15,6 +15,7 @@ use crate::common;
 #[test_case("parametrize-without-id", "tests/test_parametrize_names.py", None ; "parametrize_names")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_bindings.py", None ; "parametrize_bindings")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_helpers.py", None ; "parametrize_helpers")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_ids_list.py", None ; "parametrize_ids_list")]
 #[test_case("conditional-in-test", "tests/test_conditional_in_test.py", None ; "conditional_in_test")]
 #[test_case("conditional-in-test", "multiline_module_docstring_ok.py", None ; "conditional_in_test_regular_module")]
 #[test_case("constant-assert", "constant_assert.py", None ; "constant_assert")]
@@ -34,6 +35,7 @@ use crate::common;
     "mock-attribute-assignment", "tests/test_mock_reserved_attribute.py", None ; "mock_attribute_assignment_reserved"
 )]
 #[test_case("mock-without-spec", "tests/test_mock_without_spec.py", None ; "mock_without_spec")]
+#[test_case("mock-without-spec", "tests/test_mock_spec_members.py", None ; "mock_without_spec_members")]
 #[test_case("split-composite-assert", "tests/test_split_composite_assert.py", None ; "split_composite_assert")]
 #[test_case("sleep-in-test", "tests/test_sleep_in_test.py", None ; "sleep_in_test")]
 #[test_case("sleep-in-test", "tests/test_sleep_patched.py", None ; "sleep_in_test_patched")]

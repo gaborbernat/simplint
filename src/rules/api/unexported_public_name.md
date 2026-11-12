@@ -2,9 +2,14 @@ Flags top-level functions and classes that look public, with no leading undersco
 
 ## Why is this bad?
 
-`__all__` declares the public API. A name that looks public but is missing from it leaves readers unsure whether they
-may depend on it. A leading underscore answers that question at every use
-([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)).
+`__all__` declares the public API, and the
+[language reference](https://docs.python.org/3/reference/simple_stmts.html#the-import-statement) asks it to contain all
+of it. A name that looks public but is missing from `__all__` gets conflicting answers: a star import and Sphinx's
+[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+skip it, while the
+[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+does not make it private. [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) settles it with a
+leading underscore on internal names, even when `__all__` is set, so readers see the answer wherever the name appears.
 
 ## Example
 
@@ -161,7 +166,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
         pass
     ```
 
-  - names a file reads off a module loaded by a computed name, such as the result of `importlib.import_module`, off a
+  - names a file reads off a module loaded by a computed name, such as the result of
+    [`importlib.import_module`](https://docs.python.org/3/library/importlib.html#importlib.import_module), off a
     parameter annotated `ModuleType`, or off a module whose spec loads from a path no static expression names:
 
     ```python ok
@@ -195,8 +201,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
     helper = pytest.importorskip("plugins").helper
     ```
 
-  - names read off a module loaded from a file path with `importlib.util.spec_from_file_location` and
-    `module_from_spec`, when the path names a project module, as `Path(__file__).parent / "plugins.py"` does:
+  - names read off a module loaded from a file path with
+    [`importlib.util.spec_from_file_location`](https://docs.python.org/3/library/importlib.html#importlib.util.spec_from_file_location)
+    and `module_from_spec`, when the path names a project module, as `Path(__file__).parent / "plugins.py"` does:
 
     ```python ok file=plugins.py
     __all__ = []
@@ -487,7 +494,8 @@ No fix is offered when:
           return type(self).__name__
   ```
 
-- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
+- a file of the run sets an attribute of the module under a computed name, as
+  [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does
 
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a
   keyword argument or an attribute access

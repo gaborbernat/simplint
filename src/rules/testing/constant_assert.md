@@ -4,11 +4,11 @@ makes a test look like it verifies more than it does.
 ## Why is this bad?
 
 An assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than
-it does. A parenthesized `assert (check, "message")` is a non-empty tuple and falls in the same trap. Ruff reports every
-non-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and
-[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or
-f-string literal. This rule leaves those cases to Ruff when it has no fix for them, whether or not the project selects
-the Ruff rule.
+it does. Two other forms are always true. A parenthesized `assert (check, "message")` is a non-empty tuple, which
+CPython's compiler [warns about](https://mail.python.org/pipermail/python-checkins/2021-March/169383.html). An
+`assert (value for value in values)` tests a generator object, which is true even when it yields nothing;
+[`all(...)`](https://docs.python.org/3/builtins/functions.html#all) is the check it likely meant. flake8-bugbear reports
+the generator form as [B044](https://github.com/PyCQA/flake8-bugbear#list-of-warnings), but not the tuple form.
 
 ## Example
 
@@ -212,9 +212,9 @@ The fix depends on the constant:
   assert (ready := True), "message"
   ```
 
-- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first
-  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any
-  error it raises.
+- A generator becomes [`all(...)`](https://docs.python.org/3/builtins/functions.html#all) around the same expression.
+  **Unsafe fix:** the restored check may now fail. Its first iterable is evaluated when the generator is built, so
+  deleting the assertion would also drop that evaluation and any error it raises.
 
   ```python report
   values = [1, 2]
@@ -324,6 +324,13 @@ flowchart TD
     class unwrap,wrap teal
     class none,left orange
 ```
+
+## Ruff overlap
+
+Ruff reports every non-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and
+[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or
+f-string literal. This rule leaves those cases to Ruff when it has no fix for them, whether or not the project selects
+the Ruff rule.
 
 ## Other tools
 

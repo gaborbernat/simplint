@@ -3,9 +3,15 @@ private module as an object. In tests, imports from private modules must match t
 
 ## Why is this bad?
 
-Importing a module such as `package._api` exposes its implementation path to callers. Importing a private name from
-another module makes that module's internal implementation part of the caller's contract. Define a public name in its
-owning module when other modules need it, and re-export that name at each package level. A parent-relative import such
+A module imports only public names, and only from its direct private child: `from ._a import what`. A private name is
+never imported across modules. The private module makes it public instead, which keeps it out of the package API while
+the module itself stays private. When the name lives deeper, in `_a/_x.py`, the child package re-exports it
+(`from ._x import what` in `_a/__init__.py`) and every caller above imports it from there. Each package then decides
+what it exposes one level up, and moving `_x` inside `_a` touches only `_a/__init__.py`. Flattening the layout or
+suppressing the rule only hides the deeper import.
+
+Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
+package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
 as `from .._api import API` also crosses a package boundary.
 
 ## Example
@@ -41,26 +47,102 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Private module-object imports**, such as `import package._api as api` and `from . import _api`.
 
+  ```python report
+  import package._api as api
+
+
+  def describe(value: api.API) -> None:
+      print(value)
+  ```
+
 - **Absolute private imports**, such as `from package._api import API`. Use `from ._api import API` within the same
   package, or import `API` from a public re-export elsewhere.
 
+  ```python report
+  from package._api import API
+
+
+  def describe(value: API) -> None:
+      print(value)
+  ```
+
 - **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
 
-- **Private imported names**, such as `from ._api import _helper`. This also applies to paired tests. Define a public
-  name in the owning module and re-export it through each package level that needs it.
+  ```python report file=package/sub/consumer.py
+  from .._api import API
 
-- **Deep private paths**, such as `from ._internal._helpers import API` or `from ._internal.helpers import API`. Import
-  from the direct sibling package boundary instead.
+  value = API()
+  ```
+
+- **Paths with two private names**, such as `from ._a._x import what` or `from ._internal._helpers import API`. A direct
+  relative import may cross one private name, not two. The fix for `from ._a._x import what` is a re-export, not moving
+  the module: the package's `__init__.py` imports `what` from its private module, and the caller imports `what` from the
+  package.
+
+- **Private names from another module**, such as `from ._internal import _helper` or `from .public import _helper`.
+  Rename the name to a public one inside its module; the module can stay private. A paired test follows the same rule.
+
+  ```python report file=package/consumer.py
+  from .public import _helper
+
+  _helper()
+  ```
+
+  ```python context file=package/public.py
+  def _helper() -> None: ...
+  ```
+
+  ```python report file=package/b.py
+  from ._a._x import what
+
+  what()
+  ```
+
+  ```python context file=package/_a/_x.py
+  def what() -> None: ...
+  ```
+
+  Re-export `what` in the package's `__init__.py`, then import it from the package:
+
+  ```python context file=package/_a/__init__.py
+  from ._x import what
+  ```
+
+  ```python ok file=package/b.py
+  from ._a import what
+
+  what()
+  ```
 
 - **Private modules below a sibling**, such as `from ._api.helpers import API`.
+
+  ```python report file=package/consumer.py
+  from ._api.helpers import API
+
+  value = API()
+  ```
 
 - **Unpaired test imports**, such as `tests/package/test_api.py` importing from `package._other`. A test of a private
   module may import from the matching module only; other behavior should be reached through public interfaces.
 
+  ```python report file=tests/package/test_api.py
+  from package._other import API
+
+
+  def test_api(api: API) -> None:
+      assert api
+  ```
+
 ### Exceptions
 
-- **Direct relative sibling imports of public names**: `from ._api import API` lets modules within one package share a
-  public name without exposing the private module's path outside that package.
+- **A public name from a direct private child**: `from ._api import API` lets the package use a private sibling to build
+  an API outside tests.
+
+  ```python ok file=package/consumer.py
+  from ._api import API
+
+  value = API()
+  ```
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
@@ -69,16 +151,62 @@ re-export or replacing uses of a module object may require changes elsewhere.
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
   exists. The imported name must still be public.
 
+  ```python context file=package/_api.py
+  class API:
+      pass
+  ```
+
+  ```python ok file=tests/package/test_api.py
+  from package._api import API
+
+
+  def test_api(api: API) -> None:
+      assert api
+  ```
+
   A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source module.
   Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 
+- **gettext's `_`**: `from ._i18n import _` imports the translation function by its conventional name.
+
+- **`_typeshed`**: [typeshed](https://github.com/python/typeshed/tree/main/stdlib/_typeshed) documents it as the module
+  stubs and `TYPE_CHECKING` blocks import types from, such as `from _typeshed import StrPath`.
+
+  ```python ok file=consumer.py
+  from __future__ import annotations
+
+  from package.__version__ import __version__
+
+
+  def show() -> str:
+      return __version__
+  ```
+
 - **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
   API despite its underscore.
 
+  ```python ok
+  from os import _exit
+
+
+  def stop() -> None:
+      _exit(0)
+  ```
+
 - **Private local aliases of public imports**: `from .windows import Windows as _Result` imports a public name. The
   alias belongs to the importing module.
+
+  ```python ok file=package/consumer.py
+  from .windows import Windows as _Result
+
+  VALUE = _Result
+  ```
+
+  ```python context file=package/windows.py
+  class Windows: ...
+  ```
 
 ## Ruff overlap
 

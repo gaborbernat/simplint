@@ -3,8 +3,15 @@ Flags exception classes that no `except` clause in the run names by name.
 ## Why is this bad?
 
 Callers handle an error by the type they catch. A class that nothing catches by name adds a name to import and a type to
-document, yet callers cannot tell it from a built-in exception, which says the same thing. Raising a built-in such as
-`ValueError` keeps the program to the types Python already has.
+document, yet callers cannot tell it from a built-in exception, which says the same thing. The
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#244-decision) asks for built-in exception
+classes where they fit, and Jack Diederich's
+[Stop Writing Classes](https://us.pycon.org/2012/schedule/presentation/352/) removes needless exception classes from
+real code. Raising a built-in such as [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError)
+keeps the program to the types Python already has. A
+[style-guide discussion](https://github.com/amontalenti/elements-of-python-style/issues/9) records David Beazley and
+others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs. A class that no handler
+names gives no such protection: no caller tells it apart from a built-in.
 
 ## Example
 
@@ -28,8 +35,10 @@ def load(path: str) -> None:
 
 ### Active on
 
-- **Exception classes no handler names**: a class whose base is `Exception`, `BaseException`, a class of the run that is
-  one, or a standard-library exception, with no `except` clause in non-test code that names it or a subclass of it.
+- **Exception classes no handler names**: a class whose base is
+  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception),
+  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException), a class of the run that is one,
+  or a standard-library exception, with no `except` clause in non-test code that names it or a subclass of it.
 
   ```python report
   class ConfigError(Exception):
@@ -44,7 +53,7 @@ def load(path: str) -> None:
   ```
 
 - **Standard-library exception bases**: a class of a standard-library module whose name ends in `Error`, `Exception` or
-  `Warning` counts as an exception base.
+  [`Warning`](https://docs.python.org/3/builtins/exceptions.html#Warning) counts as an exception base.
 
   ```python report
   from json import JSONDecodeError
@@ -150,8 +159,8 @@ def load(path: str) -> None:
             pass
     ```
 
-  - **A class given to `contextlib.suppress`**: each argument of `suppress` counts, starred or not, since the context
-    manager catches it.
+  - **A class given to [`contextlib.suppress`](https://docs.python.org/3/library/contextlib.html#contextlib.suppress)**:
+    each argument of `suppress` counts, starred or not, since the context manager catches it.
 
     ```python ok file=app/errors.py
     class ConfigError(Exception):

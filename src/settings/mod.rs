@@ -562,6 +562,7 @@ pub struct Knobs {
     pub(crate) meaningless_names: Vec<String>,
     pub(crate) catch_all_modules: Vec<String>,
     pub(crate) module_attributes: Vec<String>,
+    pub(crate) module_attribute_scope: Vec<String>,
     pub(crate) max_helper_statements: usize,
     pub(crate) max_caller_statements: usize,
     pub(crate) max_tuple_elements: usize,
@@ -586,6 +587,7 @@ impl Knobs {
                 ["utils", "util", "utilities", "helpers", "helper", "common", "misc"].map(str::to_owned).into()
             }),
             module_attributes: imports.module_attributes.unwrap_or_default(),
+            module_attribute_scope: imports.module_attribute_scope.unwrap_or_else(|| vec!["project".to_owned()]),
             max_helper_statements: logic.max_helper_statements.unwrap_or(3),
             max_caller_statements: logic.max_caller_statements.unwrap_or(20),
             max_tuple_elements: logic.max_tuple_elements.unwrap_or(2),
@@ -697,6 +699,7 @@ mod tests {
             ("naming.meaningless-names", serde_json::json!(knobs.meaningless_names)),
             ("naming.catch-all-modules", serde_json::json!(knobs.catch_all_modules)),
             ("imports.module-attributes", serde_json::json!(knobs.module_attributes)),
+            ("imports.module-attribute-scope", serde_json::json!(knobs.module_attribute_scope)),
             ("logic.max-helper-statements", serde_json::json!(knobs.max_helper_statements)),
             ("logic.max-caller-statements", serde_json::json!(knobs.max_caller_statements)),
             ("logic.max-tuple-elements", serde_json::json!(knobs.max_tuple_elements)),

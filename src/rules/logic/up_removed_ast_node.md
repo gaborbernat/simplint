@@ -2,9 +2,12 @@ Flags references to the `ast` node aliases that Python 3.14 removed, and to `vis
 
 ## Why is this bad?
 
-`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis` have been aliases of `ast.Constant` since
-Python 3.8, and Python 3.14 removes them, so code that names them fails there with `AttributeError`. A visitor method
-named after one of them is no longer called, because `ast.NodeVisitor` hands a constant only to `visit_Constant`.
+`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis` have been aliases of
+[`ast.Constant`](https://docs.python.org/3/library/ast.html#ast.Constant) since Python 3.8, and Python 3.14 removes
+them, so code that names them fails there with
+[`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError). A visitor method named after one
+of them is no longer called, because [`ast.NodeVisitor`](https://docs.python.org/3/library/ast.html#ast.NodeVisitor)
+hands a constant only to `visit_Constant`.
 
 ## Example
 
@@ -51,9 +54,9 @@ so the rule reports them on all target versions.
 - **References to `ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis`**, by their qualified names.
   The fixes cover two forms:
 
-  - **Safe fix:** `isinstance(name, ast.Str)` and `isinstance(name, ast.Bytes)` become
-    `isinstance(name, ast.Constant) and isinstance(name.value, str)`, or `bytes`. Inside a larger expression the new
-    test is wrapped in parentheses.
+  - **Safe fix:** [`isinstance(name, ast.Str)`](https://docs.python.org/3/builtins/functions.html#isinstance) and
+    `isinstance(name, ast.Bytes)` become `isinstance(name, ast.Constant) and isinstance(name.value, str)`, or `bytes`.
+    Inside a larger expression the new test is wrapped in parentheses.
   - **Safe fix:** `ast.Num(n=...)`, `ast.Str(s=...)`, `ast.Bytes(s=...)` and `ast.NameConstant(value=...)` with that one
     keyword become `ast.Constant(value=...)`.
 
@@ -100,8 +103,9 @@ so the rule reports them on all target versions.
   ```
 
 - **`visit_Num`, `visit_Str`, `visit_Bytes`, `visit_NameConstant` and `visit_Ellipsis` methods** of a class that
-  directly subclasses `ast.NodeVisitor` or `ast.NodeTransformer`. No fix is offered: the method has to become
-  `visit_Constant`, which takes over the values of all five classes.
+  directly subclasses `ast.NodeVisitor` or
+  [`ast.NodeTransformer`](https://docs.python.org/3/library/ast.html#ast.NodeTransformer). No fix is offered: the method
+  has to become `visit_Constant`, which takes over the values of all five classes.
 
   ```toml config
   [project]
@@ -121,8 +125,30 @@ so the rule reports them on all target versions.
 
 - **Names imported from `ast`**, such as `from ast import Str`: the fix would need a new import, so these are not
   reported.
+
+  ```python ok
+  from ast import Str
+
+
+  def is_text(node):
+      return isinstance(node, Str)
+  ```
+
 - **Classes that subclass a visitor indirectly**: only the class that names `ast.NodeVisitor` or `ast.NodeTransformer`
   as a base is checked.
+
+  ```python ok
+  import ast
+
+
+  class Base(ast.NodeVisitor):
+      pass
+
+
+  class Counter(Base):
+      def visit_Num(self, node):
+          self.count += 1
+  ```
 
 ### Fix
 

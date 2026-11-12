@@ -2,11 +2,16 @@ Flags `Callable[..., T]` annotations.
 
 ## Why is this bad?
 
-`...` accepts any arguments, so the type checker cannot catch a call with the wrong number, type or names of arguments.
-A [`Protocol`](https://docs.python.org/3/library/typing.html#typing.Protocol)
-([PEP 544](https://peps.python.org/pep-0544/)) with a `__call__` method, called a
-[callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols), states the parameters.
-It can also state keyword names and defaults, which a parameter list such as `Callable[[str, int], T]` cannot express.
+`...` accepts any arguments: the
+[typing spec](https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable) calls it a gradual form,
+so the type checker cannot catch a call with the wrong number, type or names of arguments. A
+[callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols), a
+[`Protocol`](https://docs.python.org/3/library/typing.html#typing.Protocol)
+([PEP 544](https://peps.python.org/pep-0544/)) with a `__call__` method, states the parameters, including keyword names,
+defaults and overloads, which a parameter list such as `Callable[[str, int], T]` cannot express. A decorator that passes
+arguments through keeps the wrapped signature with a
+[`ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec)
+([PEP 612](https://peps.python.org/pep-0612/#motivation)).
 
 ## Example
 
@@ -42,7 +47,8 @@ No fix is offered: the real signature has to be written by hand.
   is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.
   The matched names are:
 
-  - a bare `Callable` imported from `typing` or `collections.abc`.
+  - a bare `Callable` imported from `typing` or
+    [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc).
 
     ```python report
     from collections.abc import Callable
@@ -77,6 +83,16 @@ No fix is offered: the real signature has to be written by hand.
 - **Test parameters that are not called in the test body**: a test may inspect a callable or pass it to another API
   without invoking it itself. Its annotation need not describe one call signature. A direct call in the body still
   reports, including one inside a nested block.
+
+  ```python ok file=tests/test_run.py
+  from collections.abc import Callable
+
+  from app.run import run_twice
+
+
+  def test_run_twice(callback: Callable[..., None]) -> None:
+      run_twice(callback)
+  ```
 
 - **String annotations**: these are not checked.
 

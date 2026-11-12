@@ -5,8 +5,14 @@ touch.
 ## Why is this bad?
 
 `object` accepts anything and permits almost no operations, so the code behind it narrows with `isinstance` or casts at
-runtime. `Any` skips type checking altogether for each value it touches. A precise type moves that check to the type
-checker and documents what callers pass.
+runtime. `Any` skips type checking for each value it touches, and
+[values derived from it](https://mypy.readthedocs.io/en/stable/dynamic_typing.html#operations-on-any-values) are usually
+`Any` too, so one annotation can switch off checks far from where it is written. A precise type moves that check to the
+type checker and documents what callers pass.
+
+The
+[typing best practices](https://typing.python.org/en/latest/reference/best_practices.html#arguments-and-return-types)
+recommend `object` for a parameter that accepts any value. With `object`, each use has to narrow the value at runtime.
 
 ## Example
 
@@ -58,8 +64,8 @@ No fix is offered: the precise type depends on what callers pass.
     ```
 
 - **`Any` in variable annotations and in nested positions**, such as `CACHE: Any`, `dict[str, Any]` or `-> list[Any]`:
-  each one turns off type checking for the values it touches. Spelled `Any`, `typing.Any`, an import alias or
-  `typing_extensions.Any`.
+  each one turns off type checking for the values it touches. Spelled `Any`,
+  [`typing.Any`](https://docs.python.org/3/library/typing.html#typing.Any), an import alias or `typing_extensions.Any`.
 
   - `CACHE: Any`: a variable annotation.
 
@@ -169,21 +175,21 @@ annotations are still checked.
   leaves it alone to avoid a double report. ANN401 reports an `Any` that is the annotation, or sits in an `Optional`, a
   `Union`, a `|` or the first argument of `Annotated`.
 
+  ```python ok
+  from typing import Any
+
+
+  def lookup(key: str) -> Any | None:
+      return None
+  ```
+
 ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload implementations and, with
 `allow-star-arg-any`, `*args` and `**kwargs`. This rule still reports the `Any` in those, since no tool would report it
 otherwise.
 
-```python ok
-from typing import Any
-
-
-def run(value: Any) -> None:
-    print(value)
-```
-
 - **`object` as the return type of a `Callable`**, such as `Callable[..., object]` or `Callable[[int], object]`, from
-  `typing` or `collections.abc`: the callable's result is ignored, which is what `object` says there. `object` in its
-  parameter types is still reported.
+  `typing` or [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc): the
+  callable's result is ignored, which is what `object` says there. `object` in its parameter types is still reported.
 
   ```python ok
   from collections.abc import Callable

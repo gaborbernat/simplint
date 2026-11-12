@@ -3,9 +3,11 @@ number, so the groups are named with `(?P<name>...)`.
 
 ## Why is this bad?
 
-A reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A
-named group says what the part is in the pattern, and `match["text"]` says it again where the code reads it. The numbers
-also shift when a group is added or moved, which a name survives.
+A reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds.
+The [regex HOWTO](https://docs.python.org/3/howto/regex.html#non-capturing-and-named-groups) says group numbers become
+hard to track in a complex pattern. A name says what the part is where the pattern is written, and `match["text"]` says
+it again where the code reads it. Numbers also shift when a group is added or moved, while code that reads a name keeps
+working. A group nothing reads is clearer as `(?:...)`, which takes no number, so the groups around it keep theirs.
 
 ## Example
 
@@ -43,8 +45,9 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
   concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and
   `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,
-  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other
-  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
+  reading the verbose flag from [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
+  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
 
   - **Two or more unnamed groups** are reported at the pattern.
   - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call

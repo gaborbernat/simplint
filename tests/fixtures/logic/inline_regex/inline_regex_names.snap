@@ -1,0 +1,74 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:9 SMP534 Compile this pattern once at module level and call its `match` [unsafe fix: Move the pattern to a module-level constant]
+10:18 SMP534 Move this `re.compile` to a module-level constant
+15:14 SMP534 Compile this pattern once at module level and call its `search`
+20:19 SMP534 Move this `re.compile` to a module-level constant
+25:15 SMP534 Move this `re.compile` to a module-level constant
+30:17 SMP534 Move this `re.compile` to a module-level constant
+35:12 SMP534 Compile this pattern once at module level and call its `fullmatch`
+39:9 SMP534 Compile this pattern once at module level and call its `match`
+--- fixed (1 applied, 0 remaining) ---
+import re
+from typing import Final
+
+
+_PARSE_VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(r"\d+")
+
+
+def parse_version(text):
+    m = _PARSE_VERSION_PATTERN.match(text)
+    return m
+
+
+_VERSION_RE: Final[re.Pattern[str]] = re.compile(r"v\d+")
+
+
+def version(text):
+    return _VERSION_RE.match(text)
+
+
+_RESULT_PATTERN: Final[re.Pattern[str]] = re.compile(r"c\d+")
+
+
+def count(text):
+    result = _RESULT_PATTERN.search(text)
+    return result
+
+
+_VALUE_REGEX: Final[re.Pattern[str]] = re.compile(r"x")
+
+
+def scan(text):
+    return _VALUE_REGEX.match(text)
+
+
+_PATTERN_USER_PATTERN: Final[re.Pattern[str]] = re.compile(r"p")
+
+
+def pattern_user(text):
+    return _PATTERN_USER_PATTERN.match(text)
+
+
+_MORE_TEXT_PATTERN: Final[re.Pattern[str]] = re.compile(r"m")
+
+
+def more(text):
+    return _MORE_TEXT_PATTERN.match(text)
+
+
+_PRIVATE_HELPER_PATTERN: Final[re.Pattern[str]] = re.compile(r"h")
+
+
+def _private_helper(text):
+    return _PRIVATE_HELPER_PATTERN.fullmatch(text)
+
+
+_UNDERSCORE_TARGET_PATTERN: Final[re.Pattern[str]] = re.compile(r"u")
+
+
+def underscore_target(text):
+    _ = _UNDERSCORE_TARGET_PATTERN.match(text)
+    return _

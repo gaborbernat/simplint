@@ -1,6 +1,6 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
-use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
+use ruff_python_ast::helpers::{StoredNameFinder, body_without_leading_docstring, is_dunder};
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -10,15 +10,14 @@ use ruff_python_trivia::has_leading_content;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
+use super::fold::is_literal;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, keep_debug_text, statement_lines};
 use crate::rules::rename::appears_in_strings;
 use crate::rules::{is_class_like, is_named_by_doctest};
 use crate::semantic::{Binding, BindingKind, Evaluation};
-use crate::syntax::{
-    Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment, sole_argument,
-};
+use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {
@@ -31,7 +30,7 @@ pub fn single_user_constant(checker: &Checker) {
             Exports::Absent | Exports::Dynamic => Visibility::of(name) != Visibility::Public,
         };
         if !private
-            || !is_literal(checker, value)
+            || !is_literal(value)
             || checker.project().is_referenced(name)
             // A string that spells the name may patch or look up the constant, which inlining would break.
             || appears_in_strings(checker, name)
@@ -69,9 +68,6 @@ pub fn single_user_constant(checker: &Checker) {
             continue;
         }
         let references: Vec<TextRange> = references.iter().map(|reference| reference.range).collect();
-        if is_shared_state(checker, value, &function.body, &references) {
-            continue;
-        }
         let constant = Constant { stmt, name, annotation, value, function, references };
         let (fix, adds_local) = match move_into_function(checker, &constant) {
             Some((fix, adds_local)) => (Some(fix), adds_local),
@@ -95,37 +91,6 @@ pub fn single_user_constant(checker: &Checker) {
     }
 }
 
-// Only a value written out in the source moves: a call result such as a cache, logger, client, compiled pattern
-// or path, and a name or attribute read from elsewhere, may be state shared between calls or patched by tests,
-// so it stays.
-fn is_literal(checker: &Checker, value: &Expr) -> bool {
-    let all_literal = |values: &[Expr]| values.iter().all(|value| is_literal(checker, value));
-    match value {
-        Expr::StringLiteral(_)
-        | Expr::BytesLiteral(_)
-        | Expr::NumberLiteral(_)
-        | Expr::BooleanLiteral(_)
-        | Expr::NoneLiteral(_)
-        | Expr::EllipsisLiteral(_) => true,
-        Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::USub, operand, .. }) => operand.is_number_literal_expr(),
-        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => is_literal(checker, left) && is_literal(checker, right),
-        Expr::Tuple(ast::ExprTuple { elts, .. })
-        | Expr::List(ast::ExprList { elts, .. })
-        | Expr::Set(ast::ExprSet { elts, .. }) => all_literal(elts),
-        Expr::Dict(dict) => dict.items.iter().all(|item| {
-            item.key.as_ref().is_some_and(|key| is_literal(checker, key)) && is_literal(checker, &item.value)
-        }),
-        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
-            func.as_name_expr().is_some_and(|name| name.id.as_str() == "frozenset")
-                && !checker.semantic().is_bound("frozenset")
-                && arguments.keywords.is_empty()
-                && arguments.args.len() <= 1
-                && all_literal(&arguments.args)
-        }
-        _ => false,
-    }
-}
-
 struct Constant<'a> {
     stmt: &'a Stmt,
     name: &'a str,
@@ -133,119 +98,6 @@ struct Constant<'a> {
     value: &'a Expr,
     function: &'a ast::StmtFunctionDef,
     references: Vec<TextRange>,
-}
-
-// A mutable container is state shared between calls, which a fresh copy made on each call would lose, such as a set of
-// warnings already shown. Only reads that neither change it nor hand it to other code keep that unobservable: a
-// membership test and `len`, and, when its items are immutable, iterating, indexing, or a builtin or method that copies
-// or reduces it. Any other use, such as an argument to a function, a returned value or another name bound to it, lets
-// other code change or keep it.
-fn is_shared_state(checker: &Checker, value: &Expr, body: &[Stmt], references: &[TextRange]) -> bool {
-    if !is_mutable(value) {
-        return false;
-    }
-    let mut reads = Reads { checker, references, opaque: Vec::new(), items: Vec::new() };
-    reads.visit_body(body);
-    let items_shared = has_mutable_items(value);
-    references
-        .iter()
-        .any(|reference| !reads.opaque.contains(reference) && (items_shared || !reads.items.contains(reference)))
-}
-
-fn is_mutable(expr: &Expr) -> bool {
-    match expr {
-        Expr::List(_) | Expr::Set(_) | Expr::Dict(_) => true,
-        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(is_mutable),
-        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => is_mutable(left) || is_mutable(right),
-        _ => false,
-    }
-}
-
-fn has_mutable_items(expr: &Expr) -> bool {
-    match expr {
-        Expr::List(ast::ExprList { elts, .. })
-        | Expr::Set(ast::ExprSet { elts, .. })
-        | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(is_mutable),
-        Expr::Dict(dict) => dict.items.iter().any(|item| is_mutable(&item.value)),
-        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => has_mutable_items(left) || has_mutable_items(right),
-        _ => false,
-    }
-}
-
-struct Reads<'c, 'a> {
-    checker: &'c Checker<'a>,
-    references: &'c [TextRange],
-    opaque: Vec<TextRange>,
-    items: Vec<TextRange>,
-}
-
-impl Reads<'_, '_> {
-    fn reference(&self, expr: &Expr) -> Option<TextRange> {
-        expr.as_name_expr().map(Ranged::range).filter(|range| self.references.contains(range))
-    }
-
-    fn exposes_items(&mut self, expr: &Expr) {
-        if let Some(range) = self.reference(expr) {
-            self.items.push(range);
-        }
-    }
-}
-
-impl<'a> Visitor<'a> for Reads<'_, '_> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if let Stmt::For(ast::StmtFor { iter, .. }) = stmt {
-            self.exposes_items(iter);
-        }
-        visitor::walk_stmt(self, stmt);
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        match expr {
-            Expr::Compare(ast::ExprCompare { ops, operands, .. }) => {
-                for (op, comparator) in ops.iter().zip(&operands[1..]) {
-                    if (op.is_in() || op.is_not_in())
-                        && let Some(range) = self.reference(comparator)
-                    {
-                        self.opaque.push(range);
-                    }
-                }
-            }
-            Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
-                let semantic = self.checker.semantic();
-                if let Some(argument) = sole_argument(call)
-                    && semantic.is_builtin(func, "len")
-                    && let Some(range) = self.reference(argument)
-                {
-                    self.opaque.push(range);
-                } else if ["all", "any", "dict", "frozenset", "list", "max", "min", "set", "sorted", "sum", "tuple"]
-                    .iter()
-                    .any(|name| semantic.is_builtin(func, name))
-                {
-                    for argument in &arguments.args {
-                        self.exposes_items(argument);
-                    }
-                } else if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref()
-                    && matches!(attr.as_str(), "copy" | "count" | "get" | "index" | "items" | "keys" | "values")
-                {
-                    self.exposes_items(value);
-                }
-            }
-            Expr::Subscript(ast::ExprSubscript { value, ctx: ast::ExprContext::Load, .. })
-            | Expr::Starred(ast::ExprStarred { value, .. }) => self.exposes_items(value),
-            Expr::Dict(dict) => {
-                for item in dict.items.iter().filter(|item| item.key.is_none()) {
-                    self.exposes_items(&item.value);
-                }
-            }
-            _ => {}
-        }
-        visitor::walk_expr(self, expr);
-    }
-
-    fn visit_comprehension(&mut self, comprehension: &'a ast::Comprehension) {
-        self.exposes_items(&comprehension.iter);
-        visitor::walk_comprehension(self, comprehension);
-    }
 }
 
 fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bool)> {
@@ -260,15 +112,7 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
     if constant.references.iter().any(|reference| source_spans.iter().any(|span| span.contains_range(*reference))) {
         return None;
     }
-    // A parameter or local of the function named `frozenset` would capture the builtin the value calls.
-    let mut stores = StoredNameFinder::default();
-    stores.visit_body(&function.body);
-    let is_local = |name: &str| {
-        stores.names.contains_key(name) || function.parameters.iter().any(|parameter| parameter.name().as_str() == name)
-    };
-    if !checker.is_alone_on_lines(constant.stmt.range())
-        || any_over_expr(constant.value, |expr| expr.as_name_expr().is_some_and(|name| is_local(name.id.as_str())))
-    {
+    if !checker.is_alone_on_lines(constant.stmt.range()) {
         return None;
     }
     let deletion = Edit::range_deletion(statement_lines(source, constant.stmt.range(), Blanks::WiderSide));
@@ -295,8 +139,8 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
     local_fix(checker, constant, value_text, deletion).map(|fix| (fix, true))
 }
 
-// The type a local keeps from the constant's annotation. An empty container needs its declared type to type check,
-// while `Final` belongs to module scope only, so `Final[T]` keeps `T` and a bare `Final` keeps nothing.
+// The type a local keeps from the constant's annotation. `Final` belongs to module scope only, so `Final[T]` keeps `T`
+// and a bare `Final` keeps nothing.
 fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {
     match constant.annotation {
         Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {

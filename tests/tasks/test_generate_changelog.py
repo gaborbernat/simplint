@@ -110,6 +110,15 @@ def test_link_rules_resolves_relative_source_links(prefix: str) -> None:
     )
 
 
+@pytest.mark.parametrize("prefix", ["", "../", "https://github.com/gaborbernat/simplint/blob/1.0.0/"])
+def test_link_rules_links_documentation_pages_to_the_docs(prefix: str) -> None:
+    markdown = f"A [design principles]({prefix}docs/explanation/design-principles.rst) page"
+
+    assert link_rules(markdown, {}, codes=False) == (
+        "A `` :doc:`design principles </explanation/design-principles>` ``{=rst} page"
+    )
+
+
 def test_link_rules_rejects_mismatched_source_link() -> None:
     with pytest.raises(ValueError, match="rule source link for all-format points to"):
         link_rules("[`all-format`](src/rules/api/missing_from_all.md)", {"SMP405": "all-format"}, codes=True)

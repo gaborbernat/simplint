@@ -4,8 +4,9 @@ allows.
 ## Why is this bad?
 
 A second `for` clause that only unpacks the outer item can move into the element.
-[PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and with
-`**` for dicts.
+[PEP 798](https://peps.python.org/pep-0798/#rationale) lets the element unpack with `*` for lists, sets and generators,
+and with `**` for dicts, as `[*a, *b]` already does in a display. The PEP notes that students often reverse the two
+`for` clauses, a mistake one clause rules out.
 
 ## Example
 
@@ -46,7 +47,7 @@ flat = [*group for group in groups]
 ## What it does
 
 Reports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner
-clause unpacks `.items()`, when:
+clause unpacks [`.items()`](https://docs.python.org/3/builtins/stdtypes.html#dict.items), when:
 
 - the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no
   `async` in either.
@@ -135,7 +136,8 @@ merged = {**entry for entry in pairs}
   flat = [x for group in groups for x in other]
   ```
 
-- **A dict over `.keys()`, or with a call that takes arguments**: the pairs do not come from `.items()` alone.
+- **A dict over [`.keys()`](https://docs.python.org/3/builtins/stdtypes.html#dict.keys), or with a call that takes
+  arguments**: the pairs do not come from `.items()` alone.
 
   ```toml config
   [project]
@@ -147,7 +149,8 @@ merged = {**entry for entry in pairs}
   keys = {key: value for entry in pairs for key, value in entry.keys()}
   ```
 
-- **Target versions before 3.15**: the syntax is a `SyntaxError` there.
+- **Target versions before 3.15**: the syntax is a
+  [`SyntaxError`](https://docs.python.org/3/builtins/exceptions.html#SyntaxError) there.
 
   ```toml config
   [project]
@@ -162,9 +165,9 @@ merged = {**entry for entry in pairs}
 ### Fix
 
 The fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for
-a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`. No fix is
-offered when a comment lies in the element or the inner `for` clause, since the rewrite would drop it. A comment between
-the clauses keeps the report without a fix:
+a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real
+[`dict`](https://docs.python.org/3/builtins/stdtypes.html#dict). No fix is offered when a comment lies in the element or
+the inner `for` clause, since the rewrite would drop it. A comment between the clauses keeps the report without a fix:
 
 ```toml config
 [project]
@@ -193,4 +196,4 @@ flat = [
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
   [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing
-  `sum(lists, [])`.
+  [`sum(lists, [])`](https://docs.python.org/3/builtins/functions.html#sum).

@@ -4,8 +4,11 @@ assert over a tuple would compare together.
 ## Why is this bad?
 
 Each assert stops the test at its first mismatch, so a failing run shows one field and hides the others. Comparing the
-fields as one tuple checks them in the same order and shows every value on both sides when they differ. The repeated
-object name also adds noise that the tuple does not have.
+fields as one tuple checks them in the same order, and pytest's
+[assertion rewriting](https://docs.pytest.org/en/stable/how-to/assert.html#making-use-of-context-sensitive-comparisons)
+then prints every value on both sides and the first index that differs. The tuple also drops the repeated object name.
+Ruff's [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) asks to split `assert a and b`, since a
+combined assertion does not name the failing condition. Comparing a tuple shows every value in one failure.
 
 ## Example
 

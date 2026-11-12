@@ -4,16 +4,17 @@ use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
-use crate::project::FileFacts;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
 use crate::project::facts::{PYTEST_PLUGINS_REQUEST, source_digest};
 use crate::project::receivers::UNRESOLVED_CLASS;
+use crate::project::{AutoclassContent, FileFacts};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
+use super::prefixes::PrefixSiblings;
 use super::reach::unqualified;
 use super::run_imports::Members;
 use super::{FileId, FileIds, Project, RunReads};
@@ -30,6 +31,9 @@ pub struct ModuleUse {
     // A write under a computed name may set the module's names, so an import would miss that write.
     pub computed_written: bool,
     pub top_level_package: bool,
+    // The importer and the module are in one cycle of runtime imports, where a from-import that reads a name at load
+    // time may run before the module defines it.
+    pub cyclic: bool,
 }
 
 impl CacheKey for ModuleUse {
@@ -41,6 +45,7 @@ impl CacheKey for ModuleUse {
         self.rebound.cache_key(state);
         self.computed_written.cache_key(state);
         self.top_level_package.cache_key(state);
+        self.cyclic.cache_key(state);
     }
 }
 
@@ -115,6 +120,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) read_whole: bool,
     pub(super) uncaught_exceptions: Option<&'a FxHashSet<String>>,
     pub(super) exception_types: Option<&'a FxHashSet<String>>,
+    pub(super) enum_types: Option<&'a FxHashSet<String>>,
     pub(super) hook_classes: Option<&'a FxHashSet<String>>,
     pub(super) run_imports: Option<&'a FxHashMap<String, bool>>,
     pub(super) run_modules: RunModules<'a>,
@@ -123,6 +129,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
+    pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
     pub(super) calls: FileCalls<'a>,
     pub(super) reads: &'a RunReads,
     pub(super) computed_reads: &'a ComputedReads,
@@ -155,6 +162,7 @@ impl CacheKey for FileIndex<'_> {
             read_whole,
             uncaught_exceptions,
             exception_types,
+            enum_types,
             hook_classes,
             run_imports,
             run_modules,
@@ -163,6 +171,7 @@ impl CacheKey for FileIndex<'_> {
             inherited,
             cycle,
             duplicates,
+            prefix_siblings,
             calls,
             reads: _,
             computed_reads: _,
@@ -187,6 +196,7 @@ impl CacheKey for FileIndex<'_> {
         read_whole.cache_key(state);
         uncaught_exceptions.cache_key(state);
         exception_types.cache_key(state);
+        enum_types.cache_key(state);
         hook_classes.cache_key(state);
         run_imports.cache_key(state);
         run_modules.by_alias().cache_key(state);
@@ -198,6 +208,7 @@ impl CacheKey for FileIndex<'_> {
             cycle.cache_key_with(&self.project.files, state);
         }
         duplicates.cache_key(state);
+        prefix_siblings.cache_key(state);
         calls.cache_key(state);
     }
 }
@@ -233,12 +244,28 @@ impl<'a> FileIndex<'a> {
         self.answers.modules
     }
 
+    // The other private modules of the run that share this module's name prefix, when a package would group them.
+    pub fn prefix_siblings(&self) -> Option<PrefixSiblings> {
+        self.answers.prefix_siblings.copied()
+    }
+
     pub fn is_uncaught_exception(&self, name: &str) -> bool {
         self.answers.uncaught_exceptions.is_some_and(|names| names.contains(name))
     }
 
     pub fn is_exception_type(&self, name: &str) -> bool {
         self.answers.exception_types.is_some_and(|names| names.contains(name))
+    }
+
+    pub fn is_enum_class(&self, name: &str) -> bool {
+        self.answers.enum_types.is_some_and(|names| names.contains(name))
+    }
+
+    pub fn is_run_module_enum(&self, module: &str, name: &str) -> bool {
+        let Some(target) = self.answers.run_modules.modules.and_then(|modules| modules.get(module)) else {
+            return false;
+        };
+        self.project.enum_types.get(target).is_some_and(|names| names.contains(name))
     }
 
     pub fn is_hatch_hook_class(&self, name: &str) -> bool {
@@ -341,6 +368,11 @@ impl<'a> FileIndex<'a> {
         self.answers.package_star_imported
     }
 
+    // Whether a string or store of the run reaches `module.name`, as a test patching it does.
+    pub fn is_path_referenced(&self, module: &str, name: &str) -> bool {
+        self.project.wide.referenced_paths.contains(&format!("{module}.{name}"))
+    }
+
     pub fn is_attribute_assigned(&self, name: &str) -> bool {
         self.project.wide.assigned_attributes.contains(name)
     }
@@ -361,6 +393,11 @@ impl<'a> FileIndex<'a> {
 
     pub fn is_documented(&self, qualified: &str, anchored: bool) -> bool {
         self.project.docs.covers(qualified, anchored)
+    }
+
+    pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
+        let namesake = self.project.wide.class_namesakes.contains(unqualified(qualified));
+        self.project.docs.class_doc_from(root, qualified, namesake)
     }
 
     pub fn is_fixture_requested(&self, name: &str) -> bool {
@@ -438,6 +475,7 @@ pub(super) fn module_uses(
     sources: &FxHashMap<FileId, &FileFacts>,
     referenced: &FxHashMap<FileId, FxHashSet<String>>,
     computed_writes: &FxHashSet<FileId>,
+    cycles: &FxHashMap<FileId, Cycle>,
     files: &FileIds,
 ) -> FxHashMap<FileId, Vec<ModuleUse>> {
     let mut uses: FxHashMap<FileId, Vec<ModuleUse>> = FxHashMap::default();
@@ -450,7 +488,10 @@ pub(super) fn module_uses(
         let defined = facts.defined.iter().cloned().collect();
         let computed_written = computed_writes.contains(&target);
         let top_level_package = !module.contains('.') && files.path(target).ends_with("__init__.py");
-        let module = ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package };
+        let cyclic =
+            cycles.get(&importer).zip(cycles.get(&target)).is_some_and(|(from, to)| from.component == to.component);
+        let module =
+            ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package, cyclic };
         uses.entry(importer).or_default().push(module);
     }
     uses

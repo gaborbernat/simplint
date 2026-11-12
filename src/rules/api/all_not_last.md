@@ -2,9 +2,11 @@ Flags modules where the last top-level statement that binds `__all__` is not the
 
 ## Why is this bad?
 
-Readers look for the export list in one place. At the end of the module it comes after every definition it names, so it
-reads as a summary of what the module provides. [missing-from-all](SMP401.html) and [all-format](SMP405.html) also check
-`__all__`.
+Readers look for the export list in one place. At the end of the module it comes after the definitions it names, so it
+reads as a summary of what the module provides. [PEP 8](https://peps.python.org/pep-0008/#module-level-dunder-names)
+asks for `__all__` after the docstring and before the imports, the placement this rule reports; simplint keeps the
+report because a list at the top cannot summarize the definitions below it. [missing-from-all](SMP401.html) and
+[all-format](SMP405.html) also check `__all__`.
 
 ## Example
 
@@ -185,7 +187,9 @@ The fix is offered only when:
 - a single statement binds `__all__`, to a list or tuple of string literals
 - no later statement reads `__all__` or calls a method on it
 - no later statement reads `__all__` at run time, through an attribute such as `sys.modules[__name__].__all__`, a
-  `"__all__"` string or a call to `globals()`, `vars()` or `dir()`
+  `"__all__"` string or a call to [`globals()`](https://docs.python.org/3/builtins/functions.html#globals),
+  [`vars()`](https://docs.python.org/3/builtins/functions.html#vars) or
+  [`dir()`](https://docs.python.org/3/builtins/functions.html#dir)
 - no function or lambda reads `__all__`, by name or at run time, wherever it is defined
 - the statement shares no line with other code
 - no comment sits on the line above it, or above the `# fmt: off` / `# fmt: on` pair around it
@@ -264,7 +268,8 @@ the module reads it through:
   print(sys.modules[__name__].__all__)
   ```
 
-- the string `"__all__"`, such as in `getattr(sys.modules[__name__], "__all__")`:
+- the string `"__all__"`, such as in
+  [`getattr(sys.modules[__name__], "__all__")`](https://docs.python.org/3/builtins/functions.html#getattr):
 
   ```python report
   import sys

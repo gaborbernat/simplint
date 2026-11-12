@@ -1,11 +1,19 @@
-Flags imports of `gzip`, `bz2`, `lzma` and `zlib`, which the `compression` package names from Python 3.14.
+Flags imports of [`gzip`](https://docs.python.org/3/library/gzip.html),
+[`bz2`](https://docs.python.org/3/library/bz2.html), [`lzma`](https://docs.python.org/3/library/lzma.html) and
+[`zlib`](https://docs.python.org/3/library/zlib.html), which the
+[`compression`](https://docs.python.org/3/library/compression.html) package names from Python 3.14
+([PEP 784](https://peps.python.org/pep-0784/)).
 
 ## Why is this bad?
 
-Python 3.14 adds the `compression` package, with `compression.gzip`, `compression.bz2`, `compression.lzma` and
-`compression.zlib` beside `compression.zstd`. The new names are the preferred way to import these codecs from Python
-3.14, and the old top-level modules are not deprecated. A project that targets 3.14 and later can import the codecs
-under the package that groups them.
+Python 3.14 adds the [`compression`](https://docs.python.org/3/library/compression.html) package, with
+`compression.gzip`, `compression.bz2`, `compression.lzma` and `compression.zlib` beside
+[`compression.zstd`](https://docs.python.org/3/library/compression.zstd.html).
+[PEP 784](https://peps.python.org/pep-0784/#other-compression-modules) makes these the preferred import names. One
+package puts the modules where readers look for them, and its names avoid clashes with PyPI projects that already hold
+bare names such as `zstd`. The old top-level modules are
+[not deprecated](https://peps.python.org/pep-0784/#backwards-compatibility) and keep working without a warning, so the
+rule is about consistency with the new names.
 
 ## Example
 
@@ -84,7 +92,8 @@ def pack(path, data):
 
 The fix is unsafe, because `compression.gzip` is not an alias of `gzip`. It is a module that runs `from gzip import *`,
 so it lacks the names outside `__all__`, such as `gzip.READ`, and it is a different module object: a patch of
-`gzip.open` does not reach a call through `compression.gzip`. A rewritten import also changes the module's `__name__`.
+[`gzip.open`](https://docs.python.org/3/library/gzip.html#gzip.open) does not reach a call through `compression.gzip`. A
+rewritten import also changes the module's `__name__`.
 
 No fix is offered for a statement that binds other names as well, such as `import os, gzip`. Nor is one offered when the
 import, or a read through the name it binds, takes a name the new module lacks, such as `gzip.READ` or

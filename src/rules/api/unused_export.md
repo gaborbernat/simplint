@@ -2,9 +2,14 @@ Flags names in `__all__` that no other module of the run imports.
 
 ## Why is this bad?
 
-`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A
-name nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale
-entry after its last user is gone.
+`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers:
+Sphinx's
+[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+documents those names, and the
+[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+makes each one public. A name nothing imports is not part of any interface. Listing it makes the module look larger than
+it is and leaves a stale entry after its last user is gone. The entry also hides dead code, since
+[unused-definition](SMP409.html) does not report a name that `__all__` lists.
 
 ## Example
 
@@ -154,8 +159,9 @@ __all__ = ["parse"]
     print(config.LIMIT)
     ```
 
-  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and
-    `module_from_spec`, when the path names a project module
+  - `module.name` read off a module loaded from a file path with
+    [`importlib.util.spec_from_file_location`](https://docs.python.org/3/library/importlib.html#importlib.util.spec_from_file_location)
+    and `module_from_spec`, when the path names a project module
 
     ```python ok file=config.py
     LIMIT = 3
@@ -172,7 +178,9 @@ __all__ = ["parse"]
     print(module.LIMIT)
     ```
 
-  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project
+  - a string key read off the globals
+    [`runpy.run_module`](https://docs.python.org/3/library/runpy.html#runpy.run_module) returns, or
+    [`runpy.run_path`](https://docs.python.org/3/library/runpy.html#runpy.run_path) of a path that names a project
     module
 
     ```python ok file=config.py
@@ -220,7 +228,9 @@ __all__ = ["parse"]
     __all__ = ["main"]
     ```
 
-  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`
+  - `module:attribute` strings passed to
+    [`pkgutil.resolve_name`](https://docs.python.org/3/library/pkgutil.html#pkgutil.resolve_name) or stored as an
+    argparse `handler` with `set_defaults`
 
   - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,
     and legacy Poetry plugin entry points declared in `pyproject.toml`
@@ -354,7 +364,8 @@ __all__ = ["parse"]
   print(LIMIT, local())
   ```
 
-- **Modules whose `__all__` another file reads**: an import of `__all__`, or `module.__all__` read off an import of the
+- **Modules whose `__all__` another file reads**: an import of `__all__`, or
+  [`module.__all__`](https://docs.python.org/3/reference/simple_stmts.html#module.__all__) read off an import of the
   module, uses every name the list holds, as an `import *` does.
 
   ```python ok file=config.py

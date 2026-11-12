@@ -3,7 +3,10 @@ Flags `:param:` fields in a reStructuredText docstring that are in a different o
 ## Why is this bad?
 
 A reader matches the documented parameters against the signature from left to right; a different order makes the
-reference harder to scan and hides a missing field.
+reference harder to scan and hides a missing field. pydoclint
+[checks the order by default](https://jsh9.github.io/pydoclint/config_options.html) and reports a mismatch as
+[DOC104](https://jsh9.github.io/pydoclint/violation_codes.html), which covers arguments in a different order than the
+signature.
 
 ## Example
 

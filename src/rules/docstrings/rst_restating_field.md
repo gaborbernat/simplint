@@ -5,7 +5,9 @@ name, as `:param user_id: The user ID.`.
 
 Such a description takes the space of a useful one while telling readers nothing the signature does not: not the unit,
 the accepted range, what `None` means, or how the value is used. It is often what fills a field added only to satisfy a
-check.
+check. The [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for
+enough to write a call without reading the code, and [PEP 8](https://peps.python.org/pep-0008/#inline-comments) calls
+inline comments that state the obvious unnecessary; the same holds for a field's description.
 
 ## Example
 

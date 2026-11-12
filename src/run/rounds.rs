@@ -155,7 +155,7 @@ fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
     Linter::new(
         file.ruff,
         file.settings.clone(),
-        project.file(file.absolute.as_path()),
+        &project.file(file.absolute.as_path()),
         file.package,
         file.module_path.clone(),
         file.sibling_init,

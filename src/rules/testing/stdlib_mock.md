@@ -1,10 +1,14 @@
-Flags imports from `unittest.mock` in a test module of a project that depends on pytest-mock.
+Flags imports from [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) in a
+test module of a project that depends on pytest-mock.
 
 ## Why is this bad?
 
 pytest-mock provides the `mocker` fixture, which undoes each patch when its test ends. A test that imports
 `unittest.mock` must manage the patch itself, with a `with` block or a decorator, and the project then has two ways to
-patch. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.
+patch. The pytest-mock docs
+[list what those forms cost](https://pytest-mock.readthedocs.io/en/latest/remarks.html#why-bother-with-a-plugin): each
+`with` adds a level of nesting, and a decorator passes its mock as a parameter in decorator order, which mixes poorly
+with fixtures and `parametrize`. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.
 
 ## Example
 
@@ -88,8 +92,38 @@ def test_client(mocker: MockerFixture) -> None:
 - **`from unittest.mock import create_autospec` alone**: making a mock from a real object is separate from managing a
   patch. An import that also brings in `patch` or another mock helper is still reported.
 
+  ```toml config
+  [project]
+  name = "demo"
+  dependencies = ["pytest-mock>=3"]
+  ```
+
+  ```python ok file=tests/test_client.py
+  from unittest.mock import create_autospec
+
+  from app.client import Client
+
+
+  def test_client() -> None:
+      client = create_autospec(Client)
+  ```
+
 - **Relative imports**, such as `from .unittest import mock`: they name a module of the project, not the standard
   library.
+
+  ```toml config
+  [project]
+  name = "demo"
+  dependencies = ["pytest-mock>=3"]
+  ```
+
+  ```python ok file=tests/test_client.py
+  from .unittest import mock
+
+
+  def test_client() -> None:
+      client = mock.MagicMock()
+  ```
 
 ### Fix
 

@@ -2,10 +2,12 @@ Flags functions, classes, methods and variables of a library's public API that h
 
 ## Why is this bad?
 
-Users of a library reach its public API through their editor's hover help and the generated reference, not through the
-source. A docstring is what they read there: what the function promises, what each parameter means, what it returns and
-what it raises. Internal code is the opposite case: its readers have the source open, so
-[function-docstring](SMP901.html) asks for no docstring there.
+Users of a library reach its public API through their editor's hover help and the generated reference. A docstring is
+what they read there: what the function promises, what each parameter means, what it returns and what it raises.
+[PEP 257](https://peps.python.org/pep-0257/#what-is-a-docstring) asks for docstrings on the functions and classes a
+module exports, and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) treats undocumented
+interfaces as internal, so an undocumented export leaves users unsure they may rely on it. Internal code needs less: its
+readers have the source open, so [function-docstring](SMP901.html) asks for no docstring there.
 
 ## Example
 

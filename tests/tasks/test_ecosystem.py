@@ -51,8 +51,12 @@ class _Run(Protocol):
     def __call__(self, command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]: ...
 
 
+class _TarGz(Protocol):
+    def __call__(self, members: dict[str, bytes], links: dict[str, str] | None = None) -> bytes: ...
+
+
 @pytest.fixture
-def archive(tmp_path: Path, tar_gz: Callable[..., bytes]) -> Path:
+def archive(tmp_path: Path, tar_gz: _TarGz) -> Path:
     path = tmp_path / "demo-1.0.tar.gz"
     path.write_bytes(tar_gz({"demo-1.0/mod.py": b"VALUE = 1\n"}))
     return path
@@ -354,7 +358,7 @@ def test_check_keeps_ruff_cache_in_the_workspace(
 
 
 def test_check_does_not_warn_about_invalid_escapes(
-    package: Package, tmp_path: Path, run_tools: Callable[[_Behavior], MockType], tar_gz: Callable[..., bytes]
+    package: Package, tmp_path: Path, run_tools: Callable[[_Behavior], MockType], tar_gz: _TarGz
 ) -> None:
     run_tools(_clean)
     archive = tmp_path / "demo-1.0.tar.gz"

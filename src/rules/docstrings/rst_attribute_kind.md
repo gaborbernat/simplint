@@ -3,8 +3,14 @@ reStructuredText class docstrings.
 
 ## Why is this bad?
 
-Sphinx lists the two under different headings, "Instance Variables" and "Class Variables", so the wrong field sends
-readers to the wrong list.
+`:ivar:` and `:cvar:` say where the value lives: the
+[Python tutorial](https://docs.python.org/3/tutorial/classes.html#class-and-instance-variables) separates instance
+variables, unique to each instance, from class variables shared by all instances. The wrong field tells readers the
+opposite of what the code does. Sphinx
+[renders all three fields alike](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists), under
+one Variables heading, but [pydoctor](https://pydoctor.readthedocs.io/en/latest/codedoc.html), which keeps epydoc's
+fields, [files each attribute under its kind](https://github.com/twisted/pydoctor/blob/24.11.2/pydoctor/epydoc2stan.py),
+so pydoctor lists it under the wrong kind.
 
 ## Example
 

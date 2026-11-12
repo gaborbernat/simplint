@@ -1,11 +1,18 @@
-Flags a patch that a `unittest.TestCase` method starts by hand and stops with `addCleanup`. `self.enterContext` starts
-the patch and registers its stop in one call. It exists from Python 3.11.
+Flags a patch that a [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase) method
+starts by hand and stops with
+[`addCleanup`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup).
+[`self.enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) starts the patch
+and registers its stop in one call. It exists from Python 3.11.
 
 ## Why is this bad?
 
-Starting a patch, then registering its stop, takes three statements that must stay in step. Forgetting the cleanup leaks
-the patch into other tests. `enterContext` enters the context manager and cleans it up with the test, in the order the
-test case expects, so the statement that starts the patch is the one that stops it.
+Starting a patch, then registering its stop, takes three statements that must stay in step, and a patch started this way
+[stays active until `stop` runs](https://docs.python.org/3/library/unittest.mock.html#patch-methods-start-and-stop).
+Forgetting the cleanup leaks the patch into other tests. Python 3.11 added
+[`enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) to
+[remove this boilerplate](https://mail.python.org/pipermail/new-bugs-announce/2021-August/043809.html): it enters the
+context manager and registers its exit with `addCleanup`, so the statement that starts the patch is the one that stops
+it.
 
 ## Example
 
@@ -66,8 +73,12 @@ class ConfigTest(TestCase):
 ### Active on
 
 - **Three consecutive statements in a `TestCase` method**: `patcher = patch(...)`, `value = patcher.start()` and
-  `self.addCleanup(patcher.stop)`. The patch can come from `mock.patch`, `mock.patch.object` or `mock.patch.dict`, under
-  `unittest.mock` or the `mock` name, as the module resolves them. The report sits on the first statement.
+  `self.addCleanup(patcher.stop)`. The patch can come from
+  [`mock.patch`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch),
+  [`mock.patch.object`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.object) or
+  [`mock.patch.dict`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.patch.dict), under
+  [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) or the `mock` name, as
+  the module resolves them. The report sits on the first statement.
 
   ```toml config
   [project]

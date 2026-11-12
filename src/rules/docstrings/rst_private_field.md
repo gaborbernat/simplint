@@ -2,10 +2,13 @@ Flags fields in public API docstrings that document a parameter or attribute nam
 
 ## Why is this bad?
 
-A leading underscore marks a name as internal
-([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)), so documenting it in the public reference
-invites users to depend on it. [rst-missing-param](SMP916.html) does not ask for such parameters, and
-[rst-missing-attribute](SMP920.html) does not ask for such attributes.
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) marks internal names with a leading underscore
+and counts documented interfaces as public, so a field for `_retries` in the reference makes the name public and invites
+users to depend on it. autodoc leaves
+[private members out](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-private-members)
+unless asked, and [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) says not to list private methods.
+[rst-missing-param](SMP916.html) does not ask for such parameters, and [rst-missing-attribute](SMP920.html) does not ask
+for such attributes.
 
 ## Example
 

@@ -2,8 +2,12 @@ Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStr
 
 ## Why is this bad?
 
-What a function hands back is half of its contract. A missing field leaves it to the annotation alone; a `:returns:` on
-a function that returns nothing, or on a generator, describes a value no caller receives.
+A missing field leaves the result to the annotation, which gives its type but not its meaning, while
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) lists return values among what a function's docstring
+documents. A `:returns:` on a function that returns nothing, or on a generator, describes a value no caller receives.
+The [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) and
+[numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html#yields) give generators their own section for what
+[`next()`](https://docs.python.org/3/builtins/functions.html#next) hands out.
 
 ## Example
 

@@ -5,10 +5,12 @@ mod cycles;
 mod documented;
 mod duplicates;
 mod entries;
+mod enums;
 mod exceptions;
 mod files;
 mod hatch;
 mod inherit;
+mod prefixes;
 mod reach;
 mod resolve;
 mod run_imports;
@@ -42,9 +44,11 @@ use self::cycles::{Cycle, RuntimeGraph};
 use self::documented::documented_members;
 use self::duplicates::DuplicateRun;
 use self::entries::{coverage_plugin_names, interned_entry_names, startup_entries};
+use self::enums::enum_classes;
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
+use self::prefixes::{PrefixSiblings, prefix_siblings};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
@@ -66,6 +70,7 @@ pub struct Project {
     pub(super) loaded_as_value: FxHashSet<FileId>,
     pub(super) uncaught_exceptions: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) exception_types: FxHashMap<FileId, FxHashSet<String>>,
+    pub(super) enum_types: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) hook_classes: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
     pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
@@ -76,6 +81,7 @@ pub struct Project {
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
+    pub(super) prefix_siblings: FxHashMap<FileId, PrefixSiblings>,
     // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -221,7 +227,16 @@ impl Project {
                             &bindings,
                         )
                     },
-                    || module_uses(module_names, &sources, &stored_references, &computed_writes, ids_of),
+                    || {
+                        module_uses(
+                            module_names,
+                            &sources,
+                            &stored_references,
+                            &computed_writes,
+                            &cycle_reports,
+                            ids_of,
+                        )
+                    },
                 )
             },
             || {
@@ -247,6 +262,7 @@ impl Project {
             },
         );
         let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
+        let enum_types = enum_classes(&graph, &reexports, &bindings);
         calls.set_test_support(test_support);
         Self {
             imported,
@@ -262,6 +278,7 @@ impl Project {
             loaded_as_value: read_whole,
             uncaught_exceptions,
             exception_types,
+            enum_types,
             hook_classes: hatch_hook_classes(&graph),
             run_imports,
             run_modules,
@@ -273,6 +290,7 @@ impl Project {
             docs: docs.clone(),
             cycles: cycle_reports,
             duplicates: duplicate_reports,
+            prefix_siblings: prefix_siblings(&indexed, &resolver.files),
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
             computed_writes,
@@ -311,6 +329,7 @@ impl Project {
                 read_whole: id.is_some_and(|id| self.read_whole.contains(&id)),
                 uncaught_exceptions: entry(&self.uncaught_exceptions, id),
                 exception_types: entry(&self.exception_types, id),
+                enum_types: entry(&self.enum_types, id),
                 hook_classes: entry(&self.hook_classes, id),
                 run_imports: entry(&self.run_imports, id),
                 run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },
@@ -319,6 +338,7 @@ impl Project {
                 inherited: entry(&self.inherited, id),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
+                prefix_siblings: entry(&self.prefix_siblings, id),
                 calls: self.calls.file(id),
                 reads: &self.wide.reads,
                 computed_reads: &self.wide.computed_reads,

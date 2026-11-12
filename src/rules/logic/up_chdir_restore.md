@@ -1,10 +1,13 @@
-Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python
-3.11.
+Flags a directory change that a `try` block undoes in its `finally` clause, which
+[`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) does from Python 3.11.
 
 ## Why is this bad?
 
 Saving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,
-where `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.
+where [`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) needs one `with` block.
+[PEP 343](https://peps.python.org/pep-0343/#abstract) added `with` to factor out such `try`/`finally` pairs. The block
+cannot forget the restore, and it leaves no saved name in scope. Both forms change process-wide state, so neither is
+parallel-safe, as the `contextlib.chdir` docs note.
 
 ## Example
 
@@ -64,9 +67,10 @@ def build(target):
 
 ## What it does
 
-Reports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose
-only clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear
-nowhere else in its function, or in the module at module level.
+Reports three statements in one body: `old = `[`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd), then
+[`os.chdir(target)`](https://docs.python.org/3/library/os.html#os.chdir) with one argument, then a `try` whose only
+clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear nowhere
+else in its function, or in the module at module level.
 
 ### Active on
 

@@ -3,13 +3,11 @@ mostly repeats the name and signature.
 
 ## Why is this bad?
 
-[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public modules, functions,
-classes and methods, and for a comment after the `def` line of the rest; the fix writes that comment. Many projects
-document internal code with docstrings anyway, so this rule is a choice of style rather than common practice.
-
-A docstring restates what the name, signature and type annotations already say, and nothing checks that it stays
-accurate when the code changes. When the reason behind a piece of code is not obvious, a short comment next to that code
-explains it better.
+[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public code and, for a
+non-public method, only a comment after the `def` line; the fix writes that comment.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a docstring
+on any nontrivial or non-obvious function. On internal code such a docstring restates the name, signature and
+annotations, and nothing checks it as the code changes.
 
 A longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a
 comment.
@@ -144,6 +142,23 @@ classes, at any nesting depth. What counts as internal depends on the project.
 - **A function an autodoc directive documents**: an `.. automodule::` with `:members:` or an `.. autofunction::` renders
   its docstring for its users, so the function is public API whatever the project is, and its docstring stays.
 
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+  ```
+
+  ```rst context file=docs/api.rst
+  .. autofunction:: demo._core.step
+  ```
+
+  ```python ok file=demo/_core.py
+  def step() -> None:
+      """Run one step of the job."""
+  ```
+
 - **A library's public API**: [undocumented-public-api](SMP903.html) requires it to be documented. That covers what its
   public modules offer and re-export, and the methods of a public class whose names do not start with `_`.
 
@@ -231,9 +246,10 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **Every docstring of a run in which some file reads docstrings off objects**: through `obj.__doc__`,
-  `getattr(obj, "__doc__")` or a `getdoc` call such as `inspect.getdoc`. A test asserting a function's `__doc__`, or a
-  framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the module's own
-  docstring, does not count.
+  [`getattr(obj, "__doc__")`](https://docs.python.org/3/builtins/functions.html#getattr) or a `getdoc` call such as
+  [`inspect.getdoc`](https://docs.python.org/3/library/inspect.html#inspect.getdoc). A test asserting a function's
+  `__doc__`, or a framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the
+  module's own docstring, does not count.
 
   ```python ok file=run.py
   def run() -> None:

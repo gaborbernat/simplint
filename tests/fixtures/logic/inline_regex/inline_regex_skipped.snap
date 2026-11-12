@@ -1,0 +1,71 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:12 SMP534 Compile this pattern once at module level and call its `match` [unsafe fix: Move the pattern to a module-level constant]
+17:12 SMP534 Compile this pattern once at module level and call its `split`
+21:12 SMP534 Compile this pattern once at module level and call its `match`
+29:12 SMP534 Compile this pattern once at module level and call its `search`
+36:12 SMP534 Compile this pattern once at module level and call its `fullmatch`
+40:12 SMP534 Compile this pattern once at module level and call its `search`
+43:23 SMP534 Compile this pattern once at module level and call its `fullmatch`
+--- fixed (1 applied, 2 remaining) ---
+import re
+from typing import Final
+
+_CHECK_PATTERN = re.compile(r"other")
+MODULE_MATCH = re.match(r"\d+", "1")
+
+
+class Table:
+    ROW = re.compile(r"\w+")
+    CELL = re.search(r"\d", "a1")
+
+
+_PLAIN_MATCH_PATTERN: Final[re.Pattern[str]] = re.compile("abc")
+
+
+def plain_match(text):
+    return _PLAIN_MATCH_PATTERN.match(text)
+
+
+_PLAIN_SPLIT_PATTERN: Final[re.Pattern[str]] = re.compile("")
+
+
+def plain_split(text):
+    return _PLAIN_SPLIT_PATTERN.split(text)
+
+
+_PLAIN_FLAGGED_PATTERN: Final[re.Pattern[str]] = re.compile("abc", re.I)
+
+
+def plain_flagged(text):
+    return _PLAIN_FLAGGED_PATTERN.match(text)
+
+
+def flags_from_name(text, flags):
+    return re.search(r"v(\d+)", text, flags)
+
+
+def commented(text):
+    return re.search(
+        r"v(\d+)",  # the version
+        text,
+    )
+
+
+_CHECK_PATTERN_2: Final[re.Pattern[str]] = re.compile(r"a+b")
+
+
+def check(text):
+    return _CHECK_PATTERN_2.fullmatch(text)
+
+
+_NAME_TAKEN_PATTERN: Final[re.Pattern[str]] = re.compile(r"x\d")
+
+
+def name_taken(text):
+    return _NAME_TAKEN_PATTERN.search(text)
+
+
+lookup = lambda text: re.fullmatch(r"b+", text)

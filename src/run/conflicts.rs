@@ -165,7 +165,7 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
 
 // The selector a rule is turned off by: its name or its code.
 fn pick(by_name: bool, name: &str, code: &str) -> String {
-    if by_name { name.to_owned() } else { code.to_owned() }
+    if by_name || code.is_empty() { name.to_owned() } else { code.to_owned() }
 }
 
 // A clash found for some files: which one, where each side's settings come from, and where its Ruff rules that
@@ -209,7 +209,7 @@ impl Names {
     }
 }
 
-const CLASHES: [Clash; 7] = [
+const CLASHES: [Clash; 8] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -360,11 +360,34 @@ const CLASHES: [Clash; 7] = [
         },
         fix: ignore_in_ruff_or_simplint,
     },
+    Clash {
+        simplint: Rule::InlineRegex,
+        ruff: &[RuffRule::UnnecessaryRegularExpressionCompile],
+        probe: "import re\n\n\ndef function(text):\n    return re.compile(\"a\").match(text)\n",
+        acts_on: |_, _| true,
+        undoes_fixes: false,
+        why: |names| {
+            format!(
+                "{} moves a `re.compile` in a function to a module-level constant, which compiles once; {} {} the \
+                 inline compile and suggests `re.match`, advice that holds only for code that runs once",
+                names.simplint_selector,
+                names.ruff_selectors,
+                names.verb("reports", "report"),
+            )
+        },
+        fix: ignore_in_ruff_or_simplint,
+    },
 ];
 
 // How a rule is shown in the message: by its name with its code, or by its code with its name.
 fn shown(by_name: bool, name: &str, code: &str) -> String {
-    if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") }
+    if code.is_empty() {
+        name.to_owned()
+    } else if by_name {
+        format!("{name} ({code})")
+    } else {
+        format!("{code} ({name})")
+    }
 }
 
 // The way out of a clash that a Ruff rule's ignore and simplint's own ignore both offer.

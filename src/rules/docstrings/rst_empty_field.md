@@ -5,6 +5,9 @@ after their name, such as `:param path:` with no description.
 
 A field with no description names what it documents and says nothing about it, which the signature already shows. Sphinx
 renders the entry with a blank description, so the reference lists the parameter without saying what it is for.
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) has a function's docstring document its arguments,
+and the [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) puts a
+description after each name.
 
 ## Example
 

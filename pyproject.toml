@@ -140,6 +140,7 @@ lint.ignore = [
   "missing-trailing-comma",                    # conflicts with the formatter
   "multi-line-summary-first-line",             # incompatible with D213
   "single-line-implicit-string-concatenation", # conflicts with the formatter
+  "unnecessary-regular-expression-compile",    # conflicts with inline-regex (SMP534)
 ]
 lint.per-file-ignores."tasks/**.py" = [
   "implicit-namespace-package",           # tasks are scripts, not a package

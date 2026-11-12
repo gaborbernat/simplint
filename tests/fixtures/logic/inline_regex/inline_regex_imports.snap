@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:12 SMP534 Compile this pattern once at module level and call its `fullmatch` [unsafe fix: Move the pattern to a module-level constant]
+10:18 SMP534 Compile this pattern once at module level and call its `fullmatch`
+--- fixed (1 applied, 0 remaining) ---
+import re
+from re import fullmatch
+from typing import Callable, Final
+
+
+_IS_WORD_PATTERN: Final[re.Pattern[str]] = re.compile(r"\w+")
+
+
+def is_word(text: str) -> bool:
+    return _IS_WORD_PATTERN.fullmatch(text) is not None
+
+
+_WORD_CHECK_PATTERN: Final[re.Pattern[str]] = re.compile(r"\w+")
+
+
+def word_check(check: Callable[[str], bool]) -> bool:
+    return check(_WORD_CHECK_PATTERN.fullmatch("x") is not None)

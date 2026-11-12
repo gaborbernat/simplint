@@ -3,7 +3,11 @@ Flags single-letter names outside comprehensions and conventional type parameter
 ## Why is this bad?
 
 A single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it.
-Comprehensions are exempt because the iterable the names come from sits right next to them.
+[PEP 8](https://peps.python.org/pep-0008/#names-to-avoid) bans only `l`, `O` and `I`, which some fonts confuse with
+digits. The [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.16.1-names-to-avoid) allows
+`i` for loop counters and `e` and `f` in `except` and `with`; simplint reports those forms too, since the letter alone
+still says nothing about the value. Comprehensions are exempt because the iterable the names come from sits right next
+to them.
 
 ## Example
 
@@ -147,7 +151,10 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 
 - **Uppercase type parameters**: names such as `T` and `P` are conventional in generic signatures. This includes
   parameters in [PEP 695 syntax](https://docs.python.org/3/reference/compound_stmts.html#type-params) and assignments to
-  `typing.TypeVar`, `typing.TypeVarTuple` or `typing.ParamSpec` when the string argument matches the assigned name.
+  [`typing.TypeVar`](https://docs.python.org/3/library/typing.html#typing.TypeVar),
+  [`typing.TypeVarTuple`](https://docs.python.org/3/library/typing.html#typing.TypeVarTuple) or
+  [`typing.ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec) when the string argument matches
+  the assigned name.
 
   ```toml config
   [project]

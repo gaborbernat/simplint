@@ -2,9 +2,11 @@ Flags functions, classes, methods and class attributes that nothing in the run u
 
 ## Why is this bad?
 
-Code nothing calls still has to be read, kept compiling and updated when its neighbors change. Readers spend time
-working out whether it matters, and the test suite rarely covers it, so it drifts. Removing it keeps the module to what
-the program does.
+Code nothing calls still has to be read, kept working and updated when its neighbors change. Readers spend time working
+out whether it matters. In a [controlled experiment](https://doi.org/10.1109/ICPC.2016.7503723) with students,
+comprehension improved once the unreachable methods were removed. The test suite rarely covers such code, so it drifts.
+An unused definition can also point at a bug, and [vulture](https://github.com/jendrikseipp/vulture) lists finding
+errors among the reasons to look for unused code. Removing it keeps the module to what the program does.
 
 ## Example
 
@@ -109,6 +111,14 @@ definition a Sphinx page names is used.
 
 - **Names listed in `__all__`**: the module exports them, so the run may use them from outside.
 
+  ```python ok file=app/api.py
+  __all__ = ["format_name"]
+
+
+  def format_name(first: str, last: str) -> str:
+      return f"{first} {last}"
+  ```
+
 - **Names doctests use**: a `>>>` example in a docstring reads each name it uses, whether it imports the name or not,
   since a doctest runs in the globals of the module that defines the name, so the example may sit in that module.
 
@@ -194,8 +204,8 @@ definition a Sphinx page names is used.
   are documented too, and so is every member of an `.. autoclass::` with `:members:`.
 
   Names match by their dotted ending, so a page under `.. currentmodule::`, or one whose `conf.py` puts another
-  directory on `sys.path`, still matches. The files are read from the directory of each `pyproject.toml`, outside hidden
-  directories and the paths Ruff excludes.
+  directory on [`sys.path`](https://docs.python.org/3/library/sys.html#sys.path), still matches. The files are read from
+  the directory of each `pyproject.toml`, outside hidden directories and the paths Ruff excludes.
 
   ```toml config
   [project]
@@ -309,6 +319,16 @@ definition a Sphinx page names is used.
   functions, Poetry plugin entry points, and pytest plugins loaded through `addopts` count as used. For a bare pytest
   plugin module, its public hooks count as used by the host.
 
+  ```toml config
+  [tool.mypy]
+  plugins = ["app.mypy_plugin"]
+  ```
+
+  ```python ok file=app/mypy_plugin.py
+  def plugin(version: str) -> None:
+      print(version)
+  ```
+
 - **Dunder and sunder names** such as `__repr__`, which the interpreter calls without a name in the source, and
   `_repr_html_` or `_missing_`, which Jupyter and `enum` call by name.
 
@@ -347,11 +367,14 @@ definition a Sphinx page names is used.
       return "alice"
   ```
 
-- **Computed attribute reads**: a read under a name computed at run time, such as `getattr(obj, name)`, `vars(obj)` or
-  `dir(obj)`, may reach any name of the module it sits in, and any public name of the run. A private name is therefore
-  kept only when its own file makes such a read. A name built on a literal start, as `getattr(self, "_handle_" + kind)`
-  or `getattr(self, f"_handle_{kind}")` builds for a dispatch table, reaches only the names with that start, wherever
-  they are defined; a start of underscores alone picks out no family, so it counts as any name.
+- **Computed attribute reads**: a read under a name computed at run time, such as
+  [`getattr(obj, name)`](https://docs.python.org/3/builtins/functions.html#getattr),
+  [`vars(obj)`](https://docs.python.org/3/builtins/functions.html#vars) or
+  [`dir(obj)`](https://docs.python.org/3/builtins/functions.html#dir), may reach any name of the module it sits in, and
+  any public name of the run. A private name is therefore kept only when its own file makes such a read. A name built on
+  a literal start, as `getattr(self, "_handle_" + kind)` or `getattr(self, f"_handle_{kind}")` builds for a dispatch
+  table, reaches only the names with that start, wherever they are defined; a start of underscores alone picks out no
+  family, so it counts as any name.
 
   ```python ok
   class Client:

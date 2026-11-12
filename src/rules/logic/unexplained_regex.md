@@ -3,10 +3,11 @@ Flags a regular expression pattern of four or more parts that has no comment, a 
 
 ## Why is this bad?
 
-A reader of a pattern works out each part from its punctuation, and a long pattern holds many parts to work out. A `#`
-comment in a verbose pattern names what a part matches, and it sits on the line of that part, where a note above the
-pattern drifts away from the part it describes. The verbose flag alone says nothing about the parts, so it needs a
-comment to be read.
+A reader of a pattern works out each part from its punctuation, and a long pattern holds many parts to work out. The
+[regex HOWTO](https://docs.python.org/3/howto/regex.html#using-re-verbose) says compact patterns are not very readable
+and recommends [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE) with a `#` comment on each part. A
+comment on the part's own line stays with that part, where a note above the pattern drifts away from it. The verbose
+flag alone says nothing about the parts, so the pattern still needs a comment to be read.
 
 ## Example
 
@@ -47,9 +48,10 @@ def parse_date(text):
 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
   concatenation. The calls are the same as in [unnamed-regex-group](SMP532.html): the module functions and the methods
-  of a compiled pattern. The rule counts the parts of the pattern, reading the verbose flag from `re.VERBOSE`, `re.X` or
-  an inline `(?x)`. A `flags` argument that is a name or other expression not resolving to a `re` flag leaves the
-  pattern unchecked, since its value may turn verbose mode on.
+  of a compiled pattern. The rule counts the parts of the pattern, reading the verbose flag from
+  [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
+  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
 
   A part is:
 
@@ -141,6 +143,14 @@ def parse_date(text):
   ```
 
 - **A pattern that is not a literal**, such as an f-string or a name, is not read.
+
+  ```python ok
+  import re
+
+
+  def is_version(prefix, text):
+      return re.match(rf"{prefix}(\d+)\.(\d+)\.(\d+)\.(\d+)", text)
+  ```
 
 ## Other tools
 

@@ -2,8 +2,11 @@ Flags module-level variables that are assigned once and not annotated `Final`.
 
 ## Why is this bad?
 
-Without `Final`, a reader has to search the codebase to learn that a module variable never changes. With it, the type
-checker rejects any reassignment, here or in another module ([PEP 591](https://peps.python.org/pep-0591/)).
+Without `Final`, a reader has to search the codebase to learn that a module variable never changes, or trust an ALL_CAPS
+name that nothing enforces. With it, the type checker rejects any reassignment, here or in another module, which
+documents the constant [in a checkable way](https://peps.python.org/pep-0591/#the-final-annotation). Compilers can use
+it too: [mypyc](https://mypyc.readthedocs.io/en/latest/performance_tips_and_tricks.html#using-fast-native-features)
+lists reads of final module attributes among its fast operations.
 
 ## Example
 
@@ -183,8 +186,10 @@ LIMIT: Final[int] = 10
   TIMEOUT = 30
   ```
 
-- **Modules with a version gate**: a top-level `if` that tests `sys.version_info` and ends in `raise` or
-  `sys.exit(...)`, which exists to run on older interpreters and report them.
+- **Modules with a version gate**: a top-level `if` that tests
+  [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info) and ends in `raise` or
+  [`sys.exit(...)`](https://docs.python.org/3/library/sys.html#sys.exit), which exists to run on older interpreters and
+  report them.
 
   ```python ok
   import sys
@@ -240,8 +245,9 @@ LIMIT: Final[int] = 10
       monkeypatch.setattr(config, "TIMEOUT", 5)
   ```
 
-- **Every name of a module a `setattr` call sets under a computed name**, such as `setattr(config, name, value)` with
-  `name` a parameter or the item of a loop over a call: the call may set any of them, so none of them is reported.
+- **Every name of a module a `setattr` call sets under a computed name**, such as
+  [`setattr(config, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) with `name` a parameter or
+  the item of a loop over a call: the call may set any of them, so none of them is reported.
 
   ```python ok file=config.py
   TIMEOUT = 30
@@ -256,11 +262,13 @@ LIMIT: Final[int] = 10
       monkeypatch.setattr(config, name, 5)
   ```
 
-- **Names a module writes through `globals()`**, such as `globals()["LIMIT"] = 2` in a function: that write sets the
-  name. A write under a computed key, or through `globals().update`, `setdefault` or `pop`, may set any name, so none of
-  the module's names is reported. At module level, `vars()` and `locals()` with no argument return the same dict, so
-  their writes count too, including in the default, decorator or base of a `def` or `class`, which run at module level.
-  Inside the body of a function, class or lambda they do not, and neither does a call with an argument.
+- **Names a module writes through [`globals()`](https://docs.python.org/3/builtins/functions.html#globals)**, such as
+  `globals()["LIMIT"] = 2` in a function: that write sets the name. A write under a computed key, or through
+  `globals().update`, `setdefault` or `pop`, may set any name, so none of the module's names is reported. At module
+  level, [`vars()`](https://docs.python.org/3/builtins/functions.html#vars) and
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals) with no argument return the same dict, so their
+  writes count too, including in the default, decorator or base of a `def` or `class`, which run at module level. Inside
+  the body of a function, class or lambda they do not, and neither does a call with an argument.
 
   ```python ok
   LIMIT = 1

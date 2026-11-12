@@ -1,10 +1,14 @@
 Flags own-line comments whose every word is an identifier or keyword of the statement below, such as `# close file`
-above `file.close()`. A statement across several lines counts in full.
+above [`file.close()`](https://docs.python.org/3/reference/datamodel.html#file.close). A statement across several lines
+counts in full.
 
 ## Why is this bad?
 
 A comment that repeats the line under it tells the reader nothing new, and it goes stale without anyone noticing when
-the code changes. Comments are for the reasons behind the code, which the code cannot show.
+the code changes. [PEP 8](https://peps.python.org/pep-0008/#inline-comments) calls comments that state the obvious
+distracting, and the
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.8.5-block-and-inline-comments) says not
+to describe the code. Comments are for the reasons behind the code, which the code cannot show.
 
 ## Example
 

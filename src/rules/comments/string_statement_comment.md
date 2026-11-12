@@ -3,9 +3,13 @@ function nor an attribute docstring.
 
 ## Why is this bad?
 
-Python evaluates a bare string and throws it away, so it documents nothing the way a docstring does, and no tool reads
-it as a comment either. Pylint reports it as a pointless statement. A `#` comment says the same thing where a reader
-looks for it.
+A string that is not a docstring is kept nowhere: [PEP 257](https://peps.python.org/pep-0257/#what-is-a-docstring) notes
+the compiler ignores it and it does not reach `__doc__`, so it documents nothing the way a docstring does. Linters do
+not read it as a comment either; pylint reports it as a
+[pointless string statement](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/pointless-string-statement.html).
+Guido van Rossum endorsed such strings as comments in a 2011 tweet, as a
+[python-ideas thread](https://mail.python.org/pipermail/python-ideas/2012-June/015552.html) cites, but simplint reports
+them because a `#` comment gives the same information where a reader looks for it.
 
 ## Example
 
@@ -80,7 +84,9 @@ line numbers. It is safe for the program: a string statement does nothing when i
 - a comment line would run past the comment width, which [Ruff E501](https://docs.astral.sh/ruff/rules/line-too-long/)
   then reports
 
-Tools that read the source text, such as `inspect.getsource`, see the comments where the string was.
+Tools that read the source text, such as
+[`inspect.getsource`](https://docs.python.org/3/library/inspect.html#inspect.getsource), see the comments where the
+string was.
 
 ```python report
 def run() -> None:

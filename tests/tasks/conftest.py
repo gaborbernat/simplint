@@ -5,7 +5,7 @@ import tarfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -16,7 +16,14 @@ if TYPE_CHECKING:
 
     from pytest_mock import MockerFixture, MockType
 
-_REGISTRY: Final[str] = """\
+
+@pytest.fixture
+def registry(tmp_path: Path) -> Path:
+    # the one-rule registry the rule list reads, so a test names a rule the list really has
+    (tmp_path / "src" / "lint").mkdir(parents=True)
+    path = tmp_path / "src" / "lint" / "registry.rs"
+    path.write_text(
+        """\
 rules! {
     AllFormat => ("SMP405", "all-format", "`__all__` format", Always, api::all_format { module }),
 }
@@ -33,15 +40,9 @@ pub const GROUPS: [(&str, &str, &str); 10] = [
     ("testing", "Tests", "Tests"),
     ("docstrings", "Docstrings", "Docstrings"),
 ];
-"""
-
-
-@pytest.fixture
-def registry(tmp_path: Path) -> Path:
-    # the one-rule registry the rule list reads, so a test names a rule the list really has
-    (tmp_path / "src" / "lint").mkdir(parents=True)
-    path = tmp_path / "src" / "lint" / "registry.rs"
-    path.write_text(_REGISTRY, encoding="utf-8")
+""",
+        encoding="utf-8",
+    )
     return path
 
 

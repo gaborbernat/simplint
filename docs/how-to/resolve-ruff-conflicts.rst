@@ -73,6 +73,12 @@ The pairs are:
         sections, and :doc:`rst-missing-raises </rules/SMP924>` for the ``:raises:`` fields
         `docstring-missing-exception <https://docs.astral.sh/ruff/rules/docstring-missing-exception/>`__ reads the same
         way, since those know Google and numpydoc sections only. Ignore the Ruff rules.
+    * - :doc:`inline-regex </rules/SMP534>`
+      - `unnecessary-regular-expression-compile <https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/>`__
+      - :doc:`inline-regex </rules/SMP534>` moves a ``re.compile`` in a function to a module-level constant, which compiles
+        once. `unnecessary-regular-expression-compile <https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/>`__
+        reports the inline compile and suggests ``re.match``, advice that holds only for code that runs once. Ignore the
+        Ruff rule, the recommended way, or ignore :doc:`inline-regex </rules/SMP534>` in ``[tool.simplint]``.
 
 Things to know when resolving a conflict:
 
@@ -86,3 +92,8 @@ Things to know when resolving a conflict:
     Other combinations clash only on some code, such as :doc:`single-user-constant </rules/SMP202>` inlining a value
     into a comparison Ruff's `magic-value-comparison <https://docs.astral.sh/ruff/rules/magic-value-comparison/>`__
     reports. simplint then offers no fix for that report and keeps it, and the run goes on.
+
+    Ruff's unused-import (F401) clashes with :doc:`missing-from-all </rules/SMP401>` on an import that its own file
+    never reads but another module imports. Ruff's safe fix deletes that import, while
+    :doc:`missing-from-all </rules/SMP401>` reports it and lists the name in ``__all__``. The run does not stop for it,
+    and the rule page names how to keep Ruff's fix from breaking the importer.

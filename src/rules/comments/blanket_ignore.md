@@ -4,7 +4,13 @@ hides every error on its line or in its file, including errors that appear there
 
 ## Why is this bad?
 
-A real bug that lands on the same line passes unnoticed, and the comment never says which error it was meant for.
+A blanket suppression hides every error its checker reports on the line or in the file, including a real bug that lands
+there later, and the comment does not say which error it was meant for. Naming the code keeps the other errors visible.
+mypy and ty give the same reason for
+[codes in `type: ignore`](https://mypy.readthedocs.io/en/stable/error_codes.html#silencing-errors-based-on-error-codes)
+and [rule names in `ty: ignore`](https://docs.astral.sh/ty/suppression/#ty-suppression-comments). Ruff's
+[blanket-type-ignore](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) also finds such a comment harder to read
+and maintain.
 
 ## Example
 

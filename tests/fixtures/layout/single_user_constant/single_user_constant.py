@@ -97,18 +97,11 @@ def describe() -> str:
     return f"version {_FULL} on {_PORT}"
 
 
-_IGNORED = frozenset({"a", "b"})
-_NONE_IGNORED = frozenset()
 _DERIVED = frozenset(KINDS)
-_SHADOWED = frozenset((1,))
 
 
 def ignored() -> frozenset:
-    return _IGNORED | _NONE_IGNORED | _DERIVED
-
-
-def shadow(frozenset: type) -> object:
-    return frozenset, _SHADOWED
+    return _DERIVED
 
 
 _OFFSET = -1

@@ -50,7 +50,7 @@ fn rules_json_lists_parsed_examples() {
             first["blocks"][0]["source"].as_str().map(|source| source.starts_with("# ---------- parsing")),
             imports["short_group"].as_str(),
         ),
-        (0, Some("Example"), Some(10), Some(14), Some("report"), Some(10), Some(true), Some("Imports"))
+        (0, Some("Example"), Some(12), Some(16), Some("report"), Some(12), Some(true), Some("Imports"))
     );
 }
 
@@ -96,6 +96,14 @@ fn rule_shows_examples_as_plain_python() {
         ),
         (0, true, false)
     );
+}
+
+#[test_case("SMP106", "# tasks.py (executable)" ; "executable_file")]
+#[test_case("SMP009", "# with SMP009 selected" ; "selected_rule")]
+fn rule_labels_blocks_with_their_attributes(selector: &str, comment: &str) {
+    let root = empty_project();
+    let (code, stdout, _) = simplint(root.path(), &["rule", selector]);
+    assert_eq!((code, stdout.contains(&format!("Reported:\n  ```python\n  {comment}\n"))), (0, true));
 }
 
 #[test]

@@ -1,0 +1,31 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:27 SMP911 Role `:class:Path` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+13:29 SMP911 Role `:class:Path` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+--- fixed (2 applied, 0 remaining) ---
+def literal_holds_no_role() -> None:
+    """Show the literal form.
+
+    Write ``open :class:Path`` for the literal, as the reference is code.
+    """
+
+
+def quoted_bare_role() -> None:
+    """Open the file, as ":class:`Path`" does."""
+
+
+def role_after_interpreted_text() -> None:
+    """Open the file: `open`:class:`Path` does."""
+
+
+def role_in_a_comment() -> None:
+    """Notes.
+
+    .. :class:Path is a comment.
+    """
+
+
+def escaped_colon() -> None:
+    """Write a\\:class:Path to keep it plain."""

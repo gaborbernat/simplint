@@ -3,8 +3,11 @@ argument, so the whole setup fits in one call.
 
 ## Why is this bad?
 
-Setting attributes after construction spreads the mock's configuration over several statements. The mock constructors
-take any attribute as a keyword argument and set it on the new mock, so the whole setup fits in one call.
+Setting attributes after construction spreads the mock's configuration over several statements.
+[`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock) and its subclasses take any attribute
+as a keyword argument and set it on the new mock, and
+[`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec) passes its extra
+keywords to the mock it creates, so the whole setup fits in one call.
 
 ## Example
 

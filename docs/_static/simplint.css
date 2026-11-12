@@ -360,6 +360,11 @@ html:not(.no-js) details.example-inline:not([open]) {
   display: none;
 }
 
+/* an example outside What it does stays open, so it has no title bar to close it by */
+details.example-static > summary.sd-summary-title {
+  display: none;
+}
+
 details.example {
   margin: 0.5rem 0 0.8rem;
   border: 1px solid var(--color-background-border);

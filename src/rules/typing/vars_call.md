@@ -2,12 +2,15 @@ Flags direct calls to the builtin `vars()`, which return an untyped `dict`.
 
 ## Why is this bad?
 
-`vars()` returns a `dict[str, Any]`, so the attribute types are lost and a misspelled key fails only at runtime. Reading
-attributes from a typed object keeps both checks in the type checker. For
+`vars()` returns a `dict[str, Any]` in [typeshed](https://github.com/python/typeshed/blob/main/stdlib/builtins.pyi), so
+the attribute types are lost and a misspelled key fails only at runtime. It also
+[raises `TypeError`](https://docs.python.org/3/builtins/functions.html#vars) for an object without a `__dict__`, such as
+one whose class defines `__slots__`. Reading attributes from a typed object keeps these checks in the type checker. For
 [`argparse`](https://docs.python.org/3/library/argparse.html), pass a
 [`Namespace`](https://docs.python.org/3/library/argparse.html#argparse.Namespace) subclass with annotated attributes to
 [`parse_args(namespace=...)`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args), as in
-the example.
+the example. The [argparse docs](https://docs.python.org/3/library/argparse.html#the-namespace-object) show `vars(args)`
+for a dict view. The typed form keeps the checks an untyped dict loses.
 
 ## Example
 

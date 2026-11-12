@@ -66,6 +66,22 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- [`module-attribute-scope`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):
+  the modules the rule checks. `"project"` covers the modules of the run, `"stdlib"` the standard library,
+  `"third-party"` every other module, and an absolute module name covers that module and its submodules, so a project
+  can widen the rule one module at a time. The default is `["project"]`.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["project", "stdlib"]
+  ```
+
+  ```python report
+  import json
+
+  text = json.dumps([])
+  ```
+
 ## What it does
 
 ### Active on
@@ -105,6 +121,21 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **Attribute access on a module outside the run bound by `import module` or `import module as name`**, once
+  `module-attribute-scope` covers it. The run does not show which names such a module defines, so the report comes
+  without a fix.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["project", "requests"]
+  ```
+
+  ```python report
+  import requests
+
+  response = requests.get("https://example.com")
+  ```
+
 - **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a
   module that resolves to a file of this project is checked.
 
@@ -121,13 +152,62 @@ writer = DbWriter()
 
 ### Exceptions
 
-- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as
-  it is.
+- **Third-party and standard-library modules under the default scope**: only modules that resolve to a file of the run
+  count until `module-attribute-scope` lists more, so `json` stays as it is.
 
   ```python ok
   import json as jsonlib
 
   text = jsonlib.dumps([])
+  ```
+
+- **A module imported under its conventional alias**: Ruff's
+  [`flake8-import-conventions`](https://docs.astral.sh/ruff/settings/#lint_flake8-import-conventions_aliases) asks for
+  `import numpy as np`, `import pandas as pd` and the other aliases of its `aliases` and `extend-aliases`, and code
+  reads such a module through its alias on purpose, so `np.array` stays.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["third-party"]
+  ```
+
+  ```python ok
+  import numpy as np
+
+  values = np.array([1, 2])
+  ```
+
+- **A module Ruff bans importing names from**: a module its
+  [`banned-from`](https://docs.astral.sh/ruff/settings/#lint_flake8-import-conventions_banned-from) lists, which
+  [banned-import-from](https://docs.astral.sh/ruff/rules/banned-import-from/) (ICN003) reports `from module import name`
+  for, stays reached through the module.
+
+  ```toml config
+  [tool.ruff.lint.flake8-import-conventions]
+  banned-from = ["json"]
+
+  [tool.simplint.imports]
+  module-attribute-scope = ["stdlib"]
+  ```
+
+  ```python ok
+  import json
+
+  text = json.dumps([])
+  ```
+
+- **A dotted import of a module outside the run without an alias**: `import os.path` binds `os`, and its `path`
+  attribute is the imported submodule rather than a name to import.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["stdlib"]
+  ```
+
+  ```python ok
+  import os.path
+
+  joined = os.path.join("a", "b")
   ```
 
 - **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its
@@ -168,8 +248,10 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
-- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, "DbWriter")` or
-  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.
+- **A module used as a value**: passed to a function, assigned or returned, as in
+  [`getattr(findings, "DbWriter")`](https://docs.python.org/3/builtins/functions.html#getattr) or
+  [`importlib.reload(findings)`](https://docs.python.org/3/library/importlib.html#importlib.reload), the module is an
+  object of its own, so the file keeps it.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -310,6 +392,25 @@ writer = DbWriter()
       mocker.patch("pkg.findings.DbWriter")
   ```
 
+  The same holds for a module outside the run that `module-attribute-scope` covers, such as
+  `mocker.patch("requests.get")`.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attribute-scope = ["requests"]
+  ```
+
+  ```python ok file=client.py
+  import requests
+
+  response = requests.get("https://example.com")
+  ```
+
+  ```python context file=tests/test_client.py
+  def test_get(mocker):
+      mocker.patch("requests.get")
+  ```
+
 - **An import with a comment inside its statement**, such as a comment after an opening parenthesis: the rule reports
   the accesses without a fix, because the fix would replace the import and delete the comment.
 
@@ -338,15 +439,61 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **A module in an import cycle with the importing file**: the file and the module import each other at run time, so the
+  from-import would read a name the module has not defined yet when the cycle loads it. The rule reports the accesses
+  without a fix. Here `pkg/a.py` and `pkg/b.py` import each other, and each reads a name of the other. A back-import
+  under `if TYPE_CHECKING:` is not a run-time import, so it forms no cycle.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python report file=pkg/a.py
+  from . import b
+
+  VALUE = 1
+
+
+  def run() -> int:
+      return b.helper()
+  ```
+
+  ```python fixed file=pkg/a.py
+  from . import b
+
+  VALUE = 1
+
+
+  def run() -> int:
+      return b.helper()
+  ```
+
+  ```python report file=pkg/b.py
+  from . import a
+
+
+  def helper() -> int:
+      return a.VALUE
+  ```
+
+  ```python fixed file=pkg/b.py
+  from . import a
+
+
+  def helper() -> int:
+      return a.VALUE
+  ```
+
 ### Fix
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
 patches the module attribute later no longer reaches the name.
 
 The fix replaces the import and every `findings.Name` access in the file. It is offered only when every use of the
-module is such an access to a name the module defines, no computed write, such as `setattr(module, name, value)`, may
-set a name of the module, no other module of the run imports or reads the module's name, and `__all__` does not list it,
-since the replaced import would no longer bind it.
+module is such an access to a name the module defines, no computed write, such as
+[`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr), may set a name of the
+module, no other module of the run imports or reads the module's name, `__all__` does not list it, since the replaced
+import would no longer bind it, and the file and the module are not in one cycle of run-time imports.
 
 The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
 report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries

@@ -3,6 +3,7 @@ mod class_order;
 mod constructors;
 mod definition_before_use;
 mod definition_time;
+mod fold;
 mod reorder;
 mod single_user_constant;
 

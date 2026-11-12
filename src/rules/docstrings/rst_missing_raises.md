@@ -3,8 +3,12 @@ Flags exceptions a public API function raises itself that its reStructuredText d
 
 ## Why is this bad?
 
-Callers handle the exceptions they know about. One the docstring leaves out reaches them as a surprise, often in
-production, where the error path is first exercised.
+Callers handle the exceptions they know about, and no signature names them, so the docstring is where they learn them.
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) lists the exceptions raised among what a function's
+docstring documents, and the
+[Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for those relevant
+to the interface. Google says not to document exceptions raised when a caller misuses the API. An undocumented exception
+still reaches the caller, often first in production.
 
 ## Example
 
@@ -171,8 +175,13 @@ field until they do.
     ```
 
 - **An exception a surrounding `try` of the same function catches**: it does not escape the function. The `try` catches
-  it by name, through a built-in base such as `OSError` for `FileNotFoundError`, through `Exception`, which does not
-  catch `SystemExit`, `KeyboardInterrupt` or `GeneratorExit`, or through `BaseException`.
+  it by name, through a built-in base such as [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError)
+  for [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), through
+  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception), which does not catch
+  [`SystemExit`](https://docs.python.org/3/builtins/exceptions.html#SystemExit),
+  [`KeyboardInterrupt`](https://docs.python.org/3/builtins/exceptions.html#KeyboardInterrupt) or
+  [`GeneratorExit`](https://docs.python.org/3/builtins/exceptions.html#GeneratorExit), or through
+  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException).
 
   ```toml config
   [project]
@@ -247,7 +256,8 @@ field until they do.
       raise FileNotFoundError(path)
   ```
 
-- **`NotImplementedError`**: it marks a method for subclasses to override.
+- **[`NotImplementedError`](https://docs.python.org/3/builtins/exceptions.html#NotImplementedError)**: it marks a method
+  for subclasses to override.
 
   ```toml config
   [project]

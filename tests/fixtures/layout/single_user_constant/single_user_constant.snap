@@ -6,28 +6,23 @@ expression: "lint_fixture(rule, fixture, target_version)"
 28:1 SMP202 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
 42:1 SMP202 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
 43:1 SMP202 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
-84:1 SMP202 `_SEEN_TYPES` is used by one function only; define it there [unsafe fix: Move `_SEEN_TYPES` into `lookup`]
 85:1 SMP202 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
 93:1 SMP202 `_PORT` is used by one function only; define it there [unsafe fix: Move `_PORT` into `describe`]
-100:1 SMP202 `_IGNORED` is used by one function only; define it there [unsafe fix: Move `_IGNORED` into `ignored`]
-101:1 SMP202 `_NONE_IGNORED` is used by one function only; define it there [unsafe fix: Move `_NONE_IGNORED` into `ignored`]
-103:1 SMP202 `_SHADOWED` is used by one function only; define it there
-114:1 SMP202 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
-115:1 SMP202 `_HOUR` is used by one function only; define it there [unsafe fix: Move `_HOUR` into `literals`]
-116:1 SMP202 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
-117:1 SMP202 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
-118:1 SMP202 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
-134:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
-141:1 SMP202 `_SIZES` is used by one function only; define it there [unsafe fix: Move `_SIZES` into `size`]
-158:1 SMP202 `_5_SMOOTH` is used by one function only; define it there
-159:1 SMP202 `_CLASS` is used by one function only; define it there
-166:1 SMP202 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
-180:1 SMP202 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
-197:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
-198:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
-207:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
-217:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
---- fixed (22 applied, 3 remaining) ---
+107:1 SMP202 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
+108:1 SMP202 `_HOUR` is used by one function only; define it there [unsafe fix: Move `_HOUR` into `literals`]
+109:1 SMP202 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
+110:1 SMP202 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
+111:1 SMP202 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
+127:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
+151:1 SMP202 `_5_SMOOTH` is used by one function only; define it there
+152:1 SMP202 `_CLASS` is used by one function only; define it there
+159:1 SMP202 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
+173:1 SMP202 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
+190:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
+191:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
+200:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
+210:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
+--- fixed (18 applied, 2 remaining) ---
 from typing import Final
 
 _RETRIES = 3
@@ -105,12 +100,12 @@ def verify(token: str) -> object:
     _LOGGER.info(token)
     found = _JWT_CACHE.get(token) or _VERSION_RE.match(token) or _CONFIG_DIR / token or _CLIENT.get(token)
     return found, _LEVEL, _ALIAS, _FORMATTED, _SPREAD, _MERGED, _FLIPPED, _LIMIT
+_SEEN_TYPES: Final[dict[str, int]] = {}
 
 
 def lookup(key: str) -> int:
-    seen_types: dict[str, int] = {}
     names = ("a", "b")
-    return seen_types.get(key, 0) + len(seen_types) + len(names) + len(names)
+    return _SEEN_TYPES.get(key, 0) + len(_SEEN_TYPES) + len(names) + len(names)
 
 
 _FULL = ".".join(str(part) for part in VERSION)
@@ -121,15 +116,10 @@ def describe() -> str:
 
 
 _DERIVED = frozenset(KINDS)
-_SHADOWED = frozenset((1,))
 
 
 def ignored() -> frozenset:
-    return frozenset({"a", "b"}) | frozenset() | _DERIVED
-
-
-def shadow(frozenset: type) -> object:
-    return frozenset, _SHADOWED
+    return _DERIVED
 
 
 _TABLE_ROWS = [("a", 1.5), ("b", -2)]
@@ -152,9 +142,11 @@ def bounds() -> int:
     return limits[0] + limits[1]
 
 
+_SIZES: dict[str, int] = {}
+
+
 def size(key: str) -> int:
-    sizes: dict[str, int] = {}
-    return sizes.get(key, 0) + len(sizes)
+    return _SIZES.get(key, 0) + len(_SIZES)
 
 
 _ERRORS = (RuntimeError,) if len(__name__) > 3 else ()

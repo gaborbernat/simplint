@@ -55,6 +55,19 @@ def local() -> int:
 __all__ = ["LIMIT", "local", "shared"]
 ```
 
+## Conflicts with Ruff
+
+Ruff's [unused-import](https://docs.astral.sh/ruff/rules/unused-import/) (F401) reports an import this rule also reports
+when another module imports it, and its safe fix deletes that import. Ruff cannot see the importer, so after
+`ruff check --fix` the importer fails with an
+[`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError), and neither tool reports anything. The
+run does not stop for this pair, since the fixes do not undo each other: once this rule's fix lists the name, F401 stops
+reporting it.
+
+Keep the import with `# noqa: F401  # <reason>` on its line: F401 respects the comment, and this rule's fix removes it
+once it lists every name on that line. Without the comment, `simplint check --fix` must run before `ruff check --fix`,
+and it needs `--unsafe-fixes` when the module has no `__all__` yet, since that fix creates one.
+
 ## What it does
 
 ### Active on
@@ -125,14 +138,42 @@ signature reaches it:
   __all__ = ["helper"]
   ```
 
-- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with
-  `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
+- **String-named handlers** passed to
+  [`pkgutil.resolve_name`](https://docs.python.org/3/library/pkgutil.html#pkgutil.resolve_name) as `module:attribute`,
+  or stored with `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
+
+  ```python report file=config.py
+  def main() -> None:
+      pass
+
+
+  __all__ = []
+  ```
+
+  ```python context file=cli.py
+  import pkgutil
+
+  main = pkgutil.resolve_name("config:main")
+  ```
 
 - **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and
   `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);
   Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.
   A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public
   hooks by name.
+
+  ```toml config
+  [tool.mypy]
+  plugins = ["config"]
+  ```
+
+  ```python report file=config.py
+  def plugin(version: str) -> None:
+      pass
+
+
+  __all__ = []
+  ```
 
 - **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
   517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its
@@ -229,6 +270,17 @@ signature reaches it:
 ### Exceptions
 
 - **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.
+
+  ```python ok file=app/__main__.py
+  LIMIT = 3
+  __all__ = []
+  ```
+
+  ```python context file=cli.py
+  from app.__main__ import LIMIT
+
+  print(LIMIT)
+  ```
 
 - **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the
   module's public interface. A production importer still makes the name reportable.
@@ -339,7 +391,8 @@ signature reaches it:
   ```
 
 - **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes
-  `from module import *` raise `AttributeError` at run time.
+  `from module import *` raise [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) at
+  run time.
 
   ```python ok file=pkg/typed.py
   from typing import TYPE_CHECKING

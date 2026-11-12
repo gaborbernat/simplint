@@ -44,8 +44,11 @@ use crate::common;
 #[test_case("undocumented-public-api", "switched.py", None ; "undocumented_public_api_top_level_blocks")]
 #[test_case("long-docstring-paragraph", "long_docstring_paragraph.py", None ; "long_docstring_paragraph")]
 #[test_case("rst-field-syntax", "rst_field_syntax.py", None ; "rst_field_syntax")]
+#[test_case("rst-field-syntax", "rst_field_syntax_docutils.py", None ; "rst_field_syntax_docutils")]
 #[test_case("rst-inline-markup", "rst_inline_markup.py", None ; "rst_inline_markup")]
 #[test_case("rst-inline-markup", "rst_inline_markup_first_line.py", None ; "rst_inline_markup_first_line")]
+#[test_case("rst-inline-markup", "rst_inline_markup_docutils.py", None ; "rst_inline_markup_docutils")]
+#[test_case("rst-inline-markup", "rst_inline_markup_scanner.py", None ; "rst_inline_markup_scanner")]
 #[test_case("rst-type-field", "rst_type_field.py", None ; "rst_type_field")]
 #[test_case("rst-restating-field", "rst_restating_field.py", None ; "rst_restating_field")]
 #[test_case("rst-empty-field", "rst_empty_field.py", None ; "rst_empty_field")]
@@ -54,6 +57,7 @@ use crate::common;
 #[test_case("rst-missing-param", "rst_missing_param_quoted_classvar.py", None ; "rst_missing_param_quoted_classvar")]
 #[test_case("rst-unknown-param", "rst_unknown_param.py", None ; "rst_unknown_param")]
 #[test_case("rst-unknown-param", "rst_unknown_param_quotes.py", None ; "rst_unknown_param_quotes")]
+#[test_case("rst-unknown-param", "rst_unknown_param_backticks.py", None ; "rst_unknown_param_backticks")]
 #[test_case("rst-duplicate-param", "rst_duplicate_param.py", None ; "rst_duplicate_param")]
 #[test_case("rst-param-order", "rst_param_order.py", None ; "rst_param_order")]
 #[test_case("rst-missing-attribute", "rst_missing_attribute.py", None ; "rst_missing_attribute")]
@@ -320,6 +324,438 @@ fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
     let root =
         common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);
     assert_eq!(common::check(root.path(), &["--select", "SMP916,SMP917"]).1, stdout);
+}
+
+const DUPLICATED: &str = r#"class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up.
+
+        :param source: The path to read.
+        """
+"#;
+const KEPT_CLASS: &str = r"model.py:10:10: SMP918 `:param source:` repeats the docstring of `Reader`, which autodoc shows; document each constructor parameter once
+Found 1 error.
+1 unsafe fix available with `--fix --unsafe-fixes`.
+";
+const KEPT_INIT: &str = r"model.py:4:6: SMP918 `:param source:` repeats the docstring of `__init__`, which autodoc shows; document each constructor parameter once
+Found 1 error.
+1 unsafe fix available with `--fix --unsafe-fixes`.
+";
+const RST: &str = "[tool.simplint]\ndocstring-style = \"rst\"\n";
+const INDEX: &str = "Index\n=====\n";
+const INIT: &str = "autoclass_content = \"init\"\n";
+const READER: &str = ".. autoclass:: Reader\n";
+const AUTOMODULE: &str = ".. automodule:: model\n    :members:\n";
+
+// The concise report of `model.py` in a project made of `RST`, the model and the given files, which replace the
+// project's own when they share a name.
+fn duplicate_report(files: &[(&str, &str)]) -> String {
+    let mut all = vec![("pyproject.toml", RST), ("model.py", DUPLICATED)];
+    all.extend_from_slice(files);
+    let root = common::project(&all);
+    common::check(root.path(), &["--select", "SMP918"]).1
+}
+
+// Sphinx's `autoclass_content` picks the docstring it renders: under `init` the `__init__` docstring alone, so the class
+// copy is the repeat. A value the rule cannot read leaves both copies alone.
+#[test_case("", KEPT_CLASS ; "unset_keeps_the_class_docstring")]
+#[test_case("autoclass_content = \"class\"\n", KEPT_CLASS ; "class_keeps_the_class_docstring")]
+#[test_case("autoclass_content = \"both\"\n", KEPT_CLASS ; "both_keeps_the_class_docstring")]
+#[test_case(INIT, KEPT_INIT ; "init_reports_the_class_docstring")]
+#[test_case("autoclass_content: str = \"init\"\n", KEPT_INIT ; "annotated_init")]
+#[test_case("autoclass_content, autodoc_typehints = \"init\", \"none\"\n", KEPT_INIT ; "tuple_assignment")]
+#[test_case("autoclass_content = \"init\"\nautoclass_content = \"class\"\n", KEPT_CLASS ; "last_assignment_decides")]
+#[test_case("project, version = \"x\", \"1\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "unrelated_tuple_is_ignored")]
+#[test_case("if True:\n    VERSION = 1\nautoclass_content = \"init\"\n", KEPT_INIT ; "unrelated_block_is_ignored")]
+fn autoclass_content_selects_the_copy(conf: &str, stdout: &str) {
+    assert_eq!(duplicate_report(&[("docs/index.rst", INDEX), ("docs/conf.py", conf)]), stdout);
+}
+
+// `autodoc_default_options` sets `class-doc-from` for the classes an `autoclass` or `autoexception` directive names,
+// ahead of `autoclass_content`; a key it does not set leaves `autoclass_content` in charge.
+#[test_case("autodoc_default_options = {\"class-doc-from\": \"init\"}\n", KEPT_INIT ; "default_options")]
+#[test_case(
+    "autoclass_content = \"both\"\nautodoc_default_options = {\"class-doc-from\": \"init\"}\n",
+    KEPT_INIT ;
+    "default_options_override_autoclass_content"
+)]
+#[test_case(
+    "autodoc_default_options = {\"members\": True}\nautoclass_content = \"init\"\n",
+    KEPT_INIT ;
+    "default_options_without_the_key"
+)]
+#[test_case(
+    "autodoc_default_options = {\"class-doc-from\": \"class\"}\nautoclass_content = \"init\"\n",
+    KEPT_CLASS ;
+    "default_options_class_overrides"
+)]
+fn autodoc_default_options_selects_the_copy_of_a_named_class(conf: &str, stdout: &str) {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", conf), ("docs/api.rst", READER)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+// Sphinx takes the `class-doc-from` default for the directives `autoclass` and `autoexception` alone. A class that an
+// `automodule` documents with `:members:` takes the module's options, which have no such key, so `autoclass_content`
+// decides it.
+#[test_case("autodoc_default_options = {\"class-doc-from\": \"init\"}\n", KEPT_CLASS ; "default_options_unset")]
+#[test_case(
+    "autodoc_default_options = {\"class-doc-from\": \"class\"}\nautoclass_content = \"init\"\n",
+    KEPT_INIT ;
+    "autoclass_content_decides"
+)]
+fn autodoc_default_options_do_not_reach_automodule_members(conf: &str, stdout: &str) {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", conf), ("docs/api.rst", AUTOMODULE)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+// A `class-doc-from` option on an `autoclass` directive decides the copy of the class it names, ahead of the options
+// of the configuration.
+#[test_case("", ".. autoclass:: Reader\n    :class-doc-from: init\n", KEPT_INIT ; "directive_alone")]
+#[test_case(
+    INIT,
+    ".. autoclass:: Reader\n    :class-doc-from: class\n",
+    KEPT_CLASS ;
+    "directive_overrides_autoclass_content"
+)]
+#[test_case(
+    "autodoc_default_options = {\"class-doc-from\": \"init\"}\n",
+    ".. autoclass:: Reader\n    :class-doc-from: both\n",
+    KEPT_CLASS ;
+    "directive_overrides_default_options"
+)]
+#[test_case(
+    INIT,
+    ".. autoclass:: Other\n    :class-doc-from: class\n",
+    KEPT_INIT ;
+    "directive_for_another_class_is_not_used"
+)]
+#[test_case(INIT, ".. autoclass:: Reader\n    :class-doc-from: sometimes\n", common::PASSED ; "unknown_directive_value")]
+fn class_doc_from_on_a_directive_selects_the_copy(conf: &str, api: &str, stdout: &str) {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", conf), ("docs/api.rst", api)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+const READ_ERROR: &str = r#"class ReadError(Exception):
+    """Read failed.
+
+    :param source: Where reading failed.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up.
+
+        :param source: The path that failed.
+        """
+"#;
+const EXCEPTION_KEPT_CLASS: &str = r"model.py:10:10: SMP918 `:param source:` repeats the docstring of `ReadError`, which autodoc shows; document each constructor parameter once
+Found 1 error.
+1 unsafe fix available with `--fix --unsafe-fixes`.
+";
+
+// An `autoexception` directive takes the `class-doc-from` option of an `autoclass` directive, and the default option.
+#[test_case("", ".. autoexception:: ReadError\n    :class-doc-from: init\n", KEPT_INIT ; "directive_option")]
+#[test_case(
+    INIT,
+    ".. autoexception:: ReadError\n    :class-doc-from: class\n",
+    EXCEPTION_KEPT_CLASS ;
+    "directive_overrides_autoclass_content"
+)]
+#[test_case(
+    "autodoc_default_options = {\"class-doc-from\": \"init\"}\n",
+    ".. autoexception:: ReadError\n",
+    KEPT_INIT ;
+    "default_options"
+)]
+fn autoexception_selects_the_copy(conf: &str, api: &str, stdout: &str) {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", conf), ("docs/api.rst", api), ("model.py", READ_ERROR)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+// A simple name in a page resolves against the page's module, so the `Reader` of `pkg.a` is the one a directive under
+// `pkg.a` documents, and the `Reader` of `pkg.b` keeps the class docstring that Sphinx renders for it.
+#[test]
+fn current_module_qualifies_a_simple_name() {
+    let api = ".. currentmodule:: pkg.a\n\n.. autoclass:: Reader\n    :class-doc-from: init\n";
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", DUPLICATED),
+        ("pkg/b.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", ""),
+        ("docs/api.rst", api),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP918"]).1;
+    let expected = format!(
+        "{}:4:6: SMP918 `:param source:` repeats the docstring of `__init__`, which autodoc shows; document each \
+         constructor parameter once\n{}:10:10: SMP918 `:param source:` repeats the docstring of `Reader`, which \
+         autodoc shows; document each constructor parameter once\nFound 2 errors.\n2 unsafe fixes available with \
+         `--fix --unsafe-fixes`.\n",
+        common::native("pkg/a.py"),
+        common::native("pkg/b.py"),
+    );
+    assert_eq!(stdout, expected);
+}
+
+// A docs `sys.path` that names the module `a` rather than `pkg.a` leaves the directive's target sharing only the dotted
+// tail with the class, so which copy Sphinx renders is unknown and neither copy is removed.
+#[test_case(".. autoclass:: a.Reader\n    :class-doc-from: init\n" ; "shorter_target")]
+#[test_case(".. autoclass:: src.pkg.a.Reader\n    :class-doc-from: init\n" ; "longer_target")]
+fn directive_sharing_the_dotted_tail_reports_nothing(api: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", ""),
+        ("docs/api.rst", api),
+    ]);
+    common::assert_report_count(root.path(), "SMP918", 0);
+}
+
+// A simple name that two classes of the run share does not tell which one a page documents, so neither copy is removed.
+#[test]
+fn simple_name_shared_by_two_classes_reports_nothing() {
+    let api = ".. autoclass:: Reader\n    :class-doc-from: init\n";
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/a.py", DUPLICATED),
+        ("pkg/b.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", ""),
+        ("docs/api.rst", api),
+    ]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, common::PASSED);
+}
+
+// A module of a package is named by its dotted path from the package's root, so a directive that names it in full
+// selects its class.
+#[test]
+fn packaged_module_is_named_by_its_dotted_path() {
+    let api = ".. autoclass:: pkg.model.Reader\n    :class-doc-from: class\n";
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("pkg/__init__.py", ""),
+        ("pkg/model.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", INIT),
+        ("docs/api.rst", api),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP918"]).1;
+    assert!(stdout.contains(&format!("{}:10:10: SMP918", common::native("pkg/model.py"))), "{stdout}");
+}
+
+// A `conf.py` is a Sphinx configuration beside an index file, or when it names the extensions or master document.
+#[test_case("docs/index.rst", INDEX, INIT, KEPT_INIT ; "index_rst")]
+#[test_case("docs/index.md", INDEX, INIT, KEPT_INIT ; "index_md")]
+#[test_case("docs/index.txt", INDEX, INIT, KEPT_INIT ; "index_txt")]
+#[test_case("", "", "extensions = []\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_extensions")]
+#[test_case("", "", "master_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_master_doc")]
+#[test_case("", "", "root_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_root_doc")]
+#[test_case("", "", INIT, KEPT_CLASS ; "neither_index_nor_name_is_not_sphinx")]
+#[test_case("", "", "from shared import *\nextensions = []\n", common::PASSED ; "star_import_beside_a_real_binding")]
+fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
+    index: &str,
+    index_text: &str,
+    conf: &str,
+    stdout: &str,
+) {
+    let mut files = vec![("docs/conf.py", conf)];
+    if !index.is_empty() {
+        files.push((index, index_text));
+    }
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+// A wildcard binding may bind any name, so it leaves the options unknown, but it does not make a `conf.py` one.
+#[test_case("from shared import *\nautoclass_content = \"init\"\n", KEPT_CLASS ; "star_import")]
+#[test_case("exec(\"x = 1\")\nautoclass_content = \"init\"\n", KEPT_CLASS ; "exec")]
+#[test_case("print(globals())\nautoclass_content = \"init\"\n", KEPT_CLASS ; "globals")]
+#[test_case("print(locals())\nautoclass_content = \"init\"\n", KEPT_CLASS ; "locals")]
+#[test_case("print(vars())\nautoclass_content = \"init\"\n", KEPT_CLASS ; "vars")]
+#[test_case("match 1:\n    case _:\n        pass\nautoclass_content = \"init\"\n", KEPT_CLASS ; "match")]
+fn wildcard_bindings_do_not_make_a_configuration(conf: &str, stdout: &str) {
+    assert_eq!(duplicate_report(&[("docs/conf.py", conf)]), stdout);
+}
+
+// A `conf.py` of a package that star-imports is not a configuration, so the project's own configuration decides.
+#[test]
+fn star_importing_conf_py_elsewhere_does_not_disable_the_rule() {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", INIT), ("pkg/conf.py", "from os.path import *\n")];
+    assert_eq!(duplicate_report(&files), KEPT_INIT);
+}
+
+// The forms the scan cannot read leave the docstring unknown, so no copy is removed.
+#[test_case("autoclass_content = \"all\"\n", common::PASSED ; "unknown_value")]
+#[test_case("autoclass_content = os.environ[\"SPHINX\"]\n", common::PASSED ; "computed_value")]
+#[test_case("autoclass_content = default = \"init\"\n", common::PASSED ; "chained_assignment")]
+#[test_case("autoclass_content, autodoc_typehints = load()\n", common::PASSED ; "tuple_from_a_call")]
+#[test_case("autoclass_content, autodoc_typehints = \"init\"\n", common::PASSED ; "tuple_of_unequal_length")]
+#[test_case("if True:\n    autoclass_content = \"init\"\n", common::PASSED ; "nested_in_if")]
+#[test_case("try:\n    autoclass_content = \"init\"\nexcept ImportError:\n    pass\n", common::PASSED ; "nested_in_try")]
+#[test_case("with open(\"settings\") as autoclass_content:\n    pass\n", common::PASSED ; "bound_by_with")]
+#[test_case("from shared import *\n", common::PASSED ; "star_import")]
+#[test_case("from shared import autoclass_content\n", common::PASSED ; "imported_name")]
+#[test_case("exec(\"autoclass_content = 'init'\")\n", common::PASSED ; "exec")]
+#[test_case("globals()[\"autoclass_content\"] = \"init\"\n", common::PASSED ; "globals_store")]
+#[test_case("match autoclass_content:\n    case _:\n        pass\n", common::PASSED ; "bound_by_match")]
+#[test_case("try:\n    pass\nexcept ImportError as autoclass_content:\n    pass\n", common::PASSED ; "bound_by_except")]
+#[test_case("import autoclass_content.sub\n", common::PASSED ; "bound_by_dotted_import")]
+#[test_case("import shared as autoclass_content\n", common::PASSED ; "bound_by_import_alias")]
+#[test_case("def autoclass_content():\n    pass\n", common::PASSED ; "bound_by_def")]
+#[test_case("(autoclass_content := \"init\")\n", common::PASSED ; "bound_by_walrus")]
+#[test_case("autoclass_content += \"init\"\n", common::PASSED ; "augmented_assignment")]
+#[test_case("autoclass_content: str\n", common::PASSED ; "declaration_only")]
+#[test_case("del autoclass_content\n", common::PASSED ; "deleted")]
+#[test_case("autoclass_content, x = *values, 1\n", common::PASSED ; "starred_tuple_value")]
+fn forms_the_scan_cannot_read_leave_the_copies_alone(conf: &str, stdout: &str) {
+    assert_eq!(duplicate_report(&[("docs/index.rst", INDEX), ("docs/conf.py", conf)]), stdout);
+}
+
+#[test_case("autodoc_default_options[\"class-doc-from\"] = \"init\"\n", common::PASSED ; "default_options_key_set")]
+#[test_case("autodoc_default_options = {**shared}\n", common::PASSED ; "default_options_unpacked")]
+#[test_case("autodoc_default_options = {name: \"init\"}\n", common::PASSED ; "default_options_computed_key")]
+#[test_case(
+    "autodoc_default_options = {\"class-doc-from\": \"sometimes\"}\n",
+    common::PASSED ;
+    "default_options_unknown_value"
+)]
+#[test_case(
+    "autodoc_default_options = dict(class_doc_from=\"init\")\n",
+    common::PASSED ;
+    "default_options_from_a_call"
+)]
+#[test_case("class autodoc_default_options:\n    pass\n", common::PASSED ; "default_options_bound_by_class")]
+#[test_case("del autodoc_default_options[\"class-doc-from\"]\n", common::PASSED ; "default_options_key_deleted")]
+#[test_case(
+    "autodoc_default_options.update({\"class-doc-from\": \"init\"})\n",
+    common::PASSED ;
+    "default_options_method_call"
+)]
+#[test_case("autodoc_default_options[\"class-doc-from\"], x = \"init\", 1\n", common::PASSED ; "key_set_in_a_tuple")]
+fn default_options_the_scan_cannot_read_leave_the_named_copies_alone(conf: &str, stdout: &str) {
+    let files = [("docs/index.rst", INDEX), ("docs/conf.py", conf), ("docs/api.rst", READER)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+#[test]
+fn unparsable_conf_py_reports_nothing() {
+    let (stdout, stderr) = {
+        let root = common::project(&[
+            ("pyproject.toml", RST),
+            ("docs/index.rst", INDEX),
+            ("docs/conf.py", "autoclass_content = (\n"),
+            ("model.py", DUPLICATED),
+        ]);
+        let (_, stdout, stderr) = common::check(root.path(), &["--select", "SMP918"]);
+        (stdout, stderr)
+    };
+    assert_eq!((stdout.as_str(), stderr.contains("does not parse")), (common::PASSED, true));
+}
+
+// A `conf.py` that cannot be read may set the option, so nothing is reported until it reads, and then the copy follows
+// the option it sets.
+#[test]
+fn unreadable_conf_py_reports_nothing_until_it_is_readable() {
+    let root = common::project(&[("pyproject.toml", RST), ("model.py", DUPLICATED), ("docs/index.rst", INDEX)]);
+    std::fs::write(root.path().join("docs/conf.py"), [0xff, b'\n']).expect("write conf.py");
+    let unreadable = common::check(root.path(), &["--select", "SMP918"]).1;
+    std::fs::write(root.path().join("docs/conf.py"), INIT).expect("write conf.py");
+    let readable = common::check(root.path(), &["--select", "SMP918"]).1;
+    assert_eq!((unreadable.contains("SMP918"), readable.as_str()), (false, KEPT_INIT));
+}
+
+// Past the size limit the file is not read, so its option is unknown.
+#[test]
+fn oversized_conf_py_reports_nothing() {
+    let conf = format!("{INIT}{}", "#".repeat((8 << 20) + 1));
+    assert_eq!(duplicate_report(&[("docs/index.rst", INDEX), ("docs/conf.py", conf.as_str())]), common::PASSED);
+}
+
+// Sphinx reads a `conf.py` Ruff excludes from linting, so the exclusion does not hide its option.
+#[test]
+fn ruff_excluded_conf_py_still_counts() {
+    let pyproject = "[tool.simplint]\ndocstring-style = \"rst\"\n\n[tool.ruff]\nextend-exclude = [\"docs/conf.py\"]\n";
+    let files = [("pyproject.toml", pyproject), ("docs/index.rst", INDEX), ("docs/conf.py", INIT)];
+    assert_eq!(duplicate_report(&files), KEPT_INIT);
+}
+
+// A symlinked `conf.py` counts when its target lies inside the project, and not when it points out of it.
+#[cfg(unix)]
+#[test]
+fn symlinked_conf_py_counts_only_inside_the_project() {
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("model.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("shared/real_conf.py", INIT),
+    ]);
+    std::os::unix::fs::symlink("../shared/real_conf.py", root.path().join("docs/conf.py")).expect("link");
+    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_INIT);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_conf_py_outside_the_project_is_not_read() {
+    let outside = common::project(&[("real_conf.py", INIT)]);
+    let root = common::project(&[("pyproject.toml", RST), ("model.py", DUPLICATED), ("docs/index.rst", INDEX)]);
+    std::os::unix::fs::symlink(outside.path().join("real_conf.py"), root.path().join("docs/conf.py")).expect("link");
+    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_CLASS);
+}
+
+// A `conf.py` of vendored code or of another project below the root is not the project's, and a gitignored one is not
+// read at all.
+#[test_case(
+    &[("_vendor/lib/docs/index.rst", INDEX), ("_vendor/lib/docs/conf.py", INIT)] ;
+    "vendored_directory"
+)]
+#[test_case(
+    &[("subproject/pyproject.toml", RST), ("subproject/docs/index.rst", INDEX), ("subproject/docs/conf.py", INIT)] ;
+    "other_project_below_the_root"
+)]
+#[test_case(
+    &[
+        (".git/HEAD", "ref: refs/heads/main\n"),
+        (".gitignore", "vendor/\n"),
+        ("vendor/docs/index.rst", INDEX),
+        ("vendor/docs/conf.py", INIT),
+    ] ;
+    "gitignored"
+)]
+fn conf_py_of_vendored_or_other_projects_is_not_read(files: &[(&str, &str)]) {
+    assert_eq!(duplicate_report(files), KEPT_CLASS);
+}
+
+// Several Sphinx configurations of one project must agree on the option, and one that leaves it unset renders the
+// class docstring, so it disagrees with one that sets `init`.
+#[test_case(INIT, INIT, KEPT_INIT ; "agreeing")]
+#[test_case(INIT, "autoclass_content = \"class\"\n", common::PASSED ; "disagreeing")]
+#[test_case(INIT, "", common::PASSED ; "one_leaves_it_unset")]
+fn sphinx_configurations_of_a_project_must_agree(first: &str, second: &str, stdout: &str) {
+    let files =
+        [("docs/index.rst", INDEX), ("docs/conf.py", first), ("guide/index.rst", INDEX), ("guide/conf.py", second)];
+    assert_eq!(duplicate_report(&files), stdout);
+}
+
+// Each project reads its own configuration, so one project's option does not reach another that sets none.
+#[test]
+fn each_project_reads_its_own_configuration() {
+    let root = common::project(&[
+        ("a/pyproject.toml", RST),
+        ("a/model.py", DUPLICATED),
+        ("a/docs/index.rst", INDEX),
+        ("a/docs/conf.py", INIT),
+        ("b/pyproject.toml", RST),
+        ("b/model.py", DUPLICATED),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP918"]).1;
+    assert!(stdout.contains("a/model.py:4:6: SMP918") && stdout.contains("b/model.py:10:10: SMP918"), "{stdout}");
 }
 
 // attrs gives the `__init__` parameter of a private field the name without its underscore, so a public class documents

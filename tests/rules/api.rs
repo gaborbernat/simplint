@@ -131,12 +131,73 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
 #[test_case("unused-definition", "_unused_definition_used.py" ; "unused_definition_imported")]
 #[test_case("unused-definition", "tests/test_udef_helpers.py" ; "unused_definition_test_module")]
 #[test_case("test-only-parameter", "_test_only_parameter.py" ; "test_only_parameter")]
+#[test_case("test-only-parameter", "_test_only_parameter_injected.py" ; "test_only_parameter_injected")]
+#[test_case("test-only-parameter", "_test_only_parameter_defaults.py" ; "test_only_parameter_defaults")]
 #[test_case("unused-return-value", "_unused_return_value.py" ; "unused_return_value")]
 #[test_case("unused-return-value", "_unused_return_value_listed.py" ; "unused_return_value_listed")]
 #[test_case("unused-definition", "_unused_definition_frozen_core.py" ; "unused_definition_unresolved_import")]
 #[test_case("unused-definition", "_unused_definition_doctest.py" ; "unused_definition_doctest")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
+}
+
+// A defaulted parameter that a test passes is exempt only when its default is a collaborator the body calls. Values,
+// call results, enum members, loop variables and calls of anything but a class stay reported.
+#[test_case(
+    "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n",
+    "send(\"a@b.c\", urgent=True)", 1 ; "flag_stays_reported"
+)]
+#[test_case(
+    "def send(address: str, hook=lambda value: None) -> None:\n    hook(address)\n",
+    "send(\"a@b.c\", hook=print)", 0 ; "lambda_called_in_body"
+)]
+#[test_case(
+    "for hook in (print,):\n    pass\n\n\ndef send(address: str, sink=hook) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "loop_variable_stays_reported"
+)]
+#[test_case(
+    "import app.enums\n\n\ndef send(address: str, urgent: app.enums.Mode = app.enums.Mode.FAST) -> None:\n    \
+        print(address, urgent)\n",
+    "send(\"a@b.c\", urgent=None)", 1 ; "nested_module_enum_member_stays_reported"
+)]
+#[test_case(
+    "class Mailer:\n    def send(self, address: str) -> None:\n        print(address)\n\n\ndef send(address: str, \
+        deliver=Mailer.send) -> None:\n    deliver(Mailer(), address)\n",
+    "send(\"a@b.c\", deliver=print)", 0 ; "method_of_a_class_the_module_defines_called_in_body"
+)]
+#[test_case(
+    "class Mailer:\n    def send(self, address: str) -> None:\n        print(address)\n\n\ndef send(address: str, \
+        deliver=Mailer.close) -> None:\n    deliver(address)\n",
+    "send(\"a@b.c\", deliver=print)", 1 ; "method_the_class_does_not_define_stays_reported"
+)]
+#[test_case(
+    "def build() -> object:\n    return print\n\n\ndef send(address: str, sink=build()) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "call_of_a_function_stays_reported"
+)]
+#[test_case(
+    "FACTORIES = [object]\n\n\ndef send(address: str, sink=FACTORIES[0]()) -> None:\n    sink(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "call_of_a_subscript_stays_reported"
+)]
+#[test_case(
+    "import app.sinks\n\n\ndef send(address: str, sink=app.sinks.Sink()) -> None:\n    sink.notify(address)\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "instance_of_a_class_in_a_nested_module_stays_reported"
+)]
+fn test_only_parameter_exempts_only_collaborators(module: &str, test_call: &str, reported: usize) {
+    assert_eq!(test_only_parameter_reports(module, test_call), reported);
+}
+
+// Production calls `send` without the parameter and a test passes it, so the rule judges the parameter.
+fn test_only_parameter_reports(module: &str, test_call: &str) -> usize {
+    let service = "from app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n";
+    let test = format!("from app.mail import send\n\n\ndef test_send() -> None:\n    {test_call}\n");
+    let root = common::project(&[
+        ("app/enums.py", "from enum import Enum\n\n\nclass Mode(Enum):\n    FAST = 1\n    SLOW = 2\n"),
+        ("app/mail.py", module),
+        ("app/service.py", service),
+        ("tests/test_mail.py", test.as_str()),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP410"]);
+    common::reports(&stdout, "SMP410").len()
 }
 
 #[test_case("", "", 0 ; "paired_test_only_without_all")]
@@ -239,6 +300,43 @@ fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
         common::read(root.path(), "enc.py"),
         "from os.path import join, sep  # noqa: F401\n\n\ndef run() -> int:\n    return 1\n\n\n__all__ = [\n    \
             \"join\",\n]\n"
+    );
+}
+
+// Ruff's F401 reports an import of a name that its own file never reads, which another module imports, whether or not
+// the project selects F401. simplint keeps that report either way.
+#[test]
+fn missing_from_all_reports_unused_import_others_use_under_f401() {
+    let case = common::RuffOverlap {
+        settings: "",
+        select: "SMP401",
+        ruff_code: "F401",
+        files: &[
+            ("config.py", "from os import sep\n\n\ndef local() -> int:\n    return 1\n"),
+            ("cli.py", "from config import sep, local\n\nprint(sep, local())\n"),
+        ],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "`sep` is imported by other modules"), [true, true]);
+}
+
+// With F401 selected, the fix lists the name and keeps the import, so Ruff's fix does not delete it. A `noqa` with its
+// reason goes once the fix lists every name on its line.
+#[test_case("from os import sep" ; "import_kept")]
+#[test_case("from os import sep  # noqa: F401  # imported by cli.py" ; "reasoned_noqa_removed")]
+fn missing_from_all_lists_unused_import_others_use_under_f401(import: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\"]\n"),
+        ("config.py", &format!("{import}\n\n\ndef local() -> int:\n    return 1\n")),
+        ("cli.py", "from config import sep, local\n\nprint(sep, local())\n"),
+    ]);
+    let (code, _, _) = common::fix_unsafe(root.path(), "SMP401");
+    assert_eq!(
+        (code, common::read(root.path(), "config.py")),
+        (
+            0,
+            "from os import sep\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"local\",\n    \"sep\",\n]\n"
+                .to_owned()
+        )
     );
 }
 
@@ -654,6 +752,19 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
     "docs/api.md", ":::{autoclass} app.core.Client\n:members: send\n:::\n", true, false
     ; "myst_colon_directive"
 )]
+#[test_case("docs/index.rst", "`app.core.helper`:func:", false, true ; "suffix_role")]
+#[test_case("docs/index.rst", ":func:`The helper\n<app.core.helper>`", false, true ; "explicit_title_across_lines")]
+#[test_case("docs/index.rst", ".. :func:`app.core.helper`\n", true, true ; "role_in_a_comment")]
+#[test_case("docs/api.md", "```python\n{func}`app.core.helper`\n```\n", true, true ; "myst_role_in_a_code_fence")]
+#[test_case(
+    "docs/index.rst", ".. automodule:: app.core\n   :members: send,\n      helper\n", false, true
+    ; "members_continued_on_the_next_line"
+)]
+#[test_case("docs/index.rst", ".. AutoModule:: app.core\n   :members: helper\n", false, true ; "directive_name_ignores_case")]
+#[test_case("docs/index.rst", ".. |name| autofunction:: app.core.helper\n", false, true ; "substitution_definition")]
+#[test_case("docs/index.rst", "Example::\n\n    .. autofunction:: app.core.helper\n", true, true ; "directive_in_a_literal_block")]
+#[test_case("docs/index.rst", "..\n   .. autofunction:: app.core.helper\n", true, true ; "directive_in_a_comment")]
+#[test_case("docs/index.rst", ".. autofunction::app.core.helper\n", true, true ; "directive_without_a_space_after_the_colons")]
 #[test_case("docs/index.rst", ":func:`app.core.other`", true, true ; "other_name")]
 #[test_case("docs/index.rst", "``helper`` and :unknown:`app.core.helper`", true, true ; "not_a_python_role")]
 #[test_case(".venv/lib/page.rst", ":func:`app.core.helper`", true, true ; "excluded_directory")]

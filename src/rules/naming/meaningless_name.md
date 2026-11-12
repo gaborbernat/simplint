@@ -3,8 +3,11 @@ Flags variables, parameters and attributes named with a placeholder word that sa
 
 ## Why is this bad?
 
-A name is the only description a value carries at each place it is used. `foo` leaves the reader to find where it is
-assigned, and then to learn what it is. A name for the contents, such as `counts`, answers that at once.
+At each place a value is used, its name is the only description the value carries. `foo` leaves the reader to find where
+it is assigned, and then to learn what it is. A name for the contents, such as `counts`, answers that at once. `foo` and
+`baz` are [metasyntactic placeholders](https://www.rfc-editor.org/rfc/rfc3092), not names for real data, and pylint's
+default [`bad-names`](https://pylint.readthedocs.io/en/latest/user_guide/configuration/all-options.html#bad-names) list
+includes both.
 
 ## Example
 

@@ -11,18 +11,33 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import Final, NamedTuple, TypedDict
 
 _ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _ROLES: Final[frozenset[str]] = frozenset({"report", "ok", "context", "fixed"})
 _TABLE: Final[re.Pattern[str]] = re.compile(r"^rules! \{\n(.*?)^\}\n", re.MULTILINE | re.DOTALL)
 _GROUPS: Final[re.Pattern[str]] = re.compile(r"^pub const GROUPS: .*? = \[\n(.*?)^\];\n", re.MULTILINE | re.DOTALL)
 _ROW: Final[re.Pattern[str]] = re.compile(
-    r'\w+ => \("(?P<code>SMP\d{3})", "(?P<name>[^"\\]+)", "(?P<summary>[^"\\]+)", '
-    r"(?P<fix>Always|Sometimes|None), (?P<family>\w+)::(?P<check>\w+) \{[^}]*\}"
-    r"(?P<attributes>(?: (?:since \w+|reads \[[^\]]*\]|skips \[[^\]]*\]))*)\),"
+    r"""
+    \w+[ ]=>[ ]\(                                 # the registry key and the rule's tuple
+    "(?P<code>SMP\d{3})",[ ]                      # the code
+    "(?P<name>[^"\\]+)",[ ]                       # the name
+    "(?P<summary>[^"\\]+)",[ ]                    # the summary
+    (?P<fix>Always|Sometimes|None),[ ]            # when the fix applies
+    (?P<family>\w+)::(?P<check>\w+)[ ]\{[^}]*\}   # the module and check, then the rule's fields
+    (?P<attributes>(?:[ ](?:since[ ]\w+|reads[ ]\[[^\]]*\]|skips[ ]\[[^\]]*\]))*)  # the attributes
+    \),                                           # the end of the tuple
+    """,
+    re.VERBOSE,
 )
-_GROUP: Final[re.Pattern[str]] = re.compile(r'\("\w+", "(?P<name>[^"\\]+)", "(?P<short>[^"\\]+)"\),')
+_GROUP: Final[re.Pattern[str]] = re.compile(
+    r"""
+    \("\w+",[ ]                 # the group's key
+    "(?P<name>[^"\\]+)",[ ]     # the name
+    "(?P<short>[^"\\]+)"\),     # the short name, then the end of the tuple
+    """,
+    re.VERBOSE,
+)
 
 
 class Fence(TypedDict):
@@ -36,6 +51,8 @@ class Block(Fence):
     language: str
     file: str
     named: bool
+    executable: bool
+    select: list[str]
 
 
 class Example(TypedDict):
@@ -75,7 +92,7 @@ def parse(explanation: str) -> list[Example]:
 
 
 def main() -> None:
-    sys.stdout.write(json.dumps(rule_entries(), indent=2) + "\n")
+    sys.stdout.write(f"{json.dumps(rule_entries(), indent=2)}\n")
 
 
 class _Parser:
@@ -100,19 +117,12 @@ class _Parser:
                 raise ValueError(msg)
         return self._examples
 
-    def _prose(self, line: str) -> None:
-        if line.startswith("## "):
-            self._section = line.removeprefix("## ")
-            self._section_config = None
-        if line.strip():
-            self._open = None
-
     def _fence(self, start: int) -> int:
         fence = _read_fence(self._lines, start)
         match self._lines[start].lstrip().removeprefix("```").split():
             case ["toml", "config"]:
                 self._config(fence)
-            case [("python" | "rst" | "markdown") as language, role, *attributes]:
+            case [("python" | "rst" | "markdown" | "toml") as language, role, *attributes]:
                 self._block(fence, language, role, attributes)
             case _:
                 self._open = None
@@ -135,12 +145,14 @@ class _Parser:
         if language != "python" and (role != "context" or not attributes):
             msg = f"line {number}: a `{language}` block is a `context` block with a file"
             raise ValueError(msg)
-        file = _file(attributes, number)
+        parsed = _attributes(attributes, number)
         block = Block(
             role=role,
             language=language,
-            file="example.py" if file is None else file,
-            named=file is not None,
+            file="example.py" if parsed.file is None else parsed.file,
+            named=parsed.file is not None,
+            executable=parsed.executable,
+            select=parsed.select,
             line=number,
             end_line=fence["end_line"],
             source=fence["source"],
@@ -162,6 +174,13 @@ class _Parser:
         )
         self._examples.append(example)
         return example
+
+    def _prose(self, line: str) -> None:
+        if line.startswith("## "):
+            self._section = line.removeprefix("## ")
+            self._section_config = None
+        if line.strip():
+            self._open = None
 
 
 def _registry_lines(registry: str, pattern: re.Pattern[str]) -> list[str]:
@@ -185,31 +204,31 @@ def _group(line: str) -> tuple[str, str]:
     return match["name"], match["short"]
 
 
+_READS_PATTERN: Final[re.Pattern[str]] = re.compile(r"reads \[(?P<names>[^\]]*)\]")
+
+
 def _rule(root: Path, line: str, groups: list[tuple[str, str]]) -> RuleEntry:
     row = _match(_ROW, line)
     family, check = row["family"], row["check"]
     explanation = (root / "src" / "rules" / family / f"{check}.md").read_bytes().decode("utf-8")
     group, short_group = groups[int(row["code"][3])]
-    reads = re.search(r"reads \[([^\]]*)\]", row["attributes"])
+    reads = _READS_PATTERN.search(row["attributes"])
+    try:
+        examples: Examples = {"parsed": parse(explanation)}
+    except ValueError as error:
+        examples = {"error": str(error)}
     return {
         "code": row["code"],
         "name": row["name"],
         "summary": row["summary"],
         "fix": row["fix"],
         "explanation": explanation,
-        "examples": _examples(explanation),
+        "examples": examples,
         "family": family,
         "group": group,
         "short_group": short_group,
-        "cross_file": reads is not None and "cross_file" in reads[1].replace(" ", "").split(","),
+        "cross_file": reads is not None and "cross_file" in reads["names"].replace(" ", "").split(","),
     }
-
-
-def _examples(explanation: str) -> Examples:
-    try:
-        return {"parsed": parse(explanation)}
-    except ValueError as error:
-        return {"error": str(error)}
 
 
 def _split_lines(text: str) -> list[str]:
@@ -226,8 +245,7 @@ def _read_fence(lines: list[str], start: int) -> Fence:
     index = start + 1
     while index < len(lines) and lines[index].strip() != "```":
         body = lines[index]
-        leading = len(body) - len(body.lstrip(" "))
-        source.append(body[min(leading, indent) :] + "\n")
+        source.append(f"{body[min(len(body) - len(body.lstrip(' ')), indent) :]}\n")
         index += 1
     if index == len(lines):
         msg = f"line {start + 1}: unclosed code block"
@@ -235,18 +253,42 @@ def _read_fence(lines: list[str], start: int) -> Fence:
     return Fence(line=start + 1, end_line=index + 1, source="".join(source))
 
 
-def _file(attributes: list[str], number: int) -> str | None:
-    match attributes:
-        case []:
-            return None
-        case [attribute]:
-            if not attribute.startswith("file="):
-                msg = f"line {number}: unknown attribute `{attribute}`"
-                raise ValueError(msg)
-            return attribute.removeprefix("file=")
-        case _:
-            msg = f"line {number}: more than one attribute"
+class _Attributes(NamedTuple):
+    file: str | None
+    executable: bool
+    select: list[str]
+
+
+def _attributes(words: list[str], number: int) -> _Attributes:
+    file: str | None = None
+    executable = False
+    select: list[str] = []
+    names: set[str] = set()
+    for word in words:
+        name = word.partition("=")[0]
+        if name in names:
+            msg = f"line {number}: repeated attribute `{name}`"
             raise ValueError(msg)
+        names.add(name)
+        match word.partition("="):
+            case ("executable", "", _):
+                executable = True
+            case ("file", "=", path):
+                file = path
+            case ("select", "=", codes):
+                select = _codes(codes, number)
+            case _:
+                msg = f"line {number}: unknown attribute `{word}`"
+                raise ValueError(msg)
+    return _Attributes(file=file, executable=executable, select=select)
+
+
+def _codes(codes: str, number: int) -> list[str]:
+    selected = codes.split(",")
+    if not all(code.isascii() and code.isalnum() for code in selected):
+        msg = f"line {number}: `select=` takes comma-separated rule codes, such as `SMP009,SMP101`"
+        raise ValueError(msg)
+    return selected
 
 
 def _joins(example: Example, block: Block) -> bool:

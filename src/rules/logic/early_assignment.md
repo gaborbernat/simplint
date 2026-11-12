@@ -8,6 +8,11 @@ A value set at the top of a function and read many statements later makes the re
 between. The assignment looks like it matters to the code around it, when only the later read does. Assigning the
 constant just before its first use shows where the value comes from.
 
+[Sourcery's move-assign refactoring](https://docs.sourcery.ai/reference/refactorings/python/move-assign/) gives the
+reasons: a tight scope leaves less to track, is easier to split into functions, and strands fewer assignments.
+[Google's C++ style guide](https://google.github.io/styleguide/cppguide.html#Local_Variables) asks for the same,
+declaring each variable in the narrowest scope and close to its first use.
+
 ## Example
 
 ```python report
@@ -127,8 +132,11 @@ that statement comes at least two statements below the assignment in the same bl
       return out
   ```
 
-- **A function that reads its locals by name**, such as with `locals()`, `vars()`, `eval()` or `exec()`: moving the
-  assignment changes what they see.
+- **A function that reads its locals by name**, such as with
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals),
+  [`vars()`](https://docs.python.org/3/builtins/functions.html#vars),
+  [`eval()`](https://docs.python.org/3/builtins/functions.html#eval) or
+  [`exec()`](https://docs.python.org/3/builtins/functions.html#exec): moving the assignment changes what they see.
 
   ```python ok
   def run(items: list[int]) -> None:
@@ -187,6 +195,20 @@ that statement comes at least two statements below the assignment in the same bl
   ```
 
 - **A name that is `_` or a dunder**: `_` is a placeholder, and a dunder has a meaning to Python.
+
+  ```python ok
+  def run(items, prepare, send):
+      _ = 3
+      prepare(items)
+      return send(items, _)
+  ```
+
+  ```python ok
+  def run(items, prepare, send):
+      __retries__ = 3
+      prepare(items)
+      return send(items, __retries__)
+  ```
 
 ### Fix
 

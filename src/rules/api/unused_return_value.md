@@ -3,7 +3,11 @@ Flags a function whose return value no production call reads: its callers drop t
 ## Why is this bad?
 
 A `return` that no caller reads still tells readers the value matters. They look for the caller that consumes it and
-find none. Returning nothing says what the function does, and it lets the function stop building a value that is thrown
+find none. Returning nothing says the function acts through its side effects.
+[`list.sort()`](https://docs.python.org/3/faq/design.html#why-doesn-t-list-sort-return-the-sorted-list) follows that
+convention to remind callers it changed the list in place, and
+[command-query separation](https://martinfowler.com/bliki/CommandQuerySeparation.html) draws the same split between
+methods that change state and methods that answer questions. The function also stops building a value that is thrown
 away.
 
 ## Example

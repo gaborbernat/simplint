@@ -23,6 +23,8 @@ fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
 #[test_case("dataclass-frozen", "_dataclass_frozen_comment.py", None ; "dataclass_frozen_comment")]
 #[test_case("dataclass-slots", "_dataclass_slots.py", None ; "dataclass_slots")]
 #[test_case("dataclass-slots", "_dataclass_slots_quoted.py", None ; "dataclass_slots_quoted_class_variable")]
+#[test_case("dataclass-slots", "_dataclass_slots_class_cell.py", None ; "dataclass_slots_class_cell")]
+#[test_case("dataclass-slots", "_dataclass_slots_class_cell.py", Some("py313") ; "dataclass_slots_class_cell_py313")]
 #[test_case("dataclass-slots", "dataclass_frozen_public.py", None ; "dataclass_slots_public")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only.py", None ; "dataclass_kw_only")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only.py", Some("py39") ; "dataclass_kw_only_py39")]

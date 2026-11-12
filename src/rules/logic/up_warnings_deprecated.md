@@ -1,12 +1,19 @@
-Flags functions and classes that open with a `warnings.warn()` call of `DeprecationWarning`, which
-`@warnings.deprecated` replaces from Python 3.13.
+Flags functions and classes that open with a
+[`warnings.warn()`](https://docs.python.org/3/library/warnings.html#warnings.warn) call of
+[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), which
+[`@warnings.deprecated`](https://docs.python.org/3/library/warnings.html#warnings.deprecated)
+([PEP 702](https://peps.python.org/pep-0702/)) replaces from Python 3.13.
 
 ## Why is this bad?
 
-`warnings.deprecated()` is a decorator that marks a function, class or overload as deprecated. Type checkers report its
-uses, and the decorator emits the `DeprecationWarning` when the object is called, instantiated or subclassed. A
-`warnings.warn()` call in the body only warns at runtime, so a type checker cannot tell which code is deprecated, and
-the warning's location is set by a `stacklevel` argument that each project has to get right.
+[`warnings.deprecated()`](https://docs.python.org/3/library/warnings.html#warnings.deprecated) marks a function or class
+as deprecated where both the runtime and the tools see it. [PEP 702](https://peps.python.org/pep-0702/) argues that
+runtime warnings are often insufficient: they get silenced, and a call on an untested path never warns. With the
+decorator, [type checkers](https://typing.python.org/en/latest/spec/directives.html#deprecated) report each use, and
+editors show it as the code is written.
+
+The decorator still emits the `DeprecationWarning` on call, instantiation or subclassing. It points the warning at the
+caller itself, where a `warnings.warn()` call needs a `stacklevel` that each project has to get right.
 
 ## Example
 
@@ -63,7 +70,9 @@ def connect(host):
 - **Functions, methods and classes whose first statement after the docstring calls `warnings.warn()` with
   `DeprecationWarning`**, passed as the second argument or as `category=`. The report sits on the call. **Unsafe fix:**
   the call is removed and a `@warnings.deprecated(...)` decorator takes its message, placed below any other decorator,
-  since `@warnings.deprecated` raises `TypeError` on the object `@property` or `@classmethod` returns.
+  since `@warnings.deprecated` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) on the
+  object [`@property`](https://docs.python.org/3/builtins/functions.html#property) or
+  [`@classmethod`](https://docs.python.org/3/builtins/functions.html#classmethod) returns.
 
   ```toml config
   [project]
@@ -157,7 +166,8 @@ def connect(host):
       return host
   ```
 
-- **Another category**: a `FutureWarning` or a user warning class is not a deprecation that the decorator marks.
+- **Another category**: a [`FutureWarning`](https://docs.python.org/3/builtins/exceptions.html#FutureWarning) or a user
+  warning class is not a deprecation that the decorator marks.
 
   ```toml config
   [project]

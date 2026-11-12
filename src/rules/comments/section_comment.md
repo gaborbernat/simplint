@@ -2,8 +2,10 @@ Flags own-line comments used as dividers or section headers.
 
 ## Why is this bad?
 
-A section comment groups code by its position in the file, and nothing keeps the grouping accurate as code moves. A
-named function, class or module groups the same code under a name that tools can check.
+A section comment groups code by its position in the file, and nothing keeps the grouping accurate as code moves: a
+function added below a banner joins its section whether or not it belongs there. A named function, class or module
+groups the same code under a name that tools can check. A function named for what its block does
+[states that purpose](https://martinfowler.com/bliki/FunctionLength.html) where a banner only labels it.
 
 ## Example
 

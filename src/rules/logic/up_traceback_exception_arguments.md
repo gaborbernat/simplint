@@ -3,8 +3,12 @@ the exception itself.
 
 ## Why is this bad?
 
-Since Python 3.10 the `traceback` functions take the exception alone, and read its type and traceback from it. The
-three-argument form repeats what the exception already carries, and makes the call longer to read.
+Since Python 3.10 the `traceback` functions take the exception alone and read its type and traceback from it, as
+[bpo-26389](https://bugs.python.org/issue26389) proposed, because one exception object holds all three. The type
+argument has been ignored since Python 3.5, and the
+[docs](https://docs.python.org/3/library/traceback.html#traceback.print_exception) say the first argument is ignored
+when the value and traceback follow it. The three-argument form therefore spells out a value nothing reads, which makes
+the call longer to read.
 
 ## Example
 
@@ -62,8 +66,13 @@ def report(run):
 
 ## What it does
 
-Reports a call that resolves to `traceback.print_exception`, `traceback.format_exception` or
-`traceback.format_exception_only` and passes:
+### Active on
+
+Reports a call that resolves to
+[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception),
+[`traceback.format_exception`](https://docs.python.org/3/library/traceback.html#traceback.format_exception) or
+[`traceback.format_exception_only`](https://docs.python.org/3/library/traceback.html#traceback.format_exception_only)
+and passes:
 
 - **Three positional arguments** to the first two functions: `type(error)` or `error.__class__`, then `error`, then
   `error.__traceback__`, all for the same name.
@@ -130,7 +139,8 @@ Reports a call that resolves to `traceback.print_exception`, `traceback.format_e
       return traceback.format_exception(type(error), error, saved)
   ```
 
-- **Target versions before 3.10**: the single-argument form raises `TypeError` there.
+- **Target versions before 3.10**: the single-argument form raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) there.
 
   ```toml config
   [project]

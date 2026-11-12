@@ -92,7 +92,7 @@ def _rule_row(rule: RuleEntry) -> str:
         f"{badge_text.split(' ', 1)[0]}</span>"
     )
     searchable = html.escape(f"{rule['code']} {rule['name']} {rule['summary']}".lower(), quote=True)
-    summary = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(rule["summary"]))
+    summary = _CODE_SPAN_PATTERN.sub(r"<code>\1</code>", html.escape(rule["summary"]))
     return (
         f'<tr class="rule-row" id="{rule["name"]}" data-group="{rule["family"]}" data-fix="{rule["fix"]}"'
         f' data-scope="{"cross-file" if rule["cross_file"] else "single-file"}"'
@@ -132,11 +132,11 @@ def _rule_page(rule: RuleEntry) -> str:
         f"{cross_file}"
         '<a class="badge" href="../rules.html">All rules</a></div>'
     )
-    explanation = re.sub(r"\]\((SMP\d+)\.html\)", r"](\1.md)", rule["explanation"])
+    explanation = _RULE_CODE_LINK_PATTERN.sub(r"](\1.md)", rule["explanation"])
     # links to the settings and how-to pages stay absolute in the binary, for `simplint rule`; built, they resolve to
     # the labels on those pages, so each version of these docs links its own
-    explanation = re.sub(r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#", "](#", explanation)
-    if re.search(r"https?://simplint\.readthedocs\.io/", explanation):
+    explanation = _ABSOLUTE_PAGE_LINK_PATTERN.sub("](#", explanation)
+    if _SIMPLINT_DOCS_URL_PATTERN.search(explanation):
         msg = f"{rule['code']} links to a simplint.readthedocs.io page that has no label to link to"
         raise ValueError(msg)
     lines = explanation.split("\n")
@@ -154,28 +154,39 @@ def _rule_page(rule: RuleEntry) -> str:
 
 
 def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> list[str]:
-    marker = next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)
-    if heading != "Example" or marker is None:
-        return [_examples(lines, start, stop, by_line, settings=heading == "Configuration").strip(), ""]
+    if heading != "Example":
+        return [_examples(lines, start, stop, by_line, heading).strip(), ""]
+    if (marker := next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)) is not None:
+        flagged, preferred = _numbered(lines, start, marker, by_line), _numbered(lines, marker + 1, stop, by_line)
+    else:
+        # without a "Use instead:" line, the fixed code of a reported example and whatever follows the last reported
+        # example show what to write instead
+        reported = [
+            example
+            for line, example in by_line.items()
+            if start < line <= stop and any(block["role"] == "report" for block in example["blocks"])
+        ]
+        split = max(example["end_line"] for example in reported)
+        fixed = [
+            "\n".join(_fence_lines("", block["language"], _label(block), _body(lines, block)))
+            for example in reported
+            for block in example["blocks"]
+            if block["role"] == "fixed"
+        ]
+        flagged = _numbered(lines, start, split, by_line, hidden="fixed")
+        preferred = "\n\n".join(part for part in (*fixed, _numbered(lines, split, stop, by_line)) if part)
     body = ["::::{grid} 1", ":gutter: 2", ""]
-    for label, css, (begin, finish) in (
-        ("Flagged", "bad", (start, marker)),
-        ("Preferred", "good", (marker + 1, stop)),
-    ):
-        body.extend([
-            f":::{{grid-item-card}} {label}",
-            f":class-card: example {css}",
-            "",
-            _numbered(lines, begin, finish, by_line),
-            ":::",
-            "",
-        ])
+    for label, css, content in (("Flagged", "bad", flagged), ("Preferred", "good", preferred)):
+        body.extend([f":::{{grid-item-card}} {label}", f":class-card: example {css}", "", content, ":::", ""])
     return [*body, "::::", ""]
 
 
-def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, settings: bool) -> str:
+def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], heading: str) -> str:
     # Examples with no prose between them form a run, rendered together so a reported one can sit beside its accepted
     # one. Only the Active on cases pair a reported example with its accepted one.
+    settings = heading == "Configuration"
+    # only the cases under What it does fold away; the examples of every other section stay open
+    folds = heading == "What it does"
     out: list[str] = []
     run: list[Example] = []
     index = start
@@ -188,7 +199,7 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
             continue
         line = lines[index]
         if line.strip():
-            out.extend(_render(run, lines, settings=settings, pair=active))
+            out.extend(_render(run, lines, settings=settings, pair=active, folds=folds))
             run = []
         if line.startswith("### "):
             active = line == "### Active on"
@@ -197,7 +208,7 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
     # a section ends with the newline that precedes the next heading, so the text after its last line is an empty line
     if stop < len(lines):
         out.append("")
-    out.extend(_render(run, lines, settings=settings, pair=active))
+    out.extend(_render(run, lines, settings=settings, pair=active, folds=folds))
     return "\n".join(out)
 
 
@@ -217,15 +228,15 @@ def _own_config(example: Example) -> Fence | None:
     return config if config is not None and config["line"] == example["line"] else None
 
 
-def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool) -> list[str]:
+def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool, folds: bool) -> list[str]:
     out: list[str] = []
     index = 0
     while index < len(run):
         if pair and index + 1 < len(run) and _pairs(run[index], run[index + 1]):
-            out.extend(_pair(run[index], run[index + 1], lines))
+            out.extend(_pair(run[index], run[index + 1], lines, folds=folds))
             index += 2
         else:
-            out.extend(_dropdown(run[index], lines, settings=settings))
+            out.extend(_dropdown(run[index], lines, settings=settings, folds=folds))
             index += 1
     return out
 
@@ -240,12 +251,11 @@ def _config_source(example: Example) -> str | None:
     return None if (config := example["config"]) is None else config["source"]
 
 
-def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
+def _pair(reported: Example, accepted: Example, lines: list[str], *, folds: bool) -> list[str]:
     indent = _indent(lines, reported)
     out = [
         f"{indent}::::{{dropdown}} Example: reported and not",
-        f"{indent}:class-container: example example-pair",
-        "",
+        *_dropdown_options(indent, "pair", folds=folds),
     ]
     if (config := reported["config"]) is not None:
         out.extend(_code_block(indent, "toml", "`pyproject.toml`", _body(lines, config)))
@@ -264,27 +274,25 @@ def _indent(lines: list[str], example: Example) -> str:
     return line[: len(line) - len(line.lstrip())]
 
 
+# an example that does not fold opens with its page and drops its title bar, so nothing closes it
+def _dropdown_options(indent: str, kind: str, *, folds: bool) -> list[str]:
+    if folds:
+        return [f"{indent}:class-container: example example-{kind}", ""]
+    return [f"{indent}:open:", f"{indent}:class-container: example example-{kind} example-static", ""]
+
+
 def _code_block(indent: str, language: str, label: str, body: list[str]) -> list[str]:
     return [*_fence_lines(indent, language, label, body), ""]
 
 
-# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
-def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
-    heading = [f"{indent}{label}", ""] if label else []
-    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
-    numbering = [f"{indent}:linenos:"] if linenos else []
-    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
-
-
-def _body(lines: list[str], fence: Fence) -> list[str]:
-    return lines[fence["line"] : fence["end_line"] - 1]
-
-
 def _caption(block: Block, side: str) -> str:
-    return f"`{block['file']}` {side}" if block["named"] else side.capitalize()
+    label = _label(block)
+    if block["named"]:
+        return f"{label} {side}"
+    return f"{side.capitalize()}, {label}" if label else side.capitalize()
 
 
-def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str]:
+def _dropdown(example: Example, lines: list[str], *, settings: bool, folds: bool) -> list[str]:
     roles = {block["role"] for block in example["blocks"]}
     config = example["config"]
     # an example elsewhere may need a setting to run, as the rst rules do, yet it shows a case, not the setting
@@ -299,15 +307,14 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str
     indent = _indent(lines, example)
     # the role class lets the stylesheet and rules.js find each example and tell its kind apart
     kind = title.replace(" ", "-")
-    out = [f"{indent}::::{{dropdown}} Example: {title}", f"{indent}:class-container: example example-{kind}", ""]
+    out = [f"{indent}::::{{dropdown}} Example: {title}", *_dropdown_options(indent, kind, folds=folds)]
     if config is not None:
         out.extend(_code_block(indent, "toml", "`pyproject.toml`", _body(lines, config)))
     for block in example["blocks"]:
         body = _body(lines, block)
         # a lone example.py needs no name; a fix shows its before and after side by side
-        file = f"`{block['file']}`" if block["named"] else ""
         if "fixed" not in roles:
-            out.extend(_code_block(indent, block["language"], file, body))
+            out.extend(_code_block(indent, block["language"], _label(block), body))
             continue
         side = "after" if block["role"] == "fixed" else "before"
         out.append(f"{indent}:::{{container}} example-side")
@@ -317,13 +324,13 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool) -> list[str
 
 
 # an Example section shows each example as a card: its config is not numbered, and context files are left out
-def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Example]) -> str:
+def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, hidden: str = "context") -> str:
     out: list[str] = []
     skip_blank = False
     index = start
     while index < stop:
         if (example := by_line.get(index + 1)) is not None:
-            cards, skip_blank = _cards(lines, example, skip_blank=skip_blank)
+            cards, skip_blank = _cards(lines, example, skip_blank=skip_blank, hidden=hidden)
             out.extend(cards)
             index = example["end_line"]
             continue
@@ -337,7 +344,7 @@ def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
 
 # A context file only sets up its example for the test, so the card leaves it out with the blank lines after it. The
 # returned flag says whether the blank lines after the example still belong to such a file.
-def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[list[str], bool]:
+def _cards(lines: list[str], example: Example, *, skip_blank: bool, hidden: str) -> tuple[list[str], bool]:
     out: list[str] = []
     previous = example["line"] - 1
     if (config := _own_config(example)) is not None:
@@ -348,18 +355,49 @@ def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[lis
         if not skip_blank:
             out.extend(lines[previous : block["line"] - 1])
         previous = block["end_line"]
-        skip_blank = block["role"] == "context"
+        skip_blank = block["role"] in {"context", hidden}
         if not skip_blank:
-            out.extend(
-                _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
-            )
+            out.extend(_fence_lines("", block["language"], _label(block), _body(lines, block)))
     return out, skip_blank
+
+
+# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
+def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
+    heading = [f"{indent}{label}", ""] if label else []
+    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
+    numbering = [f"{indent}:linenos:"] if linenos else []
+    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
+
+
+def _label(block: Block) -> str:
+    words = [f"`{block['file']}`"] if block["named"] else []
+    if block["select"]:
+        words.append(f"with {', '.join(block['select'])} selected")
+    if block["executable"]:
+        words.append("(executable)")
+    return " ".join(words)
+
+
+def _body(lines: list[str], fence: Fence) -> list[str]:
+    return lines[fence["line"] : fence["end_line"] - 1]
 
 
 def remove_stale(folder: Path, current: set[str]) -> None:
     # a page whose rule or group is gone would still build, under a name that no longer exists
     for stale in (page for page in folder.iterdir() if page.name not in current):
         stale.unlink()
+
+
+_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")
+
+
+_RULE_CODE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(r"\]\((SMP\d+)\.html\)")
+
+_ABSOLUTE_PAGE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"\]\(https://simplint\.readthedocs\.io/en/latest/[\w/.-]+#"
+)
+
+_SIMPLINT_DOCS_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/")
 
 
 _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {

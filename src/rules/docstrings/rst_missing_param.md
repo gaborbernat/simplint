@@ -5,6 +5,9 @@ reStructuredText docstrings.
 
 Users read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips
 shows with its name and type only, leaving its units, defaults and constraints unsaid.
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) has a function's docstring document its arguments,
+and the [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for enough
+to write a call without reading the function's code.
 
 ## Example
 

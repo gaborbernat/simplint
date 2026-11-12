@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:13 SMP534 Compile this pattern once at module level and call its `match` [unsafe fix: Move the pattern to a module-level constant]
+--- fixed (1 applied, 0 remaining) ---
+import re
+from typing import Final
+
+_PREFIX: Final = "v"
+
+
+_FOUND_PATTERN: Final[re.Pattern[str]] = re.compile(r"v(\d+)")
+
+
+def version(text: str) -> str | None:
+    found = _FOUND_PATTERN.match(text)
+    return found.group(1) if found else None

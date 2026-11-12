@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 
+use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt, UnaryOp};
-use ruff_text_size::Ranged;
+use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
@@ -25,7 +26,13 @@ pub fn parametrize_without_id(checker: &Checker) {
             let Some(values) = arguments.find_argument_value("argvalues", 1) else {
                 continue;
             };
-            if arguments.find_argument_value("ids", 3).is_some() {
+            if let Some(ids) = arguments.find_argument_value("ids", 3) {
+                if id_strings(ids).is_some() {
+                    let fix = ids_fix(checker, func, arguments, values, ids);
+                    report_ids_list(checker, ids, fix);
+                } else if is_module_id_strings(checker.semantic(), ids) {
+                    report_ids_list(checker, ids, None);
+                }
                 continue;
             }
             let (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) = values else {
@@ -50,6 +57,143 @@ pub fn parametrize_without_id(checker: &Checker) {
             }
         }
     }
+}
+
+// The ids of an `ids=` list when every entry is a string literal. A callable generates its ids, so they cannot drift
+// from the rows.
+fn id_strings(ids: &Expr) -> Option<&[Expr]> {
+    let (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) = ids else {
+        return None;
+    };
+    elts.iter().all(Expr::is_string_literal_expr).then_some(elts.as_slice())
+}
+
+// A module-level name is read because its list is in the file the rule reads. A name bound elsewhere, imported or
+// rebound has its value out of reach, so it is left alone.
+fn is_module_id_strings(semantic: &Semantic, ids: &Expr) -> bool {
+    let Expr::Name(name) = ids else {
+        return false;
+    };
+    let bindings = semantic.resolved_bindings(name);
+    let [binding] = bindings.as_slice() else {
+        return false;
+    };
+    binding.scope.is_global() && semantic.only_binding_value(name).is_some_and(|value| id_strings(value).is_some())
+}
+
+fn report_ids_list(checker: &Checker, ids: &Expr, fix: Option<Fix>) {
+    checker.report_fix(
+        Rule::ParametrizeWithoutId,
+        ids.range(),
+        "Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`",
+        fix,
+        "Wrap each row in `pytest.param(..., id=...)` and drop `ids=`",
+    );
+}
+
+fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &Expr, ids: &Expr) -> Option<Fix> {
+    let keyword = arguments.find_keyword("ids")?;
+    let argnames = argnames(arguments)?;
+    let (Expr::List(ast::ExprList { elts: rows, .. }) | Expr::Tuple(ast::ExprTuple { elts: rows, .. })) = values else {
+        return None;
+    };
+    let id_values = id_strings(ids)?;
+    if rows.len() != id_values.len() {
+        return None;
+    }
+    let callee = param_callee(checker, func)?;
+    let mut edits = Vec::with_capacity(rows.len() + 1);
+    for (row, id) in rows.iter().zip(id_values) {
+        let row_arguments = row_arguments(checker, row, argnames)?;
+        let replacement = format!("{callee}({row_arguments}, id={})", checker.text(id));
+        edits.push(Edit::range_replacement(replacement, row.range()));
+    }
+    let removal = keyword_removal(arguments, keyword)?;
+    edits.push(Edit::range_deletion(removal));
+    edits.sort_by_key(Ranged::start);
+    let commented = checker.has_comment_in(removal.cover(values.range()));
+    let mut edits = edits.into_iter();
+    let first = edits.next()?;
+    Some(if commented { Fix::unsafe_edits(first, edits) } else { Fix::safe_edits(first, edits) })
+}
+
+// How pytest hands a row to the test: a row is taken whole only for a string naming one argument, without a trailing
+// comma, and is unpacked for every other argnames.
+#[derive(Clone, Copy)]
+enum Argnames {
+    Whole,
+    Unpacked(usize),
+}
+
+fn argnames(arguments: &ast::Arguments) -> Option<Argnames> {
+    match arguments.find_argument_value("argnames", 0)? {
+        Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
+            let text = value.to_str();
+            let count = text.split(',').filter(|name| !name.trim().is_empty()).count();
+            Some(if count == 1 && !text.trim_end().ends_with(',') {
+                Argnames::Whole
+            } else {
+                Argnames::Unpacked(count)
+            })
+        }
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+            elts.iter().all(Expr::is_string_literal_expr).then_some(Argnames::Unpacked(elts.len()))
+        }
+        _ => None,
+    }
+}
+
+// The module's own name for pytest, as the decorator spells it: `import pytest as pt` gives `pt.param`.
+fn param_callee(checker: &Checker, func: &Expr) -> Option<String> {
+    let Expr::Attribute(ast::ExprAttribute { value: mark, .. }) = func else {
+        return None;
+    };
+    let Expr::Attribute(ast::ExprAttribute { value: module, .. }) = mark.as_ref() else {
+        return None;
+    };
+    Some(format!("{}.param", checker.text(module.as_ref())))
+}
+
+fn row_arguments(checker: &Checker, row: &Expr, argnames: Argnames) -> Option<String> {
+    let Argnames::Unpacked(names) = argnames else {
+        return is_literal_row(row).then(|| checker.text(row).to_owned());
+    };
+    let (Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })) = row else {
+        return None;
+    };
+    (!elts.is_empty() && elts.len() == names && !elts.iter().any(Expr::is_starred_expr))
+        .then(|| elts.iter().map(|elt| checker.text(elt)).collect::<Vec<_>>().join(", "))
+}
+
+fn is_literal_row(row: &Expr) -> bool {
+    match row {
+        Expr::Tuple(_) | Expr::List(_) => true,
+        Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::USub, operand, .. }) => operand.is_number_literal_expr(),
+        _ => row.is_literal_expr(),
+    }
+}
+
+// The text from the end of the argument before the keyword to its end, or, for a first argument, from its start to
+// the next one, so the other arguments keep their commas.
+fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> Option<TextRange> {
+    let before = arguments
+        .args
+        .iter()
+        .map(Ranged::end)
+        .chain(arguments.keywords.iter().map(Ranged::end))
+        .filter(|end| *end <= keyword.start())
+        .max();
+    if let Some(start) = before {
+        return Some(TextRange::new(start, keyword.end()));
+    }
+    let after = arguments
+        .args
+        .iter()
+        .map(Ranged::start)
+        .chain(arguments.keywords.iter().map(Ranged::start))
+        .filter(|start| *start >= keyword.end())
+        .min()?;
+    Some(TextRange::new(keyword.start(), after))
 }
 
 // The rows a list holds: its elements, and the elements of a starred list or tuple, written inline or a name bound once

@@ -1,9 +1,14 @@
-Flags `sys.exc_info()` reads of the exception being handled, which `sys.exception()` returns directly from Python 3.11.
+Flags [`sys.exc_info()`](https://docs.python.org/3/library/sys.html#sys.exc_info) reads of the exception being handled,
+which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns directly from Python 3.11.
 
 ## Why is this bad?
 
-`sys.exc_info()` returns a tuple of three values, and code that reads its second value, or unpacks all three into
-`traceback.print_exception`, only needs the exception. `sys.exception()` names that value and returns it alone.
+`sys.exc_info()` returns what the [docs](https://docs.python.org/3/library/sys.html#sys.exc_info) call the old-style
+representation of the handled exception: the tuple `(type(e), e, e.__traceback__)`. Since Python 3.11 the type and
+traceback in it derive from the exception, so the tuple holds nothing the exception lacks. Code that reads its second
+value, or unpacks all three into
+[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception), needs only
+the exception, which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns.
 
 ## Example
 
@@ -46,10 +51,59 @@ error = sys.exception()
 
 ## What it does
 
+### Active on
+
 Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as system` counts:
 
 - **`sys.exc_info()[1]`**: a read of the second value.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  import sys
+
+  error = sys.exc_info()[1]
+  ```
+
+  ```python fixed
+  import sys
+
+  error = sys.exception()
+  ```
+
 - **`traceback.print_exception(*sys.exc_info())`**: an unpacking of the whole tuple as the only argument.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  import sys
+  import traceback
+
+
+  def report() -> None:
+      try:
+          run()
+      except Exception:
+          traceback.print_exception(*sys.exc_info())
+  ```
+
+  ```python fixed
+  import sys
+  import traceback
+
+
+  def report() -> None:
+      try:
+          run()
+      except Exception:
+          traceback.print_exception(sys.exception())
+  ```
 
 ### Exceptions
 

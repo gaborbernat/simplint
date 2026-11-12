@@ -11,13 +11,15 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{Visibility, for_each_body, import_aliases, is_lazy};
+use crate::syntax::{Visibility, for_each_body, import_aliases, is_lazy, is_stdlib_root};
 
 pub fn module_attribute_import(checker: &Checker) {
     let semantic = checker.semantic();
+    let knobs = &checker.settings.project.knobs;
+    let scope = Scope::of(&knobs.module_attribute_scope);
     let uses = OnceCell::new();
     for module in checker.project().modules() {
-        if checker.settings.project.knobs.module_attributes.contains(&module.module) {
+        if !(scope.project || scope.names(&module.module)) || knobs.module_attributes.contains(&module.module) {
             continue;
         }
         // Bound twice: its attributes cannot move into the importer.
@@ -46,11 +48,12 @@ pub fn module_attribute_import(checker: &Checker) {
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
         // import without a comment, no stores, no computed write the import would miss, each name importable from the
-        // module, and no other module that imports or reads the bound name, which the replaced import would no longer
-        // bind.
+        // module, no other module that imports or reads the bound name, which the replaced import would no longer
+        // bind, and no import cycle the module and the importer share, where the names may not be defined yet.
         let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
+            && !module.cyclic
             && !checker.is_exported(&module.bound);
         let path = module_path(statement, alias);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
@@ -95,6 +98,103 @@ pub fn module_attribute_import(checker: &Checker) {
                 Fix::unsafe_edits(import, accesses)
             })
         });
+    }
+    if scope.reaches_outside() {
+        outside_modules(checker, &scope, &uses);
+    }
+}
+
+// A module outside the run reports its attributes without a fix: the run does not show which names it defines, so an
+// import of one might fail or bind a submodule.
+fn outside_modules<'a>(checker: &'a Checker, scope: &Scope, uses: &OnceCell<Uses<'a>>) {
+    let semantic = checker.semantic();
+    let knobs = &checker.settings.project.knobs;
+    let from_ruff = &checker.settings.from_ruff;
+    let minor = checker.target_version().minor;
+    let run = checker.project().modules();
+    for stmt in checker.body() {
+        let Stmt::Import(ast::StmtImport { names, .. }) = stmt else {
+            continue;
+        };
+        for alias in names {
+            let module = alias.name.as_str();
+            // `import os.path` binds `os`, whose `path` attribute is the imported submodule, not a name to import.
+            let bound = match &alias.asname {
+                Some(asname) => asname.as_str(),
+                None if module.contains('.') => continue,
+                None => module,
+            };
+            let covered = if is_stdlib_root(minor, module) { scope.stdlib } else { scope.third_party };
+            if !(covered || scope.names(module))
+                || run.iter().any(|used| used.bound == bound || used.module == module)
+                || knobs.module_attributes.iter().any(|listed| listed == module)
+                || from_ruff.import_aliases.get(module).is_some_and(|conventional| conventional == bound)
+                || from_ruff.banned_from.contains(module)
+            {
+                continue;
+            }
+            let [_] = semantic.bindings(bound) else {
+                continue;
+            };
+            let uses = uses.get_or_init(|| Uses::of(checker.body()));
+            let mut attributes = Vec::new();
+            for used in semantic.references_to(bound).iter().filter_map(|reference| uses.0.get(&reference.range)) {
+                match used {
+                    Use::Attribute(attribute) => attributes.push(attribute),
+                    Use::Value => {
+                        attributes.clear();
+                        break;
+                    }
+                }
+            }
+            for attribute in attributes {
+                if attribute.load
+                    && !is_dunder(attribute.name)
+                    && !semantic.is_bound(attribute.name)
+                    && !checker.project().is_path_referenced(module, attribute.name)
+                {
+                    let message = format!(
+                        "Import `{}` from `{module}` instead of reaching it through the module",
+                        attribute.name
+                    );
+                    checker.report(Rule::ModuleAttributeImport, attribute.range, message);
+                }
+            }
+        }
+    }
+}
+
+// The modules `module-attribute-scope` lets the rule check.
+struct Scope<'a> {
+    project: bool,
+    stdlib: bool,
+    third_party: bool,
+    modules: Vec<&'a str>,
+}
+
+impl<'a> Scope<'a> {
+    fn of(entries: &'a [String]) -> Self {
+        let mut scope = Self { project: false, stdlib: false, third_party: false, modules: Vec::new() };
+        for entry in entries {
+            match entry.as_str() {
+                "project" => scope.project = true,
+                "stdlib" => scope.stdlib = true,
+                "third-party" => scope.third_party = true,
+                module => scope.modules.push(module),
+            }
+        }
+        scope
+    }
+
+    fn reaches_outside(&self) -> bool {
+        self.stdlib || self.third_party || !self.modules.is_empty()
+    }
+
+    // A listed module covers its submodules too.
+    fn names(&self, module: &str) -> bool {
+        self.modules
+            .iter()
+            .any(|listed| module.strip_prefix(listed).is_some_and(|rest| rest.is_empty() || rest.starts_with('.')))
     }
 }
 

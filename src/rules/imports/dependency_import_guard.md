@@ -3,8 +3,11 @@ the project's required dependencies.
 
 ## Why is this bad?
 
-A required dependency is always installed, so the fallback never runs in a working environment. When the install is
-broken, the guard hides the import error until something later fails with a less clear message.
+A required dependency is installed with the project. The standard library ships with Python, and an installer puts each
+entry of [`dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) in place.
+The fallback does not run in a working environment. When the install is broken, the guard hides the import error until
+something later fails with a less clear message, against the [Zen of Python](https://peps.python.org/pep-0020/)'s rule
+that errors should not pass silently.
 
 ## Example
 
@@ -116,7 +119,8 @@ A module is required when its top-level package is one of these:
   [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
   [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every
   supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule
-  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.
+  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and
+  [`string.templatelib`](https://docs.python.org/3/library/string.templatelib.html#module-string.templatelib) from 3.14.
 
   ```toml config
   [project]

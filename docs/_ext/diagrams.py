@@ -39,19 +39,20 @@ _DIAGRAM_CONFIG: Final[str] = json.dumps({
 # The extension passes this file as the mermaid configuration and names each drawing after its path, and reuses a
 # drawing it finds under that name; a path that holds the content's hash redraws every diagram when the configuration
 # changes.
-CONFIG_PATH: Final[Path] = _DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
-PUPPETEER_PATH: Final[Path] = _DIAGRAMS / "puppeteer.json"
+_CONFIG_PATH: Final[Path] = _DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
+_PUPPETEER_PATH: Final[Path] = _DIAGRAMS / "puppeteer.json"
 
 
-def write_settings() -> None:
+def write_settings() -> tuple[Path, Path]:
     # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
     # it. Read the Docs builds in a small container: its /dev/shm is too small for Chrome, and a slow start there can
     # outlast puppeteer's default 30 s wait.
     _DIAGRAMS.mkdir(parents=True, exist_ok=True)
-    write_if_changed(CONFIG_PATH, _DIAGRAM_CONFIG)
+    write_if_changed(_CONFIG_PATH, _DIAGRAM_CONFIG)
     puppeteer = {"args": ["--no-sandbox", "--disable-dev-shm-usage"], "timeout": 180_000}
-    write_if_changed(PUPPETEER_PATH, json.dumps(puppeteer))
-    remove_stale(_DIAGRAMS, {CONFIG_PATH.name, PUPPETEER_PATH.name})
+    write_if_changed(_PUPPETEER_PATH, json.dumps(puppeteer))
+    remove_stale(_DIAGRAMS, {_CONFIG_PATH.name, _PUPPETEER_PATH.name})
+    return _CONFIG_PATH, _PUPPETEER_PATH
 
 
 def setup(app: Sphinx) -> dict[str, bool]:

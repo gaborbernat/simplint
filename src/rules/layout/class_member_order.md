@@ -5,12 +5,15 @@ methods. A member that sits above a member of an earlier section is reported, an
 ## Why is this bad?
 
 A class is read to learn how its instances come to be, what they hold and what they can do. The layout puts each kind of
-member where a reader looks for it: the constructors near the top, where the instance is made, the protocol methods
-together, the properties next, and the methods last. A constructor placed after a dozen methods sends the reader past
-all of them, and a property defined between two methods splits the list of the methods the class offers.
+member where a reader looks for it. A constructor placed after a dozen methods sends the reader past all of them, and a
+property defined between two methods splits the list of the methods the class offers.
 
-The same order in every class also means a reader who knows one class knows where to look in the next. It follows the
-life of an object: it is created, it gets its protocol, and then it is used.
+The same order in every class means a reader who knows one class knows where to look in the next. Other guides order
+members in a similar way.
+[wemake-python-styleguide](https://wemake-python-styleguide.readthedocs.io/en/1.7.1/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.WrongMethodOrderViolation)
+wants the important parts before the details, and
+[Django's model style](https://docs.djangoproject.com/en/dev/internals/contributing/writing-code/coding-style/#model-style)
+lists fields, `Meta` and dunder methods before custom methods.
 
 ## Example
 
@@ -49,9 +52,9 @@ The rule checks the members of each class body, in the order of these sections:
 1. **Constructors**: `__init_subclass__`, `__new__`, `__init__` and `__post_init__`, in the order Python runs them.
 1. **Alternative constructors**: classmethods that return a call of the class, such as `return cls(...)`, that return
    the result of another alternative constructor through `cls`, such as `return cls.fromordinal(...)`, or whose return
-   annotation is `Self`, `typing.Self` or the class's own name. A returned local name counts as the call it holds when
-   that assignment, such as `result = cls(...)`, is the only one outside a branch that binds the name; a branch may
-   rebind it, as `result = tz.fromutc(result)` does.
+   annotation is `Self`, [`typing.Self`](https://docs.python.org/3/library/typing.html#typing.Self) or the class's own
+   name. A returned local name counts as the call it holds when that assignment, such as `result = cls(...)`, is the
+   only one outside a branch that binds the name; a branch may rebind it, as `result = tz.fromutc(result)` does.
 1. **Other dunder methods**, such as `__repr__` and `__eq__`.
 1. **Properties**: a `property` or `cached_property` with its setter and deleter right after it.
 1. **Methods**: instance, static and class methods alike, public or private.
@@ -100,107 +103,108 @@ class Layout:
         pass
 ```
 
-A classmethod that hands its work to another alternative constructor is one too, and so is a classmethod annotated to
-return the class, whatever its body does. A classmethod that only returns a call of a plain classmethod stays a method,
-and so does one whose name is first bound outside a branch to something else, or bound twice outside a branch:
+### Active on
 
-```python report
-from typing import Self
+- **Alternative constructors**: a classmethod that hands its work to another alternative constructor is one too, and so
+  is a classmethod annotated to return the class, whatever its body does:
 
-
-class Date:
-    def __init__(self, ordinal: int) -> None:
-        self.ordinal = ordinal
-
-    def describe(self) -> str:
-        return str(self.ordinal)
-
-    @classmethod
-    def fromordinal(cls, ordinal: int):
-        return cls(ordinal)
-
-    @classmethod
-    def today(cls):
-        return cls.fromordinal(1)
-
-    @classmethod
-    def parse(cls, text: str) -> Self:
-        return cls.registry[text]
-
-    @classmethod
-    def epoch(cls, shift: bool = False):
-        result = cls.fromordinal(0)
-        if shift:
-            result = result.shifted()
-        return result
-
-    registry: dict[str, "Date"] = {}
-```
-
-```python fixed
-from typing import Self
+  ```python report
+  from typing import Self
 
 
-class Date:
-    registry: dict[str, "Date"] = {}
+  class Date:
+      def __init__(self, ordinal: int) -> None:
+          self.ordinal = ordinal
 
-    def __init__(self, ordinal: int) -> None:
-        self.ordinal = ordinal
+      def describe(self) -> str:
+          return str(self.ordinal)
 
-    @classmethod
-    def today(cls):
-        return cls.fromordinal(1)
+      @classmethod
+      def fromordinal(cls, ordinal: int):
+          return cls(ordinal)
 
-    @classmethod
-    def fromordinal(cls, ordinal: int):
-        return cls(ordinal)
+      @classmethod
+      def today(cls):
+          return cls.fromordinal(1)
 
-    @classmethod
-    def parse(cls, text: str) -> Self:
-        return cls.registry[text]
+      @classmethod
+      def parse(cls, text: str) -> Self:
+          return cls.registry[text]
 
-    @classmethod
-    def epoch(cls, shift: bool = False):
-        result = cls.fromordinal(0)
-        if shift:
-            result = result.shifted()
-        return result
+      @classmethod
+      def epoch(cls, shift: bool = False):
+          result = cls.fromordinal(0)
+          if shift:
+              result = result.shifted()
+          return result
 
-    def describe(self) -> str:
-        return str(self.ordinal)
-```
+      registry: dict[str, "Date"] = {}
+  ```
 
-A member in a section below a later section's member is reported. The message names the section it belongs with and the
-first member of a later section above which it sits. A property and its setter are reported on their own lines, since
-each is a member of its own:
+  ```python fixed
+  from typing import Self
 
-```python report
-class Box:
-    def fill(self, value: int) -> None:
-        self._size = value
 
-    @property
-    def size(self) -> int:
-        return self._size
+  class Date:
+      registry: dict[str, "Date"] = {}
 
-    @size.setter
-    def size(self, value: int) -> None:
-        self._size = value
-```
+      def __init__(self, ordinal: int) -> None:
+          self.ordinal = ordinal
 
-```python fixed
-class Box:
-    @property
-    def size(self) -> int:
-        return self._size
+      @classmethod
+      def today(cls):
+          return cls.fromordinal(1)
 
-    @size.setter
-    def size(self, value: int) -> None:
-        self._size = value
+      @classmethod
+      def fromordinal(cls, ordinal: int):
+          return cls(ordinal)
 
-    def fill(self, value: int) -> None:
-        self._size = value
-```
+      @classmethod
+      def parse(cls, text: str) -> Self:
+          return cls.registry[text]
+
+      @classmethod
+      def epoch(cls, shift: bool = False):
+          result = cls.fromordinal(0)
+          if shift:
+              result = result.shifted()
+          return result
+
+      def describe(self) -> str:
+          return str(self.ordinal)
+  ```
+
+- **Members out of section order**: a member in a section below a later section's member is reported. The message names
+  the section it belongs with and the first member of a later section above which it sits. A property and its setter are
+  reported on their own lines, since each is a member of its own:
+
+  ```python report
+  class Box:
+      def fill(self, value: int) -> None:
+          self._size = value
+
+      @property
+      def size(self) -> int:
+          return self._size
+
+      @size.setter
+      def size(self, value: int) -> None:
+          self._size = value
+  ```
+
+  ```python fixed
+  class Box:
+      @property
+      def size(self) -> int:
+          return self._size
+
+      @size.setter
+      def size(self, value: int) -> None:
+          self._size = value
+
+      def fill(self, value: int) -> None:
+          self._size = value
+  ```
 
 ### Exceptions
 
@@ -219,10 +223,103 @@ Some members stay where they are, and some reports come without a fix:
           return text.splitlines()
   ```
 
+- **A classmethod that calls a plain classmethod** stays a method: one that only returns a call of a plain classmethod
+  is not an alternative constructor.
+
+  ```python ok
+  class Date:
+      @property
+      def day(self) -> int:
+          return 1
+
+      @classmethod
+      def label(cls, ordinal: int) -> str:
+          return cls.describe_ordinal(ordinal)
+
+      @classmethod
+      def describe_ordinal(cls, ordinal: int) -> str:
+          return str(ordinal)
+  ```
+
+- **A returned name bound outside a branch** keeps a classmethod a method when the name is first bound outside a branch
+  to something else, or bound twice outside a branch.
+
+  ```python ok
+  class Date:
+      @classmethod
+      def fromordinal(cls, ordinal: int):
+          return cls(ordinal)
+
+      @property
+      def day(self) -> int:
+          return 1
+
+      @classmethod
+      def epoch(cls, shift: bool = False):
+          result = "epoch"
+          if shift:
+              result = cls.fromordinal(0)
+          return result
+
+      @classmethod
+      def today(cls):
+          result = cls.fromordinal(1)
+          result = cls.fromordinal(2)
+          return result
+  ```
+
 - **Constructors that a method calls** stay in their section. `self.__init__()` in a method does not make the
   constructor a helper, so the constructor keeps its place above the methods.
 
+  ```python ok
+  class Parser:
+      def __init__(self, sep: str = ",") -> None:
+          self.sep = sep
+
+      def reset(self) -> None:
+          self.__init__()
+
+      def load(self, text: str) -> list[str]:
+          return text.split(self.sep)
+  ```
+
 - **Overloads and redefinitions** of one name, and a property with its setter and deleter, move as one unit.
+
+  ```python report
+  from typing import overload
+
+
+  class Box:
+      def fill(self, value: int) -> None:
+          self._size = value
+
+      @overload
+      def __init__(self, size: int) -> None: ...
+
+      @overload
+      def __init__(self, size: str) -> None: ...
+
+      def __init__(self, size: int | str) -> None:
+          self._size = int(size)
+  ```
+
+  ```python fixed
+  from typing import overload
+
+
+  class Box:
+      @overload
+      def __init__(self, size: int) -> None: ...
+
+      @overload
+      def __init__(self, size: str) -> None: ...
+
+      def __init__(self, size: int | str) -> None:
+          self._size = int(size)
+
+      def fill(self, value: int) -> None:
+          self._size = value
+  ```
 
 - **A name the class body reads while it runs** pins the definition that binds it. Default values, decorators and
   annotations that Python evaluates when the `def` runs count as reads: a definition cannot move below a reader of its
@@ -295,7 +392,8 @@ Some members stay where they are, and some reports come without a fix:
   ```
 
 - **An enum's `_generate_next_value_`** stays where it is. `auto()` reads it from the class namespace rather than by
-  name, and `Enum` raises `TypeError` when it is defined after a member that called `auto()`:
+  name, and `Enum` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) when it is defined
+  after a member that called `auto()`:
 
   ```python report
   from enum import Enum, auto
@@ -352,7 +450,8 @@ The fix is safe when every moved member is undecorated or has only pure decorato
 a moved class, a moved method with any other decorator, such as `@cache` or `@functools.lru_cache()`, or a call in a
 moved method's default values or in a moved statement, because
 [decorators](https://docs.python.org/3/glossary.html#term-decorator), calls and class creation then run in a different
-order. A call can also see which names the class body has bound so far, as `locals()` does:
+order. A call can also see which names the class body has bound so far, as
+[`locals()`](https://docs.python.org/3/builtins/functions.html#locals) does:
 
 ```python report
 import itertools

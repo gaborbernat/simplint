@@ -82,6 +82,7 @@ base_python = { replace = "ref", of = [ "env", "docs", "base_python" ] }
 skip_install = { replace = "ref", of = [ "env", "docs", "skip_install" ] }
 dependency_groups = { replace = "ref", of = [ "env", "docs", "dependency_groups" ] }
 commands = [
+  [ "python", "-m", "tasks.python_links", "src{/}rules" ],
   [ "python", "-m", "tasks.generate_changelog" ],
   [
     "sphinx-build",

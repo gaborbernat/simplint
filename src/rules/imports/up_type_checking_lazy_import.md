@@ -1,11 +1,19 @@
-Flags an `if TYPE_CHECKING:` block that holds only imports and no `else`, where Python 3.15 can spell each import as a
-`lazy` import. The guard is then only needed for names that are not imported at runtime, which `lazy` covers.
+Flags an `if `[`TYPE_CHECKING`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)`:` block that holds
+only imports and no `else`, where Python 3.15 can spell each import as a
+[`lazy`](https://docs.python.org/3/reference/simple_stmts.html#lazy-imports) import. The guard is then only needed for
+names that are not imported at runtime, which `lazy` covers.
 
 ## Why is this bad?
 
 The guard keeps the imports out of the running program, so the names they bind exist only for type checkers, and code
-that reads them at runtime fails. A `lazy` import binds the name at module level and runs the import on first use
-([PEP 810](https://peps.python.org/pep-0810/)), so the guard is no longer needed and a name used at runtime resolves.
+that reads them at runtime fails, such as code that
+[evaluates annotations](https://docs.python.org/3/howto/annotations.html#manually-un-stringizing-stringized-annotations).
+A `lazy` import binds the name at module level and runs the import on first use
+([PEP 810](https://peps.python.org/pep-0810/)). A name used only in annotations loads nothing until something
+[reads the annotations](https://peps.python.org/pep-0810/#how-do-explicit-lazy-imports-interact-with-pep-649-and-pep-749),
+and a name used at runtime resolves. The PEP names
+[removing `TYPE_CHECKING` guards](https://peps.python.org/pep-0810/#what-about-type-annotations-and-type-checking-imports)
+as one of its uses.
 
 ## Example
 

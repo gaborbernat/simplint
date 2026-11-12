@@ -3,9 +3,13 @@ it is: [module-variable-prefix](SMP404.html) checks it.
 
 ## Why is this bad?
 
-Upper case tells a reader the name is a module-level value rather than a local, as
-[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants. A module that keeps the same case for all its
-constants makes them easy to pick out at every use.
+Upper case tells a reader the name is a module-level value rather than a local, the way
+[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants, so a use deep inside a function shows that it
+reads module state. pylint's
+[invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html) applies the
+same idea to names assigned once. [PEP 8](https://peps.python.org/pep-0008/#global-variable-names) and the
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.5.4-decision) give module globals
+`lower_case`; simplint reports every module-level variable, so each use shows the module state it reads.
 
 ## Example
 
@@ -351,6 +355,15 @@ lookup:
 - **The names listed in `naming.keep-names`**, under Configuration above: for any other framework that reads a module
   variable by name.
 
+  ```toml config
+  [tool.simplint.naming]
+  keep-names = ["commands"]
+  ```
+
+  ```python ok
+  commands = {"run": "app.cli:run"}
+  ```
+
 ### Fix
 
 The fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.
@@ -391,7 +404,8 @@ No fix is offered when:
   third-party import, or a doctest spells it. The report stays, since such a read does not show what it reads
 
 - another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns
-  it as an attribute of its module, as `module.NAME = value` or `setattr(module, "NAME", value)` does, since the rename
+  it as an attribute of its module, as `module.NAME = value` or
+  [`setattr(module, "NAME", value)`](https://docs.python.org/3/builtins/functions.html#setattr) does, since the rename
   would leave that write pointing at the old name
 
   ```python report file=config.py
@@ -405,8 +419,8 @@ No fix is offered when:
   ```
 
 - a file of the run reads an attribute by that name off a module it loads by a computed name: the result of
-  `importlib.import_module`, `__import__` or `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture
-  that returns such a module
+  [`importlib.import_module`](https://docs.python.org/3/library/importlib.html#importlib.import_module), `__import__` or
+  `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture that returns such a module
 
   ```python report file=loader.py
   limit = 3

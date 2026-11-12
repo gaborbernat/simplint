@@ -13,7 +13,7 @@ const PROJECT: &str = "[project]\nrequires-python = \">=3.14\"\n";
     ; "definition_before_use"
 )]
 #[test_case(
-    PROJECT, "SMP202", &[("module.py", "_LIMIT = [1]\n\n\ndef read() -> int:\n    return len(_LIMIT) + len(_LIMIT)\n")]
+    PROJECT, "SMP202", &[("module.py", "_LIMIT = (1,)\n\n\ndef read() -> int:\n    return len(_LIMIT) + len(_LIMIT)\n")]
     ; "single_user_constant_local"
 )]
 #[test_case(

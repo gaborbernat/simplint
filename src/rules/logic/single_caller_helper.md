@@ -4,8 +4,13 @@ keeps the caller short.
 ## Why is this bad?
 
 A helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn
-what the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements
-keeps the work in one function, as long as the caller stays short enough to read at once.
+what the caller does, and the helper's name adds little when only one place uses it.
+[John Ousterhout](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) argues that many short functions
+are harder to read: each split adds an interface to learn while hiding little, and functions that only make sense
+together read better combined. Inlining the helper's statements keeps the work in one function, as long as the caller
+stays short enough to read at once. [Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) and
+[Robert Martin](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) favor small functions named by
+intent. A short single-caller helper is flagged only if inlining keeps the caller within its limits.
 
 ## Example
 
@@ -149,7 +154,8 @@ estimates, so a caller they might report is left as it is.
       return _parse_header(text)
   ```
 
-- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.
+- **Helpers passed as a value**: [`map(_parse_header, texts)`](https://docs.python.org/3/builtins/functions.html#map)
+  does not call the helper where it stands.
 
   ```python ok
   def load(texts: list[str]) -> list[str]:

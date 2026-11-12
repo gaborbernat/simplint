@@ -85,6 +85,12 @@ impl Visibility {
     }
 }
 
+// The prefix of a private module named `_<prefix>_<rest>`, which a package would group with its siblings.
+pub(crate) fn name_prefix(stem: &str) -> Option<&str> {
+    let (prefix, rest) = stem.strip_prefix('_')?.split_once('_')?;
+    (!prefix.is_empty() && !rest.is_empty()).then_some(prefix)
+}
+
 // Whether a function is an `@overload` stub, which the type checker reads in place of the implementation below it.
 pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
     has_decorator(decorators, &["overload"])

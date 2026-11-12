@@ -3,7 +3,10 @@ not take.
 
 ## Why is this bad?
 
-A field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works.
+A field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works:
+passing that keyword [raises `TypeError`](https://docs.python.org/3/reference/expressions.html#calls). Neither Sphinx
+nor a type checker compares the fields with the signature, so the field stays until a reader relies on it.
+[PEP 8](https://peps.python.org/pep-0008/#comments) says comments that contradict the code are worse than no comments.
 
 ## Example
 

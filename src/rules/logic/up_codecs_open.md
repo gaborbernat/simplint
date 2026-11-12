@@ -1,11 +1,16 @@
-Flags `codecs.open()` calls, which the builtin `open()` replaces.
+Flags [`codecs.open()`](https://docs.python.org/3/library/codecs.html#codecs.open) calls, which the builtin
+[`open()`](https://docs.python.org/3/builtins/functions.html#open) replaces.
 
 ## Why is this bad?
 
-Python 3.14 deprecates `codecs.open()`, and the builtin `open()` takes the same arguments. With an encoding,
-`codecs.open()` opens the file in binary mode and decodes it through a stream wrapper. That wrapper splits lines at the
-characters `str.splitlines()` honors, such as form feeds and U+2028, where `open()` splits only at line endings. With
-`newline=""`, `open()` also keeps the line endings as they are, as `codecs.open()` does.
+Python 3.14 [deprecates](https://docs.python.org/3/library/codecs.html#codecs.open) `codecs.open()`, which the builtin
+`open()` supersedes. `open()` takes the same mode, encoding, errors and buffering parameters. With an encoding,
+`codecs.open()` opens the file in binary mode and decodes it through a pure-Python stream wrapper, which
+[PEP 400](https://peps.python.org/pep-0400/#textiowrapper-features) measured 10 to 25 times slower than the C text layer
+of `open()` on small reads. That wrapper also splits lines at the characters
+[`str.splitlines()`](https://docs.python.org/3/builtins/stdtypes.html#str.splitlines) honors, such as form feeds and
+U+2028, where `open()` splits only at line endings. With `newline=""`, `open()` keeps line endings as they are, as
+`codecs.open()` does.
 
 ## Example
 

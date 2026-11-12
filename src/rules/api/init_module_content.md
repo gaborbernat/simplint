@@ -2,10 +2,16 @@ Flags `__init__.py` files that hold code beyond a module docstring and deliberat
 
 ## Why is this bad?
 
-Python runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore
-also runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.
-Unplanned re-exports give one object two import paths and invite circular imports. A package can deliberately expose
-selected names from private modules through `__all__`.
+Python runs a package's `__init__.py` before any of its submodules:
+[importing `pkg.sub` runs `pkg/__init__.py` first](https://docs.python.org/3/reference/import.html#regular-packages). A
+slow or failing import there slows down or breaks every module of the package, the import cost that
+[Scientific Python's SPEC 1](https://scientific-python.org/specs/spec-0001/) cites for lazy loading. Code in a file that
+is usually empty is also [easy to overlook when debugging](https://docs.astral.sh/ruff/rules/non-empty-init-module/).
+
+Unplanned re-exports give one object two import paths and invite circular imports.
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) treats imported names as internal unless a
+package's `__init__` documents them as its API, so a package can still expose selected names from private modules
+through `__all__`.
 
 ## Example
 
@@ -117,9 +123,33 @@ it belongs.
   under a test root that is itself a project is treated as test input, even when its module name does not start with
   `test_`.
 
+  ```python context file=test-root/setup.py
+  from setuptools import setup
+
+  setup(name="sample")
+  ```
+
+  ```python ok file=test-root/pkg/__init__.py
+  """Fixture package for import tests."""
+
+  from ._core import run
+
+  run()
+  ```
+
 - **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,
   `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by
   those hooks may still need a suppression when they are not re-exports.
+
+  ```python ok file=pkg/__init__.py
+  """HTTP client."""
+
+
+  def __getattr__(name: str) -> object:
+      from importlib import import_module
+
+      return getattr(import_module("pkg._client"), name)
+  ```
 
 - **The module docstring**: it documents the package and runs no code.
 

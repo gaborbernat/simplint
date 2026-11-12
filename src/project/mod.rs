@@ -6,7 +6,7 @@ mod facts;
 mod index;
 pub(crate) mod receivers;
 
-pub use docs::DocReferences;
+pub use docs::{AutoclassContent, DocReferences};
 pub(crate) use facts::doctest_code;
 pub use facts::{FileFacts, Parts};
 pub use index::{Exposure, External, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots};

@@ -49,7 +49,7 @@ fn require_options(
         }
         let range = decorated.decorator.range();
         let offer = offer(&decorated, &missing);
-        if offer.as_ref().is_some_and(|offer| offer.left_to_ruff) {
+        if offer.as_ref().is_some_and(|offer| offer.unreported) {
             continue;
         }
         // The fix cannot take a key out of a splat, so adding the option would repeat it. The offer still runs for its
@@ -188,26 +188,24 @@ fn splat_value<'a>(splat: &[(&str, &'a Expr)], option: &str) -> Option<&'a Expr>
 }
 
 // The options a fix sets, any edits it makes beyond the decorator, and how safe it is. With no options the report has
-// no fix; it still points at `related` and adds `note` to its message. A `left_to_ruff` offer reports nothing.
+// no fix; it still points at `related` and adds `note` to its message. An `unreported` offer reports nothing: Ruff
+// reports the class, or the option would break it on the target version.
 struct Offer {
     options: Vec<&'static str>,
     edits: Vec<Edit>,
     applicability: Applicability,
     related: Vec<Related>,
     note: String,
-    left_to_ruff: bool,
+    unreported: bool,
 }
 
 impl Offer {
     fn options(options: Vec<&'static str>, applicability: Applicability) -> Self {
-        Self {
-            options,
-            edits: Vec::new(),
-            applicability,
-            related: Vec::new(),
-            note: String::new(),
-            left_to_ruff: false,
-        }
+        Self { options, edits: Vec::new(), applicability, related: Vec::new(), note: String::new(), unreported: false }
+    }
+
+    fn unreported() -> Self {
+        Self { unreported: true, ..Self::options(Vec::new(), Applicability::Safe) }
     }
 }
 

@@ -98,12 +98,13 @@ if shutil.which("npx") is None:
     raise RuntimeError(msg)
 mermaid_output_format: Final[str] = "svg"
 mermaid_cmd: Final[str] = "npx --yes --package=@mermaid-js/mermaid-cli@12.2.0 mmdc"
-mermaid_sequence_config: Final[str] = str(diagrams.CONFIG_PATH)
+config_path, puppeteer_path = diagrams.write_settings()
+mermaid_sequence_config: Final[str] = str(config_path)
 mermaid_params: Final[list[str]] = [
     "--backgroundColor",
     "transparent",
     "--puppeteerConfigFile",
-    str(diagrams.PUPPETEER_PATH),
+    str(puppeteer_path),
 ]
 
 # copying a snippet takes the code alone, not the line numbers or console prompts and output
@@ -119,11 +120,12 @@ nitpicky: Final[bool] = True
 nitpick_ignore: Final[list[tuple[str, str]]] = []
 # anchors that resolve in a browser but linkcheck cannot verify: GitHub renders README heading ids with a
 # user-content- prefix added client-side, and pyright's single-page docs route on the part after the hash
-# cppreference answers automated clients with 403 Forbidden while the page loads in a browser; the changelog links each
-# entry's pull request and author profile, which the changelog task builds from real pull requests and GitHub answers
-# with 504 from CI runners
+# cppreference and docutils.sourceforge.io answer automated clients with 403 Forbidden while the pages load in a
+# browser; the changelog links each entry's pull request and author profile, which the changelog task builds from real
+# pull requests and GitHub answers with 504 from CI runners
 linkcheck_ignore: Final[list[str]] = [
     r"https://en\.cppreference\.com/.*",
+    r"https://docutils\.sourceforge\.io/.*",
     r"https://github\.com/gaborbernat/simplint/pull/\d+$",
     r"https://github\.com/[\w-]+$",
 ]
@@ -140,6 +142,5 @@ markdown_http_base: Final[str] = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 llms_txt_suppress_unknown_node_warnings: Final[list[str]] = ["label", "PassthroughTextElement", "mermaid"]
 
 
-diagrams.write_settings()
 # every page's template context, where the edit and view links of a rule page find the file it comes from
 html_context: Final[dict[str, dict[str, str]]] = {"rule_sources": rule_pages.generate(Path(__file__).parent)}

@@ -561,11 +561,27 @@ pub struct ImportsOptions {
         "#
     )]
     pub(crate) module_attributes: Option<Vec<String>>,
+    /// The modules `module-attribute-import` (`SMP304`) checks: `"project"` for the modules of the run,
+    /// `"stdlib"` for the standard library, `"third-party"` for every other installed module, or the absolute name of
+    /// one module, which covers its submodules too. A module imported under the alias Ruff's
+    /// `flake8-import-conventions` asks for, such as `numpy` as `np`, or one its `banned-from` lists, stays out.
+    #[option(
+        default = r#"["project"]"#,
+        value_type = "list[str]",
+        example = r#"
+            # Also import the names of the standard library and of `requests`.
+            module-attribute-scope = ["project", "stdlib", "requests"]
+        "#
+    )]
+    pub(crate) module_attribute_scope: Option<Vec<String>>,
 }
 
 impl ImportsOptions {
     fn combine(self, other: Self) -> Self {
-        Self { module_attributes: self.module_attributes.or(other.module_attributes) }
+        Self {
+            module_attributes: self.module_attributes.or(other.module_attributes),
+            module_attribute_scope: self.module_attribute_scope.or(other.module_attribute_scope),
+        }
     }
 }
 

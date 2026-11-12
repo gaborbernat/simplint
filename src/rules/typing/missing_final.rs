@@ -279,13 +279,13 @@ fn is_type_construct(semantic: &Semantic, value: &Expr) -> bool {
     })
 }
 
-struct Spelling {
-    qualifier: String,
-    import: Import,
+pub(crate) struct Spelling {
+    pub(crate) qualifier: String,
+    pub(crate) import: Import,
 }
 
 // The name a fix annotates with, and the import it adds; `None` when the import cannot be added without shadowing.
-fn final_qualifier(checker: &Checker, at: TextRange) -> Option<Spelling> {
+pub(crate) fn final_qualifier(checker: &Checker, at: TextRange) -> Option<Spelling> {
     let body = checker.body();
     let bound_at_top = body.iter().any(|stmt| match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {

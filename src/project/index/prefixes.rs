@@ -1,0 +1,60 @@
+use std::ffi::OsStr;
+use std::path::Path;
+
+use ruff_cache::{CacheKey, CacheKeyHasher};
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::project::FileFacts;
+use crate::syntax::name_prefix;
+
+use super::{FileId, FileIds};
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct PrefixSiblings {
+    pub others: usize,
+    // The extension of a `_<prefix>` module beside the group, which a new package would shadow.
+    pub prefix_module: Option<&'static str>,
+}
+
+impl CacheKey for PrefixSiblings {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.others.cache_key(state);
+        self.prefix_module.cache_key(state);
+    }
+}
+
+// A stub counts toward its prefix without being reported. A `_<prefix>/` directory is a package when the run holds a
+// file in it or an `__init__.py` sits on disk, so a package the run leaves out still counts.
+pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds) -> FxHashMap<FileId, PrefixSiblings> {
+    let mut directories: FxHashSet<&Path> = FxHashSet::default();
+    let mut groups: FxHashMap<(&Path, &str), FxHashSet<&str>> = FxHashMap::default();
+    for (id, _) in indexed {
+        let path = files.path(*id);
+        directories.extend(path.ancestors());
+        let (Some(directory), Some(stem)) = (path.parent(), path.file_stem().and_then(OsStr::to_str)) else {
+            continue;
+        };
+        if let Some(prefix) = name_prefix(stem) {
+            groups.entry((directory, prefix)).or_default().insert(stem);
+        }
+    }
+    indexed
+        .iter()
+        .filter_map(|(id, _)| {
+            let path = files.path(*id);
+            if path.extension() != Some(OsStr::new("py")) {
+                return None;
+            }
+            let directory = path.parent()?;
+            let prefix = name_prefix(path.file_stem()?.to_str()?)?;
+            let modules = groups.get(&(directory, prefix))?.len();
+            let package = directory.join(format!("_{prefix}"));
+            if modules < 3 || directories.contains(package.as_path()) || package.join("__init__.py").is_file() {
+                return None;
+            }
+            let prefix_module =
+                ["py", "pyi"].into_iter().find(|extension| directory.join(format!("_{prefix}.{extension}")).is_file());
+            Some((*id, PrefixSiblings { others: modules - 1, prefix_module }))
+        })
+        .collect()
+}

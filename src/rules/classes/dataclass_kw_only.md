@@ -2,8 +2,13 @@ Flags dataclasses declared without `kw_only=True`, and the calls that pass their
 
 ## Why is this bad?
 
-Positional construction ties every caller to the field order, so reordering or inserting a field silently shifts values
-into the wrong fields. Keyword-only fields name each value at the call site.
+Positional construction ties callers to the field order, so reordering or inserting a field silently shifts values into
+the wrong fields when their types match. Keyword-only fields name each value at the call site, the same clarity that
+[too-many-positional-arguments](https://docs.astral.sh/ruff/rules/too-many-positional-arguments/) asks of functions.
+They also lift the
+[ordering rule](https://docs.python.org/3/library/dataclasses.html#re-ordering-of-keyword-only-parameters-in-init) for
+defaults: a field without a default may follow one with a default, in the same class or through a subclass, where
+positional fields raise [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError).
 
 ## Example
 
@@ -422,8 +427,10 @@ No fix is offered while any use could still pass fields by position, or while a 
       return Release(*args)
   ```
 
-- the class used as a value, as in `functools.partial(Partition, topic)`, matched by position in a `case` pattern, or
-  named in the metadata of an `Annotated[...]` type, where a caller may call it by position later;
+- the class used as a value, as in
+  [`functools.partial(Partition, topic)`](https://docs.python.org/3/library/functools.html#functools.partial), matched
+  by position in a `case` pattern, or named in the metadata of an `Annotated[...]` type, where a caller may call it by
+  position later;
 
   ```python report
   from dataclasses import dataclass
@@ -453,8 +460,8 @@ No fix is offered while any use could still pass fields by position, or while a 
   make = partial(Release, "simplint")
   ```
 
-- the class read by `getattr(module, "Name")` from another file, which calls it by position under a name no import
-  shows;
+- the class read by [`getattr(module, "Name")`](https://docs.python.org/3/builtins/functions.html#getattr) from another
+  file, which calls it by position under a name no import shows;
 
   ```python report file=app/models.py
   from dataclasses import dataclass

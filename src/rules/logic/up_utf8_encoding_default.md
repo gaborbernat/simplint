@@ -1,11 +1,15 @@
-Flags `encoding="utf-8"` arguments on text reads and writes, which Python 3.15 makes the default.
+Flags `encoding="utf-8"` arguments on text reads and writes, which [PEP 686](https://peps.python.org/pep-0686/) makes
+the default in Python 3.15.
 
 ## Why is this bad?
 
-Python 3.15 turns on UTF-8 mode by default, so `open()` and the `pathlib` text methods decode and encode UTF-8 when no
-`encoding` is given. An argument that names the same encoding repeats the default, and a reader has to check whether it
-changes anything. The default can be switched off with `PYTHONUTF8=0` or `-X utf8=0`, though, and then the argument is
-what keeps the file in UTF-8.
+[PEP 686](https://peps.python.org/pep-0686/) turns on [UTF-8 mode](https://docs.python.org/3/library/os.html#utf8-mode)
+by default in Python 3.15, so [`open()`](https://docs.python.org/3/builtins/functions.html#open) and the `pathlib` text
+methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding repeats the
+default, and a reader has to check whether it changes anything. The default can be switched off with `PYTHONUTF8=0` or
+`-X utf8=0`, though, and then the argument is what keeps the file in UTF-8. The PEP's migration advice suggests an
+explicit `encoding="utf-8"` where code relies on the default. The rule only fires for targets of 3.15 or newer, where
+the default is UTF-8 and the argument repeats it.
 
 ## Example
 
@@ -70,10 +74,13 @@ before linting while both apply to a file that targets Python 3.15 or newer; ign
 
 ### Active on
 
-- **Calls of the builtin `open()`, `io.open()` and `io.TextIOWrapper()`, and of `open`, `read_text` and `write_text`
-  methods**, when the call passes `encoding=` with a UTF-8 codec name: `utf-8`, `UTF-8`, `utf8`, `u8`, `utf_8` and the
-  other spellings Python maps to UTF-8. The methods are matched by name, since their receiver's type is not known, so a
-  method of another class with the same name is reported too. **Unsafe fix:** the keyword is removed.
+- **Calls of the builtin `open()`, [`io.open()`](https://docs.python.org/3/library/io.html#io.open) and
+  [`io.TextIOWrapper()`](https://docs.python.org/3/library/io.html#io.TextIOWrapper), and of `open`,
+  [`read_text`](https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_text) and
+  [`write_text`](https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_text) methods**, when the call passes
+  `encoding=` with a UTF-8 codec name: `utf-8`, `UTF-8`, `utf8`, `u8`, `utf_8` and the other spellings Python maps to
+  UTF-8. The methods are matched by name, since their receiver's type is not known, so a method of another class with
+  the same name is reported too. **Unsafe fix:** the keyword is removed.
 
   ```toml config
   [project]
@@ -95,10 +102,11 @@ before linting while both apply to a file that targets Python 3.15 or newer; ign
 ### Fix
 
 The fix is unsafe because the default is not always UTF-8. With UTF-8 mode off, `open()` uses the locale's encoding,
-which is ASCII under `LC_ALL=C`, so the file that the argument read as UTF-8 raises `UnicodeDecodeError` once the
-argument is gone. Python 3.15 also still emits `EncodingWarning` for a call without `encoding` under
-`-X warn_default_encoding` or `PYTHONWARNDEFAULTENCODING`, so a test suite that turns that warning into an error fails
-after the fix.
+which is ASCII under `LC_ALL=C`, so the file that the argument read as UTF-8 raises
+[`UnicodeDecodeError`](https://docs.python.org/3/builtins/exceptions.html#UnicodeDecodeError) once the argument is gone.
+Python 3.15 also still emits [`EncodingWarning`](https://docs.python.org/3/builtins/exceptions.html#EncodingWarning) for
+a call without `encoding` under `-X warn_default_encoding` or `PYTHONWARNDEFAULTENCODING`, so a test suite that turns
+that warning into an error fails after the fix.
 
 No fix is offered when the call has a comment inside it, which the rewrite would drop.
 
@@ -150,8 +158,8 @@ def read_config(path):
           return handle.read()
   ```
 
-- **Module functions such as `tarfile.open()`**: their `encoding` argument has its own meaning, so they are not
-  reported.
+- **Module functions such as [`tarfile.open()`](https://docs.python.org/3/library/tarfile.html#tarfile.open)**: their
+  `encoding` argument has its own meaning, so they are not reported.
 
   ```toml config
   [project]

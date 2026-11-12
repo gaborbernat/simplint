@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:27 SMP533 regex has 7 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment

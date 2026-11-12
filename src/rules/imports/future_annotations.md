@@ -7,7 +7,12 @@ Since Python 3.14, annotations are
 [evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default
 ([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer
 avoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to
-turn annotations into strings for code that inspects them at runtime.
+turn annotations into strings, which code that inspects them at runtime then has to
+[evaluate back](https://docs.python.org/3/howto/annotations.html#manually-un-stringizing-stringized-annotations).
+
+The import is also scheduled for removal. Once Python 3.13 reaches its end of life, compiling it emits a
+[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), and it is removed at
+least two releases later ([PEP 749](https://peps.python.org/pep-0749/#the-future-of-from-future-import-annotations)).
 
 ## Example
 
@@ -90,7 +95,8 @@ the import from `required-imports` once the project targets Python 3.14, or turn
   targets Python 3.14 or newer, where lazy evaluation is already the default. **Unsafe fix** when the module refers to
   the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still
   evaluated on access, and an annotation that names something imported only under
-  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.
+  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises
+  [`NameError`](https://docs.python.org/3/builtins/exceptions.html#NameError) there.
 
   The fix is also unsafe when an annotation unions a string with a type, such as `"Node" | None`, which raises once
   evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is

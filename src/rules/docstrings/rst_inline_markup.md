@@ -2,8 +2,12 @@ Flags Sphinx roles whose target lacks backticks and inline literals left unclose
 
 ## Why is this bad?
 
-Without backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal
-turns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.
+reStructuredText reads a role only on
+[text in backquotes](https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#interpreted-text). Without them
+the role is plain text: the reference shows `:class:Path` instead of a link. An inline literal needs its closing
+backticks in the same paragraph. If they are missing, docutils warns that the start-string has no end-string and shows
+the backticks as written, with the rest of the paragraph as plain text. A build run with Sphinx's
+[`-W`](https://www.sphinx-doc.org/en/master/man/sphinx-build.html#cmdoption-sphinx-build-W) fails on that warning.
 
 ## Example
 
@@ -94,6 +98,76 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
   ```python report
   def open_file(path: str) -> None:
       """Open the file, as ``open does."""
+  ```
+
+- **Markdown code fences**: a fence written as in Markdown, with three backticks or tildes, is not reStructuredText, so
+  its lines render as prose. Use `::` or `.. code-block::` instead. Only the opening fence is reported. A fence with an
+  info string, or a bare fence that a closing fence answers in the same paragraph, counts as one.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report file=fence.py
+  def open_file(path: str) -> None:
+      """Open the file.
+
+      ~~~python
+      open_file("a")
+      ~~~
+      """
+  ```
+
+  ```python ok file=fence_ok.py
+  def open_file(path: str) -> None:
+      """Open the file.
+
+      Example::
+
+          open_file("a")
+      """
+  ```
+
+- **A literal followed by a letter**: in ``` ``Path``s ``` the closing backticks do not end a word, so the literal stays
+  open. Write the suffix after a backslash, as ``` ``Path``\ s ```.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report file=suffix.py
+  def open_file(path: str) -> None:
+      """Open the file as ``Path``s do."""
+  ```
+
+  ```python ok file=suffix_ok.py
+  def open_file(path: str) -> None:
+      """Open the file as ``Path`` does."""
+  ```
+
+- **Mismatched backticks**: one backtick closed by two, or two closed by one, renders wrong even where docutils reads
+  the pair as markup. The pair must match, as ``` `Path`` ``` and ``` ``Path` ``` do not.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report file=double.py
+  def open_file(path: str) -> None:
+      """Open the file at `Path``, then close it."""
+  ```
+
+  ```python report file=single.py
+  def open_file(path: str) -> None:
+      """Open the file at ``Path`, then close it."""
+  ```
+
+  ```python ok file=mismatch_ok.py
+  def open_file(path: str) -> None:
+      """Open the file at ``Path``, then close it."""
   ```
 
 - **Prose directives, such as `.. note::`**: their content is prose, so it is checked.

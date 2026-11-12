@@ -1,10 +1,16 @@
-Flags `re.match()` references, which `re.prefixmatch()` names from Python 3.15.
+Flags [`re.match()`](https://docs.python.org/3/library/re.html#re.match) references, which
+[`re.prefixmatch()`](https://docs.python.org/3/library/re.html#re.prefixmatch) names from Python 3.15.
 
 ## Why is this bad?
 
-Python 3.15 soft deprecates `re.match()` in favor of `re.prefixmatch()`, which says what the function does: it tries the
-pattern at the start of the string. Other regular expression libraries call that operation a search, so `match` reads
-differently to readers who know them. `re.match()` keeps working and is not planned for removal.
+Python 3.15 [soft deprecates](https://docs.python.org/3/glossary.html#term-soft-deprecated) `re.match()` in favor of
+`re.prefixmatch()`, whose name says what the function does: it tries the pattern only at the start of the string. Most
+other regular expression libraries use *match* for the unanchored search that Python calls
+[`re.search()`](https://docs.python.org/3/library/re.html#re.search), so the
+[`re` docs](https://docs.python.org/3/library/re.html#prefixmatch-vs-match) call `match()` a gotcha for readers who come
+from them. `re.match()` keeps working and is not planned for removal. Tim Peters and Serhiy Storchaka argued against the
+change in the [discussion](https://discuss.python.org/t/add-re-prefixmatch-deprecate-re-match/105927), but simplint
+reports `re.match()` from 3.15 because the docs say new code should prefer `prefixmatch()`.
 
 ## Example
 
@@ -100,8 +106,8 @@ def parse_version(text):
       return re.match(r"\d+\.\d+", text)
   ```
 
-- **Pattern methods**: `pattern.match()` is not reported, since the receiver's type is not known and a method of that
-  name may belong to any class.
+- **Pattern methods**: [`pattern.match()`](https://docs.python.org/3/library/re.html#re.Pattern.match) is not reported,
+  since the receiver's type is not known and a method of that name may belong to any class.
 
   ```toml config
   [project]
@@ -151,7 +157,8 @@ def parse_version(text):
 - **Truth tests with a plain-text pattern Ruff rewrites**:
   [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) rewrites a `re.match` call whose pattern
   has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
-  `str.startswith`, so this rule leaves that call to Ruff.
+  [`str.startswith`](https://docs.python.org/3/builtins/stdtypes.html#str.startswith), so this rule leaves that call to
+  Ruff.
 
   ```toml config
   [project]

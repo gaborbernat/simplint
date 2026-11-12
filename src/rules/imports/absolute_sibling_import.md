@@ -2,9 +2,13 @@ Flags `from ... import` statements that name the file's own package, or a packag
 
 ## Why is this bad?
 
-An absolute import repeats the package name, so renaming or vendoring the package means editing every such import. A
-[relative import](https://docs.python.org/3/reference/import.html#package-relative-imports)
-([PEP 328](https://peps.python.org/pep-0328/)) shows at a glance that the target lives next to the importing module.
+An absolute import repeats the package name, so renaming, moving or vendoring the package means editing every such
+import. Letting a package be rearranged without editing its sub-packages was the main reason
+[PEP 328](https://peps.python.org/pep-0328/#rationale-for-relative-imports) added relative imports, and a
+[relative import](https://docs.python.org/3/reference/import.html#package-relative-imports) shows at a glance that the
+target lives next to the importing module. [PEP 8](https://peps.python.org/pep-0008/#imports) prefers absolute imports
+and the [Google style guide](https://google.github.io/styleguide/pyguide.html#224-decision) forbids relative ones. This
+rule follows PEP 328 and flags absolute in-package imports.
 
 ## Example
 

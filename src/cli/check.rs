@@ -192,6 +192,7 @@ fn write_settings(
     write_list(writer, "linter.naming.meaningless_names", &quoted(&mut knobs.meaningless_names.iter()))?;
     write_list(writer, "linter.naming.catch_all_modules", &quoted(&mut knobs.catch_all_modules.iter()))?;
     write_list(writer, "linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter()))?;
+    write_list(writer, "linter.imports.module_attribute_scope", &quoted(&mut knobs.module_attribute_scope.iter()))?;
     writeln!(writer, "linter.logic.max_helper_statements = {}", knobs.max_helper_statements)?;
     writeln!(writer, "linter.logic.max_caller_statements = {}", knobs.max_caller_statements)?;
     writeln!(writer, "linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements)?;

@@ -5,8 +5,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 2:25 SMP911 Role `:class:Path` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
 2:41 SMP911 Role `:py:func:open()` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
 2:63 SMP911 Role `:meth:Reader.read` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
-5:37 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
-21:14 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+5:37 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the backticks and the rest show as plain text, with a warning
+21:14 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the backticks and the rest show as plain text, with a warning
 27:9 SMP911 Role `:ref:getting-started` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
 27:36 SMP911 Role `:func:foo(x)` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
 27:58 SMP911 Role `:attr:debug=True` has no backticks around its target, so it renders as plain text

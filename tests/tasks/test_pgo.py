@@ -6,7 +6,7 @@ import json
 import subprocess
 import urllib.error
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Protocol
 
 import pytest
 
@@ -14,9 +14,11 @@ from tasks.download import Pinned
 from tasks.pgo import extract, llvm_profdata, main, pin_sdist, read_manifest, write_manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from pytest_mock import MockerFixture
+
+
+class _TarGz(Protocol):
+    def __call__(self, members: dict[str, bytes], links: dict[str, str] | None = None) -> bytes: ...
 
 
 def test_pin_sdist_takes_the_tar_gz_sdist(mocker: MockerFixture, files_url: str) -> None:
@@ -75,9 +77,7 @@ def test_main_pins_the_latest_sdists(tmp_path: Path, mocker: MockerFixture, file
     ]
 
 
-def test_extract_keeps_only_python_files(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], tar_gz: Callable[..., bytes]
-) -> None:
+def test_extract_keeps_only_python_files(tmp_path: Path, capsys: pytest.CaptureFixture[str], tar_gz: _TarGz) -> None:
     archive = tmp_path / "demo-1.0.tar.gz"
     archive.write_bytes(
         tar_gz(
@@ -115,7 +115,7 @@ def test_train_records_a_profile(
     tmp_path: Path,
     mocker: MockerFixture,
     capsys: pytest.CaptureFixture[str],
-    tar_gz: Callable[..., bytes],
+    tar_gz: _TarGz,
     files_url: str,
 ) -> None:
     calls = _train(tmp_path, mocker, tar_gz, files_url, status=1)
@@ -142,9 +142,7 @@ def test_train_records_a_profile(
 
 # Run the training over one sdist with every tool simulated, and return the commands; simplint exits with the given
 # status.
-def _train(
-    tmp_path: Path, mocker: MockerFixture, tar_gz: Callable[..., bytes], files_url: str, status: int
-) -> list[list[str]]:
+def _train(tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str, status: int) -> list[list[str]]:
     payload = tar_gz(
         dict.fromkeys(
             ("demo-1.0/demo/__init__.py", "demo-1.0/demo/types.pyi", "demo-1.0/README.md", "../escape.py"), b""
@@ -175,9 +173,7 @@ def _train(
     return calls
 
 
-def test_train_stops_when_simplint_fails(
-    tmp_path: Path, mocker: MockerFixture, tar_gz: Callable[..., bytes], files_url: str
-) -> None:
+def test_train_stops_when_simplint_fails(tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str) -> None:
     with pytest.raises(subprocess.CalledProcessError, match="exit status 2"):
         _train(tmp_path, mocker, tar_gz, files_url, status=2)
 

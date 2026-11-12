@@ -6,7 +6,7 @@ import json
 import re
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
-from typing import NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 
 class _Argument(TypedDict):
@@ -50,7 +50,7 @@ def _add_arguments(parser: ArgumentParser, command: _Command) -> None:
 
 def _add_argument(parser: ArgumentParser, argument: _Argument) -> None:
     # clap help uses Markdown code spans; sphinx-argparse-cli renders help as reStructuredText
-    help_text = re.sub(r"`([^`]+)`", r"``\1``", argument["help"] or "")
+    help_text = _CODE_SPAN_PATTERN.sub(r"``\1``", argument["help"] or "")
     if argument["delimiter"] == ",":
         help_text = f"{help_text}; comma-separated"
     if argument["flag"]:
@@ -70,3 +70,6 @@ def _add_argument(parser: ArgumentParser, argument: _Argument) -> None:
         return
     flags = [f"--{argument['long']}", *([f"-{argument['short']}"] if argument["short"] else [])]
     parser.add_argument(*flags, default=default, choices=choices, metavar=argument["value_name"], help=help_text)
+
+
+_CODE_SPAN_PATTERN: Final[re.Pattern[str]] = re.compile(r"`([^`]+)`")

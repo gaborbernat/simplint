@@ -4,13 +4,17 @@ imports and `__all__` does not list needs one, and a name that `__all__` lists m
 
 ## Why is this bad?
 
-A leading underscore tells readers whether other modules may use a name
-([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). Deriving it from `__all__` and from the
-imports of other modules keeps the underscore in line with what the module exports.
+A leading underscore tells readers whether other modules may use a name, and
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) asks for it on internal names even when
+`__all__` is set. The two markers reach different readers: a
+[star import](https://docs.python.org/3/reference/simple_stmts.html#the-import-statement) and Sphinx's
+[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+follow `__all__`, while a reader at a use site sees only the name. Deriving the underscore from `__all__` and from the
+imports of other modules keeps the two in line.
 
 The expected underscore comes from the first of these cases that applies:
 
-1. **Another module in the run imports it**: keep its leading underscore as it is.
+1. **Another module in the run imports it**: keep its leading underscore.
 1. **`__all__` lists it**: no leading underscore.
 1. **Neither**: a leading underscore. In a module without `__all__`, every variable counts as private.
 
@@ -95,9 +99,12 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   Alias = int
   ```
 
-- **Conventional type parameters**: assignments to `typing.TypeVar`, `typing.TypeVarTuple` and `typing.ParamSpec` keep
-  the declared name when the string argument matches it. Changing `T = TypeVar("T")` to `_T = TypeVar("T")` would make
-  the declaration invalid for type checkers.
+- **Conventional type parameters**: assignments to
+  [`typing.TypeVar`](https://docs.python.org/3/library/typing.html#typing.TypeVar),
+  [`typing.TypeVarTuple`](https://docs.python.org/3/library/typing.html#typing.TypeVarTuple) and
+  [`typing.ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec) keep the declared name when the
+  string argument matches it. Changing `T = TypeVar("T")` to `_T = TypeVar("T")` would make the declaration invalid for
+  type checkers.
 
   ```python ok
   from typing import TypeVar

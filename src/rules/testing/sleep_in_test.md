@@ -1,10 +1,15 @@
-Flags `time.sleep` and `await asyncio.sleep` calls in a test module whose argument is not the literal `0`.
+Flags [`time.sleep`](https://docs.python.org/3/library/time.html#time.sleep) and `await asyncio.sleep` calls in a test
+module whose argument is not the literal `0`.
 
 ## Why is this bad?
 
 A test that sleeps waits a fixed time whether the code is ready or not. The wait is long enough to slow the suite, and
-too short on a loaded machine, where the test then fails for no real reason. Waiting on an event the code sets returns
-as soon as the code is ready and fails at once if it never is.
+too short on a loaded machine, where the test then fails for no real reason. Martin Fowler's
+[article on non-deterministic tests](https://martinfowler.com/articles/nonDeterminism.html#AsynchronousBehavior) names
+bare sleeps as a cause of both and asks for a callback or polling instead, and warns that flaky tests teach people to
+ignore failures. Waiting on an event the code sets, with
+[`Event.wait`](https://docs.python.org/3/library/threading.html#threading.Event.wait), returns as soon as the code is
+ready, and its timeout bounds the wait if it never is.
 
 ## Example
 
@@ -34,9 +39,9 @@ def test_worker_finishes():
 
 ### Active on
 
-- **`time.sleep` and `asyncio.sleep` calls**: the call resolves through the module's imports, so
-  `from time import sleep` and `await asyncio.sleep(...)` are reported too. Every call counts, in a test function or in
-  a helper of the module, as the helper runs for the tests too.
+- **`time.sleep` and [`asyncio.sleep`](https://docs.python.org/3/library/asyncio-task.html#asyncio.sleep) calls**: the
+  call resolves through the module's imports, so `from time import sleep` and `await asyncio.sleep(...)` are reported
+  too. Every call counts, in a test function or in a helper of the module, as the helper runs for the tests too.
 
   ```python report file=tests/test_sleep.py
   import asyncio

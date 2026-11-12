@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:6 SMP917 `:param `gone`:` documents `gone`, which `interpreted` does not take [unsafe fix: Remove `:param `gone`:`]
+--- fixed (1 applied, 0 remaining) ---
+def interpreted(path: str) -> str:
+    """Read a file.
+
+    :param `path`: Where it is.
+    """
+    return path

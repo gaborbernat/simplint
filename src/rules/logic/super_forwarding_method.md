@@ -4,8 +4,11 @@ parent's method already does that job, so the override adds only a name to read.
 ## Why is this bad?
 
 A method that passes every argument on to the parent and returns the result changes nothing. A reader still has to check
-that it does nothing else, and the class carries a second copy of the parent's signature that can drift from it.
-Deleting the method lets the subclass inherit the parent's method.
+that it does nothing else, and the class carries a second copy of the parent's signature that can drift from it. Every
+call also pays for an extra frame and a `super()` lookup before it reaches the same code. Deleting the method lets the
+subclass inherit the parent's method, as pylint's
+[useless-parent-delegation](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/useless-parent-delegation.html)
+check also asks.
 
 ## Example
 
@@ -313,6 +316,17 @@ be a plain `def` taking the same parameters under the same names, without defaul
   ```
 
 - **An `async` method**: the parent's coroutine may differ from the one a forwarder returns, so the rule leaves it.
+
+  ```python ok
+  class Base:
+      async def load(self, name):
+          return name.encode()
+
+
+  class Store(Base):
+      async def load(self, name):
+          return super().load(name)
+  ```
 
 ### Fix
 

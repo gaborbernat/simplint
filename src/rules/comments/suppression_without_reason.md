@@ -3,7 +3,12 @@ Flags suppression comments, such as `# noqa: F401` or `# type: ignore[...]`, tha
 ## Why is this bad?
 
 A suppression outlives the problem it hid. Without a reason, a later reader cannot tell whether the error is a false
-positive, a known stub gap or a bug someone meant to fix, so nobody dares remove it.
+positive, a known stub gap or a bug someone meant to fix, so nobody dares remove it. The
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.1.4-decision) asks for an explanation
+only when the rule name does not make the reason clear, and
+[ESLint's docs](https://eslint.org/docs/latest/use/configure/rules#comment-descriptions) say to document the reason in
+its disable comments. simplint asks for a reason on each suppression, since a name says what is hidden, and the reader
+still has to learn why it is acceptable on that line.
 
 ## Example
 

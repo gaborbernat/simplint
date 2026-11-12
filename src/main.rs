@@ -3,6 +3,7 @@ mod fix;
 mod layout;
 mod lint;
 mod project;
+mod rst;
 mod rules;
 mod run;
 mod semantic;

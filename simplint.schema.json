@@ -194,6 +194,15 @@
       "description": "The `[tool.simplint.imports]` table.",
       "type": "object",
       "properties": {
+        "module-attribute-scope": {
+          "description": "The modules `module-attribute-import` (`SMP304`) checks: `\"project\"` for the modules of the run,\n`\"stdlib\"` for the standard library, `\"third-party\"` for every other installed module, or the absolute name of\none module, which covers its submodules too. A module imported under the alias Ruff's\n`flake8-import-conventions` asks for, such as `numpy` as `np`, or one its `banned-from` lists, stays out.",
+          "type": [
+            "array"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
         "module-attributes": {
           "description": "Absolute names of modules whose attributes the code may reach as `module.Name`, such as a module that tests patch\nattribute by attribute. `module-attribute-import` (`SMP304`) leaves them alone.",
           "type": [
@@ -347,6 +356,7 @@
         "SMP308",
         "SMP31",
         "SMP310",
+        "SMP311",
         "SMP4",
         "SMP40",
         "SMP401",
@@ -399,6 +409,7 @@
         "SMP531",
         "SMP532",
         "SMP533",
+        "SMP534",
         "SMP6",
         "SMP60",
         "SMP601",
@@ -470,6 +481,7 @@
         "early-assignment",
         "entrypoint-module-name",
         "error-message-matching",
+        "flattened-package",
         "forwarding-function",
         "function-docstring",
         "future-annotations",
@@ -477,6 +489,7 @@
         "imprecise-annotation",
         "indistinct-error-class",
         "init-module-content",
+        "inline-regex",
         "long-docstring-paragraph",
         "long-paragraph",
         "long-tuple-return",

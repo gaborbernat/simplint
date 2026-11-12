@@ -3,7 +3,9 @@ Flags a module docstring in a test module.
 ## Why is this bad?
 
 The module path and the test function names already say what is under test. The docstring repeats them and goes stale as
-tests move between modules.
+tests move between modules. The [Google style guide](https://google.github.io/styleguide/pyguide.html#3821-test-modules)
+does not require docstrings on test modules, and a [Ruff issue](https://github.com/astral-sh/ruff/issues/10645) asks for
+D100 to skip test modules.
 
 ## Example
 

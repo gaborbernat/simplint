@@ -5,6 +5,9 @@ value removes the name and keeps the value next to the code that uses it.
 
 A name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find
 the assignment, remember the value, and then reach the line that uses it. Inlining removes that step.
+[Fowler's Extract Variable](https://refactoring.com/catalog/extractVariable.html) gives a name to part of an expression,
+and [Sourcery](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/) warns that inlining can hurt
+readability. A name that explains and one that adds nothing look the same to the rule.
 
 ## Example
 
@@ -179,6 +182,17 @@ def total_price(prices: list[float]) -> str:
 - **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so
   `f"[{inner}]"` with `inner = f"<{value}>"` becomes `f"[<{value}>]"` rather than a nested f-string.
 
+  ```python report
+  def wrap(value: str) -> str:
+      inner = f"<{value}>"
+      return f"[{inner}]"
+  ```
+
+  ```python fixed
+  def wrap(value: str) -> str:
+      return f"[<{value}>]"
+  ```
+
 - **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
   which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field
   cannot hold a line break either.
@@ -223,8 +237,8 @@ def total_price(prices: list[float]) -> str:
       print(data)
   ```
 
-- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or
-  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
+- **A read as the argument of [`next`](https://docs.python.org/3/builtins/functions.html#next) or
+  [`anext`](https://docs.python.org/3/builtins/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
   `__next__`**: the call steps or closes the object the name holds. Without the name, the call holds the last reference
   to the object, so the object is released when the call returns, which runs a generator's `finally` early. Keeping the
   name keeps the object alive, so the variable is not reported.
@@ -261,20 +275,34 @@ def total_price(prices: list[float]) -> str:
 
 - **A next statement that is `yield name`**: never reported, since the value is yielded, not returned.
 
+  ```python ok
+  def run(items: list[str]) -> Iterator[int]:
+      count = len(items)
+      yield count
+  ```
+
 - **A next statement that is `yield from name`**: Ruff's preview rule
   [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (RUF070) covers
   it, so this rule leaves the pair to Ruff whether or not the project selects that rule or enables preview.
+
+  ```python ok
+  def run(items: list[str]) -> Iterator[int]:
+      lengths = [len(item) for item in items]
+      yield from lengths
+  ```
 
 - **A read in a parameter's default, while Ruff's
   [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or
   [function-call-in-default-argument](https://docs.astral.sh/ruff/rules/function-call-in-default-argument/) (B008)
   runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports
   would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a
-  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as
-  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee
-  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated
-  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff
-  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff
+  mutable type such as `list()` or
+  [`collections.Counter()`](https://docs.python.org/3/library/collections.html#collections.Counter). B008 reports a
+  call, except one of an immutable type such as `tuple()`, a
+  [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee listed in
+  `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated with an
+  immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff runs the
+  rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff
   configuration runs neither rule.
 
   ```toml config
@@ -434,8 +462,9 @@ def total_price(prices: list[float]) -> str:
       print(count)
   ```
 
-- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they
-  see.
+- **Functions that read their locals by name, such as
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals) or `eval`**: a removed name would vanish from
+  what they see.
 
   ```python ok
   def run(items: list[str]) -> None:
@@ -508,7 +537,8 @@ def run(items: list[str], log: Log) -> None:
     log.write(len(items))
 ```
 
-Here `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.
+Here `log.write` is looked up before [`len(items)`](https://docs.python.org/3/builtins/functions.html#len) runs, which
+differs only when that lookup has side effects.
 
 The fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read
 that sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the

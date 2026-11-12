@@ -14,7 +14,7 @@ use ruff_options_metadata::{OptionEntry, OptionSet, OptionsMetadata};
 use serde::Serialize;
 use walkdir::WalkDir;
 
-use crate::lint::examples::{Example, Examples, Fence, Role, parse};
+use crate::lint::examples::{Block, Example, Examples, Fence, Role, parse};
 use crate::lint::registry::{GROUPS, Rule};
 use crate::project::cache;
 use crate::settings::SimplintOptions;
@@ -195,7 +195,7 @@ struct Shown<'a> {
     fence: &'a Fence,
     language: &'a str,
     label: Option<&'static str>,
-    file: Option<&'a str>,
+    comment: Option<String>,
     hidden: bool,
 }
 
@@ -205,17 +205,31 @@ fn shown_fences(example: &Example) -> impl Iterator<Item = Shown<'_>> {
         fence: config,
         language: "toml",
         label: Some("With this configuration:"),
-        file: None,
+        comment: None,
         hidden: false,
     });
     let blocks = example.blocks.iter().map(move |block| Shown {
         fence: &block.fence,
         language: block.language.as_str(),
         label: if in_example { None } else { example_label(block.role) },
-        file: block.named.then_some(block.file.as_str()),
+        comment: block_comment(block),
         hidden: in_example && block.role == Role::Context,
     });
     config.into_iter().chain(blocks)
+}
+
+fn block_comment(block: &Block) -> Option<String> {
+    let mut parts = Vec::new();
+    if block.named {
+        parts.push(block.file.clone());
+    }
+    if !block.select.is_empty() {
+        parts.push(format!("with {} selected", block.select.join(", ")));
+    }
+    if block.executable {
+        parts.push("(executable)".to_owned());
+    }
+    (!parts.is_empty()).then(|| parts.join(" "))
 }
 
 fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
@@ -225,8 +239,8 @@ fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
         kept.extend([indent, label, "\n"]);
     }
     kept.extend([indent, "```", shown.language, "\n"]);
-    if let Some(file) = shown.file {
-        kept.extend([indent, "# ", file, "\n"]);
+    if let Some(comment) = &shown.comment {
+        kept.extend([indent, "# ", comment.as_str(), "\n"]);
     }
     for &line in &lines[shown.fence.line..shown.fence.end_line - 1] {
         kept.extend([line, "\n"]);
