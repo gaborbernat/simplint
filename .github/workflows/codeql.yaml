@@ -19,4 +19,4 @@ jobs:
       security-events: write
     with:
       languages: '["actions","python","rust"]'
-      paths-ignore: '["**/tests","tasks"]'
+      paths-ignore: '["**/tests"]'

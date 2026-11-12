@@ -4,6 +4,9 @@ on:
   push:
     branches: ["main"]
   workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -61,7 +64,7 @@ jobs:
       - name: 🧹 Run the hooks as the release installs them
         uses: tox-dev/github-workflows/cooled-prek@6.8.1
         env:
-          # builds the linter from this checkout, which the lint jobs cover
+          # builds the linter from this checkout, which the examples job lints the repository with
           SKIP: simplint
         with:
           args: run --all-files --show-diff-on-failure
@@ -80,6 +83,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           components: clippy
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🧹 Run Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
   fmt:
@@ -97,6 +101,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           components: rustfmt
+          cache: false
       - name: 🧹 Check formatting
         run: cargo fmt --check
   test:
@@ -115,6 +120,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           components: llvm-tools-preview
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🦀 Install cargo-llvm-cov and cargo-nextest
         uses: taiki-e/install-action@v2.90.0
         with:
@@ -126,20 +132,20 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.json
-  wheel:
-    name: 📦 wheel @ ${{ matrix.os }}
+          disable_search: true
+          # A pull request from a fork gets no token, so only its upload may fail.
+          fail_ci_if_error: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+  # The Linux wheel has its own job, so the jobs that test it start without waiting for the slower platforms.
+  wheel-linux:
+    name: 📦 wheel @ ubuntu-26.04
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-26.04, windows-2025, macos-26]
+    runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -150,37 +156,40 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       # The wheel build reuses this binary from target/, so a Rust error shows in its own step.
       - name: 🏗️ Build the binary
-        run: cargo build --release --locked
-      # The binary is the same for every Python, so one wheel per platform serves all the test cells.
+        run: cargo build --profile ci --locked
+      # The binary is the same for every Python, so one wheel serves all the test cells.
       - name: 📦 Build the wheel
         run: uv build --python 3.15 --wheel --out-dir dist
+        env:
+          MATURIN_PEP517_ARGS: --profile ci
       - name: 📤 Upload the wheel
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: wheel-${{ matrix.os }}
+          name: wheel-ubuntu-26.04
           path: dist/*.whl
           if-no-files-found: error
-  py:
-    name: 🧪 ${{ matrix.py }} @ ${{ matrix.os }}
-    needs: [changes, wheel]
+  # Windows and macOS build the wheel and test it in one job, as nothing else uses their wheels.
+  wheel:
+    name: 📦 wheel @ ${{ matrix.os }}
+    needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        py: ["3.15", "3.14", "3.13", "3.12", "3.11"]
-        os: [ubuntu-26.04]
-        # The wheel holds one binary whatever the Python, so the other platforms run the newest Python only.
-        include:
-          - {py: "3.15", os: windows-2025}
-          - {py: "3.15", os: macos-26}
+        os: [windows-2025, macos-26]
+    env:
+      # maturin sets this when unset, which changes the build and makes it compile again what cargo just built
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
+          fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@v10.3.3
@@ -191,25 +200,84 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
-      - name: 🐍 Install Python ${{ matrix.py }}
-        if: matrix.py != '3.15'
-        run: uv python install --python-preference only-managed ${{ matrix.py }}
+      - name: 🦀 Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🏗️ Build the binary
+        run: cargo build --profile ci --locked
+      - name: 📦 Build the wheel
+        run: uv build --python 3.15 --wheel --out-dir dist
+        env:
+          MATURIN_PEP517_ARGS: --profile ci
+      - name: 📦 Set up test suite
+        shell: bash
+        run: tox run -vv --notest --skip-missing-interpreters false --installpkg dist/*.whl -e 3.15
+      - name: 🧪 Run test suite
+        run: tox run --skip-pkg-install -e 3.15
+        env:
+          PYTEST_ADDOPTS: "-vv --durations=20"
+  # The suite runs on Linux; Windows runs the tests of the code that differs there: file locking, paths, line endings.
+  test-windows:
+    name: 🧪 test @ windows-2025
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: windows-2025
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🦀 Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🦀 Install cargo-nextest
+        uses: taiki-e/install-action@v2.90.0
+        with:
+          tool: cargo-nextest
+      - name: 🧪 Run the platform-dependent tests
+        run: cargo nextest run --locked --test cache --test check --test fix --test input --test suppressions --test watch
+  # The wheel holds one binary whatever the Python, so the oldest supported one stands for all.
+  py:
+    name: 🧪 3.11 @ ubuntu-26.04
+    needs: [changes, wheel-linux]
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-26.04
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+      - name: 📦 Install tox
+        run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
+      - name: 🐍 Install Python 3.11
+        run: uv python install --python-preference only-managed 3.11
       - name: 📥 Download the wheel
         uses: actions/download-artifact@v8.0.2
         with:
-          name: wheel-${{ matrix.os }}
+          name: wheel-ubuntu-26.04
           path: dist
       - name: 📦 Set up test suite
         shell: bash
-        run: tox run -vv --notest --skip-missing-interpreters false --installpkg dist/*.whl -e ${{ matrix.py }}
+        run: tox run -vv --notest --skip-missing-interpreters false --installpkg dist/*.whl -e 3.11
       - name: 🧪 Run test suite
-        run: tox run --skip-pkg-install -e ${{ matrix.py }}
+        run: tox run --skip-pkg-install -e 3.11
         env:
           PYTEST_ADDOPTS: "-vv --durations=20"
   ecosystem:
     # Lints and fixes the pinned top PyPI projects, so a rule or fix that breaks real code fails here and not for users.
     name: 🌍 ecosystem
-    needs: [changes, wheel]
+    needs: [changes, wheel-linux]
     if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 60
@@ -233,17 +301,26 @@ jobs:
         with:
           name: wheel-ubuntu-26.04
           path: dist
-      # The archives are pinned by hash in the task, so they only change with it and the run needs no network for them.
+      # The task checks each archive's hash before using it, so an older set only saves the downloads it shares.
       - name: 📦 Restore the pinned projects
-        uses: actions/cache@v6.1.0
+        id: projects
+        uses: actions/cache/restore@v6.1.0
         with:
           path: .tox/ecosystem-cache
           key: ecosystem-${{ hashFiles('tasks/ecosystem.py') }}
+          restore-keys: ecosystem-
       - name: 📦 Set up the ecosystem check
         shell: bash
         run: tox run -vv --notest --installpkg dist/*.whl -e ecosystem
       - name: 🌍 Lint and fix the projects
         run: tox run --skip-pkg-install -e ecosystem
+      # Saved when the check fails too, as the downloads do not depend on its outcome.
+      - name: 💾 Save the pinned projects
+        if: ${{ always() && steps.projects.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main' }}
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: .tox/ecosystem-cache
+          key: ${{ steps.projects.outputs.cache-primary-key }}
   check:
     name: 🔍 ${{ matrix.env }}
     needs: changes
@@ -252,7 +329,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [type, dev, docs, pkg_meta, pkg_sdist, tasks]
+        env: [type, docs, pkg_meta, pkg_sdist, tasks]
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@v7.0.1
@@ -270,7 +347,11 @@ jobs:
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 🦀 Install Rust toolchain
+        if: matrix.env == 'pkg_meta' || matrix.env == 'pkg_sdist'
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          cache-key: ${{ matrix.env }}
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🟢 Install Node.js, which draws the documentation diagrams
         if: matrix.env == 'docs'
         uses: actions/setup-node@v7.1.0
@@ -286,13 +367,19 @@ jobs:
             ~/.cache/puppeteer
           key: mermaid-cli-${{ hashFiles('docs/conf.py') }}
       - name: 📦 Set up test suite
+        if: matrix.env != 'docs'
         run: tox run -vv --notest --skip-missing-interpreters false -e ${{ matrix.env }}
+      # installs mermaid-cli and its browser while tox sets up the environment, as Read the Docs does
+      - name: 📦 Set up the docs environment and mermaid-cli
+        if: matrix.env == 'docs'
+        run: uv run --no-project python -m tasks.prepare_docs docs/conf.py tox
       - name: 🧪 Run test suite
         run: tox run --skip-pkg-install -e ${{ matrix.env }}
         env:
           PYTEST_ADDOPTS: "-vv --durations=20"
+  # Both only need a working binary, so they share one unoptimized build.
   examples:
-    name: 📖 examples
+    name: 📖 examples and self-lint
     needs: changes
     if: needs.changes.outputs.run == 'true'
     runs-on: ubuntu-26.04
@@ -315,12 +402,18 @@ jobs:
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
+        with:
+          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🏗️ Build the binary
+        run: cargo build --locked
+      - name: 🧹 Lint the repository with this checkout
+        run: target/debug/simplint check
       - name: 🧪 Compile the rule examples
-        run: tox run -e examples
+        run: tox run --skip-pkg-install -e examples -- --simplint target/debug/simplint
   all-pass:
     name: 🚦 test
     if: always()
-    needs: [changes, hooks, clippy, fmt, test, wheel, py, check, examples, ecosystem]
+    needs: [changes, hooks, clippy, fmt, test, wheel-linux, wheel, test-windows, py, check, examples, ecosystem]
     runs-on: ubuntu-26.04
     steps:
       - name: 🚦 Decide whether all jobs passed or were skipped

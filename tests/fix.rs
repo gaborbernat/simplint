@@ -1,6 +1,7 @@
 mod common;
 
 use std::fmt::Write as _;
+#[cfg(unix)]
 use std::fs;
 use std::ops::Range;
 use std::time::{Duration, Instant};

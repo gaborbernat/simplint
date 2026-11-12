@@ -23,4 +23,7 @@ build:
   commands:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python
-    - NO_COLOR=1 ~/.local/bin/tox run -e docs
+    # Read the Docs strips the quotes from a command, so the setup that runs mermaid-cli's install beside tox's is a
+    # task rather than a shell line.
+    - NO_COLOR=1 ~/.local/bin/uv run --no-project -p 3.15 python -m tasks.prepare_docs docs/conf.py ~/.local/bin/tox
+    - NO_COLOR=1 ~/.local/bin/tox run --skip-pkg-install -e docs
