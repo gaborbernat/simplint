@@ -47,7 +47,7 @@ class Store:
 
 def main():
     save(5)
-    asyncio.run(save(6))
+    asyncio.ensure_future(save(6))
     other = Store()
     other.flush()
 
