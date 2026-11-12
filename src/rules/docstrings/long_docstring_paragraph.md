@@ -5,9 +5,9 @@ skimmed.
 
 A docstring is read in the rendered reference and in an editor's hover help. In a
 [Nielsen Norman Group study](https://www.nngroup.com/articles/how-users-read-on-the-web/) of web pages, 79 percent of
-users scanned new pages and skipped ideas that a paragraph's first words did not announce. Past 100 words a paragraph
-usually covers more than one topic; that limit is simplint's own, since no Python style guide sets one. Split a long
-paragraph at a change of topic, so each part is easier to find and to keep accurate. CPython's
+users scanned new pages. Readers also skip ideas that a paragraph's first words do not announce. Past 100 words a
+paragraph usually covers more than one topic; that limit is simplint's own, since no Python style guide sets one. Split
+a long paragraph at a change of topic, so each part is easier to find and to keep accurate. CPython's
 [documentation style guide](https://devguide.python.org/documentation/style-guide/#economy-of-expression) asks for
 economy of expression. [long-paragraph](SMP002.html) asks the same of comments.
 
