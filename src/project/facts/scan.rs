@@ -109,6 +109,17 @@ impl<'a> Scan<'a> {
         }
     }
 
+    // A conftest that binds a mark to a name, as `C_EXT = pytest.mark.c_extension`, registers it through
+    // `config.addinivalue_line("markers", f"{C_EXT.name}: ...")`, which spells no name in a string.
+    fn add_bound_mark(&mut self, value: &Expr) {
+        if self.parts.has(Parts::STRING_WORDS)
+            && let Expr::Attribute(ast::ExprAttribute { value: marks, attr, .. }) = value
+            && UnqualifiedName::from_expr(marks).is_some_and(|name| name.segments().last() == Some(&"mark"))
+        {
+            self.add_words(attr.as_str());
+        }
+    }
+
     // Before a statement's children, since a binding is read by the statements that follow it.
     fn open(&mut self, stmt: &'a Stmt) {
         match stmt {
@@ -116,7 +127,10 @@ impl<'a> Scan<'a> {
             Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
                 self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
             }
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => self.bind_module(targets, Some(value), None),
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                self.add_bound_mark(value);
+                self.bind_module(targets, Some(value), None);
+            }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, value, annotation, .. }) => {
                 self.bind_module(std::slice::from_ref(target.as_ref()), value.as_deref(), Some(annotation));
             }

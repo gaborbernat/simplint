@@ -1,0 +1,17 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+15:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+16:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+17:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+21:5 SMP816 Changing the working directory by hand leaks into the tests that run after this one; use `monkeypatch.chdir`
+25:5 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
+26:5 SMP816 Changing `sys.argv` by hand leaks into the tests that run after this one; use `monkeypatch.setattr(sys, "argv", ...)`
+27:5 SMP816 Changing `sys.modules` by hand leaks into the tests that run after this one; use `monkeypatch.setitem` or `mock.patch.dict`
+28:5 SMP816 Changing `sys.modules` by hand leaks into the tests that run after this one; use `monkeypatch.setitem` or `mock.patch.dict`
+32:5 SMP816 Changing a module attribute by hand leaks into the tests that run after this one; use `monkeypatch.setattr` or `mock.patch.object`
+37:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+42:9 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
+57:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`

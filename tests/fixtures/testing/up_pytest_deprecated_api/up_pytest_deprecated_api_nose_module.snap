@@ -1,0 +1,17 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP819 pytest 8 no longer calls the nose-style `setup`; name it `setup_module` to run it before the module's tests [unsafe fix: Rename to `setup_module`]
+5:5 SMP819 pytest 8 no longer calls the nose-style `teardown`; name it `teardown_module` to run it after the module's tests [unsafe fix: Rename to `teardown_module`]
+--- fixed (2 applied, 0 remaining) ---
+def setup_module():
+    pass
+
+
+def teardown_module():
+    pass
+
+
+def test_value() -> None:
+    assert True
