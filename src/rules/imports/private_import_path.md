@@ -1,5 +1,5 @@
-Flags private imports that reach beyond one direct relative module, and imports that bind a private module as an object.
-In tests, imports from private modules must match the test's path and name.
+Flags imports of private names, private imports that reach beyond one direct relative module, and imports that bind a
+private module as an object. In tests, imports from private modules must match the test's path and name.
 
 ## Why is this bad?
 
@@ -80,7 +80,7 @@ re-export or replacing uses of a module object may require changes elsewhere.
   package.
 
 - **Private names from another module**, such as `from ._internal import _helper` or `from .public import _helper`.
-  Rename the name to a public one inside its module; the module can stay private.
+  Rename the name to a public one inside its module; the module can stay private. A paired test follows the same rule.
 
   ```python report file=package/consumer.py
   from .public import _helper
@@ -149,7 +149,7 @@ re-export or replacing uses of a module object may require changes elsewhere.
   `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
   directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
-  exists.
+  exists. The imported name must still be public.
 
   ```python context file=package/_api.py
   class API:
@@ -193,6 +193,19 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
   def stop() -> None:
       _exit(0)
+  ```
+
+- **Private local aliases of public imports**: `from .windows import Windows as _Result` imports a public name. The
+  alias belongs to the importing module.
+
+  ```python ok file=package/consumer.py
+  from .windows import Windows as _Result
+
+  VALUE = _Result
+  ```
+
+  ```python context file=package/windows.py
+  class Windows: ...
   ```
 
 ## Ruff overlap

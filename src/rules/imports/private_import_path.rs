@@ -29,11 +29,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                 return;
             }
             let private = private_count(path);
-            if private > 0 && paired_test_module(walker, path, *level) {
-                return;
-            }
+            let paired = private > 0 && paired_test_module(walker, path, *level);
             let direct = *level == 1 && !path.contains('.');
-            if private > 0 && (!direct || walker.checker.is_test_module()) {
+            if private > 0 && !paired && (!direct || walker.checker.is_test_module()) {
                 if !names.iter().any(|alias| walker.checker.semantic().reported_by_plc2701(alias.identifier())) {
                     report(walker, *level, path, module.as_ref().map_or(stmt.range(), Ranged::range), || {
                         import_hint(*level, path, names, is_lazy(stmt), caller)
@@ -46,8 +44,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                     continue;
                 }
                 // `_` is gettext's translation function by convention, not a private name.
-                let named = alias.name.as_str() != "_" && private_count(alias.name.as_str()) > 0;
-                if (named || (private > 0 && !direct))
+                if alias.name.as_str() != "_"
+                    && private_count(alias.name.as_str()) > 0
                     && !walker.checker.semantic().reported_by_plc2701(alias.identifier())
                 {
                     report(walker, 0, alias.name.as_str(), alias.name.range(), || {
