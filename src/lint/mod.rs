@@ -48,12 +48,12 @@ impl<'a> Linter<'a> {
     pub fn new(
         ruff: &'a ruff_workspace::Settings,
         settings: FileSettings<'a>,
-        project: FileIndex<'a>,
+        project: &FileIndex<'a>,
         package: Option<PackageRoot<'a>>,
         module_path: Option<Vec<String>>,
         sibling_init: bool,
     ) -> Self {
-        Self { settings, project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
+        Self { settings, project: *project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
     }
 
     // The syntax errors of a file that does not parse come back for the fix loop, which reads them to catch a fix that
