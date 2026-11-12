@@ -2,6 +2,7 @@ import pytest
 import pytest as pt
 from pytest import mark
 from pytest.mark import parametrize
+from shared_ids import shared_ids
 
 IDS = ["one", "two"]
 NAMES = "value"
@@ -127,3 +128,61 @@ def test_named_rows(value: int, expected: int) -> None:
 @pytest.mark.parametrize("value", [(1, 2)], ids=["pair"])
 def test_tuple_value(value: tuple[int, int]) -> None:
     assert value
+
+
+@pytest.mark.parametrize(("value",), [(1,), (2,)], ids=["one", "two"])
+def test_one_name_tuple(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize(["value"], [[1], [2]], ids=["one", "two"])
+def test_one_name_list(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [(1,), (2,)], ids=["one", "two"])
+def test_one_name_string_row(value: tuple[int]) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value,", [(1,), (2,)], ids=["one", "two"])
+def test_one_name_trailing_comma(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value, expected", [(1, 2), (3, 4)], ids=["one", "three"])
+def test_string_names(value: int, expected: int) -> None:
+    assert value + expected
+
+
+@pytest.mark.parametrize((), [()], ids=["empty"])
+def test_no_names() -> None:
+    assert True
+
+
+REBOUND_IDS = ["one", "two"]
+REBOUND_IDS = ["first", "second"]
+NUMBER_IDS = [1, 2]
+
+
+@pytest.mark.parametrize("value", [1, 2], ids=REBOUND_IDS)
+def test_rebound_ids(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [1, 2], ids=NUMBER_IDS)
+def test_number_ids(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [1, 2], ids=shared_ids)
+def test_imported_ids(value: int) -> None:
+    assert value
+
+
+def test_local_ids() -> None:
+    local_ids = ["one", "two"]
+
+    @pytest.mark.parametrize("value", [1, 2], ids=local_ids)
+    def test_local(value: int) -> None:
+        assert value

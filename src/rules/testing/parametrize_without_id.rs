@@ -28,7 +28,10 @@ pub fn parametrize_without_id(checker: &Checker) {
             };
             if let Some(ids) = arguments.find_argument_value("ids", 3) {
                 if id_strings(ids).is_some() {
-                    report_ids_list(checker, func, arguments, values, ids);
+                    let fix = ids_fix(checker, func, arguments, values, ids);
+                    report_ids_list(checker, ids, fix);
+                } else if is_module_id_strings(checker.semantic(), ids) {
+                    report_ids_list(checker, ids, None);
                 }
                 continue;
             }
@@ -56,8 +59,8 @@ pub fn parametrize_without_id(checker: &Checker) {
     }
 }
 
-// The ids of an `ids=` list when every entry is a string literal. A callable or a name generates its ids, so they cannot
-// drift from the rows.
+// The ids of an `ids=` list when every entry is a string literal. A callable generates its ids, so they cannot drift
+// from the rows.
 fn id_strings(ids: &Expr) -> Option<&[Expr]> {
     let (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) = ids else {
         return None;
@@ -65,8 +68,20 @@ fn id_strings(ids: &Expr) -> Option<&[Expr]> {
     elts.iter().all(Expr::is_string_literal_expr).then_some(elts.as_slice())
 }
 
-fn report_ids_list(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &Expr, ids: &Expr) {
-    let fix = ids_fix(checker, func, arguments, values, ids);
+// A module-level name is read because its list is in the file the rule reads. A name bound elsewhere, imported or
+// rebound has its value out of reach, so it is left alone.
+fn is_module_id_strings(semantic: &Semantic, ids: &Expr) -> bool {
+    let Expr::Name(name) = ids else {
+        return false;
+    };
+    let bindings = semantic.resolved_bindings(name);
+    let [binding] = bindings.as_slice() else {
+        return false;
+    };
+    binding.scope.is_global() && semantic.only_binding_value(name).is_some_and(|value| id_strings(value).is_some())
+}
+
+fn report_ids_list(checker: &Checker, ids: &Expr, fix: Option<Fix>) {
     checker.report_fix(
         Rule::ParametrizeWithoutId,
         ids.range(),
@@ -78,7 +93,7 @@ fn report_ids_list(checker: &Checker, func: &Expr, arguments: &ast::Arguments, v
 
 fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &Expr, ids: &Expr) -> Option<Fix> {
     let keyword = arguments.find_keyword("ids")?;
-    let names = argname_count(arguments)?;
+    let argnames = argnames(arguments)?;
     let (Expr::List(ast::ExprList { elts: rows, .. }) | Expr::Tuple(ast::ExprTuple { elts: rows, .. })) = values else {
         return None;
     };
@@ -89,7 +104,7 @@ fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &
     let callee = param_callee(checker, func)?;
     let mut edits = Vec::with_capacity(rows.len() + 1);
     for (row, id) in rows.iter().zip(id_values) {
-        let row_arguments = row_arguments(checker, row, names)?;
+        let row_arguments = row_arguments(checker, row, argnames)?;
         let replacement = format!("{callee}({row_arguments}, id={})", checker.text(id));
         edits.push(Edit::range_replacement(replacement, row.range()));
     }
@@ -102,13 +117,27 @@ fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &
     Some(if commented { Fix::unsafe_edits(first, edits) } else { Fix::safe_edits(first, edits) })
 }
 
-fn argname_count(arguments: &ast::Arguments) -> Option<usize> {
+// How pytest hands a row to the test: a row is taken whole only for a string naming one argument, without a trailing
+// comma, and is unpacked for every other argnames.
+#[derive(Clone, Copy)]
+enum Argnames {
+    Whole,
+    Unpacked(usize),
+}
+
+fn argnames(arguments: &ast::Arguments) -> Option<Argnames> {
     match arguments.find_argument_value("argnames", 0)? {
         Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
-            Some(value.to_str().split(',').filter(|name| !name.trim().is_empty()).count())
+            let text = value.to_str();
+            let count = text.split(',').filter(|name| !name.trim().is_empty()).count();
+            Some(if count == 1 && !text.trim_end().ends_with(',') {
+                Argnames::Whole
+            } else {
+                Argnames::Unpacked(count)
+            })
         }
         Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().all(Expr::is_string_literal_expr).then_some(elts.len())
+            elts.iter().all(Expr::is_string_literal_expr).then_some(Argnames::Unpacked(elts.len()))
         }
         _ => None,
     }
@@ -125,15 +154,14 @@ fn param_callee(checker: &Checker, func: &Expr) -> Option<String> {
     Some(format!("{}.param", checker.text(module.as_ref())))
 }
 
-// pytest unpacks a row only when several names take its values, so a single name takes the row whole.
-fn row_arguments(checker: &Checker, row: &Expr, names: usize) -> Option<String> {
-    if names == 1 {
+fn row_arguments(checker: &Checker, row: &Expr, argnames: Argnames) -> Option<String> {
+    let Argnames::Unpacked(names) = argnames else {
         return is_literal_row(row).then(|| checker.text(row).to_owned());
-    }
+    };
     let (Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })) = row else {
         return None;
     };
-    (elts.len() == names && !elts.iter().any(Expr::is_starred_expr))
+    (!elts.is_empty() && elts.len() == names && !elts.iter().any(Expr::is_starred_expr))
         .then(|| elts.iter().map(|elt| checker.text(elt)).collect::<Vec<_>>().join(", "))
 }
 

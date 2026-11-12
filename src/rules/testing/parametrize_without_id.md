@@ -109,8 +109,9 @@ An `ids=` list gets one that moves each id into its row.
 - **`ids=` lists of string literals**: the list names each case apart from its row, so the two drift apart when a row is
   added or moved. The fix wraps each row in `pytest.param(..., id=...)` and drops `ids=`, when the list has one id per
   row and each row is a literal: a tuple or list with one value per name, or a literal value for a single name. A row
-  that is a name, a call or already a `pytest.param(...)`, or a list of a different length, is reported without a fix.
-  The fix is unsafe when a comment sits in the rows or the `ids=` argument, since the rewrite drops it.
+  that is a name, a call or already a `pytest.param(...)`, or a list of a different length, is reported without a fix. A
+  name bound once at module level to such a list is reported without a fix too. The fix is unsafe when a comment sits in
+  the rows or the `ids=` argument, since the rewrite drops it.
 
   ```python report
   import pytest
@@ -216,8 +217,8 @@ An `ids=` list gets one that moves each id into its row.
       assert value + 1 == expected
   ```
 
-- **`ids=` that generates the ids**: a callable, such as a function or a lambda, or a name or other expression that is
-  not a list of string literals, makes the ids from the values, so they cannot drift from the rows.
+- **`ids=` that generates the ids**: a callable, such as a function or a lambda, or an expression that is not a list of
+  string literals, makes the ids from the values, so they cannot drift from the rows.
 
   ```python ok
   import pytest
@@ -226,6 +227,20 @@ An `ids=` list gets one that moves each id into its row.
   @pytest.mark.parametrize(("value", "expected"), [(1, 2), (-1, 0)], ids=repr)
   def test_increment(value: int, expected: int) -> None:
       assert value + 1 == expected
+  ```
+
+- **`ids=` names the rule cannot read**: a name imported from another module, bound inside a function, or bound more
+  than once is accepted, since the rule cannot see its list.
+
+  ```python ok
+  import pytest
+
+  from cases import SHARED_IDS
+
+
+  @pytest.mark.parametrize("value", [1, 2], ids=SHARED_IDS)
+  def test_value(value: int) -> None:
+      assert value
   ```
 
 ## Other tools
