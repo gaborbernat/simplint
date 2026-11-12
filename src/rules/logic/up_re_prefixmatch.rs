@@ -4,6 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::anchored_regex_match::anchored_call;
 use crate::rules::logic::modernize::{module_attribute_read, rename_attribute};
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -14,7 +15,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(attribute) = module_attribute_read(checker, expr, &["re", "match"]) else {
         return;
     };
-    if left_to_ruff(walker, expr) {
+    if left_to_ruff(walker, expr) || left_to_anchored_regex_match(walker, expr) {
         return;
     }
     checker.report_fix(
@@ -101,4 +102,14 @@ fn is_boolean_test<'a>(walker: &Walker<'_, 'a>, outer: &[&'a Expr], expr: &'a Ex
 
 fn is_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
     generators.iter().any(|generator| generator.ifs.iter().any(|condition| std::ptr::eq(condition, expr)))
+}
+
+// SMP550 turns a call whose pattern is anchored at its end into `re.fullmatch`, a fix that conflicts with the rename, so
+// while it is selected it takes such a call.
+fn left_to_anchored_regex_match(walker: &Walker, expr: &Expr) -> bool {
+    let checker = walker.checker;
+    checker.settings.rules.contains(Rule::AnchoredRegexMatch)
+        && walker.expression_parent().and_then(Expr::as_call_expr).is_some_and(|call| {
+            std::ptr::eq(call.func.as_ref(), expr) && anchored_call(checker, call).is_some()
+        })
 }

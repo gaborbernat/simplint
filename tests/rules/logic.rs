@@ -268,6 +268,13 @@ use crate::common::{self, check, read};
 #[test_case("inline-regex", "inline_regex_names.py", None ; "inline_regex_constant_names")]
 #[test_case("inline-regex", "inline_regex_nested.py", None ; "inline_regex_nested_calls")]
 #[test_case("inline-regex", "inline_regex_alias.py", None ; "inline_regex_alias")]
+#[test_case("iterator-reuse", "iterator_reuse.py", None ; "iterator_reuse")]
+#[test_case("range-len-loop", "range_len_loop.py", None ; "range_len_loop")]
+#[test_case("accumulator-loop", "accumulator_loop.py", None ; "accumulator_loop")]
+#[test_case("empty-collection-comparison", "empty_collection_comparison.py", None ; "empty_collection_comparison")]
+#[test_case("slice-affix-comparison", "slice_affix_comparison.py", None ; "slice_affix_comparison")]
+#[test_case("anchored-regex-match", "anchored_regex_match.py", None ; "anchored_regex_match")]
+#[test_case("wall-clock-duration", "wall_clock_duration.py", None ; "wall_clock_duration")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", None ; "utf8_encoding_default_before_python315")]
 #[test_case(
