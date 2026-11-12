@@ -9,6 +9,7 @@ mod exceptions;
 mod files;
 mod hatch;
 mod inherit;
+mod prefixes;
 mod reach;
 mod resolve;
 mod run_imports;
@@ -45,6 +46,7 @@ use self::entries::{coverage_plugin_names, interned_entry_names, startup_entries
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
+use self::prefixes::{PrefixSiblings, prefix_siblings};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
@@ -76,6 +78,7 @@ pub struct Project {
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
+    pub(super) prefix_siblings: FxHashMap<FileId, PrefixSiblings>,
     // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -273,6 +276,7 @@ impl Project {
             docs: docs.clone(),
             cycles: cycle_reports,
             duplicates: duplicate_reports,
+            prefix_siblings: prefix_siblings(&indexed, &resolver.files),
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
             computed_writes,
@@ -319,6 +323,7 @@ impl Project {
                 inherited: entry(&self.inherited, id),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
+                prefix_siblings: entry(&self.prefix_siblings, id),
                 calls: self.calls.file(id),
                 reads: &self.wide.reads,
                 computed_reads: &self.wide.computed_reads,

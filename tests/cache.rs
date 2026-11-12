@@ -1114,3 +1114,53 @@ fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
     let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
     assert_eq!((cold, warm), (0, fresh));
 }
+
+// A sibling added to a directory changes the count the other private modules of its prefix share, so a cached clean
+// result for them is checked again.
+#[test]
+fn flattened_package_is_checked_again_once_a_sibling_is_added() {
+    let root = project(&[("pkg/_html_a.py", CLEAN_MODULE), ("pkg/_html_b.py", CLEAN_MODULE)]);
+    let select = ["check", "--select", "SMP311", "pkg"];
+    let cold = simplint(root.path(), &select).0;
+    write_file(root.path(), "pkg/_html_c.py", CLEAN_MODULE);
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold, warm.0, warm.1.matches("SMP311").count(), warm == fresh), (0, 1, 3, true));
+}
+
+// An `__init__.py` written into a directory that already exists changes that directory alone, not the run's files, so
+// the cached reports are checked again only through the layout the disk check reads.
+#[test]
+fn flattened_package_is_checked_again_once_a_package_appears() {
+    let root = project(&[
+        ("pkg/_h_a.py", CLEAN_MODULE),
+        ("pkg/_h_b.py", CLEAN_MODULE),
+        ("pkg/_h_c.py", CLEAN_MODULE),
+        ("pkg/_h/notes.txt", "notes\n"),
+    ]);
+    let select = ["check", "--select", "SMP311", "pkg"];
+    let cold = simplint(root.path(), &select);
+    write_file(root.path(), "pkg/_h/__init__.py", "");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold.0, warm.0, warm == fresh), (1, 0, true));
+}
+
+// A submodule that appears beside a private import changes what the hint names, so the cached report is checked again.
+#[test]
+fn private_import_is_checked_again_once_its_submodule_appears() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_a/__init__.py", ""),
+        ("pkg/b.py", "from ._a import _x\n\n_x.what()\n"),
+    ]);
+    let select = ["check", "--select", "SMP310", "pkg"];
+    let cold = simplint(root.path(), &select);
+    write_file(root.path(), "pkg/_a/_x.py", "def what() -> None: ...\n");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!(
+        (cold.0, warm.0, warm.1.contains("re-export the names you use in `_a/__init__.py`"), warm == fresh),
+        (1, 1, true, true)
+    );
+}

@@ -1,5 +1,6 @@
 mod absolute_sibling_import;
 mod dependency_import_guard;
+mod flattened_package;
 mod future_annotations;
 mod import_cycle;
 mod module_attribute_import;
@@ -12,6 +13,7 @@ mod up_type_checking_lazy_import;
 
 pub(crate) use absolute_sibling_import::absolute_sibling_import;
 pub(crate) use dependency_import_guard::dependency_import_guard;
+pub(crate) use flattened_package::flattened_package;
 pub(crate) use future_annotations::future_annotations;
 pub(crate) use import_cycle::import_cycle;
 pub(crate) use module_attribute_import::module_attribute_import;

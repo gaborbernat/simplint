@@ -14,6 +14,7 @@ use crate::syntax::Visibility;
 
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
+use super::prefixes::PrefixSiblings;
 use super::reach::unqualified;
 use super::run_imports::Members;
 use super::{FileId, FileIds, Project, RunReads};
@@ -123,6 +124,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
+    pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
     pub(super) calls: FileCalls<'a>,
     pub(super) reads: &'a RunReads,
     pub(super) computed_reads: &'a ComputedReads,
@@ -163,6 +165,7 @@ impl CacheKey for FileIndex<'_> {
             inherited,
             cycle,
             duplicates,
+            prefix_siblings,
             calls,
             reads: _,
             computed_reads: _,
@@ -198,6 +201,7 @@ impl CacheKey for FileIndex<'_> {
             cycle.cache_key_with(&self.project.files, state);
         }
         duplicates.cache_key(state);
+        prefix_siblings.cache_key(state);
         calls.cache_key(state);
     }
 }
@@ -231,6 +235,11 @@ impl<'a> FileIndex<'a> {
 
     pub fn modules(&self) -> &'a [ModuleUse] {
         self.answers.modules
+    }
+
+    // The other private modules of the run that share this module's name prefix, when a package would group them.
+    pub fn prefix_siblings(&self) -> Option<PrefixSiblings> {
+        self.answers.prefix_siblings.copied()
     }
 
     pub fn is_uncaught_exception(&self, name: &str) -> bool {

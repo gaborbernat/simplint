@@ -1,11 +1,10 @@
-Flags imports of private names, private imports that reach beyond one direct relative module, and imports that bind a
-private module as an object. In tests, imports from private modules must match the test's path and name.
+Flags private imports that reach beyond one direct relative module, and imports that bind a private module as an object.
+In tests, imports from private modules must match the test's path and name.
 
 ## Why is this bad?
 
-Importing a module such as `package._api` exposes its implementation path to callers. Importing a private name from
-another module makes that module's internal implementation part of the caller's contract. Define a public name in its
-owning module when other modules need it, and re-export that name at each package level. A parent-relative import such
+Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
+package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
 as `from .._api import API` also crosses a package boundary.
 
 ## Example
@@ -46,11 +45,30 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
 
-- **Private imported names**, such as `from ._api import _helper`. This also applies to paired tests. Define a public
-  name in the owning module and re-export it through each package level that needs it.
+- **Deep private paths**, such as `from ._a._x import what` or `from ._internal._helpers import API`. Import from the
+  direct sibling package boundary instead.
 
-- **Deep private paths**, such as `from ._internal._helpers import API` or `from ._internal.helpers import API`. Import
-  from the direct sibling package boundary instead.
+  ```python report file=package/b.py
+  from ._a._x import what
+
+  what()
+  ```
+
+  ```python context file=package/_a/_x.py
+  def what() -> None: ...
+  ```
+
+  Re-export `what` in the package's `__init__.py`, then import it from the package:
+
+  ```python context file=package/_a/__init__.py
+  from ._x import what
+  ```
+
+  ```python ok file=package/b.py
+  from ._a import what
+
+  what()
+  ```
 
 - **Private modules below a sibling**, such as `from ._api.helpers import API`.
 
@@ -59,15 +77,16 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 ### Exceptions
 
-- **Direct relative sibling imports of public names**: `from ._api import API` lets modules within one package share a
-  public name without exposing the private module's path outside that package.
+- **Direct relative sibling imports**: `from ._api import API` and `from ._api import _helper` let modules within one
+  package share names without exposing the implementation path outside that package. `from .public import _helper` also
+  stays within the same package level.
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
   `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
   directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
-  exists. The imported name must still be public.
+  exists.
 
   A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source module.
   Importing the private module as an object remains disallowed.
@@ -76,9 +95,6 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
   API despite its underscore.
-
-- **Private local aliases of public imports**: `from .windows import Windows as _Result` imports a public name. The
-  alias belongs to the importing module.
 
 ## Ruff overlap
 
