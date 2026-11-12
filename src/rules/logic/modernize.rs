@@ -4,7 +4,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::keyword_removal;
+use crate::rules::edits::argument_removal;
 
 // The attribute `expr` reads from a module the name is only ever bound to, as `re.error` is read from `re`. An
 // assignment or `del` patches the module, so only reads count.
@@ -35,7 +35,7 @@ pub fn report_redundant_keyword(
     message: &str,
     title: &str,
 ) {
-    let fix = keyword_removal(checker, call, keyword)
+    let fix = argument_removal(checker, call, keyword.range())
         .map(|range| Fix::applicable_edit(Edit::range_deletion(range), applicability));
     checker.report_fix(rule, keyword.range(), message, fix, title);
 }
