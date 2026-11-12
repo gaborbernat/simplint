@@ -101,7 +101,7 @@ jobs:
           enable-cache: false
       - name: 🔒 Check the release lock
         if: steps.gate.outputs.skip != 'true' && steps.release-lock.outputs.changed == 'true'
-        uses: tox-dev/github-workflows/refresh-release-lock@6.8.1
+        uses: tox-dev/github-workflows/refresh-release-lock@6.8.2
         with:
           mode: check
       - name: 🔍 Check assembled news
