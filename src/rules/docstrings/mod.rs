@@ -16,6 +16,7 @@ mod rst_returns;
 mod rst_type_field;
 mod rst_unknown_attribute;
 mod rst_unknown_param;
+mod rst_unraised_exception;
 mod test_module_docstring;
 mod undocumented_public_api;
 
@@ -36,6 +37,7 @@ pub(crate) use rst_returns::rst_returns;
 pub(crate) use rst_type_field::rst_type_field;
 pub(crate) use rst_unknown_attribute::rst_unknown_attribute;
 pub(crate) use rst_unknown_param::rst_unknown_param;
+pub(crate) use rst_unraised_exception::rst_unraised_exception;
 pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 

@@ -371,6 +371,7 @@ rules! {
     RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module } reads [docs] skips [nested]),
     RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module } reads [cross_file, docs] skips [nested]),
     RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", None, docstrings::rst_missing_raises { module } reads [cross_file, docs] skips [nested]),
+    RstUnraisedException => ("SMP925", "rst-unraised-exception", "Public API docstrings that document an exception the function never raises", Sometimes, docstrings::rst_unraised_exception { module } reads [cross_file, docs] skips [nested]),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
