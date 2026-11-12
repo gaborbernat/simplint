@@ -3,6 +3,11 @@ In tests, imports from private modules must match the test's path and name.
 
 ## Why is this bad?
 
+A module imports private names only from its direct private child: `from ._a import what`. When the name lives deeper,
+in `_a/_x.py`, the child package re-exports it (`from ._x import what` in `_a/__init__.py`) and every caller above
+imports it from there. Each package then decides what it exposes one level up, and moving `_x` inside `_a` touches only
+`_a/__init__.py`. Flattening the layout or suppressing the rule only hides the deeper import.
+
 Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
 package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
 as `from .._api import API` also crosses a package boundary.

@@ -27,6 +27,29 @@ guesses wrong:
 
 The full resolution order for each setting is in :doc:`/configuration/project`.
 
+Layer private packages
+**********************
+
+A module imports private names only from its **direct** private child. When a name lives deeper, each package on the
+way up re-exports it, and callers import it from the nearest package:
+
+.. code-block:: text
+
+    my_package/
+        b.py              from ._a import what
+        _a/
+            __init__.py   from ._x import what
+            _x.py         def what() -> None: ...
+
+Each package then decides what it exposes one level up, and moving ``_x.py`` inside ``_a`` changes only
+``_a/__init__.py``. :doc:`private-import-path </rules/SMP310>` reports any import that reaches further, such as
+``from ._a._x import what``, and its message names the re-export that fixes it. Two shortcuts only hide the problem:
+
+- An inline ``# simplint: ignore[private-import-path]`` keeps the deep import, so callers still depend on the layout
+  inside ``_a``.
+- Flattening ``_a/_x.py`` into ``_a_x.py`` next to its callers removes the layer instead of exposing it once;
+  :doc:`flattened-package </rules/SMP311>` reports private modules that share a name prefix this way.
+
 Names used from ``pyproject.toml``
 ***********************************
 
