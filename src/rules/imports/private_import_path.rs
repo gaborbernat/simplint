@@ -36,7 +36,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                 }
                 let count = private + private_count(alias.name.as_str());
                 if count > 0
-                    && (!direct || count > 1 || path.is_empty())
+                    && (!direct || path.is_empty())
                     && !walker.checker.semantic().reported_by_plc2701(alias.identifier())
                 {
                     report(walker, alias.name.as_str(), alias.name.range());
