@@ -45,7 +45,9 @@ description = "build documentation"
 # The diagrams are drawn at build time by mermaid-cli, which conf.py runs through npx, so Node.js must be on PATH. Its
 # puppeteer downloads a headless browser on first use; PUPPETEER_SKIP_DOWNLOAD=1 with PUPPETEER_EXECUTABLE_PATH runs an
 # installed one instead.
-pass_env = [ "PUPPETEER_*", "SSL_CERT_FILE" ]
+# Sphinx colors its output unless NO_COLOR is set, which Read the Docs sets so its build log shows no escape codes.
+pass_env = [ "NO_COLOR", "PUPPETEER_*", "SSL_CERT_FILE" ]
+set_env = { FORCE_COLOR = "1" }
 base_python = [ "3.15" ]
 # The pages read the rule list from the rule sources and the options from docs/_data, so Read the Docs builds them
 # without compiling Rust.
@@ -59,7 +61,6 @@ commands = [
     "{env_tmp_dir}{/}docs_tree",
     "docs",
     "{env:READTHEDOCS_OUTPUT:{work_dir}{/}docs_out}/html",
-    "--color",
     "-b",
     "html",
     "-j",
@@ -76,6 +77,7 @@ commands = [
 [env.docs_links]
 description = "check the documentation's external links"
 pass_env = { replace = "ref", of = [ "env", "docs", "pass_env" ] }
+set_env = { replace = "ref", of = [ "env", "docs", "set_env" ] }
 base_python = { replace = "ref", of = [ "env", "docs", "base_python" ] }
 skip_install = { replace = "ref", of = [ "env", "docs", "skip_install" ] }
 dependency_groups = { replace = "ref", of = [ "env", "docs", "dependency_groups" ] }
@@ -87,7 +89,6 @@ commands = [
     "{env_tmp_dir}{/}docs_tree",
     "docs",
     "{work_dir}{/}docs_linkcheck",
-    "--color",
     "-b",
     "linkcheck",
     "-W",
