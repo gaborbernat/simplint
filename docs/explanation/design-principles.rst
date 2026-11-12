@@ -49,8 +49,7 @@ Four exceptions keep a case in simplint although a Ruff rule reports it too:
   so :doc:`/how-to/pair-with-ruff` tells you to ignore them. For these, simplint leaves a case to Ruff only while your
   configuration selects the Ruff rule. For example, Ruff's undocumented-* rules (``D1``) ask for docstrings on internal
   code, which :doc:`/rules/SMP901` removes. With ``D1`` ignored, :doc:`/rules/SMP903` reports the undocumented public
-  API itself. Ruff's ``unnecessary-regular-expression-compile`` is another: it asks for ``re.match(p, s)`` where
-  :doc:`/rules/SMP534` moves a pattern compiled inside a function to a module-level constant, so it is ignored too.
+  API itself.
 - **The Ruff rule reads line breaks that ``ruff format`` moves.** simplint runs before ``ruff format``, which joins
   code that fits on one line. A case that a Ruff rule reports only while it spans lines would then come back to
   simplint on the next run, and ``check --fix`` would not settle in one round. For these, simplint leaves a case to Ruff

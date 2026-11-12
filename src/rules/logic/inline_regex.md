@@ -148,25 +148,22 @@ def is_image(image_name: str) -> bool:
       return found.group(0) if found else None
   ```
 
-## Conflicts with Ruff
+## Ruff overlap
 
 Ruff's preview rule
 [unnecessary-regular-expression-compile](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/)
-reports an inline [`re.compile(p).match(s)`](https://docs.python.org/3/library/re.html#re.compile) used once and
-suggests [`re.match(p, s)`](https://docs.python.org/3/library/re.html#re.match). That advice only holds for code that
-runs once. Inside a function or method that gets called repeatedly, and inside a loop, both forms pay the compile or the
-cache lookup on every call. The measurements under Why is this bad? put an inline call at about 2.2 times a precompiled
-one on a warm cache, and at about 310 to 320 times once the cache is evicted. Only a module-level constant avoids that.
+reports a method called on an inline [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), such as
+`re.compile(p).match(s)`, and asks for [`re.match(p, s)`](https://docs.python.org/3/library/re.html#re.match) or a
+stored pattern. Inside a function both rules report that call. Ruff has no fix; this rule's fix stores the pattern in a
+module-level constant, which neither rule reports, so the two can stay on together.
 
-The two rules disagree inside functions only, since calls at module level are not reported here. Both report the same
-inline `re.compile`, and the Ruff rule has no fix, so simplint and Ruff work against each other while both are on, and
-the run exits with status 2. Ignore the Ruff rule in `lint.ignore`, the recommended way, or ignore this rule in
-`[tool.simplint]`.
-[Resolving conflicts with Ruff](https://simplint.readthedocs.io/en/latest/how-to/resolve-ruff-conflicts.html#resolve-ruff-conflicts)
-lists the pair.
+Of Ruff's two suggestions, only the stored pattern settles both rules. `re.match(p, s)` in a function still pays the
+cache lookup on every call, and the compile once the cache is evicted, so this rule reports it and moves the pattern to
+a constant as well. The measurements under Why is this bad? put such a call at about 2.2 times a precompiled one on a
+warm cache, and at about 310 to 320 times once the cache is evicted.
 
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):**
   [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) reports the plain-text patterns this rule
-  leaves to it. The preview rule named under Conflicts with Ruff reports the inline compile.
+  leaves to it. The preview rule named under Ruff overlap reports the inline compile, and this rule fixes it.

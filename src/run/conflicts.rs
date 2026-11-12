@@ -209,7 +209,7 @@ impl Names {
     }
 }
 
-const CLASHES: [Clash; 8] = [
+const CLASHES: [Clash; 7] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -356,23 +356,6 @@ const CLASHES: [Clash; 8] = [
             format!(
                 "{} asks for the `:raises:` fields of reStructuredText docstrings; {} reads them as a missing section",
                 names.simplint_selector, names.ruff_selectors,
-            )
-        },
-        fix: ignore_in_ruff_or_simplint,
-    },
-    Clash {
-        simplint: Rule::InlineRegex,
-        ruff: &[RuffRule::UnnecessaryRegularExpressionCompile],
-        probe: "import re\n\n\ndef function(text):\n    return re.compile(\"a\").match(text)\n",
-        acts_on: |_, _| true,
-        undoes_fixes: false,
-        why: |names| {
-            format!(
-                "{} moves a `re.compile` in a function to a module-level constant, which compiles once; {} {} the \
-                 inline compile and suggests `re.match`, advice that holds only for code that runs once",
-                names.simplint_selector,
-                names.ruff_selectors,
-                names.verb("reports", "report"),
             )
         },
         fix: ignore_in_ruff_or_simplint,
