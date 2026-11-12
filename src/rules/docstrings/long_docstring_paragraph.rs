@@ -4,7 +4,7 @@ use ruff_text_size::{TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rst::indent_width;
+use crate::rst::leading_whitespace;
 use crate::rules::long_paragraphs;
 use crate::syntax::docstring;
 
@@ -38,7 +38,7 @@ fn long_paragraphs_of(text: &str, start: TextSize, limit: usize) -> Vec<TextRang
         if content.is_empty() || content.starts_with(">>>") || content.starts_with("...") {
             return None;
         }
-        let indent = TextSize::of(&line[..indent_width(line)]);
+        let indent = TextSize::of(leading_whitespace(line));
         let range = TextRange::new(line_start + indent, line_start + indent + content.text_len());
         Some((range, content.split_whitespace().count()))
     });

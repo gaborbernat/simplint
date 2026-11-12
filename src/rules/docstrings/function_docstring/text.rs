@@ -1,6 +1,6 @@
 use ruff_python_trivia::textwrap::dedent;
 
-use crate::rst::{field_marker, indent_width};
+use crate::rst::{field_marker, indent_width, leading_whitespace};
 use crate::rules::docstrings::rst::SIGNATURE_SECTIONS;
 
 // The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of rst
@@ -91,7 +91,7 @@ pub(super) fn comment_lines(lines: &[String], room: usize) -> Vec<String> {
     let mut comments = Vec::new();
     let mut carry = String::new();
     for (index, line) in lines.iter().enumerate() {
-        let lead = &line[..indent_width(line)];
+        let lead = leading_whitespace(line);
         let line = if carry.is_empty() { line.clone() } else { format!("{lead}{carry} {}", line.trim_start()) };
         let mut parts = wrapped(&line, room);
         carry = if parts.len() > 1 && lines.get(index + 1).is_some_and(|next| continues(next, lead)) {
@@ -109,7 +109,7 @@ fn wrapped(line: &str, room: usize) -> Vec<String> {
     if line.chars().count() <= room {
         return vec![line.to_owned()];
     }
-    let lead = &line[..indent_width(line)];
+    let lead = leading_whitespace(line);
     let mut parts = Vec::new();
     let mut current = String::new();
     for word in line.split_whitespace() {
