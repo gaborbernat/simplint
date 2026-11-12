@@ -7,8 +7,7 @@ A name that exists only to be read on the next line adds a step to follow withou
 the assignment, remember the value, and then reach the line that uses it. Inlining removes that step.
 [Fowler's Extract Variable](https://refactoring.com/catalog/extractVariable.html) gives a name to part of an expression,
 and [Sourcery](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/) warns that inlining can hurt
-readability. simplint reports the read anyway, since the rule cannot tell a name that explains from one that adds
-nothing.
+readability. A name that explains and one that adds nothing look the same to the rule, so it reports the read.
 
 ## Example
 

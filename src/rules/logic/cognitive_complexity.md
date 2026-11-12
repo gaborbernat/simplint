@@ -11,7 +11,7 @@ count where one is far harder to follow, and this score adds more for each level
 [meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found that the score correlates with comprehension
 time and subjective ratings. Moving a deep branch into a named helper lowers the score of the function it leaves.
 [Lavazza et al. (2023)](https://researchr.org/publication/LavazzaALM23) found it predicts understandability no better
-than older measures; simplint reports it anyway, since the score counts nesting, which McCabe's count ignores.
+than older measures. The rule keeps the score for its nesting term, which McCabe's count ignores.
 
 ## Example
 

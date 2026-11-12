@@ -10,8 +10,7 @@ are harder to read: each split adds an interface to learn while hiding little, a
 together read better combined. Inlining the helper's statements keeps the work in one function, as long as the caller
 stays short enough to read at once. [Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) and
 [Robert Martin](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) favor small functions named by
-intent. simplint still reports short helpers with one caller, but only where the caller stays within its limits after
-inlining.
+intent. A short single-caller helper is flagged only if inlining keeps the caller within its limits.
 
 ## Example
 

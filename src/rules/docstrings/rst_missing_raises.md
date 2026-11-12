@@ -7,9 +7,8 @@ Callers handle the exceptions they know about, and no signature names them, so t
 [PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) lists the exceptions raised among what a function's
 docstring documents, and the
 [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for those relevant
-to the interface. Google says not to document exceptions raised when a caller misuses the API; simplint reports them
-anyway, since an undocumented one reaches callers as a surprise, often in production, where the error path is first
-exercised.
+to the interface. Google says not to document exceptions raised when a caller misuses the API. Undocumented exceptions
+reach callers as surprises, often in production where the error path is first exercised, so the rule reports them.
 
 ## Example
 

@@ -8,8 +8,8 @@ by default in Python 3.15, so [`open()`](https://docs.python.org/3/builtins/func
 methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding repeats the
 default, and a reader has to check whether it changes anything. The default can be switched off with `PYTHONUTF8=0` or
 `-X utf8=0`, though, and then the argument is what keeps the file in UTF-8. The PEP's migration advice suggests an
-explicit `encoding="utf-8"` where code relies on the default. simplint reports the argument anyway, since the rule only
-fires for targets of 3.15 or newer, where the default is UTF-8.
+explicit `encoding="utf-8"` where code relies on the default. The rule only fires for targets of 3.15 or newer, where
+the default is UTF-8 and the argument repeats it.
 
 ## Example
 

@@ -10,8 +10,8 @@ classes where they fit, and Jack Diederich's
 real code. Raising a built-in such as [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError)
 keeps the program to the types Python already has. A
 [style-guide discussion](https://github.com/amontalenti/elements-of-python-style/issues/9) records David Beazley and
-others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs; simplint still reports a
-class that no handler names, since no caller tells it apart from a built-in.
+others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs. The rule reports a class
+no handler names, because no caller can tell it apart from a built-in.
 
 ## Example
 

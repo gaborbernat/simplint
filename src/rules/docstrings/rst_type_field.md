@@ -9,7 +9,8 @@ in the parameter list. The
 [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a type in the
 description only where the code has no annotation. [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)
 requires types in Returns and Yields, and [pydoclint](https://jsh9.github.io/pydoclint/config_options.html) requires
-argument types in docstrings by default; simplint reports them anyway, since Sphinx already shows the annotation.
+argument types in docstrings by default. Docstring argument types are flagged because Sphinx already shows the
+annotation.
 
 ## Example
 

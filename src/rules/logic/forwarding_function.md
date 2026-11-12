@@ -8,7 +8,7 @@ a red flag: they add an interface without adding function, and a change to the t
 the wrapper. Calling the target itself removes the indirection. Ruff's
 [unnecessary-lambda](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) asks the same when the forward is a lambda.
 [Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) defends one-line functions whose name states their
-intent. simplint reports a private forward anyway, since it cannot judge whether a name adds meaning.
+intent. The check cannot judge whether a name adds meaning, so it flags private forwards.
 
 ## Example
 

@@ -10,8 +10,8 @@ notes. One definition that both modules call keeps a single place to change.
 Repeated text is not necessarily repeated knowledge.
 [Dave Thomas](https://www.artima.com/articles/orthogonality-and-the-dry-principle) defines DRY as one authoritative
 representation of each piece of knowledge, and [Sandi Metz](https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction)
-shows a shared function gaining a flag per caller as its callers diverge. simplint still reports textual matches, since
-it cannot tell shared knowledge from coincidence. Share the code when both copies must change together.
+shows a shared function gaining a flag per caller as its callers diverge. Textual matches are all the rule can see, and
+text does not separate shared knowledge from coincidence. Share the code when both copies must change together.
 
 In the example below, `reader.py` and `writer.py` each define the same six statements.
 

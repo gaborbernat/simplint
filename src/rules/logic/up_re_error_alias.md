@@ -7,8 +7,8 @@ from Python 3.13.
 exception raised for an invalid pattern. From Python 3.13 `re.error` is an alias kept for backward compatibility. The
 lowercase name reads like a function or a value rather than an exception class, as the
 [issue that led to the rename](https://github.com/python/cpython/issues/83162) argued. Serhiy Storchaka, the `re`
-maintainer, replied there that a module-level exception named `error` is common practice; simplint reports the old name
-anyway because the docs use `PatternError`. `re.error` is not deprecated and keeps working.
+maintainer, replied there that a module-level exception named `error` is common practice. The docs name `PatternError`,
+and the rule flags `re.error` to match them. `re.error` is not deprecated and keeps working.
 
 ## Example
 
