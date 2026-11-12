@@ -5,3 +5,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 3:1 SMP904 Docstring paragraph exceeds 100 words; split it at a change of topic
 18:9 SMP904 Docstring paragraph exceeds 100 words; split it at a change of topic
 32:12 SMP904 Docstring paragraph exceeds 100 words; split it at a change of topic
+59:2 SMP904 Docstring paragraph exceeds 100 words; split it at a change of topic

@@ -51,3 +51,64 @@ def doctest() -> None:
     >>> outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer()
     ... outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer(); outer()
     """
+
+
+def tabs() -> None:
+	"""Indented with tabs.
+
+	Each worker
+	reads one
+	shard of
+	the queue
+	and writes
+	its results
+	to a
+	file of
+	its own,
+	so no
+	two workers
+	ever touch
+	the same
+	file and
+	none of
+	them needs
+	a lock.
+	Each worker
+	reads one
+	shard of
+	the queue
+	and writes
+	its results
+	to a
+	file of
+	its own,
+	so no
+	two workers
+	ever touch
+	the same
+	file and
+	none of
+	them needs
+	a lock.
+	Each worker
+	reads one
+	shard of
+	the queue
+	and writes
+	its results
+	to a
+	file of
+	its own,
+	so no
+	two workers
+	ever touch
+	the same
+	file and
+	none of
+	them needs
+	a lock.
+	Each worker
+	reads one
+	shard of
+	the queue
+	"""
