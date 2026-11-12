@@ -364,7 +364,7 @@ rules! {
     RstPrivateField => ("SMP915", "rst-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rst_private_field { module } reads [cross_file, docs] skips [nested]),
     RstMissingParam => ("SMP916", "rst-missing-param", "Public API docstrings that leave a parameter undocumented", None, docstrings::rst_missing_param { module } reads [cross_file, docs] skips [nested]),
     RstUnknownParam => ("SMP917", "rst-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rst_unknown_param { module } reads [docs] skips [nested]),
-    RstDuplicateParam => ("SMP918", "rst-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rst_duplicate_param { module } reads [docs] skips [nested]),
+    RstDuplicateParam => ("SMP918", "rst-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rst_duplicate_param { module } reads [cross_file, docs] skips [nested]),
     RstParamOrder => ("SMP919", "rst-param-order", "`:param:` fields out of the signature's order", None, docstrings::rst_param_order { module } reads [docs] skips [nested]),
     RstMissingAttribute => ("SMP920", "rst-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", None, docstrings::rst_missing_attribute { module } reads [cross_file, docs] skips [nested]),
     RstUnknownAttribute => ("SMP921", "rst-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rst_unknown_attribute { module } reads [docs] skips [nested]),

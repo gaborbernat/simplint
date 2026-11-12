@@ -4,11 +4,11 @@ use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
-use crate::project::FileFacts;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
 use crate::project::facts::{PYTEST_PLUGINS_REQUEST, source_digest};
 use crate::project::receivers::UNRESOLVED_CLASS;
+use crate::project::{AutoclassContent, FileFacts};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
@@ -379,6 +379,10 @@ impl<'a> FileIndex<'a> {
 
     pub fn is_documented(&self, qualified: &str, anchored: bool) -> bool {
         self.project.docs.covers(qualified, anchored)
+    }
+
+    pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
+        self.project.docs.class_doc_from(root, qualified)
     }
 
     pub fn is_fixture_requested(&self, name: &str) -> bool {

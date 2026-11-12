@@ -1,23 +1,25 @@
 use std::path::Path;
 
-use super::{DocReferences, Module};
+use rustc_hash::FxHashMap;
+
+use super::{AutoclassContent, DocReferences, Module};
 use crate::rst::{Directive, myst_markup, page_lines, rst_markup};
 
 impl DocReferences {
-    pub(super) fn read(&mut self, path: &Path, text: &str) {
+    pub(super) fn read(&mut self, path: &Path, text: &str, directives: &mut FxHashMap<String, AutoclassContent>) {
         let markup = if path.extension().is_some_and(|extension| extension == "md") {
             myst_markup(text)
         } else {
             rst_markup(&page_lines(text))
         };
         for directive in &markup.directives {
-            self.record(directive);
+            self.record(directive, directives);
         }
         self.names.extend(markup.references.iter().filter_map(|target| reference_name(target)).map(str::to_owned));
     }
 
     // A name relative to the page's `currentmodule` needs no resolving, since names match by their dotted suffix.
-    fn record(&mut self, directive: &Directive) {
+    fn record(&mut self, directive: &Directive, directives: &mut FxHashMap<String, AutoclassContent>) {
         const OBJECTS: [&str; 10] = [
             "function",
             "class",
@@ -58,6 +60,11 @@ impl DocReferences {
                     }
                     None => {}
                 }
+                if object == "class"
+                    && let Some(option) = value("class-doc-from")
+                {
+                    directives.insert(target.clone(), AutoclassContent::from_option(option));
+                }
                 self.names.insert(target);
             }
         } else if OBJECTS.contains(&object) {
@@ -89,6 +96,7 @@ fn reference_name(target: &str) -> Option<&str> {
 mod tests {
     use std::path::Path;
 
+    use rustc_hash::FxHashMap;
     use test_case::test_case;
 
     use super::super::DocReferences;
@@ -105,7 +113,7 @@ mod tests {
     #[test_case("{func}`pkg.name`", &[] ; "myst_role_in_an_rst_page")]
     fn role_targets_name_definitions(text: &str, expected: &[&str]) {
         let mut references = DocReferences::default();
-        references.read(Path::new("page.rst"), text);
+        references.read(Path::new("page.rst"), text, &mut FxHashMap::default());
         let mut names: Vec<String> = references.names.into_iter().collect();
         names.sort();
         assert_eq!(names, expected);
@@ -118,7 +126,7 @@ mod tests {
     #[test_case("    {func}`pkg.hidden`\n", &[] ; "role_in_indented_code")]
     fn myst_role_targets_name_definitions(text: &str, expected: &[&str]) {
         let mut references = DocReferences::default();
-        references.read(Path::new("page.md"), text);
+        references.read(Path::new("page.md"), text, &mut FxHashMap::default());
         let mut names: Vec<String> = references.names.into_iter().collect();
         names.sort();
         assert_eq!(names, expected);
@@ -130,7 +138,7 @@ mod tests {
     #[test_case(".. function:: f(a,\\\n   b)\n", &["f"] ; "backslash_joins_a_signature_with_the_next_line")]
     fn directive_names(text: &str, expected: &[&str]) {
         let mut references = DocReferences::default();
-        references.read(Path::new("page.rst"), text);
+        references.read(Path::new("page.rst"), text, &mut FxHashMap::default());
         let mut names: Vec<String> = references.names.into_iter().collect();
         names.sort();
         assert_eq!(names, expected);

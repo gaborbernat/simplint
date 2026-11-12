@@ -111,11 +111,209 @@ Checks classes, when `docstring-style = "rst"`, for constructor parameters docum
           """
   ```
 
+Which copy counts as the repeat depends on the docstring Sphinx renders for the class. The rule resolves it for each
+project in this order:
+
+1. a `:class-doc-from:` option on the class's
+   [`autoclass`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoclass) directive, in
+   one of the project's pages;
+1. `class-doc-from` in `autodoc_default_options` of the project's Sphinx configuration;
+1. [`autoclass_content`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content)
+   of that configuration;
+1. the class docstring, which Sphinx shows when none of these sets another.
+
+A Sphinx configuration is a `conf.py` beside an index page (`index.rst`, `index.md` or `index.txt`), or one that assigns
+`extensions`, `master_doc` or `root_doc`. The rule reads it whether or not Ruff excludes it, and follows a symlink whose
+target lies in the project. It skips vendored directories (`_vendor`, `vendor`, `third_party`, `subprojects`), other
+projects below the root, and gitignored files. The Sphinx configurations of one project must agree on the option; when
+they do not, the rule reports nothing for that project.
+
+The rule reads each option from a top-level assignment, plain, annotated, or as one target of a tuple assignment, and a
+`class-doc-from` key from a dict literal. The docstring is unknown, and the rule reports nothing for the class, when the
+option holds a value other than `class`, `init` or `both`, or a value that is not a literal, when the name is bound
+another way (in a block, a chained assignment, an import, a star import, `exec`, or through `globals()`), and when the
+`conf.py` cannot be read, does not parse, or is over 8 MiB.
+
+The examples below show each case:
+
+- **`class`, or no option**: Sphinx shows the class docstring alone, so the `__init__` copy is the repeat, as above.
+
+- **`both`**: Sphinx shows both docstrings, so the parameter appears twice whichever copy goes. The rule still reports
+  the `__init__` copy and removes it, and the class copy stays.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```rst context file=docs/index.rst
+  Index
+  =====
+  ```
+
+  ```python context file=docs/conf.py
+  autoclass_content = "both"
+  ```
+
+  ```python report file=model.py
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+- **`init`**: Sphinx shows the `__init__` docstring alone, so the class copy is the repeat. The rule reports it and
+  removes it from the class docstring, and the `__init__` copy stays.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```rst context file=docs/index.rst
+  Index
+  =====
+  ```
+
+  ```python context file=docs/conf.py
+  autoclass_content = "init"
+  ```
+
+  ```python report file=model.py
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+  ```python fixed file=model.py
+  class Reader:
+      """Read files."""
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+- **`class-doc-from` on a directive**: an `autoclass` directive names the class and sets the option, which decides the
+  copy of that class ahead of the configuration. Here the configuration sets nothing, and the directive makes the class
+  docstring the repeat.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```rst context file=docs/index.rst
+  Index
+  =====
+  ```
+
+  ```rst context file=docs/api.rst
+  .. autoclass:: Reader
+      :class-doc-from: init
+  ```
+
+  ```python report file=model.py
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+- **`autodoc_default_options`**: the key sets the option for every class of the project, ahead of `autoclass_content`.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```rst context file=docs/index.rst
+  Index
+  =====
+  ```
+
+  ```python context file=docs/conf.py
+  autoclass_content = "both"
+  autodoc_default_options = {"class-doc-from": "init"}
+  ```
+
+  ```python report file=model.py
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+- **Unknown**: a value the rule cannot read, such as one computed when the configuration runs, leaves the docstring
+  unknown, so the rule reports nothing.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```rst context file=docs/index.rst
+  Index
+  =====
+  ```
+
+  ```python context file=docs/conf.py
+  import os
+
+  autoclass_content = os.environ.get("SPHINX_AUTOCLASS", "class")
+  ```
+
+  ```python ok file=model.py
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
 ### Fix
 
-The fix deletes the field from the `__init__` docstring, with the lines that continue it.
+The fix deletes the field from the `__init__` docstring, with the lines that continue it. Under `init` it deletes the
+field from the class docstring instead.
 
-**Unsafe fix:** code may read the docstring through `__doc__`, and the `__init__` text may hold details the class
+**Unsafe fix:** code may read the docstring through `__doc__`, and the copy the fix deletes may hold details the other
 docstring lacks.
 
 ```toml config

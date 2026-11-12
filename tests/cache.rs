@@ -304,13 +304,22 @@ const REPEATED: &str = "def run(items):\n    total = 0\n    for item in \
 enum Change<'a> {
     Write(&'a str, &'a str),
     Remove(&'a str),
+    Move(&'a str, &'a str),
 }
 
 fn apply(root: &Path, change: Change) {
     match change {
         Change::Write(name, content) => write_file(root, name, content),
         Change::Remove(name) => fs::remove_file(root.join(name)).expect("remove"),
+        Change::Move(from, to) => {
+            write_file_dirs(root, to);
+            fs::rename(root.join(from), root.join(to)).expect("move");
+        }
     }
+}
+
+fn write_file_dirs(root: &Path, name: &str) {
+    fs::create_dir_all(root.join(name).parent().expect("file has a parent")).expect("create parent");
 }
 
 fn write_file(root: &Path, name: &str, content: &str) {
@@ -422,6 +431,75 @@ fn documentation_is_read_again_once_an_ignore_file_hides_it() {
     let first = check(root.path(), &["--select", "SMP409"]).0;
     write_file(root.path(), ".gitignore", "docs/\n");
     assert_eq!((first, check(root.path(), &["--select", "SMP409"]).0), (0, 1));
+}
+
+const DUPLICATED: &str = r#"class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up.
+
+        :param source: The path to read.
+        """
+"#;
+
+// Which copy of the duplicated parameter the rule reports, read from its concise message.
+fn copy_reported(root: &Path) -> &'static str {
+    let stdout = check(root, &["--select", "SMP918"]).1;
+    if stdout.contains("`__init__`") {
+        "init"
+    } else if stdout.contains("`Reader`") {
+        "class"
+    } else {
+        "none"
+    }
+}
+
+// A `conf.py` that appears, goes, or moves into or out of a Sphinx documentation directory changes the copy the rule
+// reports, though no page changed, and the warm cache must follow it.
+#[test_case(&[], Change::Write("docs/conf.py", "autoclass_content = \"init\"\n"), ("class", "init") ; "appears")]
+#[test_case(
+    &[("docs/conf.py", "autoclass_content = \"init\"\n")],
+    Change::Remove("docs/conf.py"),
+    ("init", "class") ;
+    "removed"
+)]
+#[test_case(
+    &[("docs/conf.py", "autoclass_content = \"init\"\n")],
+    Change::Move("docs/conf.py", "tools/conf.py"),
+    ("init", "class") ;
+    "moved_out_of_the_documentation"
+)]
+#[test_case(
+    &[("tools/conf.py", "autoclass_content = \"init\"\n")],
+    Change::Move("tools/conf.py", "docs/conf.py"),
+    ("class", "init") ;
+    "moved_into_the_documentation"
+)]
+#[test_case(
+    &[("docs/conf.py", "autoclass_content = \"class\"\n")],
+    Change::Write("docs/conf.py", "autoclass_content = \"init\"\n"),
+    ("class", "init") ;
+    "edited_at_the_same_size"
+)]
+fn conf_py_changes_are_seen_by_a_warm_cache(
+    files: &[(&'static str, &'static str)],
+    change: Change,
+    expected: (&str, &str),
+) {
+    let mut all = vec![
+        ("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"),
+        ("model.py", DUPLICATED),
+        ("docs/index.rst", "Index\n=====\n"),
+    ];
+    all.extend_from_slice(files);
+    let root = project(&all);
+    let first = copy_reported(root.path());
+    apply(root.path(), change);
+    assert_eq!((first, copy_reported(root.path())), expected);
 }
 
 // Keeping the documentation is best effort, so a cache it cannot write is reported and the run goes on.
