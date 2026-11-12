@@ -424,10 +424,12 @@ fn check_stdin_judges_its_test_module_by_the_directory_it_stands_in(dir: &str, s
 fn check_reports_a_missing_path_as_io_error() {
     let root = project(&[("real.py", common::CLEAN_MODULE)]);
     let (code, stdout, _) = check(root.path(), &["--select", "SMP101", "typo.py", "real.py"]);
-    assert_eq!(
-        (code, stdout),
-        (1, "typo.py:1:1: E902 No such file or directory (os error 2)\nFound 1 error.\n".to_owned())
-    );
+    assert_eq!((code, stdout), (1, format!("typo.py:1:1: E902 {}\nFound 1 error.\n", missing_file_message())));
+}
+
+// The operating system words the error, so Windows and Unix report the same missing file differently.
+fn missing_file_message() -> String {
+    std::io::Error::from_raw_os_error(2).to_string()
 }
 
 // With Ruff's `E902` off, a missing path stays a warning and the run keeps its status, as it always has.
@@ -438,6 +440,6 @@ fn check_warns_about_a_missing_path_while_io_error_is_off() {
     let (code, stdout, stderr) = check(root.path(), &["--select", "SMP101", "typo.py", "real.py"]);
     assert_eq!(
         (code, stdout, stderr),
-        (0, PASSED.to_owned(), "warning: Encountered error: No such file or directory (os error 2)\n".to_owned())
+        (0, PASSED.to_owned(), format!("warning: Encountered error: {}\n", missing_file_message()))
     );
 }
