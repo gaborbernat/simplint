@@ -20,11 +20,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         Stmt::ImportFrom(ast::StmtImportFrom { module, level, names, .. }) => {
             let path = module.as_ref().map_or("", ast::Identifier::as_str);
             let private = private_count(path);
-            if private > 0 && paired_test_module(walker, path, *level) {
-                return;
-            }
+            let paired = private > 0 && paired_test_module(walker, path, *level);
             let direct = *level == 1 && !path.contains('.');
-            if private > 0 && (!direct || walker.checker.is_test_module()) {
+            if private > 0 && !paired && (!direct || walker.checker.is_test_module()) {
                 if !names.iter().any(|alias| walker.checker.semantic().reported_by_plc2701(alias.identifier())) {
                     report(walker, path, module.as_ref().map_or(stmt.range(), Ranged::range));
                 }
@@ -34,12 +32,10 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                 if *level == 0 && path == "os" && alias.name.as_str() == "_exit" {
                     continue;
                 }
-                let count = private + private_count(alias.name.as_str());
-                if count > 0
-                    && (!direct || path.is_empty())
+                if private_count(alias.name.as_str()) > 0
                     && !walker.checker.semantic().reported_by_plc2701(alias.identifier())
                 {
-                    report(walker, alias.name.as_str(), alias.name.range());
+                    report_private_name(walker, alias.name.as_str(), alias.name.range());
                 }
             }
         }
@@ -58,6 +54,14 @@ fn report(walker: &Walker<'_, '_>, path: &str, range: TextRange) {
         format!("Private import `{path}`; import names from one private module with a direct relative path")
     };
     walker.checker.report(Rule::PrivateImportPath, range, message);
+}
+
+fn report_private_name(walker: &Walker<'_, '_>, name: &str, range: TextRange) {
+    walker.checker.report(
+        Rule::PrivateImportPath,
+        range,
+        format!("Private import `{name}`; import a public name from its owning module"),
+    );
 }
 
 fn paired_test_module(walker: &Walker<'_, '_>, path: &str, level: u32) -> bool {
