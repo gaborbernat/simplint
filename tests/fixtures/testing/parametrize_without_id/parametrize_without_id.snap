@@ -4,6 +4,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 8:9 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 9:9 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+31:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
 36:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 51:34 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 51:53 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
@@ -12,3 +13,67 @@ expression: "lint_fixture(rule, fixture, target_version)"
 61:34 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 61:42 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 61:50 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+--- fixed (1 applied, 10 remaining) ---
+import pytest
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        pytest.param(1, 2, id="one"),
+        pytest.param(2, 3),
+        (3, 4),
+    ],
+)
+def test_values(value: int, expected: int) -> None:
+    assert value + 1 == expected
+
+
+CASES = [(1, 2)]
+
+
+@pytest.mark.parametrize(("value", "expected"), CASES)
+def test_from_variable(value: int, expected: int) -> None:
+    assert value + 1 == expected
+
+
+@pytest.mark.slow
+@pytest.fixture()
+@pytest.mark.parametrize("value")
+def test_without_values(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [pytest.param(1, id="one"), pytest.param(2, id="two")])
+def test_with_ids(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [pytest.param(1, id=None)])
+def test_none_id(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("tag", ["select", "input", "a b", "x_1"])
+def test_string_ids(tag: str) -> None:
+    assert tag
+
+
+@pytest.mark.parametrize("value", [1, 2.5, -1, True, None])
+def test_scalar_ids(value: object) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("tag", ["select", "input", "select"])
+def test_repeated_string_ids(tag: str) -> None:
+    assert tag
+
+
+@pytest.mark.parametrize("value", [1, "1", 2])
+def test_number_and_string_ids(value: object) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("tag", ["café", "a\\b", b"bytes"])
+def test_escaped_ids(tag: str) -> None:
+    assert tag

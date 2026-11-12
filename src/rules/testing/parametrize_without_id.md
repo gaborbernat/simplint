@@ -43,7 +43,8 @@ def test_increment(value: int, expected: int) -> None:
 
 ## What it does
 
-No fix is offered: a meaningful id describes what the case tests, which cannot be derived from its values.
+A row without an id gets no fix: a meaningful id describes what the case tests, which cannot be derived from its values.
+An `ids=` list gets one that moves each id into its row.
 
 ### Active on
 
@@ -103,6 +104,30 @@ No fix is offered: a meaningful id describes what the case tests, which cannot b
   @pytest.mark.parametrize("tag", ["select", "input", "select"])
   def test_tag(tag: str) -> None:
       assert tag
+  ```
+
+- **`ids=` lists of string literals**: the list names each case apart from its row, so the two drift apart when a row is
+  added or moved. The fix wraps each row in `pytest.param(..., id=...)` and drops `ids=`, when the list has one id per
+  row and each row is a literal: a tuple or list with one value per name, or a literal value for a single name. A row
+  that is a name, a call or already a `pytest.param(...)`, or a list of a different length, is reported without a fix.
+  The fix is unsafe when a comment sits in the rows or the `ids=` argument, since the rewrite drops it.
+
+  ```python report
+  import pytest
+
+
+  @pytest.mark.parametrize(("value", "expected"), [(1, 2), (-1, 0)], ids=["positive", "negative"])
+  def test_increment(value: int, expected: int) -> None:
+      assert value + 1 == expected
+  ```
+
+  ```python fixed
+  import pytest
+
+
+  @pytest.mark.parametrize(("value", "expected"), [pytest.param(1, 2, id="positive"), pytest.param(-1, 0, id="negative")])
+  def test_increment(value: int, expected: int) -> None:
+      assert value + 1 == expected
   ```
 
 ### Exceptions
@@ -191,13 +216,14 @@ No fix is offered: a meaningful id describes what the case tests, which cannot b
       assert value + 1 == expected
   ```
 
-- **Decorators that pass `ids=`**: that argument already names every case.
+- **`ids=` that generates the ids**: a callable, such as a function or a lambda, or a name or other expression that is
+  not a list of string literals, makes the ids from the values, so they cannot drift from the rows.
 
   ```python ok
   import pytest
 
 
-  @pytest.mark.parametrize(("value", "expected"), [(1, 2), (-1, 0)], ids=["positive", "negative"])
+  @pytest.mark.parametrize(("value", "expected"), [(1, 2), (-1, 0)], ids=repr)
   def test_increment(value: int, expected: int) -> None:
       assert value + 1 == expected
   ```

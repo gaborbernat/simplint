@@ -15,6 +15,7 @@ use crate::common;
 #[test_case("parametrize-without-id", "tests/test_parametrize_names.py", None ; "parametrize_names")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_bindings.py", None ; "parametrize_bindings")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_helpers.py", None ; "parametrize_helpers")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_ids_list.py", None ; "parametrize_ids_list")]
 #[test_case("conditional-in-test", "tests/test_conditional_in_test.py", None ; "conditional_in_test")]
 #[test_case("conditional-in-test", "multiline_module_docstring_ok.py", None ; "conditional_in_test_regular_module")]
 #[test_case("constant-assert", "constant_assert.py", None ; "constant_assert")]

@@ -340,7 +340,7 @@ rules! {
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
     IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module } reads [cross_file, CAUGHT, docs]),
     TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
-    ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", None, testing::parametrize_without_id { module }),
+    ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
     ConstantAssert => ("SMP804", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
     MockAttributeAssignment => ("SMP805", "mock-attribute-assignment", "Mock attributes assigned after construction", Sometimes, testing::mock_attribute_assignment { module }),
