@@ -46,8 +46,9 @@ description = "build documentation"
 # puppeteer downloads a headless browser on first use; PUPPETEER_SKIP_DOWNLOAD=1 with PUPPETEER_EXECUTABLE_PATH runs an
 # installed one instead.
 # Sphinx colors its output unless NO_COLOR is set, which Read the Docs sets so its build log shows no escape codes.
+# mermaid-cli draws with Chrome's headless shell, so puppeteer skips the full Chrome it would download beside it.
 pass_env = [ "NO_COLOR", "PUPPETEER_*", "SSL_CERT_FILE" ]
-set_env = { FORCE_COLOR = "1" }
+set_env = { FORCE_COLOR = "1", PUPPETEER_CHROME_SKIP_DOWNLOAD = "true" }
 base_python = [ "3.15" ]
 # The pages read the rule list from the rule sources and the options from docs/_data, so Read the Docs builds them
 # without compiling Rust.
