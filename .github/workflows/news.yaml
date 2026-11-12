@@ -14,21 +14,13 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      # `gh pr create --label` labels the PR right after opening it, which fires `labeled` beside `opened`; the run for
-      # `opened` reads the labels as they are when it checks, so the run for that label has nothing to add. A merge
-      # queue run has no pull request to read, and the pull request passed this check before it was queued.
-      - name: 🧭 Skip labels added at opening and merge queue runs
+      # A merge queue run has no pull request to read, and the pull request passed this check before it was queued.
+      # Every other run reads the labels when it checks, so runs that share this check's name agree, and a run that
+      # checked nothing never reports success over one that failed.
+      - name: 🧭 Skip merge queue runs
         id: gate
-        if: github.event_name == 'merge_group' || github.event.action == 'labeled' || github.event.action == 'unlabeled'
-        env:
-          CREATED: ${{ github.event.pull_request.created_at }}
-          UPDATED: ${{ github.event.pull_request.updated_at }}
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == merge_group ]]; then
-            echo 'skip=true' >>"$GITHUB_OUTPUT"
-          elif (($(date -d "$UPDATED" +%s) - $(date -d "$CREATED" +%s) < 60)); then
-            echo 'skip=true' >>"$GITHUB_OUTPUT"
-          fi
+        if: github.event_name == 'merge_group'
+        run: echo 'skip=true' >>"$GITHUB_OUTPUT"
       - name: 📥 Check out code
         if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@v7.0.1
