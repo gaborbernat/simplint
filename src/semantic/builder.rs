@@ -146,12 +146,12 @@ fn is_private_import(
     if binding.scope == ScopeId::global() && exports.contains(name) {
         return true;
     }
-    // Ruff resolves the names a string type expression spells, which this model does not, so the string may be
-    // the only use of the import.
-    if words.contains(name) {
-        return false;
+    if binding.references().any(|id| !is_typing_only(semantic.reference(id))) {
+        return true;
     }
-    binding.references().next().is_none() || binding.references().any(|id| !is_typing_only(semantic.reference(id)))
+    // Ruff resolves the names a string type expression spells as typing-only uses, which this model does not see, so
+    // an import that a string spells and nothing reads at runtime is not Ruff's.
+    !words.contains(name) && binding.references().next().is_none()
 }
 
 fn is_typing_only(reference: &ResolvedReference) -> bool {

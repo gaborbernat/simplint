@@ -347,6 +347,12 @@ fn private_module_object_import_reports_both_import_and_attribute() {
     ; "string_cast"
 )]
 #[test_case(
+    "consumer.py",
+    "from typing import cast\n\nfrom pkg._api import API\n\nVALUE = cast(\"API\", 1)\nKNOWN = isinstance(VALUE, API)\n",
+    false
+    ; "string_cast_with_runtime_use"
+)]
+#[test_case(
     "consumer.py", "from pkg._api import API\n\nVALUE: \"list[API]\" = []\n", true
     ; "string_variable_annotation"
 )]
