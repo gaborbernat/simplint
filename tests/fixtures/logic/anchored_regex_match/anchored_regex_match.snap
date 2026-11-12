@@ -1,0 +1,41 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:14 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+7:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [fix: Use `re.fullmatch`]
+8:20 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [fix: Use `re.fullmatch`]
+9:14 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+10:23 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch` [fix: Use `re.fullmatch`]
+11:15 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+12:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+13:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+14:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch`
+--- fixed (8 applied, 1 remaining) ---
+import re
+from re import match
+
+
+def check(text):
+    dollar = re.fullmatch(r"\d+", text)
+    absolute = re.fullmatch(r"\d+", text)
+    plain_string = re.fullmatch("\\d+", text)
+    search = re.fullmatch(r"\d+", text)
+    search_absolute = re.fullmatch(r"\d+", text)
+    grouped = re.fullmatch(r"(a|b)", text)
+    prefixed = re.fullmatch(r"v\d+", text)
+    keywords = re.fullmatch(pattern=r"\d+", string=text)
+    imported = match(r"\d+$", text)
+    return dollar, absolute, plain_string, search, search_absolute, grouped, prefixed, keywords, imported
+
+
+def not_anchored(text):
+    open_end = re.match(r"\d+", text)
+    alternation = re.match(r"a|b$", text)
+    flags = re.match(r"\d+$", text, re.MULTILINE)
+    inline_flag = re.match(r"(?m)\d+$", text)
+    escaped = re.match(r"\d+\$", text)
+    in_class = re.match(r"[\d$]", text)
+    search_open_start = re.search(r"\d+$", text)
+    compiled = re.compile(r"\d+$").match(text)
+    return open_end, alternation, flags, inline_flag, escaped, in_class, search_open_start, compiled

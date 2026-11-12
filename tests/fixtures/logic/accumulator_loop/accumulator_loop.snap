@@ -1,0 +1,86 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:5 SMP547 `text` is built by `+=` in a loop; `str.join` builds it in one call [unsafe fix: Use `join`]
+10:5 SMP547 `text` is built by `+=` in a loop; `str.join` builds it in one call [unsafe fix: Use `join`]
+17:5 SMP547 `data` is built by `+=` in a loop; `str.join` builds it in one call [unsafe fix: Use `join`]
+24:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+32:5 SMP547 `result` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+39:5 SMP547 `size` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+46:5 SMP547 `text` is built by `+=` in a loop; `str.join` builds it in one call
+--- fixed (6 applied, 1 remaining) ---
+def join(parts):
+    text = "".join(parts)
+    return text
+
+
+def join_mapped(parts):
+    text = "".join(part.upper() for part in parts)
+    return text
+
+
+def join_bytes(chunks):
+    data = b"".join(chunks)
+    return data
+
+
+def count(parts):
+    total = sum(1 for part in parts if part)
+    return total
+
+
+def total_of(pairs):
+    result = sum(value * 2 for key, value in pairs)
+    return result
+
+
+def ternary_iterable(parts, flag):
+    size = sum(len(part) for part in (parts if flag else []))
+    return size
+
+
+def loop_variable_read_after(parts):
+    text = ""
+    for part in parts:
+        text += part
+    return text, part
+
+
+def two_statements(parts):
+    text = ""
+    for part in parts:
+        text += part
+        print(part)
+    return text
+
+
+def gap(parts):
+    text = ""
+    print(text)
+    for part in parts:
+        text += part
+    return text
+
+
+def reads_itself(parts):
+    text = ""
+    for part in parts:
+        text += text[-1:] + part
+    return text
+
+
+def non_empty_start(parts):
+    text = "> "
+    for part in parts:
+        text += part
+    return text
+
+
+def with_else(parts):
+    total = 0
+    for part in parts:
+        total += part
+    else:
+        total += 1
+    return total

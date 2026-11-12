@@ -1,0 +1,33 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:8 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+4:10 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is truthy instead [unsafe fix: Test the value's truth]
+6:11 SMP548 Comparing with an empty `()` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+8:24 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+9:14 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead
+9:27 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is falsy instead
+10:22 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead
+--- fixed (4 applied, 3 remaining) ---
+def check(items, mapping, pair, value, flag):
+    if not items:
+        return 1
+    elif mapping:
+        return 2
+    while not pair:
+        pair = (1,)
+    label = "empty" if not (items + []) else "full"
+    flags = [items == [], {} == mapping]
+    either = flag or items == []
+    typed = value == "" or value == [] or value is None
+    assert items == []
+    return label, flags, either, typed
+
+
+def literal_both_sides():
+    return [] == []
+
+
+def string(text):
+    return text == ""

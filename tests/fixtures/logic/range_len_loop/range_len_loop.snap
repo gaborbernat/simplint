@@ -1,0 +1,57 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP546 Loop over `items` itself instead of its indexes [unsafe fix: Loop over `items`]
+7:5 SMP546 Loop over `self.names` itself instead of its indexes [unsafe fix: Loop over `self.names`]
+12:5 SMP546 Loop over `items` itself instead of its indexes
+17:5 SMP546 Loop over `items` itself instead of its indexes
+22:5 SMP546 Loop over `items` itself instead of its indexes
+30:5 SMP546 Loop over `rows` itself instead of its indexes
+--- fixed (2 applied, 4 remaining) ---
+def show(items):
+    for item in items:
+        print(item)
+
+
+def attribute(self):
+    for name in self.names:
+        print(name)
+
+
+def position_used(items):
+    for i in range(len(items)):
+        print(i, items[i])
+
+
+def written(items):
+    for i in range(len(items)):
+        items[i] = items[i].strip()
+
+
+def index_after(items):
+    for i in range(len(items)):
+        if items[i]:
+            break
+    return i
+
+
+def name_taken(rows):
+    row = None
+    for i in range(len(rows)):
+        print(rows[i], row)
+
+
+def other_sequence(items, labels):
+    for i in range(len(items)):
+        print(labels[i])
+
+
+def index_only(items):
+    for i in range(len(items)):
+        print(i)
+
+
+def call_result(load):
+    for i in range(len(load())):
+        print(load()[i])

@@ -1,0 +1,48 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:12 SMP551 `time.time()` follows the system clock, which can jump; `time.perf_counter()` measures durations [fix: Use `time.perf_counter()`]
+15:12 SMP551 `time.time()` follows the system clock, which can jump; `time.perf_counter()` measures durations [fix: Use `time.perf_counter()`]
+22:12 SMP551 `time.time()` follows the system clock, which can jump; `time.perf_counter()` measures durations
+28:12 SMP551 `time.time()` follows the system clock, which can jump; `time.perf_counter()` measures durations
+--- fixed (2 applied, 2 remaining) ---
+import time
+from time import time as now
+
+
+def timed(work):
+    start = time.perf_counter()
+    work()
+    return time.perf_counter() - start
+
+
+def both_names(work):
+    start = time.perf_counter()
+    work()
+    end = time.perf_counter()
+    return end - start
+
+
+def logged(work):
+    start = time.time()
+    work()
+    print("started at", start)
+    return time.time() - start
+
+
+def imported(work):
+    started = now()
+    work()
+    return now() - started
+
+
+def timestamp():
+    return time.time() - 3600
+
+
+def rebound(work):
+    start = time.time()
+    start = time.time()
+    work()
+    return time.time() - start
