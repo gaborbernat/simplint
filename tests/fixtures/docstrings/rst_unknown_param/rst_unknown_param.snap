@@ -9,7 +9,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 48:6 SMP917 `:param z:` documents `z`, which `Point` does not take [unsafe fix: Remove `:param z:`]
 62:5 SMP917 `:param missing:` documents `missing`, which `escaped` does not take
 109:6 SMP917 `:param gone:` documents `gone`, which `Box` does not take [unsafe fix: Remove `:param gone:`]
---- fixed (6 applied, 1 remaining) ---
+138:5 SMP917 `:param gone_first:` documents `gone_first`, which `first_line` does not take
+--- fixed (6 applied, 2 remaining) ---
 from dataclasses import dataclass
 
 
@@ -139,3 +140,27 @@ class SpanRange:
     def __init__(self, start: int = 0, end: int = 0, *, length: int = 0) -> None:
         self.start = start
         self.end = end or start + length
+
+
+def first_line(path: str) -> str:
+    """:param gone_first: Shares the line of the opening quotes, so no whole line holds it."""
+    return path
+
+
+def with_meta(path: str) -> str:
+    """Load a file.
+
+    :meta public:
+    """
+    return path
+
+
+DECORATORS = [lambda cls: cls]
+
+
+@DECORATORS[0]
+class Decorated:
+    """Hold nothing.
+
+    :param value: The decorator may build a constructor that takes it.
+    """

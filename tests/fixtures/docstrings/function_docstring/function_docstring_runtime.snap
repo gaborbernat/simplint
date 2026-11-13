@@ -2,15 +2,22 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-40:5 SMP901 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-48:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-53:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-57:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-62:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-67:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-73:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-78:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
---- fixed (8 applied, 0 remaining) ---
+43:5 SMP901 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+51:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+56:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+60:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+65:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+70:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+76:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+81:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+87:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+92:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+98:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+104:5 SMP901 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+--- fixed (12 applied, 0 remaining) ---
+import abc
+import contextlib
+import enum
 import functools
 from dataclasses import dataclass
 from functools import cache
@@ -84,3 +91,24 @@ def _shelf_fixture() -> None:
 @pytest.mark.parametrize("value", [1])
 def _parametrized_shelf(value: int) -> None:
     ...
+
+
+class _AbstractShelf(abc.ABC):
+    @abc.abstractmethod
+    def _stock(self) -> int:
+        ...
+
+
+@contextlib.contextmanager
+def _opened_shelf() -> object:
+    yield
+
+
+@contextlib.asynccontextmanager
+async def _opened_async_shelf() -> object:
+    yield
+
+
+@enum.unique
+class _ShelfKind(enum.Enum):
+    WIDE = 1

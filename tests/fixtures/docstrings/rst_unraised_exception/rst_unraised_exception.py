@@ -204,3 +204,61 @@ def unraised_over_display() -> dict[str, int]:
     :raises KeyError: Never.
     """
     return {name: 1 for name in ("a", "b")}
+
+
+def unraised_subscript_other(names: dict[str, str]) -> str:
+    """Return the first name.
+
+    :param names: The names.
+    :returns: The name.
+    :raises RuntimeError: Never.
+    """
+    return names["first"]
+
+
+def unraised_arithmetic(total: int, count: int) -> float:
+    """Average the total.
+
+    :param total: The total.
+    :param count: The count.
+    :returns: The average.
+    :raises RuntimeError: Never.
+    """
+    return total / count
+
+
+def unraised_beside_nested(text: str) -> str:
+    """Wrap a name.
+
+    :param text: The text.
+    :returns: The text.
+    :raises RuntimeError: Never.
+    """
+
+    def inner() -> str:
+        return text
+
+    return text
+
+
+def raised_by_division(total: int, count: int) -> float:
+    """Average the total.
+
+    :param total: The total.
+    :param count: The count.
+    :returns: The average.
+    :raises ZeroDivisionError: When the count is zero.
+    """
+    return total / count
+
+
+def unraised_over_literal(text: str) -> str:
+    """Join the parts.
+
+    :param text: The text.
+    :returns: The text.
+    :raises RuntimeError: Never.
+    """
+    for part in ("a", "b"):
+        text += part
+    return text
