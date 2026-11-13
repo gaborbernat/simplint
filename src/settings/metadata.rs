@@ -4,6 +4,8 @@ use std::path::{Component, Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::syntax::top_level;
+
 // The `[project]` table of a `pyproject.toml`, reduced to what simplint's rules read: the project's name, the modules
 // its unconditional requirements install, and the objects its scripts and entry points name.
 #[derive(Deserialize, Default)]
@@ -25,6 +27,18 @@ pub struct ProjectMetadata {
 }
 
 impl ProjectMetadata {
+    // Whether an unconditional requirement installs the module under its exact name. Removing a guard around the import
+    // relies on the answer, so a near match does not count.
+    pub(crate) fn requires(&self, module: &str) -> bool {
+        self.dependencies.contains(&top_level(module).to_ascii_lowercase())
+    }
+
+    // Whether a requirement or an extra may install the module. Reporting the module as undeclared relies on the answer,
+    // so any likely match counts.
+    pub(crate) fn may_install(&self, module: &str) -> bool {
+        may_provide(&self.runtime, module)
+    }
+
     // `[dependency-groups]` sits outside `[project]`, so the parsed table cannot carry it. Its `include-group` tables
     // name no requirement and are skipped.
     pub(super) fn add_groups(&mut self, groups: &BTreeMap<String, Vec<toml::Value>>) {
@@ -68,22 +82,25 @@ impl ProjectMetadata {
                     .collect::<Vec<_>>()
             },
         ));
-        for path in [&["pytest", "ini_options", "addopts"][..], &["pytest", "addopts"]] {
-            let options: Vec<String> = strings(lookup(path))
-                .into_iter()
-                .flat_map(|option| option.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
-                .collect();
-            self.entry_points.extend(
-                options
-                    .windows(2)
-                    .filter(|pair| pair[0] == "-p")
-                    .map(|pair| pair[1].as_str())
-                    .chain(options.iter().filter_map(|option| option.strip_prefix("-p")))
-                    .filter(|plugin| !plugin.is_empty() && !plugin.starts_with("no:"))
-                    .map(str::to_owned),
-            );
+    }
+}
+
+// A distribution's import name is its normalized name in most cases, so a namespace package such as `google.auth`
+// matches `google-auth`, and one whose name adds a prefix or suffix, such as `grpcio` or `pyserial`, contains it.
+pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Clone, module: &str) -> bool {
+    let lower = module.to_ascii_lowercase();
+    let mut prefix = String::new();
+    for part in lower.split('.') {
+        if !prefix.is_empty() {
+            prefix.push('_');
+        }
+        prefix.push_str(part);
+        if modules.clone().into_iter().any(|name| *name == prefix) {
+            return true;
         }
     }
+    let root = top_level(&lower);
+    modules.into_iter().any(|name| name.contains(root))
 }
 
 fn dotted_attribute(value: &str) -> Option<String> {
@@ -268,23 +285,15 @@ pub struct CoveragePlugins {
 }
 
 impl CoveragePlugins {
-    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path) -> Self {
+    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path, pythonpath: &[PathBuf]) -> Self {
         let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
         let modules = strings(lookup(&["coverage", "run", "plugins"]));
         if modules.is_empty() {
             return Self::default();
         }
         let search_paths = std::iter::once(project_dir.to_path_buf())
-            .chain(
-                [
-                    &["pytest", "ini_options", "pythonpath"][..],
-                    &["pytest", "pythonpath"],
-                    &["ty", "environment", "extra-paths"],
-                ]
-                .iter()
-                .flat_map(|path| strings(lookup(path)))
-                .map(|directory| project_dir.join(directory)),
-            )
+            .chain(pythonpath.iter().cloned())
+            .chain(strings(lookup(&["ty", "environment", "extra-paths"])).into_iter().map(|directory| project_dir.join(directory)))
             .map(|path| path.components().collect::<PathBuf>())
             // A configured directory a source distribution leaves out would fail the whole search path.
             .filter(|path| path.is_dir())

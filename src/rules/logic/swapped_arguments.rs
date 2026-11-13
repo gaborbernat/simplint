@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::logic::callee::Callee;
+use crate::rules::callee::Callee;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {

@@ -7,8 +7,9 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::callee::local_function;
 use crate::rules::testing::collected_tests;
-use crate::syntax::last_segment;
+use crate::syntax::{last_segment, receiver};
 
 // Prefixes of the helpers that check a result, such as `check_output`, `verify_signature` or Playwright's `expect`.
 const CHECKING_PREFIXES: &[&str] = &["check", "verify", "expect", "validate", "ensure", "compare", "fail"];
@@ -45,7 +46,9 @@ pub fn test_without_assertion(checker: &Checker) {
             continue;
         }
         let parameters: FxHashSet<&str> = test.parameters.iter().map(|parameter| parameter.name().as_str()).collect();
-        let mut finder = Checks { checker, support: &support, parameters, class: class_of(checker, test), seen: FxHashSet::default(), checks: false };
+        let class = class_of(checker, test);
+        let method = method_in(class, test);
+        let mut finder = Checks { checker, support: &support, parameters, class, method, seen: FxHashSet::default(), checks: false };
         finder.visit_body(&test.body);
         if !finder.checks {
             checker.report(
@@ -77,6 +80,11 @@ fn only_runs(checker: &Checker, test: &ast::StmtFunctionDef) -> bool {
 
 fn class_of<'a>(checker: &Checker<'a>, test: &ast::StmtFunctionDef) -> Option<&'a ast::StmtClassDef> {
     checker.body().iter().filter_map(Stmt::as_class_def_stmt).find(|class| class.range().contains_range(test.range()))
+}
+
+// `function` when it is a method of `class`, whose calls through its receiver reach the other methods.
+fn method_in<'a>(class: Option<&'a ast::StmtClassDef>, function: &'a ast::StmtFunctionDef) -> Option<&'a ast::StmtFunctionDef> {
+    class?.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, function))
 }
 
 // The names the module imports from its own test package or from a testing module, whose helpers may assert: a
@@ -113,6 +121,8 @@ struct Checks<'a, 'b> {
     support: &'a FxHashSet<&'b str>,
     parameters: FxHashSet<&'b str>,
     class: Option<&'b ast::StmtClassDef>,
+    // The method of `class` whose body the walk is in.
+    method: Option<&'b ast::StmtFunctionDef>,
     // The local helpers already followed, so recursion ends.
     seen: FxHashSet<TextRange>,
     checks: bool,
@@ -176,8 +186,8 @@ impl<'b> Checks<'_, 'b> {
                 if self.parameters.contains(id) || self.support.contains(id) {
                     return true;
                 }
-                if let Some(helper) = self.checker.semantic().module_function(name) {
-                    return self.follows(&helper.body, helper.range());
+                if let Some((helper, _)) = local_function(semantic, func, None) {
+                    return self.follows_function(helper);
                 }
                 // A helper class the module defines may check in its methods.
                 self.checker
@@ -199,23 +209,24 @@ impl<'b> Checks<'_, 'b> {
                     if self.support.contains(root) {
                         return true;
                     }
-                    if root == "self" {
+                    let method = self.method.zip(self.class);
+                    if method.is_some_and(|(method, _)| receiver(method) == Some(root)) {
                         // A method the class defines is followed; an inherited one may assert, as a base test class's
                         // helpers do.
-                        let method = self.class.and_then(|class| {
-                            class
-                                .body
-                                .iter()
-                                .filter_map(Stmt::as_function_def_stmt)
-                                .find(|method| method.name.as_str() == attribute.attr.as_str())
-                        });
-                        return method.is_none_or(|method| self.follows(&method.body, method.range()));
+                        return local_function(semantic, func, method).is_none_or(|(method, _)| self.follows_function(method));
                     }
                 }
                 false
             }
             _ => false,
         }
+    }
+
+    fn follows_function(&mut self, function: &'b ast::StmtFunctionDef) -> bool {
+        let outer = std::mem::replace(&mut self.method, method_in(self.class, function));
+        let checks = self.follows(&function.body, function.range());
+        self.method = outer;
+        checks
     }
 
     fn follows(&mut self, body: &'b [Stmt], range: TextRange) -> bool {

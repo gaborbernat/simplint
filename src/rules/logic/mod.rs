@@ -2,7 +2,6 @@ pub(crate) mod ambiguous_operator_chain;
 mod accumulator_loop;
 pub(crate) mod anchored_regex_match;
 pub(crate) mod cached_generator;
-mod callee;
 mod catastrophic_regex;
 mod cognitive_complexity;
 mod collection_built_by_statements;

@@ -271,22 +271,20 @@ impl<'a> Semantic<'a> {
         function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
     }
 
+    // The `def` at module level a load of `name` reads, when no statement of the file rebinds the name.
     pub fn module_function(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
         if self.is_rebound(name.id.as_str()) {
             return None;
         }
-        let bindings = self.resolved_bindings(name);
-        let [binding] = bindings.as_slice() else {
-            return None;
-        };
-        if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) || !binding.scope.is_global() {
-            return None;
-        }
-        binding.statement(&self.model)?.as_function_def_stmt()
+        self.function_binding(name).filter(|(_, global)| *global).map(|(function, _)| function)
     }
 
     // The `def` a load of `name` reads, when its scope binds the name once, and to that `def`.
     pub fn function_of(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
+        self.function_binding(name).map(|(function, _)| function)
+    }
+
+    fn function_binding(&self, name: &ast::ExprName) -> Option<(&'a ast::StmtFunctionDef, bool)> {
         let bindings = self.resolved_bindings(name);
         let [binding] = bindings.as_slice() else {
             return None;
@@ -294,7 +292,7 @@ impl<'a> Semantic<'a> {
         if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) {
             return None;
         }
-        binding.statement(&self.model)?.as_function_def_stmt()
+        Some((binding.statement(&self.model)?.as_function_def_stmt()?, binding.scope.is_global()))
     }
 
     // Whether a load of `name` reads a `from ... import`, the only binding of the name in its scope.

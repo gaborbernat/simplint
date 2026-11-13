@@ -34,15 +34,60 @@ pub(crate) fn module_uses<'a>(checker: &'a Checker) -> FxHashMap<&'a str, Vec<Us
 }
 
 pub(crate) fn module_candidate(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
-    eligible(checker, function) && !checker.semantic().is_rebound(function.name.as_str())
+    resolvable(checker, function) && !is_public(checker, function)
 }
 
-// Decorators may register or wrap a function, Python calls dunders itself, and code outside the run may call a public
-// function without the argument, so none of these is reported.
-fn eligible(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
-    function.decorator_list.is_empty()
-        && Visibility::of(function.name.as_str()) != Visibility::Dunder
-        && !checker.state().public_api(checker).covers(function.range(), Need::Any)
+// A module-level function whose name reaches its definition in each call of this file. A decorator may register or wrap
+// it and Python calls dunders itself, so the calls written out are not all the calls it gets.
+pub(crate) fn resolvable(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
+    plain(function) && !checker.semantic().is_rebound(function.name.as_str())
+}
+
+fn plain(function: &ast::StmtFunctionDef) -> bool {
+    function.decorator_list.is_empty() && Visibility::of(function.name.as_str()) != Visibility::Dunder
+}
+
+// Code outside the run may call a public function without the argument.
+fn is_public(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
+    checker.state().public_api(checker).covers(function.range(), Need::Any)
+}
+
+// Every call of a module-level function the run makes: those of the other files, through its module, and those of this
+// file, by its name. `None` when calls the run cannot see may reach it.
+pub(crate) fn module_sites(
+    checker: &Checker,
+    function: &ast::StmtFunctionDef,
+    uses: &FxHashMap<&str, Vec<Use>>,
+) -> Option<CallSites> {
+    if !module_candidate(checker, function) {
+        return None;
+    }
+    let name = function.name.as_str();
+    let mut sites = checker.project().calls().call_sites(name).cloned().unwrap_or_default();
+    for found in uses.get(name).into_iter().flatten() {
+        add_use(&mut sites, found);
+    }
+    Some(sites)
+}
+
+// Whether each call passes `param`, by position or by keyword. A method's calls skip its receiver, so `skip` leading
+// positional parameters take no argument of theirs.
+pub(crate) fn always_passes(
+    sites: &CallSites,
+    parameters: &ast::Parameters,
+    param: &ast::ParameterWithDefault,
+    skip: usize,
+) -> bool {
+    if sites.opaque || sites.shapes.is_empty() || sites.shapes.iter().any(|shape| shape.unpacks_mapping) {
+        return false;
+    }
+    let name = param.parameter.name.as_str();
+    let position = parameters.posonlyargs.iter().chain(&parameters.args).position(|other| std::ptr::eq(other, param));
+    let keyword = !parameters.posonlyargs.iter().any(|other| std::ptr::eq(other, param));
+    sites.shapes.iter().all(|shape| {
+        position.is_some_and(|position| position >= skip && position - skip < shape.positional as usize)
+            || keyword && shape.keywords.iter().any(|passed| passed == name)
+    })
 }
 
 pub(crate) fn method_uses<'a>(
@@ -75,7 +120,7 @@ pub(crate) fn method_uses<'a>(
 }
 
 pub(crate) fn method_candidate(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
-    eligible(checker, function) && !checker.project().is_attribute_assigned(function.name.as_str())
+    plain(function) && !is_public(checker, function) && !checker.project().is_attribute_assigned(function.name.as_str())
 }
 
 pub(crate) fn add_use(sites: &mut CallSites, found: &Use) {

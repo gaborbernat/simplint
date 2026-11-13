@@ -243,6 +243,22 @@ fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
     common::assert_report_count(root.path(), "SMP820", 1);
 }
 
+// A module pytest collects by its `python_files`, under its `testpaths` when set, is a test module like `test_*.py`.
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"check_*.py\"\n", "src/check_value.py", 1 ; "python_files")]
+#[test_case("pytest.ini", "[pytest]\npython_files = check_*.py\n", "src/check_value.py", 1 ; "pytest_ini")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "suite/value.py", 1 ; "under_testpaths")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "src/value.py", 0 ; "outside_testpaths")]
+#[test_case("pyproject.toml", "", "src/check_value.py", 0 ; "default_python_files")]
+fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &str, reports: usize) {
+    let pyproject = format!("[project]\nname = \"example\"\nversion = \"1\"\n\n{}", if file == "pyproject.toml" { configuration } else { "" });
+    let mut files = vec![("pyproject.toml", pyproject.as_str()), (module, "def test_value() -> int:\n    return 1\n")];
+    if file != "pyproject.toml" {
+        files.push((file, configuration));
+    }
+    let root = common::project(&files);
+    common::assert_report_count(root.path(), "SMP817", reports);
+}
+
 const CHECKED: &str = "def test_value() -> None:\n    assert True\n";
 
 // pytest collects `test_*.py` and `*_test.py` unless `python_files` says otherwise; a module it skips on purpose is
