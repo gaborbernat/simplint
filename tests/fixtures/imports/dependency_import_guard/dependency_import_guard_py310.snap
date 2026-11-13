@@ -110,3 +110,10 @@ print(json)
 import zoneinfo as zones  # noqa: F401  # fails when the module is missing
 
 import requests  # noqa: F401  # fails when the module is missing
+
+try:
+    import _socket
+    import tracemalloc
+except ImportError:
+    _socket = tracemalloc = None
+print(_socket, tracemalloc)

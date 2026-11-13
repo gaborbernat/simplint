@@ -214,7 +214,8 @@ A module is required when its top-level package is one of these:
   ```
 
 - **Standard library modules that minimal and alternative builds may leave out**, such as `_hashlib`, `ctypes`, `gzip`,
-  `mmap`, `ssl`, `sqlite3`, `tkinter` or `_zstd`: the import can fail on such a build.
+  `mmap`, `ssl`, `sqlite3`, `tkinter`, `_zstd`, `_socket` (missing on WASI) or `tracemalloc` (missing on PyPy): the
+  import can fail on such a build.
 
   ```toml config
   [project]
