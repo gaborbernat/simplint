@@ -11,6 +11,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import, fix_of};
 use crate::rules::is_sphinx_conf;
+use crate::rules::module_variable::TOOL_READ_NAMES;
 use crate::syntax::{last_segment, single_assignment};
 
 use super::globals_writes::GlobalsWrites;
@@ -30,7 +31,7 @@ pub fn mutable_module_constant(checker: &Checker) {
         };
         let name = target.id.as_str();
         let declared_final = annotation.is_some_and(|annotation| !matches!(final_type(annotation), Final::No));
-        if !(is_constant_name(name) || declared_final) || is_dunder(name) {
+        if !(is_constant_name(name) || declared_final) || is_dunder(name) || TOOL_READ_NAMES.contains(&name) {
             continue;
         }
         let Some(kind) = Kind::of(checker, value) else {
@@ -142,9 +143,9 @@ fn fix(checker: &Checker, kind: Kind, value: &Expr, annotation: Option<&Expr>) -
         Final::Of(inner) => Some(inner),
     });
     if let Some(declared) = declared
-        && let Retype::Edit(edit) = annotation_edit(checker, kind, declared, immutable)?
+        && let Retype::Edit(retype) = annotation_edit(checker, kind, declared, immutable)?
     {
-        edits.push(edit);
+        edits.extend(retype);
     }
     if immutable != "MappingProxyType" {
         return fix_of(edits, Applicability::Unsafe);
@@ -186,8 +187,8 @@ fn value_edits(checker: &Checker, kind: Kind, value: &Expr, immutable: &str) -> 
 enum Retype {
     // An abstract annotation, such as `Sequence[str]`, that the immutable value already satisfies.
     Keep,
-    // The new spelling of a declared `list[T]`, `set[T]` or `dict[K, V]`, bare or subscripted.
-    Edit(Edit),
+    // The edits that respell a declared `list[T]`, `set[T]` or `dict[K, V]`, bare or subscripted.
+    Edit(Vec<Edit>),
 }
 
 fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &str) -> Option<Retype> {
@@ -201,13 +202,12 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
         let typing = ["List", "Set", "Dict"].iter().any(|alias| semantic.match_typing_expr(base, alias));
         return (!typing && !matches!(declared, Expr::StringLiteral(_))).then_some(Retype::Keep);
     }
-    let text = match (kind, slice) {
-        (Kind::List, Some(slice)) => format!("tuple[{}, ...]", checker.text(slice.range())),
-        (_, Some(slice)) => format!("{immutable}[{}]", checker.text(slice.range())),
-        (Kind::List, None) => "tuple".to_owned(),
-        (_, None) => immutable.to_owned(),
-    };
-    Some(Retype::Edit(Edit::range_replacement(text, declared.range())))
+    // Only the base and the tuple's `, ...` change, so a comment inside the brackets stays.
+    let rename = Edit::range_replacement(immutable.to_owned(), base.range());
+    Some(Retype::Edit(match (kind, slice) {
+        (Kind::List, Some(slice)) => vec![rename, Edit::insertion(", ...".to_owned(), slice.end())],
+        _ => vec![rename],
+    }))
 }
 
 // Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method

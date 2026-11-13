@@ -21,9 +21,13 @@ pub(crate) struct ModuleVariable<'a> {
     pub(crate) private: bool,
 }
 
+// Module names a tool reads by name, which also decides the type their value must have: pytest takes `pytestmark` only
+// as a list or a single mark.
+pub(crate) const TOOL_READ_NAMES: &[&str] =
+    &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];
+
 // Sorted by position, so the rules report them in the order they appear.
 pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
-    const MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];
     if is_sphinx_conf(checker) {
         return Vec::new();
     }
@@ -48,7 +52,7 @@ pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<
         };
         if is_dunder(name)
             || is_class_like(name)
-            || MAGIC.contains(&name)
+            || TOOL_READ_NAMES.contains(&name)
             || read_by_name.contains(name)
             || aliases.contains(name)
             || (type_parameters.contains(name)
