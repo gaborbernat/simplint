@@ -50,6 +50,7 @@ pub(super) fn index_and_lint<'f, T: Send>(
         external,
     };
     let mut imports = ImportResolver::new(
+        plumbing.cwd,
         roots,
         project.entry_points.iter().map(|(root, _)| root.as_path()),
         project.coverage_paths.iter().map(|(root, directory)| (root.as_path(), directory.as_path())),
@@ -110,7 +111,7 @@ fn lint_rounds<'f, T: Send>(
         if !overlay.is_empty() {
             return None;
         }
-        file_caches[at].and_then(|(cache, _)| FileKey::of(files[at].path).map(|key| (cache, key)))
+        Some((file_caches[at]?.0, FileKey::of(files[at].path)?))
     };
     // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
     if plumbing.rewrote.is_none() {
@@ -197,7 +198,7 @@ fn reindex(
     project: &Project,
 ) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
-    let fresh: Vec<(usize, FileFacts)> = rewritten.par_iter().filter_map(|&at| collect(at).map(|facts| (at, facts))).collect();
+    let fresh: Vec<(usize, FileFacts)> = rewritten.par_iter().filter_map(|&at| Some((at, collect(at)?))).collect();
     for &at in rewritten {
         index.resolver.forget(files[at].absolute.as_path());
     }

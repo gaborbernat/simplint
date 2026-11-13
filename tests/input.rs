@@ -25,6 +25,15 @@ fn long_operator_chain_does_not_crash() {
     assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
 }
 
+// Only the compiler rejects a `nonlocal` that no enclosing function binds; the parser accepts it, so the file is linted.
+#[test]
+fn nonlocal_without_an_enclosing_binding_is_checked() {
+    let source = "def outer() -> None:\n    def inner() -> None:\n        nonlocal missing\n        missing = 1\n        \
+        print(missing)\n\n    inner()\n";
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP536"]), (0, common::PASSED.to_owned(), String::new()));
+}
+
 // A link to a file outside the run is skipped: `--fix` must not write through it, and the report must not show the
 // target's text.
 #[cfg(unix)]
@@ -173,4 +182,25 @@ fn fix_writes_back_standard_input_excluded_by_force_exclude() {
     ];
     let (code, stdout, _) = check_with_stdin(root.path(), &args, source);
     assert_eq!((code, stdout), (0, source.to_owned()));
+}
+
+// Standard input takes the configuration of the directory its name lies in, so an invalid one there fails the run,
+// whether Ruff or simplint reads the broken part.
+#[test_case("[project\n" ; "ruff")]
+#[test_case("[tool.simplint]\nselect = 1\n" ; "simplint")]
+fn stdin_name_under_an_invalid_nested_configuration_fails(content: &str) {
+    let root = project(&[("sub/pyproject.toml", content)]);
+    let args = ["--select", "SMP101", "--stdin-filename", "sub/module.py", "-"];
+    let (code, _, stderr) = check_with_stdin(root.path(), &args, "x = 1\n");
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true), "{stderr}");
+}
+
+// A relative name finds no configuration up to the working directory, so the run starts from the defaults, yet the
+// configuration of a directory above it still applies to the file, and an invalid one fails the run.
+#[test]
+fn stdin_name_under_an_invalid_configuration_above_the_working_directory_fails() {
+    let root = project(&[("ruff.toml", "line-length = \"x\"\n"), ("work/.keep", "")]);
+    let args = ["check", "--select", "SMP101", "--stdin-filename", "module.py", "-"];
+    let (code, _, stderr) = common::simplint_with_stdin(&root.path().join("work"), &args, "x = 1\n");
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true), "{stderr}");
 }

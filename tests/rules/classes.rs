@@ -964,3 +964,17 @@ fn string_annotation_call_of_another_module_needs_keyword_arguments_by_hand() {
     common::fix_unsafe(root.path(), "dataclass-kw-only");
     assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
 }
+
+// An annotation on another object's attribute in a dataclass body sets that attribute, not a field of the dataclass.
+#[test]
+fn dataclass_counts_fields_annotated_by_name_only() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint.classes]\nmax-instance-attributes = 1\n"),
+        (
+            "module.py",
+            "from dataclasses import dataclass\n\n\nclass Holder:\n    size = 0\n\n\n@dataclass\nclass Point:\n    \
+             x: int\n    Holder.size: int = 1\n",
+        ),
+    ]);
+    common::assert_report_count(root.path(), "SMP711", 0);
+}

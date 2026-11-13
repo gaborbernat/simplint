@@ -17,7 +17,7 @@ impl Resolved {
         )?;
         let pyproject_config = ruff::resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())
             .map_err(|error| redact_extended(error, &settings_resolver.root.root))?;
-        let cache_dir = choose_cache_dir(cli.cache_dir.is_some(), &pyproject_config);
-        Ok(Self { config_arguments, settings_resolver, pyproject_config, cache_dir })
+        let cache_dir = choose_cache_dir(cli.cache_dir.is_some(), &pyproject_config, &arguments.cwd);
+        Ok(Self { config_arguments, settings_resolver, pyproject_config, cache_dir, cwd: arguments.cwd })
     }
 }

@@ -108,8 +108,10 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of.
+    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of. Only debug builds check, so
+    // a release build skips the bookkeeping.
     pub(super) fn enter(&self, rule: Rule) {
+        #[cfg(debug_assertions)]
         self.rule.set(Some(rule));
     }
 
@@ -451,7 +453,8 @@ impl<'a> Checker<'a> {
 
 // The source of a file of the run, read for a location in it, under the name the run gives the file.
 pub(crate) fn source_file_at(path: &Path) -> Option<SourceFile> {
-    std::fs::read_to_string(path).ok().map(|source| SourceFileBuilder::new(path.to_string_lossy(), source).finish())
+    let source = std::fs::read_to_string(path).ok()?;
+    Some(SourceFileBuilder::new(path.to_string_lossy(), source).finish())
 }
 
 // Edits of a fix are sorted and disjoint as `Fix` requires. Touching edits, such as an insertion at the end of a
@@ -470,8 +473,14 @@ mod tests {
     use ruff_diagnostics::{Edit, Fix};
     use ruff_text_size::TextSize;
 
-    use super::assert_disjoint_edits;
+    use super::{assert_disjoint_edits, source_file_at};
     use crate::lint::registry::Rule;
+
+    #[test]
+    fn file_that_is_gone_has_no_source() {
+        let root = tempfile::TempDir::new().expect("create a temporary directory");
+        assert!(source_file_at(&root.path().join("module.py")).is_none());
+    }
 
     #[test]
     fn touching_edits_are_disjoint() {

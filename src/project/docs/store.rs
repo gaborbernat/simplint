@@ -90,4 +90,10 @@ mod tests {
         std::fs::write(&path, [0xff; 64]).expect("write the cache");
         assert!(DocReferences::cached(&path, 0).is_none());
     }
+
+    #[test]
+    fn missing_cache_is_a_miss() {
+        let root = TempDir::new().expect("create a temporary directory");
+        assert!(DocReferences::cached(&root.path().join("docs"), 0).is_none());
+    }
 }

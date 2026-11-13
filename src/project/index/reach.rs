@@ -201,7 +201,7 @@ pub(super) fn reexport(
     let listed: FxHashMap<FileId, FxHashSet<&str>> = stars
         .iter()
         .filter_map(|(_, source)| {
-            let exports = sources.get(source).and_then(|facts| facts.exports.as_ref())?;
+            let exports = sources.get(source)?.exports.as_ref()?;
             Some((*source, exports.iter().map(String::as_str).collect()))
         })
         .collect();

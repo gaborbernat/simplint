@@ -150,7 +150,7 @@ fn shipped_packages(root: &Path, build: &BuildConfiguration, metadata: &ProjectM
     };
     let typed: BTreeSet<String> = candidates()
         .filter(|path| path.join("py.typed").is_file())
-        .filter_map(|path| path.file_name().and_then(std::ffi::OsStr::to_str).map(str::to_owned))
+        .filter_map(|path| path.file_name().expect("a directory entry has a name").to_str().map(str::to_owned))
         .collect();
     if !typed.is_empty() {
         return Some(typed);

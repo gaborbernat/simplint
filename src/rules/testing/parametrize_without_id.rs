@@ -197,7 +197,7 @@ fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> TextRa
         .chain(arguments.keywords.iter().map(Ranged::start))
         .filter(|start| *start >= keyword.end())
         .min()
-        .unwrap_or(keyword.end());
+        .expect("the argument names lie before or after `ids=`");
     TextRange::new(keyword.start(), after)
 }
 

@@ -162,7 +162,7 @@ pub(crate) fn within(path: &Path, root: &Path) -> bool {
 fn resolve_links(path: &Path) -> Option<PathBuf> {
     path.ancestors().find_map(|ancestor| {
         let existing = fs::canonicalize(ancestor).ok()?;
-        Some(existing.join(path.strip_prefix(ancestor).ok()?))
+        Some(existing.join(path.strip_prefix(ancestor).expect("an ancestor is a prefix of its path")))
     })
 }
 
@@ -170,5 +170,24 @@ fn resolve_links(path: &Path) -> Option<PathBuf> {
 pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
     for (_, message) in missing {
         warn!("{} {message}", "Encountered error:".bold());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use anyhow::anyhow;
+
+    use super::redact_extended;
+
+    // A message that names no complete path is not one about an extended file, so it stays as Ruff wrote it.
+    #[test]
+    fn redact_extended_keeps_an_unterminated_name() {
+        let message = "Failed to load extended configuration `/elsewhere/ruff.toml";
+
+        let redacted = redact_extended(anyhow!(message), Path::new("."));
+
+        assert_eq!(redacted.to_string(), message);
     }
 }

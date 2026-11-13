@@ -51,3 +51,17 @@ fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
         .collect();
     Some((level, name, names))
 }
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::from_import;
+
+    #[test_case("from ..pkg import (a, b as c)", Some((2, "pkg", &["a", "b"])) ; "relative_import")]
+    #[test_case("from pkg", None ; "unfinished_import")]
+    #[test_case("import pkg", None ; "plain_import")]
+    fn from_import_reads_a_doctest_line(code: &str, expected: Option<(u32, &str, &[&str])>) {
+        assert_eq!(from_import(code), expected.map(|(level, name, names)| (level, name, names.to_vec())));
+    }
+}

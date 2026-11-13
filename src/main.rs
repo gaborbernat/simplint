@@ -1,6 +1,8 @@
 mod cli;
 mod fix;
 mod layout;
+#[cfg(all(test, unix))]
+mod limits;
 mod lint;
 mod project;
 mod rst;
@@ -12,9 +14,7 @@ mod syntax;
 
 use std::ffi::OsString;
 use std::io::Write;
-use std::panic::resume_unwind;
 use std::process::ExitCode;
-use std::thread;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser};
@@ -46,18 +46,13 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 fn main() -> ExitCode {
     let cli = Cli::parse();
     // Deeply nested source, such as a list nested thousands of levels deep, recurses past the default stack of a thread
-    // in the parser and in every visitor, so the work and rayon's workers get a larger one.
-    let worker = thread::Builder::new()
-        .stack_size(STACK_SIZE)
-        .spawn(move || {
-            ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global().expect("nothing built the pool before");
-            run(cli)
-        })
-        .expect("the process can start its first thread");
-    match worker.join() {
-        Ok(Ok(status)) => status.into(),
-        Ok(Err(error)) => report_error(&error),
-        Err(panic) => resume_unwind(panic),
+    // in the parser and in every visitor, so rayon's workers get a larger one, and the work runs on one of them.
+    if let Err(error) = ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global() {
+        return report_error(&error.into());
+    }
+    match rayon::scope(|_| run(cli)) {
+        Ok(status) => status.into(),
+        Err(error) => report_error(&error),
     }
 }
 

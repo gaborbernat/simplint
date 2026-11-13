@@ -333,6 +333,7 @@ fn python_sources(root: &Path) -> BTreeMap<PathBuf, String> {
 #[test_case(DJANGO_MODEL_MANAGER_AFTER_METHOD, 1 ; "manager_after_method")]
 #[test_case(DJANGO_MODEL_URL_BEFORE_PROPERTY, 1 ; "url_before_property")]
 #[test_case(DJANGO_MODEL_PLAIN_ATTRIBUTE, 1 ; "plain_attribute")]
+#[test_case(DJANGO_MODEL_UNPACKED_ATTRIBUTE, 1 ; "unpacked_attribute")]
 #[test_case(DJANGO_MODEL_NESTED_CLASS, 1 ; "nested_class")]
 #[test_case(DJANGO_MODEL_DOCSTRING_BEFORE_META, 1 ; "docstring_before_meta")]
 #[test_case(DJANGO_MODEL_INIT_AND_META_AFTER_METHOD, 1 ; "second_inversion_meta_left_to_ruff")]
@@ -363,6 +364,9 @@ const DJANGO_MODEL_URL_BEFORE_PROPERTY: &str = "from django.db import models\n\n
 const DJANGO_MODEL_PLAIN_ATTRIBUTE: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def \
     helper(self) -> None:\n        pass\n\n    LIMIT = 3\n\n    @property\n    def full(self) -> str:\n        return \"\"\
     \n";
+const DJANGO_MODEL_UNPACKED_ATTRIBUTE: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \
+    def helper(self) -> None:\n        pass\n\n    LOW, HIGH = 1, 3\n\n    @property\n    def full(self) -> str:\n        \
+    return \"\"\n";
 const DJANGO_MODEL_NESTED_CLASS: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper\
     (self) -> None:\n        pass\n\n    class Config:\n        pass\n";
 const DJANGO_MODEL_DOCSTRING_BEFORE_META: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \

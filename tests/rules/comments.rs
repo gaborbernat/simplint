@@ -308,6 +308,22 @@ fn unused_ignore_keeps_the_numeric_report_of_a_selector_it_shifts() {
     );
 }
 
+// Removing the selectors on both sides rewrites the whole list, so the numeric report starts inside the rewrite.
+#[test]
+fn unused_ignore_keeps_the_numeric_report_inside_the_rewritten_list() {
+    let root = common::project(&[(
+        "module.py",
+        "x = 1  # simplint: ignore[imprecise-annotation, SMP101, callable-ellipsis]\n",
+    )]);
+    assert_eq!(
+        (
+            common::check(root.path(), &["--select", "SMP008,SMP009,SMP101", "--unfixable", "SMP008", "--fix"]).0,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, "x = 1  # simplint: ignore[SMP101]\n".to_owned())
+    );
+}
+
 #[test]
 fn unused_ignore_honors_unfixable() {
     let source = "value = 1  # simplint: ignore[SMP101]\n";

@@ -11,6 +11,7 @@ pub(super) type Members = FxHashMap<String, bool>;
 #[derive(Default)]
 pub(super) struct RunImports {
     pub(super) names: FxHashMap<FileId, Members>,
+    // Every file of the run has an entry, as the index answers each linted file from it.
     pub(super) modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
     pub(super) members: FxHashMap<FileId, Members>,
     // The functions of the run each file imports by name, with their signatures, under the names the file binds.

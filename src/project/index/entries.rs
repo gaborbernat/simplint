@@ -52,14 +52,9 @@ fn entry_point_targets(
                 }
                 None => (entry_point.as_str(), None),
             };
-            // A non-UTF-8 project directory is no search path, so its entry points stay unresolved.
-            let environment = resolver
-                .entry_paths
-                .get(root)
-                .map(|paths| ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone()));
-            environment
-                .and_then(|environment| resolve(&resolver.db, environment, None, module.trim()))
-                .map(|file| (file, attribute))
+            let paths = resolver.entry_paths.get(root)?;
+            let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
+            Some((resolve(&resolver.db, environment, None, module.trim())?, attribute))
         })
         .collect()
 }
@@ -83,10 +78,10 @@ pub(super) fn coverage_plugin_names(
     let files: Vec<PathBuf> = plugins
         .iter()
         .filter_map(|(root, module)| {
-            resolver.coverage_paths.get(root).and_then(|paths| {
-                let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
-                resolve(&resolver.db, environment, None, module)
-            })
+            // A project's search paths include its own directory, so each project with plugins has an entry.
+            let paths = &resolver.coverage_paths[root];
+            let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
+            resolve(&resolver.db, environment, None, module)
         })
         .collect();
     files.iter().map(|file| (FileIds::intern(&mut resolver.files, file), "coverage_init".to_owned())).collect()

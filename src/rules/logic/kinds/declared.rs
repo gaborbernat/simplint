@@ -167,5 +167,7 @@ pub(super) fn instance_of(checker: &Checker, class: &ast::StmtClassDef) -> Optio
             .body
             .iter()
             .any(|stmt| stmt.as_function_def_stmt().is_some_and(|function| function.name.as_str() == "__new__"));
-    (plain && class_named(checker, &class.name).is_some()).then_some(Kind::Instance(class.range))
+    // A class a function defines may share its name with one of the module's, and only the module's is the one meant.
+    (plain && class_named(checker, &class.name).is_some_and(|named| named.range == class.range))
+        .then_some(Kind::Instance(class.range))
 }

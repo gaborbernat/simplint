@@ -537,7 +537,9 @@ fn roman_value(text: &str) -> Option<usize> {
 
 // The letter of an alphabetic ordinal, `c` for 3 counting from `a`, when the ordinal has one.
 fn letter(ordinal: usize, first: u8) -> Option<String> {
-    u8::try_from(ordinal - 1).ok().filter(|offset| *offset < 26).map(|offset| char::from(first + offset).to_string())
+    // The ordinal follows a single letter, so it is at most 27.
+    let offset = u8::try_from(ordinal - 1).expect("an alphabetic ordinal follows a letter");
+    (offset < 26).then(|| char::from(first + offset).to_string())
 }
 
 fn roman_text(mut value: usize) -> String {

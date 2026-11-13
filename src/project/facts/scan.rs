@@ -222,4 +222,15 @@ mod tests {
         let parsed = parse_module("import importlib\n\nreturn importlib.import_module(\"pkg\")\n").expect("parses");
         assert!(Scan::of(&parsed.syntax().body, Parts::default()).modules.is_empty());
     }
+
+    // Only a literal `name=` of a decorator call renames the fixture; a bare decorator or a computed name adds none.
+    #[test]
+    fn fixture_returning_a_module_is_known_by_its_literal_names() {
+        let source = "import importlib\n\n\n@pytest.fixture\n@other(name=computed)\n@pytest.fixture(name=\"mod\")\ndef \
+                      fixture():\n    return importlib.import_module(\"pkg\")\n";
+        let parsed = parse_module(source).expect("parses");
+        let mut modules: Vec<String> = Scan::of(&parsed.syntax().body, Parts::default()).modules.into_iter().collect();
+        modules.sort_unstable();
+        assert_eq!(modules, ["fixture", "mod"]);
+    }
 }

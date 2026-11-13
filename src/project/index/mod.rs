@@ -341,44 +341,43 @@ impl Project {
 
     // Looked up once, so rules asking about many names do not normalize and hash the path each time.
     pub fn file(&self, path: &Path) -> FileIndex<'_> {
-        let id = self.files.get(path);
+        // The roles intern every file of the run, and only those are linted.
+        let id = self.files.get(path).expect("the run interns every file it lints");
         FileIndex {
             project: self,
-            source: entry(&self.sources, id).copied(),
+            source: self.sources.get(&id).copied(),
             answers: FileAnswers {
-                imported: entry(&self.imported, id),
-                entry_only: entry(&self.entry_only, id),
-                referenced: entry(&self.referenced, id),
-                star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-                package_star_imported: id.is_some_and(|id| self.package_star_imported.contains(&id)),
-                star_source: id.is_some_and(|id| self.star_sources.contains(&id)),
-                computed_written: id.is_some_and(|id| self.computed_writes.contains(&id)),
-                written: id.and_then(|id| self.written.get(&id)),
-                role: entry(&self.roles, id).copied().unwrap_or_default(),
-                library_api: entry(&self.library_api, id),
-                modules: entry(&self.module_uses, id).map_or(&[], Vec::as_slice),
-                test_only: entry(&self.test_only, id),
-                loaded_as_value: id.is_some_and(|id| self.loaded_as_value.contains(&id)),
-                read_whole: id.is_some_and(|id| self.read_whole.contains(&id)),
-                uncaught_exceptions: entry(&self.uncaught_exceptions, id),
-                exception_types: entry(&self.exception_types, id),
-                enum_types: entry(&self.enum_types, id),
-                hook_classes: entry(&self.hook_classes, id),
-                run_imports: entry(&self.run_imports, id),
-                run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },
-                run_signatures: entry(&self.run_signatures, id),
-                api_reached: entry(&self.api_reached, id),
-                library_reached: entry(&self.library_reached, id),
-                inherited: entry(&self.inherited, id),
-                overridden: entry(&self.overridden, id),
-                package_loaded: id.is_some_and(|id| self.package_loaded.contains(&id)),
-                resolved_imports: entry(&self.resolved_imports, id),
-                imported_modules: id
-                    .is_some_and(|id| self.dependency_hosts.contains(&id))
-                    .then_some(&self.imported_modules),
-                cycle: entry(&self.cycles, id),
-                duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
-                prefix_siblings: entry(&self.prefix_siblings, id),
+                imported: self.imported.get(&id),
+                entry_only: self.entry_only.get(&id),
+                referenced: self.referenced.get(&id),
+                star_imported: self.star_imported.contains(&id),
+                package_star_imported: self.package_star_imported.contains(&id),
+                star_source: self.star_sources.contains(&id),
+                computed_written: self.computed_writes.contains(&id),
+                written: self.written.get(&id),
+                role: self.roles[&id],
+                library_api: self.library_api.get(&id),
+                modules: self.module_uses.get(&id).map_or(&[], Vec::as_slice),
+                test_only: self.test_only.get(&id),
+                loaded_as_value: self.loaded_as_value.contains(&id),
+                read_whole: self.read_whole.contains(&id),
+                uncaught_exceptions: self.uncaught_exceptions.get(&id),
+                exception_types: self.exception_types.get(&id),
+                enum_types: self.enum_types.get(&id),
+                hook_classes: self.hook_classes.get(&id),
+                run_imports: self.run_imports.get(&id),
+                run_modules: RunModules { modules: &self.run_modules[&id], members: &self.run_members },
+                run_signatures: self.run_signatures.get(&id),
+                api_reached: self.api_reached.get(&id),
+                library_reached: self.library_reached.get(&id),
+                inherited: self.inherited.get(&id),
+                overridden: self.overridden.get(&id),
+                package_loaded: self.package_loaded.contains(&id),
+                resolved_imports: self.resolved_imports.get(&id),
+                imported_modules: self.dependency_hosts.contains(&id).then_some(&self.imported_modules),
+                cycle: self.cycles.get(&id),
+                duplicates: self.duplicates.get(&id).map_or(&[], Vec::as_slice),
+                prefix_siblings: self.prefix_siblings.get(&id),
                 directory_modules: path
                     .parent()
                     .and_then(|directory| self.test_directory_modules.get(directory))
@@ -699,10 +698,6 @@ fn only_tests(
             (file, names.collect())
         })
         .collect()
-}
-
-fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
-    id.and_then(|id| map.get(&id))
 }
 
 fn range_key(range: TextRange, state: &mut CacheKeyHasher) {

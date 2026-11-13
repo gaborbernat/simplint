@@ -272,18 +272,19 @@ impl<'a> Semantic<'a> {
         if !matches!(binding.kind, RuffBindingKind::ClassDefinition(_)) {
             return None;
         }
-        binding.statement(&self.model).and_then(Stmt::as_class_def_stmt)
+        Some(
+            binding
+                .statement(&self.model)
+                .and_then(Stmt::as_class_def_stmt)
+                .expect("a class binding's statement is its class"),
+        )
     }
 
     pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {
         let Stmt::FunctionDef(function) = binding.statement(&self.model)? else {
             return None;
         };
-        function
-            .parameters
-            .iter()
-            .find(|parameter| parameter.name().range() == binding.range)
-            .and_then(ast::AnyParameterRef::annotation)
+        function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
     }
 
     // The `def` at module level a load of `name` reads, when no statement of the file rebinds the name.
@@ -307,10 +308,11 @@ impl<'a> Semantic<'a> {
         if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) {
             return None;
         }
-        binding
+        let function = binding
             .statement(&self.model)
             .and_then(Stmt::as_function_def_stmt)
-            .map(|function| (function, binding.scope.is_global()))
+            .expect("a function binding's statement is its def");
+        Some((function, binding.scope.is_global()))
     }
 
     // Whether a load of `name` reads a `from ... import`, the only binding of the name in its scope.
@@ -336,8 +338,8 @@ impl<'a> Semantic<'a> {
     // of a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
     pub fn binding_values(&self, binding: &RuffBinding<'a>) -> Option<Vec<&Expr>> {
         match binding.kind {
-            RuffBindingKind::LoopVar => match binding.statement(&self.model) {
-                Some(Stmt::For(ast::StmtFor { target, iter, .. }))
+            RuffBindingKind::LoopVar => match binding.statement(&self.model).expect("a loop variable has its loop") {
+                Stmt::For(ast::StmtFor { target, iter, .. })
                     if target.as_name_expr().is_some_and(|target| target.range() == binding.range) =>
                 {
                     match iter.as_ref() {
@@ -443,16 +445,14 @@ impl<'a> Semantic<'a> {
 }
 
 // The body is the part of a scope's node after its header, since a header's defaults, decorators and bases run in the
-// enclosing scope.
+// enclosing scope. Rules only see files that parse, where a `def` or `class` body holds a statement.
 fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     match kind {
         ScopeKind::Function(function) => {
-            function.body.first().map(|first| (function.range(), TextRange::new(first.start(), function.range().end())))
+            Some((function.range(), TextRange::new(function.body[0].start(), function.range().end())))
         }
         ScopeKind::Lambda(lambda) => Some((lambda.range(), TextRange::new(lambda.body.start(), lambda.range().end()))),
-        ScopeKind::Class(class) => {
-            class.body.first().map(|first| (class.range(), TextRange::new(first.start(), class.range().end())))
-        }
+        ScopeKind::Class(class) => Some((class.range(), TextRange::new(class.body[0].start(), class.range().end()))),
         _ => None,
     }
 }

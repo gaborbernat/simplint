@@ -954,6 +954,16 @@ fn sibling_import_reported(root: &Path) -> bool {
 )]
 #[test_case(
     "",
+    Some((
+        "prek.toml",
+        "[[repos]]\nrepo = \"a\"\n[[repos]]\nrepo = \"b\"\nhooks = \"none\"\n[[repos]]\nrepo = \"c\"\n\
+        hooks = [{ id = \"flake8-lazy\" }]\n",
+    )),
+    false
+    ; "prek_hook_after_repos_without_hooks"
+)]
+#[test_case(
+    "",
     Some((".pre-commit-config.yaml", "repos:\n  - repo: x\n    hooks:\n      - id: 'flake8-lazy'  # lazy imports\n")),
     false
     ; "pre_commit_hook_trailing_comment"

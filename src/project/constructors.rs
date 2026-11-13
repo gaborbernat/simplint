@@ -675,14 +675,14 @@ impl RunCalls {
         self.method_loads.insert(file, loads);
     }
 
-    pub(super) fn file(&self, id: Option<FileId>) -> FileCalls<'_> {
+    pub(super) fn file(&self, id: FileId) -> FileCalls<'_> {
         FileCalls {
-            opaque: id.and_then(|id| self.opaque.get(&id)),
-            star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-            dataclass_calls: id.and_then(|id| self.dataclass_calls.get(&id)),
-            functions: id.and_then(|id| self.functions.get(&id)),
-            method_loads: id.and_then(|id| self.method_loads.get(&id)),
-            test_support: id.is_some_and(|id| self.test_support.contains(&id)),
+            opaque: self.opaque.get(&id),
+            star_imported: self.star_imported.contains(&id),
+            dataclass_calls: self.dataclass_calls.get(&id),
+            functions: self.functions.get(&id),
+            method_loads: self.method_loads.get(&id),
+            test_support: self.test_support.contains(&id),
         }
     }
 
@@ -808,5 +808,24 @@ impl CacheKey for FileCalls<'_> {
         self.functions.cache_key(state);
         self.method_loads.cache_key(state);
         self.test_support.cache_key(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+    use test_case::test_case;
+
+    use super::init_fields;
+
+    // A flag that is not a literal leaves open whether `__init__` takes the field, and by position.
+    #[test_case("field(init=flag)", None ; "computed_init")]
+    #[test_case("field(kw_only=flag)", None ; "computed_kw_only")]
+    #[test_case("field(init=True)", Some(&["x"]) ; "literal_init")]
+    fn init_fields_reads_field_flags(value: &str, expected: Option<&[&str]>) {
+        let parsed = parse_module(&format!("@dataclass\nclass Point:\n    x: int = {value}\n")).expect("parses");
+        let class = parsed.syntax().body[0].as_class_def_stmt().expect("the module is one class");
+        let expected = expected.map(|names| names.iter().map(ToString::to_string).collect());
+        assert_eq!(init_fields(class, &class.decorator_list[0].expression, &|_: &str| None), expected);
     }
 }

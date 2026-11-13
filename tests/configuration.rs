@@ -285,12 +285,12 @@ fn invalid_nested_pyproject_under_a_config_file_fails() {
     assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
 }
 
-#[test]
-fn per_file_ignore_with_an_invalid_glob_fails() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"[a\" = [\"SMP101\"] }\n"),
-        ("module.py", CLEAN_MODULE),
-    ]);
+// A pattern that is valid as a file name may not be once anchored, as resolving `..` cuts the alternation in two.
+#[test_case("[a" ; "invalid")]
+#[test_case("{a,b/../c}.py" ; "invalid_once_anchored")]
+fn per_file_ignore_with_an_invalid_glob_fails(pattern: &str) {
+    let configuration = format!("[tool.simplint]\nper-file-ignores = {{ \"{pattern}\" = [\"SMP101\"] }}\n");
+    let root = project(&[("pyproject.toml", configuration.as_str()), ("module.py", CLEAN_MODULE)]);
     let (code, _, stderr) = check(root.path(), &[]);
     assert_eq!((code, stderr.contains("error")), (2, true), "{stderr}");
 }
@@ -1027,6 +1027,7 @@ fn showing_fails_on_a_broken_nested_configuration(configuration: &str, flag: &st
 }
 
 #[test_case("[build-system]\nrequires = []\n", &[], "library" ; "build_system")]
+#[test_case("build-system = \"setuptools\"\n", &[], "library" ; "build_system_not_a_table")]
 #[test_case("", &[("setup.py", "")], "library" ; "setup_py")]
 #[test_case("", &[("setup.cfg", "")], "library" ; "setup_cfg")]
 #[test_case("[project]\nname = \"tool\"\n", &[], "application" ; "nothing_installs_it")]
@@ -1053,6 +1054,20 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
     let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
     let stdout = check(root.path(), &["--show-settings"]).1;
     assert_eq!(shown_setting(&stdout, "linter.project_kind", "\n"), format!("linter.project_kind = {kind}"));
+}
+
+// setuptools names an entry point as a dotted `attr` string; a `file` source, a value that is no string and a name
+// without a module name none.
+#[test]
+fn setuptools_tables_name_entry_points_by_dotted_attribute() {
+    let pyproject = "[tool.setuptools.dynamic]\nversion = { attr = \"pkg.__version__\" }\nreadme = { file = \
+                     [\"README.md\"] }\nlicense = { attr = 1 }\ndescription = { attr = \"nodot\" }\n\
+                     [tool.setuptools.cmdclass]\nbuild_py = \"pkg.build.Command\"\nsdist = \"nodot\"\n";
+    let root = project(&[("pyproject.toml", pyproject), ("module.py", "")]);
+    let stdout = check(root.path(), &["--show-settings"]).1;
+    let mut shown: Vec<&str> = shown_setting(&stdout, "linter.entry_points", "]\n").lines().skip(1).collect();
+    shown.sort_unstable();
+    assert_eq!(shown, ["\t\"pkg.build:Command\",", "\t\"pkg:__version__\","]);
 }
 
 // What `--show-settings` prints for one setting, from its name up to the next setting.

@@ -833,6 +833,17 @@ fn warm_run_warns_again_about_a_file_that_does_not_parse(flags: &[&str]) {
     assert_eq!((&first, &warm, warm.2.as_str()), (&fresh, &fresh, UNPARSED));
 }
 
+// A file that does not parse is cached without facts, so a warm run that indexes again, as another file changed, finds
+// none for it and still warns about it.
+#[test]
+fn file_that_does_not_parse_has_no_cached_facts() {
+    let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
+    let args = ["--select", "SMP101"];
+    check(root.path(), &args);
+    write_file(root.path(), "module.py", "y = 2\n");
+    assert_eq!(check(root.path(), &args), fresh_run(root.path(), &args));
+}
+
 #[test]
 fn file_that_parses_again_is_checked_again() {
     let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
@@ -1320,10 +1331,12 @@ fn cache_that_cannot_be_written_fails_the_run(blocked_by_directory: bool) {
     assert_eq!((code, stderr.contains(expected)), (2, true), "{stderr}");
 }
 
-// The `full` text goes beside the cache file, so a directory where it goes fails the write.
+// The `full` text goes beside the cache file, so a directory where it goes fails the write, whether the files lint
+// again or their stored reports are reused under new display settings.
 #[cfg(unix)]
-#[test]
-fn full_text_that_cannot_be_written_fails_the_run() {
+#[test_case("--preview" ; "linted")]
+#[test_case("--color=always" ; "reused")]
+fn full_text_that_cannot_be_written_fails_the_run(flag: &str) {
     let root = project(&[("module.py", FIXABLE)]);
     check(root.path(), &["--select", "SMP001,SMP901"]);
     let reports_only = cache_files(root.path());
@@ -1334,7 +1347,7 @@ fn full_text_that_cannot_be_written_fails_the_run() {
     }
 
     let (code, _, stderr) =
-        simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP001,SMP901", "--preview"]);
+        simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP001,SMP901", flag]);
 
     assert_eq!((code, stderr.contains("Is a directory")), (2, true), "{stderr}");
 }

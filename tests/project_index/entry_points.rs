@@ -81,6 +81,52 @@ fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str
     assert_eq!(check(root.path(), &["--select", rule]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
+// A target that is no module name, a standard library module or a namespace package names no file of the run, so the
+// plugin's hook stays internal.
+#[test_case("pkg..plugin" ; "invalid_module_name")]
+#[test_case("json" ; "standard_library")]
+#[test_case("space" ; "namespace_package")]
+fn entry_point_without_a_run_file_names_nothing(target: &str) {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            &format!(
+                "[project]\nname = \"pkg\"\nentry-points.pytest11.demo = \"{target}\"\n[build-system]\nrequires = []\n"
+            ),
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/plugin.py", DOCSTRINGED_PLUGIN),
+        ("space/module.py", ""),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP901"]).1,
+        native(
+            "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and types document \
+             it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}
+
+// A project directory whose name is not UTF-8 is no search path, so its entry points name nothing.
+#[cfg(unix)]
+#[test]
+fn entry_point_of_a_project_whose_directory_is_not_utf8_names_nothing() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    let directory = Path::new(OsStr::from_bytes(b"pr\xffoject"));
+    let pyproject =
+        "[project]\nname = \"pkg\"\nentry-points.pytest11.demo = \"pkg.plugin\"\n[build-system]\nrequires = []\n";
+    let root = project(&[
+        (directory.join("pyproject.toml"), pyproject),
+        (directory.join("pkg/__init__.py"), ""),
+        (directory.join("pkg/plugin.py"), DOCSTRINGED_PLUGIN),
+    ]);
+    let (code, stdout, stderr) = check(root.path(), &["--select", "SMP901"]);
+    assert_eq!(common::reports(&stdout, "SMP901").len(), 1, "{code} {stdout} {stderr}");
+}
+
 // A `from __future__` import binds a compiler flag that the host of a bare module entry point never reads, so it is no
 // public name for `missing-from-all` to list.
 #[test]

@@ -3,6 +3,7 @@ use std::borrow::Cow;
 use std::cmp::Reverse;
 use std::io::Write;
 use std::iter;
+use std::path::Path;
 
 use anyhow::{Result, bail};
 use bitflags::bitflags;
@@ -72,7 +73,7 @@ impl Printer<'_> {
     }
 
     // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`.
-    pub(super) fn full_display(&self) -> Option<FullDisplay> {
+    pub(super) fn full_display(&self, cwd: &Path) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
         }
@@ -84,6 +85,7 @@ impl Printer<'_> {
             color,
             hyperlinks: color && supports_hyperlinks(),
             required: self.mode.unsafe_fixes.required_applicability(),
+            cwd,
         };
         Some(FullDisplay::new(self.display_config(false), key))
     }

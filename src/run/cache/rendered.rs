@@ -13,12 +13,13 @@ use crate::run::Diagnostics;
 
 #[derive(Clone, Copy)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag is one display setting the text depends on")]
-pub(crate) struct DisplayKey {
+pub(crate) struct DisplayKey<'a> {
     pub(crate) preview: bool,
     pub(crate) prefer_rule_codes: bool,
     pub(crate) color: bool,
     pub(crate) hyperlinks: bool,
     pub(crate) required: Applicability,
+    pub(crate) cwd: &'a Path,
 }
 
 // A file's text needs no run-wide state: the fix marker shows only on a diagnostic whose fix applies, and the run has
@@ -36,7 +37,7 @@ impl FullDisplay {
         key.color.cache_key(&mut hasher);
         key.hyperlinks.cache_key(&mut hasher);
         format!("{:?}", key.required).cache_key(&mut hasher);
-        std::env::current_dir().unwrap_or_default().cache_key(&mut hasher);
+        key.cwd.cache_key(&mut hasher);
         Self { config, base: hasher.finish() }
     }
 

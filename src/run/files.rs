@@ -163,7 +163,8 @@ impl<'a> RunFile<'a> {
         let nested = settings.project.nested.then(|| settings.project.root.clone());
         Self {
             path,
-            absolute: std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()),
+            // Ruff's walk and `check_stdin` hand over absolute paths, which only need normalizing.
+            absolute: std::path::absolute(path).expect("a run's file paths are absolute"),
             settings,
             ruff,
             ruff_config,

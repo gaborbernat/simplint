@@ -248,6 +248,7 @@ mod tests {
     #[test_case("sys.version_info >= (MAJOR, 11)" ; "named_major_with_minor")]
     #[test_case("sys.version_info >= (3, MINOR)" ; "named_minor")]
     #[test_case("sys.version_info >= (255,)" ; "major_without_a_next")]
+    #[test_case("sys.version_info >= (300,)" ; "major_past_a_byte")]
     fn version_check_the_scan_cannot_read_gates_nothing(test: &str) {
         let parsed = parse_expression(test).expect("a valid expression");
         assert!(version_branches(parsed.expr()).is_none());

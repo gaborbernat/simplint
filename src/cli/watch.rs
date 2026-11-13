@@ -1,10 +1,10 @@
 use std::convert::Infallible;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{Sender, channel};
 
 use anyhow::Result;
-use notify::{RecursiveMode, Watcher, recommended_watcher};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher, recommended_watcher};
 use ruff::ExitStatus;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
@@ -25,11 +25,11 @@ pub(super) fn watch(
     mut writer: Box<dyn Write>,
 ) -> Result<ExitStatus> {
     let (sender, receiver) = channel();
-    let mut watched = files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path);
     // Kept until watching ends, as dropping the watcher stops the events.
-    let _watcher = recommended_watcher(sender).and_then(|mut watcher| {
-        watched.try_for_each(|file| watcher.watch(file, RecursiveMode::Recursive)).map(|()| watcher)
-    })?;
+    let _watcher = watcher(
+        sender,
+        files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path),
+    )?;
     let Err(error) = rounds(
         || receiver.recv().expect("the watcher keeps its channel open"),
         |change| {
@@ -42,11 +42,21 @@ pub(super) fn watch(
             } else {
                 "Starting linter in watch mode...\n"
             });
-            check_files(files, &resolved, printer.mode, usage, Ending::Drop)
-                .and_then(|diagnostics| printer.write_continuously(&mut writer, &diagnostics))
+            printer.write_continuously(&mut writer, &check_files(files, &resolved, printer.mode, usage, Ending::Drop)?)
         },
     );
     Err(error)
+}
+
+fn watcher<'a>(
+    sender: Sender<notify::Result<Event>>,
+    paths: impl IntoIterator<Item = &'a PathBuf>,
+) -> notify::Result<RecommendedWatcher> {
+    let mut watcher = recommended_watcher(sender)?;
+    for file in paths {
+        watcher.watch(file, RecursiveMode::Recursive)?;
+    }
+    Ok(watcher)
 }
 
 // Runs a round, then another on each change the events report, until a round or the events fail.
@@ -99,7 +109,7 @@ mod tests {
     use notify::event::{AccessKind, ModifyKind};
     use notify::{Event, EventKind};
 
-    use super::{ChangeKind, rounds};
+    use super::{ChangeKind, rounds, watcher};
 
     fn modified(path: &str) -> Event {
         Event::new(EventKind::Modify(ModifyKind::Any)).add_path(path.into())
@@ -140,6 +150,29 @@ mod tests {
         assert_eq!(
             (error.as_str(), seen),
             ("round failed", vec![None, Some(ChangeKind::Configuration), Some(ChangeKind::SourceFile)])
+        );
+    }
+
+    // A path that does not exist cannot be watched, which fails watching before any round.
+    #[test]
+    fn watching_a_missing_path_fails() {
+        let directory = tempfile::TempDir::new().expect("temporary directory");
+        let (sender, _receiver) = std::sync::mpsc::channel();
+        assert!(watcher(sender, [&directory.path().join("missing")]).is_err());
+    }
+
+    // The watcher needs file descriptors of its own, so it fails to start in a process that has none left.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn watcher_without_a_free_file_descriptor_fails() {
+        crate::limits::limited(
+            concat!(module_path!(), "::watcher_without_a_free_file_descriptor_fails"),
+            crate::limits::Limit::OpenFiles,
+            || (),
+            |()| {
+                let (sender, _receiver) = std::sync::mpsc::channel();
+                assert!(watcher(sender, std::iter::empty()).is_err());
+            },
         );
     }
 }

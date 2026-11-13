@@ -98,7 +98,7 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     let mut diagnostics = if is_stdin {
         check_standard_input(cli, &resolved, &mode)?
     } else {
-        let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display());
+        let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display(&resolved.cwd));
         check_files(&files, &resolved, &mode, &usage, Ending::Exit)?
     };
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);

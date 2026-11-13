@@ -186,6 +186,15 @@ fn rule(rule: &str, fixture: &str) {
     "import app.sinks\n\n\ndef send(address: str, sink=app.sinks.Sink()) -> None:\n    sink.notify(address)\n",
     "send(\"a@b.c\", sink=print)", 1 ; "instance_of_a_class_in_a_nested_module_stays_reported"
 )]
+#[test_case(
+    "import os\n\n\ndef send(address: str, sink=os.getcwd) -> None:\n    print(address, sink())\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "function_of_a_module_outside_the_run_stays_reported"
+)]
+#[test_case(
+    "import os\n\nimport app.enums\n\n\ndef send(address: str, sink=os.getcwd) -> None:\n    \
+        print(address, app.enums.Mode, sink())\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "function_of_a_module_outside_the_run_beside_a_run_module_stays_reported"
+)]
 fn test_only_parameter_exempts_only_collaborators(module: &str, test_call: &str, reported: usize) {
     assert_eq!(test_only_parameter_reports(module, test_call), reported);
 }

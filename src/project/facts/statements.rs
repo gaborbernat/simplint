@@ -129,17 +129,16 @@ fn statement_tokens<'s>(
     source: &'s str,
     range: TextRange,
 ) -> impl Iterator<Item = &'s str> {
-    compared_tokens(parsed.tokens().in_range(range))
-        .skip_while(move |token| token.kind() == TokenKind::Dedent && token.start() == range.start())
-        .map(|token| compared_text(token, source))
+    compared_tokens(parsed.tokens().in_range(range)).map(|token| compared_text(token, source))
 }
 
 #[cfg(test)]
 mod tests {
+    use ruff_python_parser::parse_module;
     use rustc_hash::FxHashSet;
     use tempfile::TempDir;
 
-    use super::statement_texts;
+    use super::{statement_texts, statements};
 
     #[test]
     fn file_that_no_longer_parses_has_no_texts() {
@@ -147,5 +146,26 @@ mod tests {
         let path = root.path().join("module.py");
         std::fs::write(&path, "def (\n").expect("write the module");
         assert!(statement_texts(&path, &FxHashSet::default(), &[]).is_none());
+    }
+
+    #[test]
+    fn file_that_is_gone_has_no_texts() {
+        let root = TempDir::new().expect("create a temporary directory");
+        assert!(statement_texts(&root.path().join("module.py"), &FxHashSet::default(), &[]).is_none());
+    }
+
+    // The dedent that closes the `if` block lies before the statement after it, whose text starts at its own token.
+    #[test]
+    fn statement_after_a_block_starts_at_its_own_token() {
+        let source = "if x:\n    a = 1\nb = 2\n";
+        let root = TempDir::new().expect("create a temporary directory");
+        let path = root.path().join("module.py");
+        std::fs::write(&path, source).expect("write the module");
+        let expected = statements(&parse_module(source).expect("parses"), source);
+        let wanted: FxHashSet<usize> = (0..expected.len()).collect();
+        let texts = statement_texts(&path, &wanted, &expected).expect("the file still holds its statements");
+        let mut first: Vec<&[u8]> = texts.values().map(|text| &text[size_of::<usize>()..][..1]).collect();
+        first.sort_unstable();
+        assert_eq!(first, [b"a", b"b", b"i"]);
     }
 }

@@ -147,11 +147,8 @@ impl ProjectMetadata {
 
     pub(super) fn add_tool_references(&mut self, pyproject: &toml::Table) {
         if let Some(dynamic) = tool_value(pyproject, &["setuptools", "dynamic"]).and_then(toml::Value::as_table) {
-            self.entry_points.extend(
-                dynamic
-                    .values()
-                    .filter_map(|value| value.get("attr").and_then(toml::Value::as_str).and_then(dotted_attribute)),
-            );
+            self.entry_points
+                .extend(dynamic.values().filter_map(|value| dotted_attribute(value.get("attr")?.as_str()?)));
         }
         if let Some(classes) = tool_value(pyproject, &["setuptools", "cmdclass"]).and_then(toml::Value::as_table) {
             self.entry_points.extend(classes.values().filter_map(toml::Value::as_str).filter_map(dotted_attribute));
@@ -208,7 +205,8 @@ pub(super) fn tool_value<'a>(pyproject: &'a toml::Table, path: &[&str]) -> Optio
 }
 
 fn dotted_attribute(value: &str) -> Option<String> {
-    value.rsplit_once('.').map(|(module, attribute)| format!("{module}:{attribute}"))
+    let (module, attribute) = value.rsplit_once('.')?;
+    Some(format!("{module}:{attribute}"))
 }
 
 fn strings(value: Option<&toml::Value>) -> Vec<String> {
@@ -240,9 +238,7 @@ impl BuildConfiguration {
         if let Some(file) = hatch_file {
             overlay(&mut hatch, file);
         }
-        let system_value = |key: &str| {
-            pyproject.get("build-system").and_then(toml::Value::as_table).and_then(|system| system.get(key))
-        };
+        let system_value = |key: &str| pyproject.get("build-system")?.as_table()?.get(key);
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],

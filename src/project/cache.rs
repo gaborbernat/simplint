@@ -117,18 +117,23 @@ fn remove_stale(current: &Path) {
         if sibling == current || !is_build_directory(&entry) {
             continue;
         }
-        let newest = fs::read_dir(&sibling)
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry.and_then(|entry| entry.metadata()).and_then(|metadata| metadata.modified()).ok())
-            .max()
-            .or_else(|| sibling.metadata().and_then(|metadata| metadata.modified()).ok());
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
-        if newest.is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
+        if last_written(&sibling)
+            .is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
         {
             let _ = fs::remove_dir_all(&sibling);
         }
     }
+}
+
+// The time of the newest file a directory holds; an empty one, or one whose files cannot be stat'd, goes by its own.
+fn last_written(directory: &Path) -> Option<SystemTime> {
+    fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
+        .max()
+        .or_else(|| directory.metadata().ok()?.modified().ok())
 }
 
 // Only a real directory named as a build, holding nothing but cache files, is removed, so a directory a user put in the
@@ -174,7 +179,9 @@ pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     let directory = path.parent().expect("a cache file sits in a directory");
     fs::create_dir_all(directory)?;
-    tempfile_in(directory).and_then(|mut temporary| temporary.write_all(bytes).map(|()| temporary))?.persist(path)?;
+    let mut temporary = tempfile_in(directory)?;
+    temporary.write_all(bytes)?;
+    temporary.persist(path)?;
     Ok(())
 }
 
@@ -197,7 +204,7 @@ mod tests {
     use tempfile::TempDir;
     use test_case::test_case;
 
-    use super::{init, is_build_name, read_aligned, write_atomically};
+    use super::{init, is_build_name, last_written, read_aligned, write_atomically};
 
     #[test_case("0.11.1-0123456789abcdef", true ; "release")]
     #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
@@ -250,5 +257,52 @@ mod tests {
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o755)).expect("make the directory writable");
 
         assert!(written.is_err());
+    }
+
+    // A file that cannot grow fails the write and leaves no cache file behind.
+    #[cfg(unix)]
+    #[test]
+    fn writing_a_file_that_cannot_grow_fails() {
+        crate::limits::limited(
+            concat!(module_path!(), "::writing_a_file_that_cannot_grow_fails"),
+            crate::limits::Limit::FileSize,
+            || TempDir::new().expect("create a temporary directory"),
+            |root| {
+                let target = root.path().join("cache");
+                let error = write_atomically(&target, b"data").expect_err("the file cannot grow");
+                assert_eq!(
+                    (error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), target.exists()),
+                    (Some(std::io::ErrorKind::FileTooLarge), false)
+                );
+            },
+        );
+    }
+
+    // A directory whose files cannot be stat'd, as one that may be listed but not searched, goes by its own time.
+    #[cfg(unix)]
+    #[test]
+    fn directory_without_search_permission_goes_by_its_own_time() {
+        use std::os::unix::fs::PermissionsExt;
+
+        use filetime::{FileTime, set_file_mtime};
+
+        let root = TempDir::new().expect("create a temporary directory");
+        let directory = root.path().join("0.0.1-00000000000000a1");
+        fs::create_dir(&directory).expect("create the directory");
+        fs::write(directory.join("1"), "").expect("write a cache file");
+        set_file_mtime(directory.join("1"), FileTime::from_unix_time(1_000, 0)).expect("age the file");
+        set_file_mtime(&directory, FileTime::from_unix_time(2_000, 0)).expect("age the directory");
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o444)).expect("make the directory unsearchable");
+        let written = last_written(&directory);
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).expect("make the directory searchable");
+
+        assert_eq!(written.map(FileTime::from_system_time), Some(FileTime::from_unix_time(2_000, 0)));
+    }
+
+    // A directory removed since the cache listed it has no time, which counts as stale.
+    #[test]
+    fn directory_removed_since_listing_has_no_time() {
+        let root = TempDir::new().expect("create a temporary directory");
+        assert_eq!(last_written(&root.path().join("0.0.1-00000000000000a1")), None);
     }
 }

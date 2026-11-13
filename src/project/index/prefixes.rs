@@ -45,7 +45,8 @@ pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds)
             if path.extension() != Some(OsStr::new("py")) {
                 return None;
             }
-            let prefix = path.file_stem().and_then(OsStr::to_str).and_then(name_prefix)?;
+            let stem = path.file_stem().expect("a file with an extension has a stem");
+            let prefix = name_prefix(stem.to_str()?)?;
             let directory = path.parent().expect("a run file sits in a directory");
             // The loop above grouped every file with a prefix, this one among them.
             let modules = groups[&(directory, prefix)].len();
@@ -80,4 +81,30 @@ pub(super) fn test_directory_modules(
         names.sort_unstable();
     }
     modules
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use crate::project::{FileFacts, Parts};
+
+    use super::{FileIds, prefix_siblings};
+
+    // A name that is not UTF-8 has no prefix to group by, so only the readable siblings count toward theirs.
+    #[cfg(unix)]
+    #[test]
+    fn file_name_that_is_not_utf8_joins_no_group() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let facts = FileFacts::collect(Path::new("/project/a.py"), "", None, None, Parts::default()).expect("facts");
+        let mut ids = Arc::new(FileIds::default());
+        let indexed: Vec<_> = [b"/project/_cli_one.py".as_slice(), b"/project/_cli_two.py", b"/project/_cli_\xff.py"]
+            .into_iter()
+            .map(|path| (FileIds::intern(&mut ids, Path::new(OsStr::from_bytes(path))), &facts))
+            .collect();
+        assert!(prefix_siblings(&indexed, &ids).is_empty());
+    }
 }

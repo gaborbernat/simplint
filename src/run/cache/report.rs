@@ -449,9 +449,7 @@ mod tests {
         for annotation in annotations {
             rebuilt.annotate(annotation);
         }
-        if let Some(code) = diagnostic.secondary_code() {
-            rebuilt.set_secondary_code(code.clone());
-        }
+        rebuilt.set_secondary_code(diagnostic.secondary_code().expect("the checker codes every report").clone());
         rebuilt.set_documentation_url(diagnostic.documentation_url().map(str::to_owned));
         *diagnostic = rebuilt;
     }

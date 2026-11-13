@@ -81,7 +81,7 @@ pub struct FileIndex<'a> {
 // two answers are compared or hashed, which is far less often than the answers are read.
 #[derive(Clone, Copy)]
 pub(super) struct RunModules<'a> {
-    pub(super) modules: Option<&'a FxHashMap<String, FileId>>,
+    pub(super) modules: &'a FxHashMap<String, FileId>,
     pub(super) members: &'a FxHashMap<FileId, Members>,
 }
 
@@ -92,9 +92,8 @@ impl PartialEq for RunModules<'_> {
 }
 
 impl<'a> RunModules<'a> {
-    fn by_alias(&self) -> Option<BTreeMap<&'a str, &'a Members>> {
-        self.modules
-            .map(|modules| modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect())
+    fn by_alias(&self) -> BTreeMap<&'a str, &'a Members> {
+        self.modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect()
     }
 }
 
@@ -285,7 +284,7 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn is_run_module_enum(&self, module: &str, name: &str) -> bool {
-        let Some(target) = self.answers.run_modules.modules.and_then(|modules| modules.get(module)) else {
+        let Some(target) = self.answers.run_modules.modules.get(module) else {
             return false;
         };
         self.project.enum_types.get(target).is_some_and(|names| names.contains(name))
@@ -305,11 +304,8 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {
-        let modules = &self.answers.run_modules;
-        modules
-            .modules
-            .and_then(|targets| targets.get(module))
-            .and_then(|target| modules.members[target].get(name).copied())
+        let target = self.answers.run_modules.modules.get(module)?;
+        self.answers.run_modules.members[target].get(name).copied()
     }
 
     pub fn is_api_reached(&self, name: &str) -> bool {

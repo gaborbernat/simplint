@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 use test_case::test_case;
 
 use common::{
-    CLEAN_MODULE, COMPARED, ONE_FIXED, PASSED, RUFF_PLR2004, SECTIONED, check, fix_unsafe, make_read_only, project,
-    read,
+    CLEAN_MODULE, COMPARED, ONE_FIXED, PASSED, RUFF_PLR2004, SECTIONED, check, check_with_stdin, empty_project,
+    fix_unsafe, make_read_only, project, read,
 };
 
 #[test]
@@ -891,4 +891,17 @@ fn diff_shows_the_changes_of_a_later_fix_round() {
         ),
         (1, true, true, true, files[1].1.to_owned())
     );
+}
+
+// Each pass rewrites only the outermost of the nested comparisons, so the fixes need more passes than Ruff's loop
+// allows. The loop gives up as Ruff's does, and standard input goes out as it came in.
+#[test]
+fn fixes_needing_more_passes_than_the_loop_allows_leave_the_source() {
+    let source = format!("if {}x{}:\n    pass\n", "(".repeat(120), " == [])".repeat(120));
+    let root = empty_project();
+    let args = ["--fix", "--unsafe-fixes", "--select", "SMP548", "--stdin-filename", "module.py", "-"];
+
+    let (_, stdout, stderr) = check_with_stdin(root.path(), &args, &source);
+
+    assert_eq!((stdout, stderr.contains("Failed to converge after 100 iterations")), (source, true), "{stderr}");
 }

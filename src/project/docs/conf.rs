@@ -264,3 +264,15 @@ impl<'a> Visitor<'a> for Scan<'a> {
         visitor::walk_expr(self, expr);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AutoclassContent, Rendered, class_doc_from};
+
+    // An imported `extensions` makes the file a Sphinx configuration without changing which docstring it renders.
+    #[test]
+    fn imported_extensions_mark_a_configuration() {
+        let class = Rendered { default: AutoclassContent::Class, named: AutoclassContent::Class };
+        assert_eq!(class_doc_from("from shared import extensions\n", false), Some(class));
+    }
+}

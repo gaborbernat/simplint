@@ -1626,6 +1626,34 @@ fn inline_regex_fix_keeps_the_constants_in_source_order() {
     );
 }
 
+// A loop variable is a `ContextVar` when the loop walks a literal list of `ContextVar` calls; a starred item or an
+// unpacked target leaves its values unknown.
+#[test_case("variable in [contextvars.ContextVar(\"a\"), contextvars.ContextVar(\"b\")]", 1 ; "literal_list")]
+#[test_case("variable in [contextvars.ContextVar(\"a\"), *OTHERS]", 0 ; "starred_item")]
+#[test_case("variable, _ in [(contextvars.ContextVar(\"a\"), 1)]", 0 ; "unpacked_target")]
+fn context_var_token_reset_reads_loop_values(header: &str, reports: usize) {
+    let source = format!(
+        "import contextvars\n\nOTHERS = []\n\n\ndef each(value):\n    for {header}:\n        token = variable.set(value)\
+        \n        try:\n            print(value)\n        finally:\n            variable.reset(token)\n"
+    );
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        ("module.py", source.as_str()),
+    ]);
+    common::assert_report_count(root.path(), "SMP512", reports);
+}
+
+// A parameter annotated `list` is a list, while a name bound to a `def` has no parameter of its own to read.
+#[test]
+fn in_place_result_reads_parameter_annotations_only() {
+    let root = common::project(&[(
+        "module.py",
+        "def items():\n    return []\n\n\ndef use(values: list[int]):\n    first = items.sort()\n    second = \
+         values.sort()\n    return first, second\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP543", 1);
+}
+
 // The module constant an inline-regex fix writes is one the constant rules leave alone.
 #[test]
 fn inline_regex_fix_leaves_the_constant_clean_of_the_constant_rules() {

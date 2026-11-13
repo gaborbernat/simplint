@@ -30,9 +30,10 @@ pub(crate) fn fits_line(
 // quote decides which quote the value may hold.
 pub(crate) fn joined(checker: &Checker, text: &str) -> Option<String> {
     let options = formatting_options(checker).with_quote_style(QuoteStyle::Preserve);
-    format_module_source(&format!("_ = ({text})\n"), options).ok().and_then(|printed| {
-        printed.as_code().trim_end().strip_prefix("_ = ").filter(|line| !line.contains('\n')).map(str::to_owned)
-    })
+    // The text is an expression's source, which parses again inside parentheses.
+    let printed = format_module_source(&format!("_ = ({text})\n"), options).expect("a parenthesized expression parses");
+    let line = printed.as_code().trim_end().strip_prefix("_ = ").expect("the formatter keeps the assignment target");
+    (!line.contains('\n')).then(|| line.to_owned())
 }
 
 fn formatting_options(checker: &Checker) -> PyFormatOptions {

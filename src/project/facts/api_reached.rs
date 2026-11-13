@@ -17,17 +17,17 @@ pub(super) fn interface(body: &[Stmt]) -> Vec<Definition> {
 
 fn definition(stmt: &Stmt) -> Option<Definition> {
     let (name, is_type, refs) = match stmt {
-        Stmt::FunctionDef(function) => (Some(function.name.as_str()), false, signature_names(function)),
-        Stmt::ClassDef(class) => (Some(class.name.as_str()), true, class_names(class)),
+        Stmt::FunctionDef(function) => (function.name.as_str(), false, signature_names(function)),
+        Stmt::ClassDef(class) => (class.name.as_str(), true, class_names(class)),
         Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
             let mut refs = type_param_names(type_params.as_deref());
             refs.extend(names_in(value));
-            (name_of(name), true, refs)
+            (name.as_name_expr().expect("a type alias names a variable").id.as_str(), true, refs)
         }
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. })
             if last_segment(annotation) == Some("TypeAlias") =>
         {
-            (name_of(target), true, names_in(value))
+            (target.as_name_expr()?.id.as_str(), true, names_in(value))
         }
         // A plain assignment is an alias when its value has the shape of a type expression, so `Offset = int` counts
         // while `LIMIT = compute(3)` does not.
@@ -43,15 +43,11 @@ fn definition(stmt: &Stmt) -> Option<Definition> {
             let [target] = targets.as_slice() else {
                 return None;
             };
-            (name_of(target), true, names_in(value))
+            (target.as_name_expr()?.id.as_str(), true, names_in(value))
         }
         _ => return None,
     };
-    Some(Definition { name: name?.to_owned(), is_type, refs })
-}
-
-fn name_of(target: &Expr) -> Option<&str> {
-    target.as_name_expr().map(|name| name.id.as_str())
+    Some(Definition { name: name.to_owned(), is_type, refs })
 }
 
 fn signature_names(function: &ast::StmtFunctionDef) -> Vec<String> {
@@ -141,5 +137,23 @@ impl<'a> Closure<'a> {
             reached.extend(seen.into_iter().filter(|name| *name != root));
         }
         reached.into_iter().map(str::to_owned).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+    use test_case::test_case;
+
+    use super::interface;
+
+    #[test_case("Alias = int\n", &["Alias"] ; "assigned_name")]
+    #[test_case("obj.Alias = int\n", &[] ; "assigned_attribute")]
+    #[test_case("obj.Alias: TypeAlias = int\n", &[] ; "annotated_attribute")]
+    fn only_a_name_defines_an_alias(source: &str, expected: &[&str]) {
+        let parsed = parse_module(source).expect("parses");
+        let names: Vec<String> =
+            interface(&parsed.syntax().body).into_iter().map(|definition| definition.name).collect();
+        assert_eq!(names, expected);
     }
 }

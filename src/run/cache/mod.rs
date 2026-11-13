@@ -108,7 +108,7 @@ impl<'a> Cache<'a> {
             rkyv::access::<ArchivedPackageCache, rkyv::rancor::Error>(bytes)
                 .inspect_err(|error| warn_user!("Failed to read cache file `{}`: {error}", stored.path.display()))
                 .ok()
-                .filter(|archived| Path::new(archived.package_root.as_str()) == package_root)
+                .filter(|archived| archived.package_root.as_slice() == package_root.as_os_str().as_encoded_bytes())
         });
         Self {
             path: stored.path.clone(),
@@ -127,7 +127,7 @@ impl<'a> Cache<'a> {
 
     // The import facts of a file that has not changed since they were cached, unless their ranges do not fit the file.
     pub(super) fn facts(&self, path: &Path, key: FileKey) -> Option<FileFacts> {
-        let stored = self.get(path, key).and_then(|file| file.facts.as_ref())?;
+        let stored = self.get(path, key)?.facts.as_ref()?;
         // rkyv reads the archive in place, which needs its bytes aligned.
         let mut bytes = AlignedVec::<16>::with_capacity(stored.len());
         bytes.extend_from_slice(stored);
@@ -225,7 +225,9 @@ impl<'a> Cache<'a> {
         if file.clean.is_some() {
             return Some(clean_result(file, path));
         }
-        file.findings.as_ref().and_then(|found| self.stored_findings(path, key, found, full))
+        // Only a clean result or reports give an entry its index, and a clean result drops the reports.
+        let found = file.findings.as_ref().expect("an indexed entry without a clean result holds reports");
+        self.stored_findings(path, key, found, full)
     }
 
     fn stored_findings(
@@ -235,12 +237,11 @@ impl<'a> Cache<'a> {
         found: &ArchivedFindings,
         full: Option<&FullDisplay>,
     ) -> Option<Diagnostics> {
-        Findings::diagnostics(found, path).map(|mut diagnostics| {
-            if let Some(full) = full {
-                self.stored_text(path, key, found.fingerprint.to_native(), full, &mut diagnostics);
-            }
-            diagnostics
-        })
+        let mut diagnostics = Findings::diagnostics(found, path)?;
+        if let Some(full) = full {
+            self.stored_text(path, key, found.fingerprint.to_native(), full, &mut diagnostics);
+        }
+        Some(diagnostics)
     }
 
     // The `full` text of a file's reports under `fingerprint`: the text the package stores for the file when the file's
@@ -271,10 +272,10 @@ impl<'a> Cache<'a> {
         self.rendered.get_or_init(|| read_rendered(&self.rendered_path))
     }
 
+    // Text is only rendered for a file whose cached entry `get` found, so the file has a path in the package.
     fn store_text(&self, path: &Path, rendered: Rendered) {
-        if let Some(relative) = self.relative(path) {
-            recorded(&self.texts).push((relative.to_owned(), rendered));
-        }
+        let relative = self.relative(path).expect("a file with a cached entry has a path in its package");
+        recorded(&self.texts).push((relative.to_owned(), rendered));
     }
 
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
@@ -294,7 +295,8 @@ impl<'a> Cache<'a> {
     }
 
     fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
-        path.strip_prefix(self.package_root).ok().and_then(Path::to_str)
+        // A file's cache is its package's, or its directory's outside a package, so the file lies under the root.
+        path.strip_prefix(self.package_root).expect("a file lies under its cache's root").to_str()
     }
 
     // Ruff's `persist`: files not seen for 30 days are dropped, and the cache goes to a temporary file renamed over the
@@ -315,12 +317,15 @@ impl<'a> Cache<'a> {
         let now = self.now;
         let mut package = match self.archived {
             Some(archived) => PackageCache::read(archived),
-            None => PackageCache { package_root: self.package_root.to_path_buf(), files: FxHashMap::default() },
+            None => PackageCache {
+                package_root: self.package_root.as_os_str().as_encoded_bytes().to_vec(),
+                files: FxHashMap::default(),
+            },
         };
+        // `get` records only files the archive holds, and the package was just read from that archive.
         for relative in recorded(&self.seen).drain() {
-            if let Some(file) = package.files.get_mut(&relative) {
-                file.last_seen.store(now, Ordering::Relaxed);
-            }
+            let file = package.files.get_mut(&relative).expect("a seen file is in the archived package");
+            file.last_seen.store(now, Ordering::Relaxed);
         }
         let max_last_seen = u64::try_from(MAX_LAST_SEEN.as_millis()).unwrap_or(u64::MAX);
         package.files.retain(|_, file| now.saturating_sub(*file.last_seen.get_mut()) <= max_last_seen);
@@ -358,9 +363,8 @@ impl<'a> Cache<'a> {
         // Another simplint build may have removed the directory as stale since this run opened it.
         fs::create_dir_all(directory).context("Failed to create cache directory")?;
         let serialized = rkyv::to_bytes::<rkyv::rancor::Error>(&package).expect("the cache archives into memory");
-        let temp_file = tempfile_in(directory)
-            .and_then(|mut temp_file| temp_file.write_all(&serialized).map(|()| temp_file))
-            .context("Failed to write the cache to a temporary file")?;
+        let mut temp_file = tempfile_in(directory).context("Failed to create temporary file")?;
+        temp_file.write_all(&serialized).context("Failed to write serialized cache to temporary file.")?;
         let persisted = temp_file.persist(&self.path).map(drop);
         // On Windows another simplint process may hold the cache file open; its run writes the cache instead.
         #[cfg(windows)]
@@ -400,8 +404,8 @@ fn recorded<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct PackageCache {
-    #[rkyv(with = rkyv::with::AsString)]
-    package_root: PathBuf,
+    // The root's own bytes, as a directory name need not be UTF-8.
+    package_root: Vec<u8>,
     // Keyed by the path relative to the package root. A `String` key, as an archived map hashes its keys as they are
     // archived, so a lookup by `str` finds them.
     files: FxHashMap<String, FileCache>,
@@ -421,7 +425,7 @@ impl PackageCache {
                 (path.as_str().to_owned(), file)
             })
             .collect();
-        Self { package_root: PathBuf::from(archived.package_root.as_str()), files }
+        Self { package_root: archived.package_root.to_vec(), files }
     }
 }
 
@@ -493,6 +497,7 @@ mod tests {
     use rustc_hash::FxHashMap;
     use test_case::test_case;
 
+    use super::report::{ArchivedFindings, Findings, Report};
     use super::{Cache, FileCache, PackageCache, Stored};
     use crate::project::cache::FileKey;
     use crate::project::{FileFacts, Parts};
@@ -501,6 +506,8 @@ mod tests {
     #[test_case(false, true ; "intact")]
     #[test_case(true, false ; "damaged")]
     fn cached_facts_read_back_while_intact(damaged: bool, read_back: bool) {
+        // Without a logger the level is off, which would skip formatting the damaged facts' error.
+        log::set_max_level(log::LevelFilter::Error);
         let root = Path::new("/project");
         let facts = FileFacts::collect(&root.join("module.py"), "VALUE = 1\n", None, None, Parts::default())
             .expect("the source parses");
@@ -510,7 +517,7 @@ mod tests {
         }
         let file = FileCache { facts: Some(bytes), ..FileCache::new(7, 0) };
         let package = PackageCache {
-            package_root: root.to_path_buf(),
+            package_root: root.as_os_str().as_encoded_bytes().to_vec(),
             files: FxHashMap::from_iter([("module.py".to_owned(), file)]),
         };
         let mut archive = AlignedVec::<16>::new();
@@ -520,5 +527,58 @@ mod tests {
         let cache = Cache::new(root, &stored, 0);
 
         assert_eq!(cache.facts(&root.join("module.py"), FileKey { hash: 7, length: 10 }).is_some(), read_back);
+    }
+
+    // A cache that cannot be written fails the run's write with the step that failed.
+    #[cfg(unix)]
+    #[test]
+    fn writing_a_cache_that_cannot_grow_fails() {
+        crate::limits::limited(
+            concat!(module_path!(), "::writing_a_cache_that_cannot_grow_fails"),
+            crate::limits::Limit::FileSize,
+            || tempfile::TempDir::new().expect("temporary directory"),
+            |directory| {
+                let root = directory.path();
+                let stored = Stored { path: root.join("cache"), bytes: None, rendered: root.join("rendered") };
+                let mut cache = Cache::new(root, &stored, 0);
+                let facts = FileFacts::collect(&root.join("module.py"), "VALUE = 1\n", None, None, Parts::default())
+                    .expect("the source parses");
+                cache.set_facts(&root.join("module.py"), FileKey { hash: 7, length: 10 }, &facts);
+                let error = cache.write().expect_err("the cache cannot grow");
+                assert_eq!(
+                    (error.to_string(), stored.path.exists()),
+                    ("Failed to write serialized cache to temporary file.".to_owned(), false)
+                );
+            },
+        );
+    }
+
+    // A file whose key matched may be gone by the time its stored reports read its source back, and they are dropped.
+    #[test]
+    fn stored_findings_of_a_file_gone_since_are_dropped() {
+        use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
+        use ruff_source_file::SourceFileBuilder;
+        use ruff_text_size::{TextRange, TextSize};
+
+        use crate::lint::registry::Rule;
+
+        let directory = tempfile::TempDir::new().expect("temporary directory");
+        let root = directory.path();
+        let stored = Stored { path: root.join("cache"), bytes: None, rendered: root.join("rendered") };
+        let cache = Cache::new(root, &stored, 0);
+        let rule = Rule::ALL[0];
+        let file = SourceFileBuilder::new("module.py", "VALUE = 1\n").finish();
+        let mut diagnostic =
+            Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, "a report".to_owned());
+        diagnostic
+            .annotate(Annotation::primary(Span::from(file).with_range(TextRange::new(0.into(), TextSize::new(5)))));
+        diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
+        diagnostic.set_documentation_url(Some(rule.url()));
+        let reports = Report::all(&[diagnostic], &[TextSize::new(0)]).expect("a rule's report is stored");
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&Findings { fingerprint: 0, reports }).expect("serialize");
+        let found = rkyv::access::<ArchivedFindings, rkyv::rancor::Error>(&bytes).expect("access");
+
+        let key = FileKey { hash: 7, length: 10 };
+        assert!(cache.stored_findings(&root.join("module.py"), key, found, None).is_none());
     }
 }

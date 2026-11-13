@@ -44,13 +44,13 @@ pub struct ImportResolver {
 
 impl ImportResolver {
     pub fn new<'a>(
+        cwd: &Path,
         roots: &SearchRoots,
         entry_roots: impl IntoIterator<Item = &'a Path>,
         coverage: impl IntoIterator<Item = (&'a Path, &'a Path)>,
     ) -> Result<Self> {
-        let cwd = std::env::current_dir().map_err(anyhow::Error::from).and_then(|cwd| {
-            SystemPathBuf::from_path_buf(cwd).map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))
-        })?;
+        let cwd = SystemPathBuf::from_path_buf(cwd.to_path_buf())
+            .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
         let src_roots: Vec<SystemPathBuf> =
             roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
@@ -101,9 +101,10 @@ impl ImportResolver {
         })
     }
 
-    // A file the index never read, such as one a fix created, has no facts to drop.
+    // Only a file with diagnostics gets fixed, and such a file parsed, so the index resolved it.
     pub fn forget(&mut self, path: &Path) {
-        _ = self.files.get(path).and_then(|id| self.modules.remove(&id));
+        let id = self.files.get(path).expect("a fixed file was indexed");
+        self.modules.remove(&id);
     }
 
     pub fn release(&mut self, ending: Ending) {
@@ -384,11 +385,12 @@ pub(super) fn resolve<'db>(
     importing: Option<File>,
     module: &str,
 ) -> Option<PathBuf> {
-    let module = ModuleName::new(module).and_then(|name| locate(db, environment, importing, &name))?;
-    let path = module
-        .file(db)
-        .and_then(|file| file.path(db).as_system_path().map(|path| path.as_std_path().with_extension("py")))?;
-    Some(normalized(&path))
+    let name = ModuleName::new(module)?;
+    let module = locate(db, environment, importing, &name)?;
+    // Ruff's module database has no vendored standard library, so every file it resolves is on disk.
+    let path =
+        module.file(db)?.path(db).as_system_path().expect("a resolved module is on disk").as_std_path().to_path_buf();
+    Some(normalized(&path.with_extension("py")))
 }
 
 fn locate<'db>(

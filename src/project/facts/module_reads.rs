@@ -61,3 +61,20 @@ pub(super) fn is_module_type(annotation: &Expr) -> bool {
     UnqualifiedName::from_expr(annotation)
         .is_some_and(|name| matches!(name.segments(), ["ModuleType"] | ["types", "ModuleType"]))
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_expression;
+    use test_case::test_case;
+
+    use super::is_module_type;
+
+    #[test_case("ModuleType", true ; "imported_name")]
+    #[test_case("types.ModuleType", true ; "module_attribute")]
+    #[test_case("other.ModuleType", false ; "other_module")]
+    #[test_case("list[ModuleType]", false ; "subscript")]
+    fn is_module_type_reads_the_annotation(annotation: &str, expected: bool) {
+        let parsed = parse_expression(annotation).expect("parses");
+        assert_eq!(is_module_type(parsed.expr()), expected);
+    }
+}

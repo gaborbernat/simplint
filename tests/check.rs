@@ -300,12 +300,14 @@ fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
     );
 }
 
+// A path the run cannot read is a warning, not the `E902` of a missing one, whether the walk reaches it or the run names it.
 #[cfg(unix)]
-#[test]
-fn check_warns_about_unreadable_directories() {
+#[test_case(&["--select", "SMP101"] ; "walked")]
+#[test_case(&["--select", "SMP101", "locked/module.py", "module.py"] ; "named")]
+fn check_warns_about_unreadable_directories(args: &[&str]) {
     let root = project(&[("locked/module.py", "x = 1\n"), ("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("locked"), 0o000);
-    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    let (code, _, stderr) = check(root.path(), args);
     common::set_mode(&root.path().join("locked"), 0o755);
     assert_eq!((code, stderr.starts_with("warning: Encountered error:")), (0, true));
 }

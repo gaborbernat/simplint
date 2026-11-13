@@ -548,7 +548,7 @@ fn config_has_flake8_lazy(path: &Path) -> Result<bool> {
             .and_then(toml::Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|repo| repo.get("hooks").and_then(toml::Value::as_array))
+            .filter_map(|repo| repo.get("hooks")?.as_array())
             .flatten()
             .any(|hook| hook.get("id").and_then(toml::Value::as_str) == Some("flake8-lazy")));
     }
@@ -676,10 +676,8 @@ impl PerFileIgnore {
         let anchored = GlobPath::normalize(basename, &source.base);
         Ok(Self {
             basename: Glob::new(basename)?.compile_matcher(),
-            // `normalize` escapes the directory it anchors at, so only the pattern can make the glob invalid.
-            absolute: Glob::new(&anchored.to_string_lossy())
-                .expect("a valid pattern stays valid anchored")
-                .compile_matcher(),
+            // Anchoring resolves `..`, which can cut an alternation such as `{a,b/../c}.py` in two.
+            absolute: Glob::new(&anchored.to_string_lossy())?.compile_matcher(),
             pattern: format!("{}{}", if negated { "!" } else { "" }, anchored.to_string_lossy()),
             negated,
             rules: source

@@ -215,11 +215,8 @@ pub struct DataclassField<'a> {
 // The class attributes a dataclass body annotates by name, in order.
 pub fn dataclass_fields(body: &[Stmt]) -> impl Iterator<Item = DataclassField<'_>> {
     body.iter().filter_map(Stmt::as_ann_assign_stmt).filter_map(|stmt| {
-        stmt.target.as_name_expr().map(|name| DataclassField {
-            name: name.id.as_str(),
-            stmt,
-            kind: Declares::of(&stmt.annotation),
-        })
+        let name = stmt.target.as_name_expr()?.id.as_str();
+        Some(DataclassField { name, stmt, kind: Declares::of(&stmt.annotation) })
     })
 }
 

@@ -68,9 +68,11 @@ impl DocReferences {
         cache_dir: Option<&Path>,
     ) -> Self {
         let mut references = Self::default();
+        let global = ignore::gitignore::gitconfig_excludes_path();
         for (root, settings) in roots {
-            let cache =
-                cache_dir.map(|cache_dir| (cache::documentation_file(cache_dir, root), tree_key(root, settings, main)));
+            let cache = cache_dir.map(|cache_dir| {
+                (cache::documentation_file(cache_dir, root), tree_key(root, settings, main, global.as_deref()))
+            });
             if let Some(cached) = cache.as_ref().and_then(|(path, key)| Self::cached(path, *key)) {
                 references.extend(cached);
                 continue;
@@ -208,9 +210,24 @@ impl CacheKey for DocReferences {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
     use test_case::test_case;
 
     use super::DocReferences;
+
+    #[test]
+    fn page_that_is_not_utf8_documents_nothing() {
+        let directory = TempDir::new().expect("create a temporary directory");
+        let root = directory.path().join("docs");
+        fs::create_dir(&root).expect("create the docs directory");
+        fs::write(root.join("api.rst"), ".. autofunction:: pkg.documented\n").expect("write a page");
+        fs::write(root.join("broken.rst"), b".. autofunction:: pkg.hidden\n\xff\n").expect("write a page");
+        let settings = ruff_workspace::Settings::default();
+        let references = DocReferences::collect([(root.as_path(), &settings)], &root, None);
+        assert!(references.covers("pkg.documented", true) && !references.covers("pkg.hidden", true));
+    }
 
     #[test_case("mod.Class.method", true ; "module_under_the_scope_package")]
     #[test_case("other.Class.method", false ; "other_module")]

@@ -140,6 +140,23 @@ fn a_panic_ends_the_run_with_the_panic_status() {
     assert_eq!(code, 101);
 }
 
+// With no process to spare, the worker threads do not start, which fails the run before it reads anything.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_run_without_threads_fails() {
+    let root = project(&[("module.py", "x = 1\n")]);
+
+    let output = Command::new("bash")
+        .current_dir(root.path())
+        .env("SIMPLINT", assert_cmd::cargo::cargo_bin("simplint"))
+        .args(["-c", "ulimit -u 1 && exec \"$SIMPLINT\" check"])
+        .output()
+        .expect("runs");
+
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 stderr");
+    assert_eq!((output.status.code(), stderr.contains("simplint failed")), (Some(2), true), "{stderr}");
+}
+
 #[test_case("clean" ; "clean")]
 #[test_case("check" ; "check")]
 fn a_command_fails_in_a_removed_working_directory(subcommand: &str) {
