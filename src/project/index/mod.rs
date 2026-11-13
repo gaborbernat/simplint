@@ -632,7 +632,8 @@ fn runtime_cycles(mut runtime: RuntimeGraph, test_modules: &FxHashSet<FileId>) -
 
 // The statements each file shares with another, which `duplicate-code` reports. Stubs repeat each other's signatures by
 // design, and tests repeat their setup and checks so each reads on its own, or copy the code they test to compare
-// against it, so neither is compared.
+// against it, so neither is compared. Nor is a module unasync generates from its `_async` twin, which repeats that twin
+// by design.
 fn duplicate_reports(
     sources: &FxHashMap<FileId, &FileFacts>,
     test_modules: &FxHashSet<FileId>,
@@ -641,9 +642,13 @@ fn duplicate_reports(
     distribution_roots: &FxHashMap<&Path, &Path>,
 ) -> FxHashMap<FileId, Vec<DuplicateRun>> {
     let Some(window) = window else { return FxHashMap::default() };
+    let paths: FxHashSet<&Path> = sources.keys().map(|file| files.path(*file)).collect();
     let mut distributions: FxHashMap<&Path, Vec<(FileId, &FileFacts)>> = FxHashMap::default();
     for (file, facts) in sources.iter().filter(|(file, _)| !test_modules.contains(file)) {
         let path = files.path(*file);
+        if unasync_output(path, &paths) {
+            continue;
+        }
         let root = distribution_roots.get(path).copied().unwrap_or(path);
         distributions.entry(root).or_default().push((*file, *facts));
     }
@@ -654,6 +659,20 @@ fn duplicate_reports(
             duplicates::duplicate_runs(&compared, files, window)
         })
         .collect()
+}
+
+fn unasync_output(path: &Path, paths: &FxHashSet<&Path>) -> bool {
+    let mut twin = PathBuf::new();
+    let mut generated = false;
+    for part in path.components() {
+        if part.as_os_str() == "_sync" {
+            generated = true;
+            twin.push("_async");
+        } else {
+            twin.push(part);
+        }
+    }
+    generated && paths.contains(twin.as_path())
 }
 
 // A name the file only imports is no definition of its own, so another project reading it is no use of the file.
