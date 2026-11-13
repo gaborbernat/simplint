@@ -5,6 +5,7 @@ use crate::semantic::Semantic;
 use crate::syntax::single_assignment;
 
 pub(crate) mod callable_ellipsis;
+mod globals_writes;
 pub(crate) mod imprecise_annotation;
 pub(crate) mod missing_final;
 mod mutable_module_constant;

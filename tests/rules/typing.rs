@@ -235,6 +235,7 @@ fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, re
 #[test_case("from app.settings import PLUGINS\n\nPLUGINS.append(\"extra\")\n", 0 ; "imported_by_name")]
 #[test_case("from app import settings\n\nsettings.PLUGINS.append(\"extra\")\n", 0 ; "read_through_the_module")]
 #[test_case("from app.settings import *\n", 0 ; "star_imported")]
+#[test_case("import sys\n\nfrom app import settings\n\nsetattr(settings, sys.argv[1], [])\n", 0 ; "computed_write")]
 #[test_case("import app.settings\n", 1 ; "module_imported_only")]
 fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, reports: usize) {
     let root = common::project(&[
@@ -243,4 +244,14 @@ fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, repo
         ("app/main.py", main),
     ]);
     common::assert_report_count(root.path(), "SMP605", reports);
+}
+
+// A function may rebind the constant through `globals()`, where no statement names it.
+#[test]
+fn mutable_module_constant_skips_a_constant_written_through_globals() {
+    let root = common::project(&[(
+        "settings.py",
+        "PLUGINS = [\"core\"]\n\n\ndef reset() -> None:\n    globals()[\"PLUGINS\"] = []\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP605", 0);
 }

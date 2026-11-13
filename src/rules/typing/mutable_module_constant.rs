@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -10,12 +12,15 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import};
 use crate::syntax::{is_name, last_segment, single_assignment};
 
+use super::globals_writes::GlobalsWrites;
+
 pub fn mutable_module_constant(checker: &Checker) {
     let project = checker.project();
     // A star import or a computed read hands the module's names to code this rule cannot follow.
     if project.is_star_imported() || project.is_computed_written() {
         return;
     }
+    let globals_writes = OnceCell::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
@@ -33,6 +38,7 @@ pub fn mutable_module_constant(checker: &Checker) {
             || project.is_used_elsewhere(name)
             || project.is_read_opaquely(name)
             || project.is_module_written(name)
+            || globals_writes.get_or_init(|| GlobalsWrites::of(checker)).writes(name)
             || !Reads::only_reads(checker, name)
         {
             continue;

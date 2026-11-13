@@ -365,7 +365,7 @@ rules! {
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
-    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file]),
+    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file, DOCTESTS, COMPUTED_WRITES]),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
