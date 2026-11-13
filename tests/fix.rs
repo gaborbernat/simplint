@@ -229,14 +229,59 @@ fn fix_leaves_formatting_to_ruff_format() {
     assert_eq!(read(root.path(), "module.py"), "import os\n\n\n\n\n\nVALUE   = os.sep\n");
 }
 
-#[test]
-fn fix_lets_ruff_clean_up_what_it_disturbed() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\", \"E501\"]\n"),
-        ("module.py", "from typing import Final\n\n_LIMIT: Final = 3\n\n\ndef limit() -> int:\n    return _LIMIT\n"),
-    ]);
-    fix_unsafe(root.path(), "SMP202");
-    assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3\n");
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"F401\", \"E501\"]\n",
+    "from typing import Final\n\n_LIMIT: Final = 3\n\n\ndef limit() -> int:\n    return _LIMIT\n",
+    "SMP202",
+    "\n\ndef limit() -> int:\n    return 3\n"
+    ; "lets_ruff_clean_up_what_it_disturbed"
+)]
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"ANN201\"]\n",
+    "def label(count: int):\n    if count:\n        return None\n    return \"count \" + str(count)\n",
+    "SMP503",
+    "def label(count: int) -> str | None:\n    if count:\n        return None\n    return f\"count {count!s}\"\n"
+    ; "lets_ruff_apply_a_fix_it_made_possible"
+)]
+#[test_case(
+    "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"E402\", \"I001\"]\n",
+    "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
+     sys, uuid, LIMIT)\n",
+    "SMP303",
+    "import os\nimport sys\nimport uuid\n\nLIMIT = 3\n\n\nprint(os, sys, uuid, LIMIT)\n"
+    ; "lets_ruff_clean_up_after_its_own_fixes"
+)]
+#[test_case(
+    "[tool.ruff]\ntarget-version = \"py314\"\n[tool.ruff.lint]\nselect = [\"UP036\"]\n",
+    "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = str\n\n\n\
+     def is_text(value: object) -> bool:\n    return isinstance(value, basestring)\n",
+    "SMP202,SMP502,SMP102",
+    "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) -> bool:\n    \
+     return isinstance(value, BASESTRING)\n"
+    ; "takes_the_work_ruff_cleanup_leaves_for_the_rules"
+)]
+// Ruff's cleanup of an inlined constant turns `%` formatting into an f-string, which SMP503 then joins with the text
+// before it; without another run that would be left to the second round.
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"UP031\", \"UP032\"]\n",
+    "_NOTICE = \"\\n%sFrozen.\"\n\n\ndef describe(doc: str, indent: str) -> str:\n    return doc + _NOTICE % indent\n",
+    "SMP202,SMP503",
+    "def describe(doc: str, indent: str) -> str:\n    return f\"{doc}\\n{indent}Frozen.\"\n"
+    ; "runs_again_on_what_ruff_cleaned_up"
+)]
+// `ruff check --fix` runs first, so a fix Ruff offers at the line length yet left in place is one that fails on this
+// code: a fix touching its line does not hand it back to Ruff.
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"E711\"]\n",
+    "setting = None\nprint(setting == None)\n",
+    "SMP102",
+    "SETTING = None\nprint(SETTING == None)\n"
+    ; "leaves_findings_ruff_would_fix_at_its_line_length_to_ruff"
+)]
+fn fix_shares_the_file_with_ruffs_fixes(config: &str, source: &str, codes: &str, expected: &str) {
+    let root = project(&[("pyproject.toml", config), ("module.py", source)]);
+    fix_unsafe(root.path(), codes);
+    assert_eq!(read(root.path(), "module.py"), expected);
 }
 
 // Ruff applies a fix that starts where the last one ended in the next pass, as removing an import line ends where the
@@ -439,59 +484,6 @@ fn fix_renames_more_names_than_fix_passes() {
 }
 
 #[test]
-fn fix_lets_ruff_apply_a_fix_it_made_possible() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"ANN201\"]\n"),
-        (
-            "module.py",
-            "def label(count: int):\n    if count:\n        return None\n    return \"count \" + str(count)\n",
-        ),
-    ]);
-    fix_unsafe(root.path(), "SMP503");
-    assert_eq!(
-        read(root.path(), "module.py"),
-        "def label(count: int) -> str | None:\n    if count:\n        return None\n    return f\"count {count!s}\"\n"
-    );
-}
-
-#[test]
-fn fix_lets_ruff_clean_up_after_its_own_fixes() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"E402\", \"I001\"]\n"),
-        (
-            "module.py",
-            "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import \
-             uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
-             sys, uuid, LIMIT)\n",
-        ),
-    ]);
-    fix_unsafe(root.path(), "SMP303");
-    assert_eq!(
-        read(root.path(), "module.py"),
-        "import os\nimport sys\nimport uuid\n\nLIMIT = 3\n\n\nprint(os, sys, uuid, LIMIT)\n"
-    );
-}
-
-#[test]
-fn fix_takes_the_work_ruff_cleanup_leaves_for_the_rules() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n[tool.ruff.lint]\nselect = [\"UP036\"]\n"),
-        (
-            "module.py",
-            "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = \
-             str\n\n\ndef is_text(value: object) \
-             -> bool:\n    return isinstance(value, basestring)\n",
-        ),
-    ]);
-    fix_unsafe(root.path(), "SMP202,SMP502,SMP102");
-    assert_eq!(
-        read(root.path(), "module.py"),
-        "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) \
-         -> bool:\n    return isinstance(value, BASESTRING)\n"
-    );
-}
-
-#[test]
 fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"F401\", \"RUF100\"]\n"),
@@ -527,13 +519,10 @@ fn fix_handles_a_byte_order_mark() {
     );
 }
 
-// SMP201 leaves a constructor where it is, and SMP203 moves it above the methods, so the two settle on one order: the
-// constructor first, and the helper it calls below it.
-#[test]
-fn fix_settles_constructors_with_the_methods_that_call_them() {
-    let root = project(&[(
-        "module.py",
-        r"class Holder:
+// SMP201 leaves a constructor where it is and places a helper after the first constructor that calls it, and SMP203
+// moves constructors above the methods, so the two settle on one order and a second fix changes nothing.
+#[test_case(
+    r"class Holder:
     def helper(self) -> int:
         return 1
 
@@ -543,12 +532,7 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
     def reset(self) -> None:
         self.__init__()
 ",
-    )]);
-    fix_unsafe(root.path(), "SMP201,SMP203");
-    assert_eq!(
-        (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
-        (
-            r"class Holder:
+    r"class Holder:
     def __init__(self) -> None:
         self.value = self.helper()
 
@@ -558,19 +542,10 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
     def reset(self) -> None:
         self.__init__()
 "
-            .to_owned(),
-            (0, PASSED.to_owned(), String::new())
-        )
-    );
-}
-
-// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor
-// above the methods. Both rules settle on one order, and a second fix changes nothing.
-#[test]
-fn fix_places_a_helper_after_the_constructor_that_calls_it() {
-    let root = project(&[(
-        "module.py",
-        r"class Holder:
+    ; "constructor_before_its_helper"
+)]
+#[test_case(
+    r"class Holder:
     def run(self) -> int:
         return 1
 
@@ -581,12 +556,7 @@ fn fix_places_a_helper_after_the_constructor_that_calls_it() {
     def __init_subclass__(cls) -> None:
         cls.compile()
 ",
-    )]);
-    fix_unsafe(root.path(), "SMP201,SMP203");
-    assert_eq!(
-        (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
-        (
-            r"class Holder:
+    r"class Holder:
     def __init_subclass__(cls) -> None:
         cls.compile()
 
@@ -597,9 +567,14 @@ fn fix_places_a_helper_after_the_constructor_that_calls_it() {
     def run(self) -> int:
         return 1
 "
-            .to_owned(),
-            (0, PASSED.to_owned(), String::new())
-        )
+    ; "helper_after_the_constructor_that_calls_it"
+)]
+fn fix_settles_constructors_with_the_methods_they_call(source: &str, expected: &str) {
+    let root = project(&[("module.py", source)]);
+    fix_unsafe(root.path(), "SMP201,SMP203");
+    assert_eq!(
+        (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
+        (expected.to_owned(), (0, PASSED.to_owned(), String::new()))
     );
 }
 
@@ -611,25 +586,6 @@ fn fix_that_ruff_undoes_is_not_a_fix() {
         ("module.py", "__all__ = [\"alpha\",  # first\n           \"delta\"]\n"),
     ]);
     assert_eq!(check(root.path(), &["--diff", "--select", "SMP405"]), (0, String::new(), String::new()));
-}
-
-// Ruff's cleanup of an inlined constant turns `%` formatting into an f-string, which SMP503 then joins with the text
-// before it; without another run that would be left to the second round.
-#[test]
-fn fix_runs_again_on_what_ruff_cleaned_up() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"UP031\", \"UP032\"]\n"),
-        (
-            "module.py",
-            "_NOTICE = \"\\n%sFrozen.\"\n\n\ndef describe(doc: str, indent: str) -> str:\n    return doc + _NOTICE % \
-             indent\n",
-        ),
-    ]);
-    fix_unsafe(root.path(), "SMP202,SMP503");
-    assert_eq!(
-        read(root.path(), "module.py"),
-        "def describe(doc: str, indent: str) -> str:\n    return f\"{doc}\\n{indent}Frozen.\"\n"
-    );
 }
 
 // Suppressions the fixes leave unused are Ruff's to remove, but a line length one only looks unused to the cleanup.
@@ -669,18 +625,6 @@ def run() -> str:
         "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = \
          [\"run\"]\n"
     );
-}
-
-// `ruff check --fix` runs first, so a fix Ruff offers at the line length yet left in place is one that fails on this
-// code: a fix touching its line does not hand it back to Ruff.
-#[test]
-fn fix_leaves_findings_ruff_would_fix_at_its_line_length_to_ruff() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"E711\"]\n"),
-        ("module.py", "setting = None\nprint(setting == None)\n"),
-    ]);
-    fix_unsafe(root.path(), "SMP102");
-    assert_eq!(read(root.path(), "module.py"), "SETTING = None\nprint(SETTING == None)\n");
 }
 
 // Ruff's findings runs leave out the layout rules, yet a suppression comment that may name one counts as used only
@@ -772,11 +716,19 @@ fn single_use_variable_inlines_a_comprehension_into_all(comprehension: &str, bod
     assert_eq!((code, read(root.path(), "module.py")), (0, format!("def check(domains):\n{body}")));
 }
 
-// The statement that uses the constant shares its line with the one before it, so the fix splits that line, as the
+// The statement that uses the constant shares its line with one before or after it, so the fix splits that line, as the
 // formatter would, and a second run finds nothing to move.
-#[test]
-fn early_assignment_splits_a_shared_line() {
-    let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi2 = ffi.FFI(); ffi2.cdef(name)\n    return ffi2\n";
+#[test_case(
+    "def build(ffi):\n    name = \"struct ab\"\n    ffi2 = ffi.FFI(); ffi2.cdef(name)\n    return ffi2\n",
+    "def build(ffi):\n    ffi2 = ffi.FFI()\n    name = \"struct ab\"\n    ffi2.cdef(name)\n    return ffi2\n"
+    ; "before"
+)]
+#[test_case(
+    "def build(ffi):\n    name = \"struct ab\"\n    ffi.reset()\n    ffi.cdef(name); ffi.verify(name)\n",
+    "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n"
+    ; "after"
+)]
+fn early_assignment_splits_a_shared_line(source: &str, expected: &str) {
     let root = project(&[("module.py", source)]);
     assert_eq!(
         (
@@ -784,12 +736,7 @@ fn early_assignment_splits_a_shared_line() {
             check(root.path(), &["--select", "SMP526"]).0,
             read(root.path(), "module.py"),
         ),
-        (
-            0,
-            0,
-            "def build(ffi):\n    ffi2 = ffi.FFI()\n    name = \"struct ab\"\n    ffi2.cdef(name)\n    return ffi2\n"
-                .to_owned()
-        )
+        (0, 0, expected.to_owned())
     );
 }
 
@@ -825,21 +772,6 @@ fn early_assignment_splits_a_shared_line() {
 fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, source: &str, code: i32) {
     let root = project(&[(path, source)]);
     assert_eq!((fix_unsafe(root.path(), select).0, read(root.path(), path)), (code, source.to_owned()));
-}
-
-// The statement that uses the constant shares its line with one after it, which the fix splits off as well.
-#[test]
-fn early_assignment_splits_a_line_the_use_shares_with_a_later_statement() {
-    let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi.reset()\n    ffi.cdef(name); ffi.verify(name)\n";
-    let root = project(&[("module.py", source)]);
-    assert_eq!(
-        (fix_unsafe(root.path(), "SMP526").0, read(root.path(), "module.py")),
-        (
-            0,
-            "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n"
-                .to_owned()
-        )
-    );
 }
 
 // The words of a statement that spans lines count whole, since `ruff format` joins such a statement onto one line.
