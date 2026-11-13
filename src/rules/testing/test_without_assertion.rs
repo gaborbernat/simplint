@@ -1,4 +1,4 @@
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -36,6 +36,7 @@ pub fn test_without_assertion(checker: &Checker) {
         return;
     }
     let support = support_names(checker.body());
+    let mut verdicts = FxHashMap::default();
     for test in collected_tests(checker) {
         if is_skipped(test)
             || test.parameters.iter().any(|parameter| MEASURING_FIXTURES.contains(&parameter.name().as_str()))
@@ -45,7 +46,17 @@ pub fn test_without_assertion(checker: &Checker) {
             continue;
         }
         let parameters: FxHashSet<&str> = test.parameters.iter().map(|parameter| parameter.name().as_str()).collect();
-        let mut finder = Checks { checker, support: &support, parameters, class: class_of(checker, test), seen: FxHashSet::default(), checks: false };
+        let mut finder = Checks {
+            checker,
+            support: &support,
+            parameters,
+            class: class_of(checker, test),
+            seen: FxHashSet::default(),
+            verdicts: &mut verdicts,
+            cut: false,
+            depth: 0,
+            checks: false,
+        };
         finder.visit_body(&test.body);
         if !finder.checks {
             checker.report(
@@ -113,8 +124,16 @@ struct Checks<'a, 'b> {
     support: &'a FxHashSet<&'b str>,
     parameters: FxHashSet<&'b str>,
     class: Option<&'b ast::StmtClassDef>,
-    // The local helpers already followed, so recursion ends.
+    // The local helpers already followed for this test, so recursion ends.
     seen: FxHashSet<TextRange>,
+    // Whether each helper checks, by its range and the class of the test, shared by the tests of the module, which
+    // often call the same helpers.
+    verdicts: &'a mut FxHashMap<(TextRange, Option<TextRange>), bool>,
+    // Whether the walk of the current helper stopped at a helper already being followed, which leaves its verdict
+    // unknown, so it is not kept.
+    cut: bool,
+    // How many helpers deep the walk is, 0 in the test itself.
+    depth: usize,
     checks: bool,
 }
 
@@ -172,8 +191,9 @@ impl<'b> Checks<'_, 'b> {
         match func {
             Expr::Name(name) => {
                 let id = name.id.as_str();
-                // A callable fixture or an imported test helper may check what it runs.
-                if self.parameters.contains(id) || self.support.contains(id) {
+                // A callable fixture or an imported test helper may check what it runs. The fixtures are the test's
+                // own parameters, which a helper does not see.
+                if self.depth == 0 && self.parameters.contains(id) || self.support.contains(id) {
                     return true;
                 }
                 if let Some(helper) = self.checker.semantic().module_function(name) {
@@ -219,12 +239,23 @@ impl<'b> Checks<'_, 'b> {
     }
 
     fn follows(&mut self, body: &'b [Stmt], range: TextRange) -> bool {
+        let key = (range, self.class.map(Ranged::range));
+        if let Some(&checks) = self.verdicts.get(&key) {
+            return checks;
+        }
         if !self.seen.insert(range) {
+            self.cut = true;
             return false;
         }
+        let outer_cut = std::mem::replace(&mut self.cut, false);
+        self.depth += 1;
         self.visit_body(body);
-        let checks = self.checks;
-        self.checks = false;
+        self.depth -= 1;
+        let checks = std::mem::replace(&mut self.checks, false);
+        if !self.cut {
+            self.verdicts.insert(key, checks);
+        }
+        self.cut |= outer_cut;
         checks
     }
 }

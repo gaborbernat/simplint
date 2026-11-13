@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
@@ -13,21 +15,18 @@ pub fn missing_override(checker: &Checker) {
     let project = checker.project();
     for class in module_statements(checker.body()).filter_map(Stmt::as_class_def_stmt) {
         let methods: Vec<&ast::StmtFunctionDef> = class.body.iter().filter_map(Stmt::as_function_def_stmt).collect();
-        let marked: FxHashSet<&str> = methods
-            .iter()
-            .filter(|method| method.decorator_list.iter().any(|decorator| is_override(checker, &decorator.expression)))
-            .map(|method| method.name.as_str())
-            .collect();
+        let marked = OnceCell::new();
         let mut seen: FxHashSet<&str> = FxHashSet::default();
-        for method in methods {
+        for &method in &methods {
             let name = method.name.as_str();
-            // Overloads leave the decorator to the implementation, and a property's setter to its getter, the first
-            // definition of the name.
-            if is_overload(checker, method)
-                || !seen.insert(name)
-                || marked.contains(name)
-                || is_dunder(name)
+            // The checks that hold for every definition of the name come first, as they skip most methods without
+            // resolving a decorator. Overloads leave the decorator to the implementation, and a property's setter to
+            // its getter, the first definition of the name.
+            if is_dunder(name)
                 || !project.is_override(class.name.as_str(), name)
+                || marked.get_or_init(|| marked_names(checker, &methods)).contains(name)
+                || is_overload(checker, method)
+                || !seen.insert(name)
             {
                 continue;
             }
@@ -49,6 +48,15 @@ fn fix(checker: &Checker, method: &ast::StmtFunctionDef) -> Option<Fix> {
     let decorator = format!("{}@override{}", checker.indentation(method), checker.line_ending());
     let edit = Edit::insertion(decorator, checker.source.line_start(method.name.start()));
     Some(with_import(edit, import, Applicability::Safe))
+}
+
+// The names of the methods already marked with `@override`.
+fn marked_names<'a>(checker: &Checker, methods: &[&'a ast::StmtFunctionDef]) -> FxHashSet<&'a str> {
+    methods
+        .iter()
+        .filter(|method| method.decorator_list.iter().any(|decorator| is_override(checker, &decorator.expression)))
+        .map(|method| method.name.as_str())
+        .collect()
 }
 
 fn is_override(checker: &Checker, decorator: &Expr) -> bool {

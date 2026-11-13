@@ -50,13 +50,13 @@ enum Anchor {
 // at its end, and for `re.search` at its start too, without flags, an inline flag or a top-level alternation, which
 // would make an anchor apply to one branch only or to each line.
 pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> Option<Anchored<'a>> {
+    if call.arguments.len() != 2 || call.arguments.find_argument_value("string", 1).is_none() {
+        return None;
+    }
     let semantic = checker.semantic();
     let function = ["match", "prefixmatch", "search"]
         .into_iter()
         .find(|function| semantic.resolves_to(&call.func, &["re", function]))?;
-    if call.arguments.len() != 2 || call.arguments.find_argument_value("string", 1).is_none() {
-        return None;
-    }
     let Expr::StringLiteral(pattern) = call.arguments.find_argument_value("pattern", 0)? else {
         return None;
     };
