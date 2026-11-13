@@ -17,22 +17,23 @@ expression: "lint_fixture(rule, fixture, target_version)"
 18:1 SMP605 `lower` is a list that nothing changes; make it a `tuple`
 19:1 SMP605 `TYPED` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `TYPED` a `tuple`]
 20:1 SMP605 `TYPED_BARE` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `TYPED_BARE` a `tuple`]
-21:1 SMP605 `FINAL_TYPED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `FINAL_TYPED` a `frozenset`]
-22:1 SMP605 `FINAL_DICT` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `FINAL_DICT` a `MappingProxyType`]
-23:1 SMP605 `ABSTRACT` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `ABSTRACT` a `tuple`]
-24:1 SMP605 `MAPPING` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `MAPPING` a `MappingProxyType`]
-25:1 SMP605 `TYPING_LIST` is a list that nothing changes; make it a `tuple`
-26:1 SMP605 `QUOTED` is a list that nothing changes; make it a `tuple`
-40:1 SMP605 `COMPARED` is a list that nothing changes; make it a `tuple`
-41:1 SMP605 `ORDERED` is a list that nothing changes; make it a `tuple`
-42:1 SMP605 `MEMBER_OF` is a list that nothing changes; make it a `tuple`
-43:1 SMP605 `CONTAINER` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `CONTAINER` a `tuple`]
-44:1 SMP605 `SET_COMPARED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_COMPARED` a `frozenset`]
-45:1 SMP605 `COMBINED` is a set that nothing changes; make it a `frozenset`
-46:1 SMP605 `COPIED` is a list that nothing changes; make it a `tuple`
-47:1 SMP605 `SHOWN` is a dict that nothing changes; make it a `MappingProxyType`
-48:1 SMP605 `CHECKED` is a list that nothing changes; make it a `tuple`
---- fixed (19 applied, 11 remaining) ---
+21:1 SMP605 `SET_BARE` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_BARE` a `frozenset`]
+22:1 SMP605 `FINAL_TYPED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `FINAL_TYPED` a `frozenset`]
+23:1 SMP605 `FINAL_DICT` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `FINAL_DICT` a `MappingProxyType`]
+24:1 SMP605 `ABSTRACT` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `ABSTRACT` a `tuple`]
+25:1 SMP605 `MAPPING` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `MAPPING` a `MappingProxyType`]
+26:1 SMP605 `TYPING_LIST` is a list that nothing changes; make it a `tuple`
+27:1 SMP605 `QUOTED` is a list that nothing changes; make it a `tuple`
+41:1 SMP605 `COMPARED` is a list that nothing changes; make it a `tuple`
+42:1 SMP605 `ORDERED` is a list that nothing changes; make it a `tuple`
+43:1 SMP605 `MEMBER_OF` is a list that nothing changes; make it a `tuple`
+44:1 SMP605 `CONTAINER` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `CONTAINER` a `tuple`]
+45:1 SMP605 `SET_COMPARED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_COMPARED` a `frozenset`]
+46:1 SMP605 `COMBINED` is a set that nothing changes; make it a `frozenset`
+47:1 SMP605 `COPIED` is a list that nothing changes; make it a `tuple`
+48:1 SMP605 `SHOWN` is a dict that nothing changes; make it a `MappingProxyType`
+49:1 SMP605 `CHECKED` is a list that nothing changes; make it a `tuple`
+--- fixed (20 applied, 11 remaining) ---
 import os
 import types
 from collections.abc import Mapping, Sequence
@@ -54,6 +55,7 @@ _PRIVATE = ["x"]
 lower: Final = ["y"]
 TYPED: tuple[str, ...] = ("z",)
 TYPED_BARE: tuple = ("z",)
+SET_BARE: frozenset = frozenset({"z"})
 FINAL_TYPED: Final[frozenset[int]] = frozenset({1})
 FINAL_DICT: Final[MappingProxyType[str, int]] = MappingProxyType({"a": 1})
 ABSTRACT: Sequence[str] = ("a",)
@@ -92,7 +94,7 @@ def reader(key: str) -> object:
     while key in EVENS:
         break
     assert FROM_CALL
-    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE)
+    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE, SET_BARE)
     zip({item for item in FINAL_TYPED if item in FINAL_DICT}, ABSTRACT, MAPPING, TYPING_LIST, QUOTED)
     zip(",".join(SUFFIXES), not TYPED, CODES.keys() | {"x"})
     CHANGED.append(key)

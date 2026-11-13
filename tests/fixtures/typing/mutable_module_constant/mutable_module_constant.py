@@ -18,6 +18,7 @@ _PRIVATE = ["x"]
 lower: Final = ["y"]
 TYPED: list[str] = ["z"]
 TYPED_BARE: list = ["z"]
+SET_BARE: set = {"z"}
 FINAL_TYPED: Final[set[int]] = {1}
 FINAL_DICT: Final[dict[str, int]] = {"a": 1}
 ABSTRACT: Sequence[str] = ["a"]
@@ -56,7 +57,7 @@ def reader(key: str) -> object:
     while key in EVENS:
         break
     assert FROM_CALL
-    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE)
+    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE, SET_BARE)
     zip({item for item in FINAL_TYPED if item in FINAL_DICT}, ABSTRACT, MAPPING, TYPING_LIST, QUOTED)
     zip(",".join(SUFFIXES), not TYPED, CODES.keys() | {"x"})
     CHANGED.append(key)
