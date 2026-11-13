@@ -28,16 +28,18 @@ def is_comment(line):
 ### Active on
 
 - **`==` and `!=` between a `[:n]` or `[-n:]` slice and a string or bytes literal of length `n`**, on either side.
-  **Unsafe fix:** the comparison becomes a `startswith()` or `endswith()` call, negated with `not` for `!=`. It is
-  unsafe because the receiver's type is not known: a list slice equals no string, while a list has no `startswith`.
+  **Unsafe fix:** when the sliced value is surely a `str` or `bytes`, such as a parameter annotated so, the comparison
+  becomes a `startswith()` or `endswith()` call, negated with `not` for `!=`. It is unsafe because a subclass may
+  override the method or the slice. Any other value is reported without a fix: a class may compare its slices equal to a
+  string, as pyasn1's character types do, without having `startswith`.
 
   ```python report
-  def kind(name):
+  def kind(name: str):
       return name[-3:] == ".py", name[:2] != "__"
   ```
 
   ```python fixed
-  def kind(name):
+  def kind(name: str):
       return name.endswith(".py"), not name.startswith("__")
   ```
 
