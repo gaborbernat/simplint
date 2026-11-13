@@ -24,7 +24,10 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     };
     // An `assert` that a result equals `[]` also checks its type, which a truth test would not; so does a comparison
     // next to one that tells the value from `None` or another literal.
-    if matches!(walker.statement(), Some(Stmt::Assert(_))) || tells_types_apart(walker, expr, value) {
+    if matches!(walker.statement(), Some(Stmt::Assert(_)))
+        || tells_types_apart(walker, expr, value)
+        || may_be_none(walker, value)
+    {
         return;
     }
     let checker = walker.checker;
@@ -54,6 +57,27 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         }),
         "Test the value's truth",
     );
+}
+
+// A `.get(key)` without a default, or a `.get` or `getattr` defaulting to `None`, gives `None` for a missing name, which
+// a truth test would take for an empty value.
+fn may_be_none(walker: &Walker, value: &Expr) -> bool {
+    let Some(call) = value.as_call_expr() else {
+        return false;
+    };
+    let args = &call.arguments.args;
+    let getter = call.func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "get");
+    let default = if getter {
+        if call.arguments.len() == 1 {
+            return true;
+        }
+        args.get(1)
+    } else if walker.checker.semantic().is_builtin(&call.func, "getattr") {
+        args.get(2)
+    } else {
+        None
+    };
+    default.is_some_and(Expr::is_none_literal_expr)
 }
 
 fn empty_literal(expr: &Expr) -> Option<&'static str> {

@@ -107,3 +107,14 @@ def nested_nonlocal(items):
 
     bump()
     return list(remaining), count
+
+
+def one_side_runs(values: list[bool], *, every: bool) -> bool:
+    branches = (value for value in values)
+    return all(branches) if every else any(branches)
+
+
+def both_sides_after_a_read(values: list[bool], *, every: bool) -> bool:
+    branches = (value for value in values)
+    first = list(branches)
+    return all(branches) if every else any(first)

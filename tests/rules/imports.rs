@@ -1695,6 +1695,21 @@ fn undeclared_dependency_judges_each_module_of_an_import() {
     assert_eq!(found, ["yaml"], "{stdout}");
 }
 
+// A project under the tests is test input, whose requirements a fixture may list unused on purpose.
+#[test]
+fn unused_dependency_leaves_a_test_fixture_project_alone() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"requests\"]\n"),
+        ("src/app/__init__.py", ""),
+        ("tests/fixture/pyproject.toml", "[project]\nname = \"fixture-pkg\"\ndependencies = [\"typing-extensions\"]\n"),
+        ("tests/fixture/src/fixture_pkg/__init__.py", ""),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "unused-dependency"]);
+    let found: Vec<&str> =
+        common::reports(&stdout, "SMP313").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(found, ["requests"], "{stdout}");
+}
+
 // An import anywhere outside the tests uses a requirement, a deferred one too; a requirement with a marker installs
 // only somewhere, so it is left alone. The package's `__init__.py` holds the reports.
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"tomli; python_version < '3.11'\"]\n", &[] ; "used")]

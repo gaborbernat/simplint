@@ -21,6 +21,11 @@ TYPED_BARE: list = ["z"]
 SET_BARE: set = {"z"}
 FINAL_TYPED: Final[set[int]] = {1}
 FINAL_DICT: Final[dict[str, int]] = {"a": 1}
+COMMENTED: Final[
+    list[
+        int  # the comment stays
+    ]
+] = [1]
 ABSTRACT: Sequence[str] = ["a"]
 MAPPING: Mapping[str, int] = {"a": 1}
 TYPING_LIST: List[str] = ["a"]
@@ -83,3 +88,8 @@ def typed(key: str) -> bool:
     zip(COPIED.copy(), isinstance(CHECKED, list))
     print(SHOWN)
     return key in CONTAINER
+
+
+import pytest  # noqa: E402
+
+pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.slow]

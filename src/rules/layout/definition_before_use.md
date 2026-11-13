@@ -254,10 +254,12 @@ The signature of a decorated function and the class-level annotations of a decor
 whatever the target version, because many decorators read them while the module loads:
 
 - a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation
-- pydantic's `validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and
+- pydantic's `validate_call`, typer, click, attrs and
   [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too
 
-Moving such a name below its user would leave the decorator with an unresolved forward reference.
+Moving such a name below its user would leave the decorator with an unresolved forward reference. The standard
+[`dataclass`](https://docs.python.org/3/library/dataclasses.html) is the exception: it reads field annotations as
+strings or forward references, so with lazy annotations a field may name a class defined below it.
 
 ### Type parameters and type statements
 

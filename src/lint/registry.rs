@@ -346,7 +346,7 @@ rules! {
     CatastrophicRegex => ("SMP559", "catastrophic-regex", "Regular expressions whose nested repeats backtrack exponentially", None, logic::catastrophic_regex { module }),
     DefaultArgumentValue => ("SMP560", "default-argument-value", "Arguments that pass a parameter its own default", Always, logic::default_argument_value { module } reads [cross_file]),
     ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
-    ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than one `for` or a compound filter", None, logic::comprehension_complexity { expression }),
+    ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than two `for` clauses or a compound filter", None, logic::comprehension_complexity { expression }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),

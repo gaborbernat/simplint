@@ -41,3 +41,15 @@ class Helper:
 
 def caller() -> object:
     return Helper()
+
+
+class Column:
+    pass
+
+
+@router.model
+class Row:
+    cell: Column
+
+    def fill(self) -> object:
+        return Column()

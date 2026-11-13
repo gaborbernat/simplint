@@ -35,3 +35,19 @@ def tests(items, flag):
 
 def compared_with_a_name(items, fallback):
     return items == [] or items == fallback
+
+
+def missing_key_is_not_empty(data: dict[str, object]) -> bool:
+    return data.get("dependencies") != []
+
+
+def defaulted_key_is_reported(data: dict[str, list[str]]) -> bool:
+    return data.get("dependencies", []) != []
+
+
+def none_default_is_not_empty(data: dict[str, object], item: object) -> bool:
+    return data.get("dependencies", None) != [] and getattr(item, "__args__", None) == ()
+
+
+def getattr_default_is_reported(item: object) -> bool:
+    return getattr(item, "__args__", ()) == () or getattr(item, "__args__") == () or vars(item) == {}

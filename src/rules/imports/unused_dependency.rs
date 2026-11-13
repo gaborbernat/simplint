@@ -28,10 +28,12 @@ pub fn unused_dependency(checker: &Checker) {
     }
 }
 
-// The index answers which modules the project imports only to the file that holds the reports.
+// The index answers which modules the project imports only to the file that holds the reports. A nested project is test
+// input of the run, whose requirements a test fixture may list unused on purpose.
 pub(crate) fn is_dependency_host(settings: &Settings, module_path: Option<&[String]>, is_test: bool) -> bool {
     let host = settings.api.packages.iter().flatten().find(|package| !package.contains('.'));
     settings.metadata.lists_dependencies
         && !is_test
+        && !settings.nested
         && host.zip(module_path).is_some_and(|(host, module_path)| module_path == [host.as_str(), "__init__"])
 }

@@ -42,11 +42,6 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     checker.report_fix(Rule::ComprehensionUnpacking, expr.range(), message, fix, title);
 }
 
-// Whether the comprehension's nested `for` only unpacks its iterable into the element, which this rule moves there.
-pub(crate) fn unpacks_only(expr: &Expr) -> bool {
-    matched(expr).is_some()
-}
-
 struct Matched<'a> {
     outer: &'a Comprehension,
     inner: &'a Comprehension,

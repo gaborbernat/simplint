@@ -404,8 +404,10 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
     }
 }
 
+// Python makes `__init_subclass__` and `__class_getitem__` class methods without the decorator.
 pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
     has_decorator(&method.decorator_list, &["classmethod"])
+        || matches!(method.name.as_str(), "__init_subclass__" | "__class_getitem__")
 }
 
 pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
