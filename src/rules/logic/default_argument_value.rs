@@ -103,7 +103,7 @@ fn passed_defaults<'a>(
         found.push((*param, last, checker.parenthesized_range(last, arguments.into())));
     }
     for keyword in &arguments.keywords {
-        let Some(arg) = &keyword.arg else { continue };
+        let arg = keyword.arg.as_ref().expect("calls that unpack `**` are skipped");
         if let Some(param) = parameters
             .args
             .iter()

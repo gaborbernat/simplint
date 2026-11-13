@@ -31,7 +31,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 
 pub(crate) struct Anchored<'a> {
     function: &'static str,
-    pattern: &'a ast::ExprStringLiteral,
+    pattern: &'a ast::StringLiteral,
     start: Option<Anchor>,
     end: Anchor,
 }
@@ -56,13 +56,9 @@ pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> O
     let function = ["match", "prefixmatch", "search"]
         .into_iter()
         .find(|function| semantic.resolves_to(&call.func, &["re", function]))?;
-    let Expr::StringLiteral(pattern) = call.arguments.find_argument_value("pattern", 0)? else {
-        return None;
-    };
-    if pattern.value.is_implicit_concatenated() {
-        return None;
-    }
-    let value = pattern.value.to_str();
+    let pattern =
+        call.arguments.find_argument_value("pattern", 0)?.as_string_literal_expr()?.as_single_part_string()?;
+    let value = pattern.value.as_ref();
     let end = trailing_anchor(value)?;
     let start = leading_anchor(value);
     if function == "search" && start.is_none() {
@@ -129,16 +125,9 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     let Expr::Attribute(attribute) = call.func.as_ref() else {
         return None;
     };
-    let literal = checker.text(anchored.pattern);
-    let quote_start = literal.find(['"', '\''])?;
-    let quote =
-        if literal[quote_start..].starts_with("\"\"\"") || literal[quote_start..].starts_with("'''") { 3 } else { 1 };
-    let body = TextRange::new(
-        anchored.pattern.start() + TextSize::try_from(quote_start + quote).ok()?,
-        anchored.pattern.end() - TextSize::try_from(quote).ok()?,
-    );
+    let body = anchored.pattern.content_range();
     let source = checker.text(body);
-    let raw = literal[..quote_start].contains(['r', 'R']);
+    let raw = anchored.pattern.flags.prefix().is_raw();
     let mut edits = vec![Edit::range_replacement("fullmatch".to_owned(), attribute.attr.range())];
     if let Some(start) = anchored.start {
         edits.push(Edit::range_deletion(TextRange::at(body.start(), anchor_width(source, start, raw, true)?)));
@@ -162,5 +151,5 @@ fn anchor_width(source: &str, anchor: Anchor, raw: bool, leading: bool) -> Optio
     let found = candidates
         .iter()
         .find(|candidate| if leading { source.starts_with(**candidate) } else { source.ends_with(**candidate) })?;
-    TextSize::try_from(found.len()).ok()
+    Some(TextSize::of(*found))
 }

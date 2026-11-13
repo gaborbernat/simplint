@@ -79,16 +79,18 @@ impl<'n> Uses<'n> {
 
 impl<'a> Visitor<'a> for Uses<'_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt
+            && let Expr::Call(call) = value.as_ref()
+            && is_note_on(call, self.name)
+        {
+            self.notes.push(value.range());
+            self.visit_arguments(&call.arguments);
+            return;
+        }
         match stmt {
             Stmt::Raise(ast::StmtRaise { exc: None, .. }) => self.reraised = true,
             Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
                 self.declared |= names.iter().any(|declared| declared.as_str() == self.name);
-            }
-            Stmt::Expr(ast::StmtExpr { value, .. }) if is_note_on(value, self.name) => {
-                self.notes.push(value.range());
-                if let Expr::Call(call) = value.as_ref() {
-                    self.visit_arguments(&call.arguments);
-                }
             }
             _ => visitor::walk_stmt(self, stmt),
         }
@@ -105,11 +107,8 @@ impl<'a> Visitor<'a> for Uses<'_> {
     }
 }
 
-fn is_note_on(value: &Expr, name: &str) -> bool {
-    let Expr::Call(ast::ExprCall { func, .. }) = value else {
-        return false;
-    };
-    func.as_attribute_expr().is_some_and(|attribute| {
+fn is_note_on(call: &ast::ExprCall, name: &str) -> bool {
+    call.func.as_attribute_expr().is_some_and(|attribute| {
         attribute.attr.as_str() == "add_note" && attribute.value.as_name_expr().is_some_and(|value| value.id == name)
     })
 }

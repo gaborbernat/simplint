@@ -60,13 +60,10 @@ fn insertions(checker: &Checker, parts: &[(&[u8], TextRange)], groups: &[usize])
         starts.push((decoded, content.start()));
         decoded += value.len();
     }
-    let edits = groups
-        .iter()
-        .map(|&group| {
-            let (part_start, source_start) = starts[starts.partition_point(|(start, _)| *start <= group) - 1];
-            let offset = TextSize::try_from(group - part_start + 1).ok()?;
-            Some(Edit::insertion("?:".to_owned(), source_start + offset))
-        })
-        .collect::<Option<Vec<_>>>()?;
+    let edits = groups.iter().map(|&group| {
+        let (part_start, source_start) = starts[starts.partition_point(|(start, _)| *start <= group) - 1];
+        let offset = TextSize::try_from(group - part_start + 1).expect("a group sits in the text of its part");
+        Edit::insertion("?:".to_owned(), source_start + offset)
+    });
     fix_of(edits, Applicability::Unsafe)
 }

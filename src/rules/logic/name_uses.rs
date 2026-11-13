@@ -117,10 +117,8 @@ impl<'a> NameUses<'a> {
 impl<'a> Visitor<'a> for NameUses<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
-                if let Some(name) = defined_name(stmt) {
-                    self.stores.entry(name.0).or_default().push(name.1);
-                }
+            Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+                self.stores.entry(name.as_str()).or_default().push(name.range());
                 self.mark_opaque(stmt);
             }
             Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {

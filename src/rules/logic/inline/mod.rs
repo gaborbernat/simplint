@@ -56,8 +56,8 @@ pub(super) fn leading_name(test: &Expr, bare: bool) -> Option<(&ast::ExprName, b
     match test {
         Expr::Name(name) => Some((name, bare)),
         Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::Not, operand, .. }) => leading_name(operand, false),
-        Expr::Compare(ast::ExprCompare { operands, .. }) => leading_name(operands.first()?, false),
-        Expr::BoolOp(ast::ExprBoolOp { values, .. }) => leading_name(values.first()?, false),
+        Expr::Compare(ast::ExprCompare { operands, .. }) => leading_name(&operands[0], false),
+        Expr::BoolOp(ast::ExprBoolOp { values, .. }) => leading_name(&values[0], false),
         _ => None,
     }
 }

@@ -97,8 +97,8 @@ fn check_assign<'a>(
         return;
     }
     let after = &body[index + 1..];
-    let last_started = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1);
-    let Some(offset) = last_started.filter(|&offset| after[offset].range().contains_range(first)) else { return };
+    // The use sits in the block after the assignment, so in the last statement that starts before it.
+    let offset = after.partition_point(|stmt| stmt.start() <= first.start()) - 1;
     let next = &after[offset];
     // Only the statement directly after the assignment is SMP504's, which inlines a single use.
     if offset == 0 || checker.has_comment_in(TextRange::new(assign.start(), next.start())) {
@@ -154,7 +154,8 @@ fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<
     let mut content = if before.trim().is_empty() {
         format!("{indentation}{assign_text}{eol}{indentation}{statement}")
     } else {
-        let head = before.trim_end().strip_suffix(';')?.trim_end();
+        // The assignment sits alone on its lines, so a statement in front of the use on its line ends with `;`.
+        let head = before.trim_end().strip_suffix(';').expect("a statement before the use on its line").trim_end();
         format!("{head}{eol}{indentation}{assign_text}{eol}{indentation}{statement}")
     };
     if !after.trim().is_empty() {

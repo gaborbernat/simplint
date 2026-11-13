@@ -164,7 +164,8 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
         Import::Add(edit) => Some(edit),
         Import::Present => None,
     });
-    let fix = fix_of(import_edits.chain(insertions).chain(replacements), Applicability::Unsafe)?;
+    let fix = fix_of(import_edits.chain(insertions).chain(replacements), Applicability::Unsafe)
+        .expect("each included call inserts its constant");
     Some(if isolated { fix.isolate(IsolationLevel::Group(1)) } else { fix })
 }
 

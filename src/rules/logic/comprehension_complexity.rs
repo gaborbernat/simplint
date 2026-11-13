@@ -34,7 +34,7 @@ fn excess(generators: &[Comprehension]) -> Option<(TextRange, String)> {
             ),
         ));
     }
-    let ifs = &generators.first()?.ifs;
+    let ifs = &generators[0].ifs;
     let [_, second, ..] = ifs.as_slice() else {
         return None;
     };

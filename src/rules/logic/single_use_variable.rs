@@ -66,7 +66,7 @@ fn check_pair<'a>(
     let fix = match keep_debug_text(checker, vec![edit]) {
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
-            let Some(replace) = edits.first() else { return };
+            let replace = &edits[0];
             if !fits(checker, next, replace, depth) {
                 return;
             }

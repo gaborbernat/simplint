@@ -35,7 +35,7 @@ pub(super) fn wrap_edits(
     header: &str,
 ) -> Option<[Edit; 2]> {
     let source = checker.source;
-    let body_first = try_stmt.body.first()?;
+    let body_first = &try_stmt.body[0];
     // A body that shares the `try` line has no line of its own to keep.
     if source.line_start(body_first.start()) <= try_stmt.start() {
         return None;
@@ -48,7 +48,10 @@ pub(super) fn wrap_edits(
         return None;
     }
     let head = TextRange::new(first.start(), source.line_start(body_first.start()));
-    let tail = TextRange::new(source.full_line_end(try_stmt.body.last()?.end()), source.full_line_end(try_stmt.end()));
+    let tail = TextRange::new(
+        source.full_line_end(try_stmt.body[try_stmt.body.len() - 1].end()),
+        source.full_line_end(try_stmt.end()),
+    );
     if checker.has_comment_in(head) || checker.has_comment_in(tail) {
         return None;
     }

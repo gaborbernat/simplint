@@ -58,7 +58,8 @@ impl<'p> Parser<'p> {
                 Some(_) => {
                     let start = self.index;
                     let node = self.item()?;
-                    alternatives.last_mut()?.push(self.quantified(node, start)?);
+                    let quantified = self.quantified(node, start);
+                    alternatives.last_mut().expect("a group body holds at least one alternative").push(quantified);
                 }
             }
         }
@@ -93,7 +94,7 @@ impl<'p> Parser<'p> {
                 self.index += rest.iter().position(|&byte| byte == b')')? + 1;
                 Some(Node::Group { alternatives: vec![Vec::new()], atomic: true })
             }
-            [b'(', b'?', b'(', ..] | [b')', ..] => None,
+            [b'(', b'?', b'(', ..] => None,
             [b'(', b'?', b'P', b'=', ..] => {
                 self.index += rest.iter().position(|&byte| byte == b')')? + 1;
                 Some(Node::Atom)
@@ -142,7 +143,7 @@ impl<'p> Parser<'p> {
         Some(Node::Group { alternatives, atomic })
     }
 
-    fn quantified(&mut self, node: Node, start: usize) -> Option<Node> {
+    fn quantified(&mut self, node: Node, start: usize) -> Node {
         self.skip_verbose();
         let rest = &self.pattern[self.index..];
         let (length, min, unbounded) = match rest {
@@ -151,9 +152,9 @@ impl<'p> Parser<'p> {
             [b'?', ..] => (1, 0, false),
             [b'{', ..] => match bounds(rest) {
                 Some(found) => found,
-                None => return Some(node),
+                None => return node,
             },
-            _ => return Some(node),
+            _ => return node,
         };
         self.index += length;
         self.skip_verbose();

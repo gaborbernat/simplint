@@ -41,13 +41,13 @@ fn check(checker: &Checker, stmt: &Stmt, value: &Expr) {
                 "This dict comprehension is built only for the calls in it; write a `for` loop",
             );
         }
-        Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) if values.last().is_some_and(acts) => {
-            let word = if *op == BoolOp::And { "and" } else { "or" };
+        Expr::BoolOp(operation) if operation.values.last().is_some_and(acts) => {
+            let word = if operation.op == BoolOp::And { "and" } else { "or" };
             checker.report_fix(
                 Rule::SideEffectExpression,
                 value.range(),
                 format!("This `{word}` is used as a statement to decide whether to run its last part; write an `if`"),
-                if_fix(checker, stmt, value, values),
+                if_fix(checker, stmt, operation),
                 "Write an `if`",
             );
         }
@@ -99,11 +99,11 @@ fn rewritable(checker: &Checker, stmt: &Stmt) -> bool {
 
 // `a and f()` runs `f()` when `a` is true, and `a or f()` when it is false. The `if` tests the same operands the same
 // number of times, except for an `or` of three or more, whose `not (a or b)` tests the last of them twice.
-fn if_fix(checker: &Checker, stmt: &Stmt, operation: &Expr, values: &[Expr]) -> Option<Fix> {
-    let (Some((last, tests)), true) = (values.split_last(), rewritable(checker, stmt)) else {
+fn if_fix(checker: &Checker, stmt: &Stmt, operation: &ast::ExprBoolOp) -> Option<Fix> {
+    let (Some((last, tests)), true) = (operation.values.split_last(), rewritable(checker, stmt)) else {
         return None;
     };
-    let op = operation.as_bool_op_expr().map(|operation| operation.op)?;
+    let op = operation.op;
     let joiner = if op == BoolOp::And { " and " } else { " or " };
     let parent = AnyNodeRef::from(operation);
     let test = tests.iter().map(|test| checker.parenthesized_text(test, parent)).collect::<Vec<_>>().join(joiner);
