@@ -61,3 +61,7 @@ def pure(values: list[int], flag: bool) -> None:
     result = flag and print("x")
     print(result)
     print("x") and flag
+
+
+async def drained(stream) -> None:
+    [print(item) async for item in stream]

@@ -26,7 +26,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 367:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
 372:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 377:5 SMP504 `shown` is used once, right below; inline its value [fix: Inline `shown`]
---- fixed (25 applied, 0 remaining) ---
+382:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+387:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
+402:5 SMP504 `flags` is used once, right below; inline its value [fix: Inline `flags`]
+--- fixed (28 applied, 0 remaining) ---
 import os
 from typing import Any
 
@@ -379,3 +382,25 @@ def inlined_after_parameter(items: list[int], log: list[int]) -> None:
 
 def inlined_pure_after_formatted_name(stack: list[int], top: int) -> str:
     return f"{stack} after popping {(top + 1)}"
+
+
+def counted(items: list[int]) -> int:
+    return items.count(1) * 2
+
+
+def paired() -> tuple[int, ...]:
+    return (1, 2) * 2
+
+
+def decorated_reader(items: list[int]) -> object:
+    size = len(items)
+
+    @staticmethod
+    def helper() -> int:
+        return size
+
+    return helper
+
+
+def any_listed(first: bool, second: bool) -> bool:
+    return any([first, second])

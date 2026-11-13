@@ -214,3 +214,14 @@ def build():
 class Trailing(Base):
     def run(self, name):
         return super().run(name)  # keep: the base class validates the name
+
+
+class ClassBodyStatements(Base):
+    try:
+        default = int("1")
+    except ValueError:
+        default = 0
+    make = lambda: 0  # noqa: E731
+
+    def run(self, name):
+        return super().run(name)

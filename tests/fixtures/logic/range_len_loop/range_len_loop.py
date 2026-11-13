@@ -59,3 +59,24 @@ def call_result(load):
 def counted(items, count):
     for i in range(count(items)):
         print(items[i])
+
+
+def no_singular(data):
+    for i in range(len(data)):
+        print(data[i])
+
+
+def counter(items):
+    total = 0
+
+    def bump():
+        nonlocal total
+        global LAST
+        try:
+            for i in range(len(items)):
+                total += items[i]
+        except ValueError:
+            LAST = None
+
+    bump()
+    return total

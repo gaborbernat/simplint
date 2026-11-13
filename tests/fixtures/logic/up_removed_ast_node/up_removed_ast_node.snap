@@ -22,7 +22,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 69:20 SMP520 `ast.Ellipsis` is removed in Python 3.14; use `ast.Constant`
 77:9 SMP520 `visit_Num` is no longer called in Python 3.14; define `visit_Constant`
 85:9 SMP520 `visit_Str` is no longer called in Python 3.14; define `visit_Constant`
---- fixed (8 applied, 12 remaining) ---
+104:12 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+108:12 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+112:18 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+116:23 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+--- fixed (8 applied, 16 remaining) ---
 import ast
 
 
@@ -123,3 +127,19 @@ class Unrelated:
 
 def visit_Num(node):
     return node
+
+
+def text_kind():
+    return ast.Str
+
+
+def make_unpacked(fields):
+    return ast.Str(**fields)
+
+
+def first_is_kind(check):
+    return check(ast.Str)
+
+
+def kind_by_keyword(check):
+    return check(kind=ast.Str)

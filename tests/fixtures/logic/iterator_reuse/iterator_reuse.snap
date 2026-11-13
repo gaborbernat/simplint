@@ -7,3 +7,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 19:21 SMP545 `pairs` is a one-pass iterator read inside a loop; every pass after the first sees it empty
 25:29 SMP545 `lines` is a one-pass iterator that an earlier read already used up, so this sees it empty
 87:24 SMP545 `upper` is a one-pass iterator read inside a loop; every pass after the first sees it empty
+94:23 SMP545 `remaining` is a one-pass iterator that an earlier read already used up, so this sees it empty

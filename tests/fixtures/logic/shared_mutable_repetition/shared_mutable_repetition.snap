@@ -11,7 +11,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 41:12 SMP539 Every copy is the one `[_]` object, so changing an element through `rows` changes all of them
 47:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them
 54:22 SMP539 Every copy is the one `dict()` object, so changing an element through `self.cells` changes all of them [unsafe fix: Build each element in a comprehension]
---- fixed (6 applied, 3 remaining) ---
+82:12 SMP539 Every copy is the one `size * [0]` object, so changing an element through `grid` changes all of them [unsafe fix: Build each element in a comprehension]
+--- fixed (7 applied, 3 remaining) ---
 range_of = range
 
 
@@ -90,3 +91,15 @@ def single(size):
     rows = [[]] * 1
     rows[0].append(size)
     return rows
+
+
+def repeated_on_the_left(size):
+    grid = [size * [0] for _ in range(size)]
+    grid[0][0] = 1
+    return grid
+
+
+def sum_element(size):
+    grid = [(1 + 2)] * size
+    grid[0] = 1
+    return grid

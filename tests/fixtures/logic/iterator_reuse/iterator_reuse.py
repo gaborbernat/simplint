@@ -85,3 +85,25 @@ def reassigned(lines: Iterator[str]):
 def keyed(names):
     upper = (name.upper() for name in names)
     return {name: list(upper) for name in names}
+
+
+def both_in_one_arm(items, flag):
+    remaining = map(str, items)
+    if flag:
+        first = list(remaining)
+        second = list(remaining)
+        return first, second
+    return None
+
+
+def nested_nonlocal(items):
+    remaining = map(str, items)
+    count = 0
+
+    def bump():
+        nonlocal count
+        global LAST
+        count += 1
+
+    bump()
+    return list(remaining), count
