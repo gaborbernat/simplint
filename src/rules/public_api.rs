@@ -6,7 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::{Exposure, FileIndex};
-use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
+use crate::syntax::{
+    Exports, Visibility, decorator_names, is_overload, module_statements, module_statements_with_next,
+};
 
 pub(super) enum ApiKind {
     Function,
@@ -239,38 +241,6 @@ fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileInde
         }
         documented_in(members, &format!("{qualified}."), anchored, project, found);
     }
-}
-
-pub(super) fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
-    fn collect<'a>(body: &'a [Stmt], found: &mut Vec<(&'a Stmt, Option<&'a Stmt>)>) {
-        for (index, stmt) in body.iter().enumerate() {
-            match stmt {
-                Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
-                    collect(body, found);
-                    for clause in elif_else_clauses {
-                        collect(&clause.body, found);
-                    }
-                }
-                Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
-                    collect(body, found);
-                    for ast::ExceptHandler::ExceptHandler(handler) in handlers {
-                        collect(&handler.body, found);
-                    }
-                    collect(orelse, found);
-                    collect(finalbody, found);
-                }
-                Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                    for case in cases {
-                        collect(&case.body, found);
-                    }
-                }
-                _ => found.push((stmt, body.get(index + 1))),
-            }
-        }
-    }
-    let mut found = Vec::new();
-    collect(body, &mut found);
-    found
 }
 
 fn offer(method: &ast::StmtFunctionDef) -> Offer {

@@ -288,24 +288,29 @@ pub fn instance_attributes(class: &ast::StmtClassDef) -> Vec<(&str, TextRange)> 
 // The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
 // modules pick an implementation by version, availability or platform.
 pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
-    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
+    module_statements_with_next(body).map(|(stmt, _)| stmt)
+}
+
+// Each statement of `module_statements` with the one after it in its own block, where a docstring for it would sit.
+pub fn module_statements_with_next(body: &[Stmt]) -> impl Iterator<Item = (&Stmt, Option<&Stmt>)> {
+    body.iter().enumerate().flat_map(|(index, stmt)| -> Box<dyn Iterator<Item = (&Stmt, Option<&Stmt>)> + '_> {
         match stmt {
             Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
-                module_statements(body)
-                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
+                module_statements_with_next(body)
+                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements_with_next(&clause.body))),
             ),
             Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                Box::new(cases.iter().flat_map(|case| module_statements(&case.body)))
+                Box::new(cases.iter().flat_map(|case| module_statements_with_next(&case.body)))
             }
             Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
-                module_statements(body)
+                module_statements_with_next(body)
                     .chain(handlers.iter().flat_map(|handler| match handler {
-                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
+                        ast::ExceptHandler::ExceptHandler(handler) => module_statements_with_next(&handler.body),
                     }))
-                    .chain(module_statements(orelse))
-                    .chain(module_statements(finalbody)),
+                    .chain(module_statements_with_next(orelse))
+                    .chain(module_statements_with_next(finalbody)),
             ),
-            _ => Box::new(std::iter::once(stmt)),
+            _ => Box::new(std::iter::once((stmt, body.get(index + 1)))),
         }
     })
 }

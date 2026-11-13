@@ -4,7 +4,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::is_documented_variable;
-use crate::rules::public_api::module_statements_with_next;
+use crate::syntax::module_statements_with_next;
 use crate::syntax::{annotation_name, instance_writes, is_classmethod, is_name, last_segment, target_names};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
