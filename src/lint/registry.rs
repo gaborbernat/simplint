@@ -1,9 +1,9 @@
+use std::sync::LazyLock;
+
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
 use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
-
-use std::sync::LazyLock;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
@@ -71,7 +71,7 @@ macro_rules! rules {
                 url.to_owned()
             }
 
-                    pub fn family(self) -> &'static str {
+            pub fn family(self) -> &'static str {
                 match self {
                     $(Rule::$variant => stringify!($family),)*
                 }

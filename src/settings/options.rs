@@ -493,9 +493,11 @@ pub struct SimplintOptions {
     /// Options for the import rules.
     #[option_group]
     pub imports: Option<ImportsOptions>,
+
     /// Options for the logic rules.
     #[option_group]
     pub logic: Option<LogicOptions>,
+
     /// Options for the class rules.
     #[option_group]
     pub classes: Option<ClassesOptions>,
@@ -567,6 +569,7 @@ pub struct ImportsOptions {
         "#
     )]
     pub(crate) module_attributes: Option<Vec<String>>,
+
     /// The modules `module-attribute-import` (`SMP304`) checks: `"project"` for the modules of the run,
     /// `"stdlib"` for the standard library, `"third-party"` for every other installed module, or the absolute name of
     /// one module, which covers its submodules too. A module imported under the alias Ruff's
@@ -639,6 +642,7 @@ pub struct LogicOptions {
         "#
     )]
     pub(crate) max_cognitive_complexity: Option<usize>,
+
     /// The fewest statements in a row another module must repeat for `duplicate-code` (`SMP530`) to report them.
     /// Statements count as those of one body, each nested block counting as one.
     #[option(
@@ -650,6 +654,7 @@ pub struct LogicOptions {
         "#
     )]
     pub(crate) min_duplicate_statements: Option<usize>,
+
     /// The highest complexity an expression may have before `expression-complexity` (`SMP561`) reports it. Each
     /// operator, call, subscript, conditional expression, lambda and comprehension adds one to the operands it holds,
     /// and the score is the deepest such nesting, so a long flat chain of `and` or `+` counts once.

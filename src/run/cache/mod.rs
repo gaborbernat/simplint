@@ -67,7 +67,6 @@ impl Stored {
         let mut hasher = CacheKeyHasher::new();
         package_root.cache_key(&mut hasher);
         let path = directory.join(hasher.finish().to_string());
-        // rkyv reads the archive in place, which needs its bytes aligned.
         let bytes = match read_aligned(&path) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             Err(error) => {
@@ -289,8 +288,7 @@ impl<'a> Cache<'a> {
 
     fn update(&self, path: &Path, key: FileKey, data: ChangeData) {
         if let Some(relative) = self.relative(path) {
-            let change = Change { path: relative.to_owned(), key: key.hash, data };
-            recorded(&self.changes).push(change);
+            recorded(&self.changes).push(Change { path: relative.to_owned(), key: key.hash, data });
         }
     }
 

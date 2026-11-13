@@ -39,40 +39,15 @@ impl<'f> ProjectInputs<'f> {
             .unique_by(|settings| std::ptr::from_ref(*settings))
             .collect();
         Self {
-            entry_points: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings.metadata.entry_points.iter().map(|entry| (settings.project_dir.clone(), entry.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
+            entry_points: by_project(&settings, |settings| &settings.metadata.entry_points),
             build_hooks: settings
                 .iter()
                 .flat_map(|settings| settings.build_hooks.iter().cloned())
                 .sorted_unstable()
                 .dedup()
                 .collect(),
-            coverage_plugins: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings.coverage.modules.iter().map(|module| (settings.project_dir.clone(), module.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
-            coverage_paths: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings
-                        .coverage
-                        .search_paths
-                        .iter()
-                        .map(|directory| (settings.project_dir.clone(), directory.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
+            coverage_plugins: by_project(&settings, |settings| &settings.coverage.modules),
+            coverage_paths: by_project(&settings, |settings| &settings.coverage.search_paths),
             duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
             probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
@@ -97,6 +72,16 @@ impl<'f> ProjectInputs<'f> {
     }
 }
 
+// Each project's items paired with its directory, so two projects naming the same item keep both.
+fn by_project<T: Clone + Ord>(settings: &[&Settings], items: impl Fn(&Settings) -> &Vec<T>) -> Vec<(PathBuf, T)> {
+    settings
+        .iter()
+        .flat_map(|settings| items(settings).iter().map(|item| (settings.project_dir.clone(), item.clone())))
+        .sorted_unstable()
+        .dedup()
+        .collect()
+}
+
 // The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index
 // finds the shortest any file asks for. `None` when no file checks for duplicate code, whose statements the facts then
 // lack.
@@ -115,10 +100,14 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
         .par_iter()
         .map(|file| {
             let settings = file.settings.project;
-            let module_paths = file.module_path.iter().cloned().chain(roots.module_paths(file.path)).collect_vec();
             let is_test = file.settings.is_test;
-            let roles: Vec<ModuleRole> =
-                module_paths.iter().map(|module_path| settings.api.role(Some(module_path), is_test)).collect();
+            let roles: Vec<ModuleRole> = file
+                .module_path
+                .iter()
+                .cloned()
+                .chain(roots.module_paths(file.path))
+                .map(|module_path| settings.api.role(Some(&module_path), is_test))
+                .collect();
             let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
             (file.absolute.as_path(), role.unwrap_or_else(|| settings.api.role(None, is_test)))
         })
@@ -171,11 +160,10 @@ impl<'a> RunFile<'a> {
         // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
         let sibling_init =
             settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
-        let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
         let nested = settings.project.nested.then(|| settings.project.root.clone());
         Self {
             path,
-            absolute,
+            absolute: std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf()),
             settings,
             ruff,
             ruff_config,

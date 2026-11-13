@@ -91,8 +91,7 @@ pub(crate) fn check_files(
         let base = fingerprints.base(&file.identity());
         cache.reused(file.path, key, base, full)
     };
-    let reuse =
-        mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
+    let reuse = mode.fix.is_generate().then_some(&reuse as &Reuse<'_, Diagnostics>);
     let plumbing = Plumbing {
         cache_dir: resolved.cache_dir.as_deref().filter(|_| usage.enabled),
         rewrote: (!mode.fix.is_generate()).then_some(&rewrote),

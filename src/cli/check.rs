@@ -23,7 +23,6 @@ use crate::run::{
 use crate::settings::{FileSettings, Settings};
 
 pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Result<ExitStatus> {
-    let log_level = global_options.log_level();
     let resolved = Resolved::new(cli, global_options)?;
     let is_stdin = reads_stdin(cli);
     let files = if cli.files.is_empty() || is_stdin { vec![PathBuf::from(".")] } else { cli.files.clone() };
@@ -59,6 +58,7 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         noqa: if cli.ignore_noqa { flags::Noqa::Disabled } else { flags::Noqa::Enabled },
         roots: linted_roots(&files),
     };
+    let log_level = global_options.log_level();
     if let Some((reason, kind)) = cli.suppression() {
         let flag = suppression_flag(kind);
         if is_stdin {

@@ -1,6 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 use ruff_linter::source_kind::SourceKindDiff;
 use rustc_hash::FxHashMap;
@@ -17,7 +17,7 @@ struct Fixed {
 
 impl Overlay {
     fn current(&self, path: &Path) -> Option<String> {
-        self.0.lock().expect("no worker panics while fixing").get(path).map(|fixed| fixed.current.clone())
+        self.files().get(path).map(|fixed| fixed.current.clone())
     }
 
     pub(crate) fn source(&self, path: &Path) -> io::Result<String> {
@@ -28,15 +28,19 @@ impl Overlay {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.0.lock().expect("no worker panics while fixing").is_empty()
+        self.files().is_empty()
     }
 
     pub(crate) fn record(&self, path: &Path, source: &str, fixed: &str) -> String {
-        let mut files = self.0.lock().expect("no worker panics while fixing");
+        let mut files = self.files();
         let entry = files
             .entry(path.to_path_buf())
             .or_insert_with(|| Fixed { original: source.to_owned(), current: String::new() });
         fixed.clone_into(&mut entry.current);
         SourceKindDiff::from_text(&entry.original, fixed, Some(path)).to_string()
+    }
+
+    fn files(&self) -> MutexGuard<'_, FxHashMap<PathBuf, Fixed>> {
+        self.0.lock().expect("no worker panics while fixing")
     }
 }

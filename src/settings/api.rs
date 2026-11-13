@@ -58,19 +58,6 @@ pub struct ApiScope {
     pub(crate) packages: Option<BTreeSet<String>>,
 }
 
-// Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
-// the interface its author declares to them, so no name in it needs an importer in the project.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub struct ModuleRole {
-    pub(crate) public: bool,
-}
-
-impl CacheKey for ModuleRole {
-    fn cache_key(&self, state: &mut CacheKeyHasher) {
-        self.public.cache_key(state);
-    }
-}
-
 impl ApiScope {
     pub(super) fn resolve(
         root: &Path,
@@ -81,12 +68,11 @@ impl ApiScope {
     ) -> Self {
         let library =
             option == ProjectKindOption::Library || option == ProjectKindOption::Auto && is_installable(root, build);
-        let kind = if library { ProjectKind::Library } else { ProjectKind::Application };
         let packages = packages.map_or_else(
             || shipped_packages(root, build, metadata),
             |names| Some(names.iter().map(|name| package_name(name)).collect()),
         );
-        Self { kind, packages }
+        Self { kind: if library { ProjectKind::Library } else { ProjectKind::Application }, packages }
     }
 
     // A file's role from its module path, such as `["package", "module"]` or `["package", "__init__"]`; a file that is
@@ -123,6 +109,19 @@ impl CacheKey for ApiScope {
         (self.kind == ProjectKind::Library).cache_key(state);
         self.packages.iter().flatten().for_each(|package| package.cache_key(state));
         self.packages.is_some().cache_key(state);
+    }
+}
+
+// Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
+// the interface its author declares to them, so no name in it needs an importer in the project.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModuleRole {
+    pub(crate) public: bool,
+}
+
+impl CacheKey for ModuleRole {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.public.cache_key(state);
     }
 }
 

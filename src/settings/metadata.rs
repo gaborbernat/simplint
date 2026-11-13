@@ -30,86 +30,16 @@ pub struct ProjectMetadata {
     pub(crate) native: bool,
 }
 
-impl ProjectMetadata {
-    // Whether an unconditional requirement installs the module under its exact name. Removing a guard around the import
-    // relies on the answer, so a near match does not count.
-    pub(crate) fn requires(&self, module: &str) -> bool {
-        self.dependencies.contains(&top_level(module).to_ascii_lowercase())
-    }
-
-    // Whether a requirement or an extra may install the module. Reporting the module as undeclared relies on the
-    // answer, so any likely match counts.
-    pub(crate) fn may_install(&self, module: &str) -> bool {
-        may_provide(&self.runtime, module)
-    }
-
-    // `[dependency-groups]` sits outside `[project]`, so the parsed table cannot carry it. Its `include-group` tables
-    // name no requirement and are skipped.
-    pub(super) fn add_groups(&mut self, groups: &BTreeMap<String, Vec<toml::Value>>) {
-        self.declared.extend(groups.values().flatten().filter_map(toml::Value::as_str).flat_map(import_names));
-    }
-
-    pub(super) fn add_tool_references(&mut self, pyproject: &toml::Table) {
-        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
-        if let Some(dynamic) = lookup(&["setuptools", "dynamic"]).and_then(toml::Value::as_table) {
-            self.entry_points
-                .extend(dynamic.values().filter_map(|value| value.get("attr")?.as_str().and_then(dotted_attribute)));
-        }
-        if let Some(classes) = lookup(&["setuptools", "cmdclass"]).and_then(toml::Value::as_table) {
-            self.entry_points.extend(classes.values().filter_map(toml::Value::as_str).filter_map(dotted_attribute));
-        }
-        if let Some(groups) = lookup(&["poetry", "plugins"]).and_then(toml::Value::as_table) {
-            self.entry_points.extend(
-                groups
-                    .values()
-                    .filter_map(toml::Value::as_table)
-                    .flat_map(toml::Table::values)
-                    .filter_map(toml::Value::as_str)
-                    .map(str::to_owned),
-            );
-        }
-        self.entry_points.extend(strings(lookup(&["mypy", "plugins"])).into_iter().flat_map(|plugins| {
-            plugins
-                .split(',')
-                .map(str::trim)
-                .filter(|plugin| !plugin.is_empty())
-                .map(|plugin| if plugin.contains(':') { plugin.to_owned() } else { format!("{plugin}:plugin") })
-                .collect::<Vec<_>>()
-        }));
-        self.entry_points.extend(strings(lookup(&["pylint", "main", "load-plugins"])).into_iter().flat_map(
-            |plugins| {
-                plugins
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|plugin| !plugin.is_empty())
-                    .map(|plugin| format!("{plugin}:register"))
-                    .collect::<Vec<_>>()
-            },
-        ));
-    }
-}
-
-// A distribution's import name is its normalized name in most cases, so a namespace package such as `google.auth`
-// matches `google-auth`, and one whose name adds a prefix or suffix, such as `grpcio` or `pyserial`, contains it.
-pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Clone, module: &str) -> bool {
-    let lower = module.to_ascii_lowercase();
-    let mut prefix = String::new();
-    for part in lower.split('.') {
-        if !prefix.is_empty() {
-            prefix.push('_');
-        }
-        prefix.push_str(part);
-        if modules.clone().into_iter().any(|name| *name == prefix) {
-            return true;
-        }
-    }
-    let root = top_level(&lower);
-    modules.into_iter().any(|name| name.contains(root))
-}
-
-fn dotted_attribute(value: &str) -> Option<String> {
-    let (module, attribute) = value.rsplit_once('.')?;
-    Some(format!("{module}:{attribute}"))
+#[derive(Deserialize, Default)]
+#[serde(default, rename_all = "kebab-case")]
+struct ProjectTable {
+    name: Option<String>,
+    dynamic: Vec<String>,
+    dependencies: Vec<String>,
+    optional_dependencies: BTreeMap<String, Vec<String>>,
+    scripts: BTreeMap<String, String>,
+    gui_scripts: BTreeMap<String, String>,
+    entry_points: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 impl From<ProjectTable> for ProjectMetadata {
@@ -151,18 +81,6 @@ impl From<ProjectTable> for ProjectMetadata {
     }
 }
 
-// The name PyPI knows a distribution by, under which `Pkg`, `pkg` and `PKG` are one.
-pub(crate) fn canonical_name(name: &str) -> String {
-    name.split(['-', '_', '.']).filter(|part| !part.is_empty()).join("-").to_ascii_lowercase()
-}
-
-fn distribution_name(requirement: &str) -> &str {
-    let end = requirement
-        .find(|char: char| !(char.is_ascii_alphanumeric() || matches!(char, '-' | '_' | '.')))
-        .unwrap_or(requirement.len());
-    &requirement[..end]
-}
-
 pub(super) fn import_names(requirement: &str) -> Vec<String> {
     // Distributions whose import name differs from the project name; the rest import under their normalized name.
     const RENAMED: &[(&str, &str)] = &[
@@ -197,16 +115,107 @@ pub(super) fn import_names(requirement: &str) -> Vec<String> {
     renamed.chain([name.clone()]).collect()
 }
 
-#[derive(Deserialize, Default)]
-#[serde(default, rename_all = "kebab-case")]
-struct ProjectTable {
-    name: Option<String>,
-    dynamic: Vec<String>,
-    dependencies: Vec<String>,
-    optional_dependencies: BTreeMap<String, Vec<String>>,
-    scripts: BTreeMap<String, String>,
-    gui_scripts: BTreeMap<String, String>,
-    entry_points: BTreeMap<String, BTreeMap<String, String>>,
+// The name PyPI knows a distribution by, under which `Pkg`, `pkg` and `PKG` are one.
+pub(crate) fn canonical_name(name: &str) -> String {
+    name.split(['-', '_', '.']).filter(|part| !part.is_empty()).join("-").to_ascii_lowercase()
+}
+
+fn distribution_name(requirement: &str) -> &str {
+    let end = requirement
+        .find(|char: char| !(char.is_ascii_alphanumeric() || matches!(char, '-' | '_' | '.')))
+        .unwrap_or(requirement.len());
+    &requirement[..end]
+}
+
+impl ProjectMetadata {
+    // Whether an unconditional requirement installs the module under its exact name. Removing a guard around the import
+    // relies on the answer, so a near match does not count.
+    pub(crate) fn requires(&self, module: &str) -> bool {
+        self.dependencies.contains(&top_level(module).to_ascii_lowercase())
+    }
+
+    // Whether a requirement or an extra may install the module. Reporting the module as undeclared relies on the
+    // answer, so any likely match counts.
+    pub(crate) fn may_install(&self, module: &str) -> bool {
+        may_provide(&self.runtime, module)
+    }
+
+    // `[dependency-groups]` sits outside `[project]`, so the parsed table cannot carry it. Its `include-group` tables
+    // name no requirement and are skipped.
+    pub(super) fn add_groups(&mut self, groups: &BTreeMap<String, Vec<toml::Value>>) {
+        self.declared.extend(groups.values().flatten().filter_map(toml::Value::as_str).flat_map(import_names));
+    }
+
+    pub(super) fn add_tool_references(&mut self, pyproject: &toml::Table) {
+        if let Some(dynamic) = tool_value(pyproject, &["setuptools", "dynamic"]).and_then(toml::Value::as_table) {
+            self.entry_points
+                .extend(dynamic.values().filter_map(|value| value.get("attr")?.as_str().and_then(dotted_attribute)));
+        }
+        if let Some(classes) = tool_value(pyproject, &["setuptools", "cmdclass"]).and_then(toml::Value::as_table) {
+            self.entry_points.extend(classes.values().filter_map(toml::Value::as_str).filter_map(dotted_attribute));
+        }
+        if let Some(groups) = tool_value(pyproject, &["poetry", "plugins"]).and_then(toml::Value::as_table) {
+            self.entry_points.extend(
+                groups
+                    .values()
+                    .filter_map(toml::Value::as_table)
+                    .flat_map(toml::Table::values)
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_owned),
+            );
+        }
+        let plugins = |path: &[&str]| {
+            strings(tool_value(pyproject, path))
+                .iter()
+                .flat_map(|plugins| plugins.split(',').map(str::trim).filter(|plugin| !plugin.is_empty()))
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        };
+        self.entry_points.extend(
+            plugins(&["mypy", "plugins"])
+                .into_iter()
+                .map(|plugin| if plugin.contains(':') { plugin } else { format!("{plugin}:plugin") }),
+        );
+        self.entry_points.extend(
+            plugins(&["pylint", "main", "load-plugins"]).into_iter().map(|plugin| format!("{plugin}:register")),
+        );
+    }
+}
+
+// A distribution's import name is its normalized name in most cases, so a namespace package such as `google.auth`
+// matches `google-auth`, and one whose name adds a prefix or suffix, such as `grpcio` or `pyserial`, contains it.
+pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Clone, module: &str) -> bool {
+    let lower = module.to_ascii_lowercase();
+    let mut prefix = String::new();
+    for part in lower.split('.') {
+        if !prefix.is_empty() {
+            prefix.push('_');
+        }
+        prefix.push_str(part);
+        if modules.clone().into_iter().any(|name| *name == prefix) {
+            return true;
+        }
+    }
+    let root = top_level(&lower);
+    modules.into_iter().any(|name| name.contains(root))
+}
+
+// A value under `[tool]`, by the keys leading to it.
+pub(super) fn tool_value<'a>(pyproject: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value> {
+    path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key))
+}
+
+fn dotted_attribute(value: &str) -> Option<String> {
+    let (module, attribute) = value.rsplit_once('.')?;
+    Some(format!("{module}:{attribute}"))
+}
+
+fn strings(value: Option<&toml::Value>) -> Vec<String> {
+    match value {
+        Some(toml::Value::String(text)) => vec![text.clone()],
+        Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
+        _ => Vec::new(),
+    }
 }
 
 #[derive(Default)]
@@ -226,8 +235,7 @@ pub(super) struct BuildConfiguration {
 
 impl BuildConfiguration {
     pub(super) fn of(pyproject: &toml::Table, hatch_file: Option<&toml::Table>) -> Self {
-        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
-        let mut hatch = lookup(&["hatch"]).and_then(toml::Value::as_table).cloned().unwrap_or_default();
+        let mut hatch = tool_value(pyproject, &["hatch"]).and_then(toml::Value::as_table).cloned().unwrap_or_default();
         if let Some(file) = hatch_file {
             overlay(&mut hatch, file);
         }
@@ -243,17 +251,21 @@ impl BuildConfiguration {
             &["maturin", "module-name"],
         ]
         .iter()
-        .flat_map(|path| strings(lookup(path)))
+        .flat_map(|path| strings(tool_value(pyproject, path)))
         .collect();
         Self {
             has_build_system: pyproject.contains_key("build-system"),
             packages,
-            uv_package: lookup(&["uv", "package"]).and_then(toml::Value::as_bool),
-            maturin_bindings: lookup(&["maturin", "bindings"]).and_then(toml::Value::as_str).map(str::to_owned),
+            uv_package: tool_value(pyproject, &["uv", "package"]).and_then(toml::Value::as_bool),
+            maturin_bindings: tool_value(pyproject, &["maturin", "bindings"])
+                .and_then(toml::Value::as_str)
+                .map(str::to_owned),
             backend: system_value("build-backend").and_then(toml::Value::as_str).map(str::to_owned),
             backend_path: strings(system_value("backend-path")),
             hatch_hooks: hatch_hook_paths(&hatch),
-            pdm_hook: lookup(&["pdm", "build", "custom-hook"]).and_then(toml::Value::as_str).map(str::to_owned),
+            pdm_hook: tool_value(pyproject, &["pdm", "build", "custom-hook"])
+                .and_then(toml::Value::as_str)
+                .map(str::to_owned),
             native: strings(system_value("requires")).iter().any(|requirement| {
                 matches!(canonical_name(distribution_name(requirement)).as_str(), "maturin" | "setuptools-rust")
             }),
@@ -300,15 +312,14 @@ pub struct CoveragePlugins {
 
 impl CoveragePlugins {
     pub(super) fn of(pyproject: &toml::Table, project_dir: &Path, pythonpath: &[PathBuf]) -> Self {
-        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
-        let modules = strings(lookup(&["coverage", "run", "plugins"]));
+        let modules = strings(tool_value(pyproject, &["coverage", "run", "plugins"]));
         if modules.is_empty() {
             return Self::default();
         }
         let search_paths = std::iter::once(project_dir.to_path_buf())
             .chain(pythonpath.iter().cloned())
             .chain(
-                strings(lookup(&["ty", "environment", "extra-paths"]))
+                strings(tool_value(pyproject, &["ty", "environment", "extra-paths"]))
                     .into_iter()
                     .map(|directory| project_dir.join(directory)),
             )
@@ -320,27 +331,14 @@ impl CoveragePlugins {
     }
 }
 
-fn strings(value: Option<&toml::Value>) -> Vec<String> {
-    match value {
-        Some(toml::Value::String(text)) => vec![text.clone()],
-        Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
-        _ => Vec::new(),
-    }
-}
-
 // The files hatchling loads as its custom build and metadata hooks, each `path` relative to the project's directory.
 // hatchling calls the class that subclasses its hook interface in such a file, so no import reaches it.
 pub(super) fn hatch_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<PathBuf>> {
-    build
-        .hatch_hooks
-        .iter()
-        .map(|path| {
-            let file = root.join(path);
-            let absolute =
-                std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
-            Ok(normalized(&absolute))
-        })
-        .collect()
+    build.hatch_hooks.iter().map(|path| Ok(normalized(&absolute(&root.join(path))?))).collect()
+}
+
+fn absolute(path: &Path) -> Result<PathBuf> {
+    std::path::absolute(path).with_context(|| format!("Failed to resolve {}", path.display()))
 }
 
 // The path hatchling makes of a hook's `path`, which `os.path.normpath` collapses: each `..` drops the component before
@@ -366,7 +364,7 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
     if backend == "pdm.backend" {
         let file = root.join(build.pdm_hook.as_deref().unwrap_or("pdm_build.py"));
         if file.is_file() {
-            let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+            let file = absolute(&file)?;
             hooks.extend(
                 [
                     "pdm_build_hook_enabled",
@@ -396,7 +394,7 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
     else {
         return Ok(hooks);
     };
-    let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+    let file = absolute(&file)?;
     // The PEP 517 and PEP 660 hooks a build frontend calls by name, which no import of the project reaches.
     let names: Vec<String> = match object {
         Some(object) => vec![object.split('.').next().unwrap_or_default().trim().to_owned()],

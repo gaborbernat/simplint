@@ -1,5 +1,5 @@
 use std::hash::Hasher;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
@@ -8,8 +8,7 @@ use ruff_linter::package::PackageRoot;
 use super::files::{Documentation, ProjectInputs, RunFile};
 use crate::lint::registry::Rule;
 use crate::project::cache::FileKey;
-use crate::project::{DocReferences, Parts, SearchRoots};
-use crate::settings::ModuleRole;
+use crate::project::{Parts, SearchRoots};
 
 // A cache entry stored under the same digest was computed from the same index, which then need not be built.
 #[expect(clippy::too_many_arguments, reason = "the run's inputs, which the digest hashes")]
@@ -44,29 +43,18 @@ pub(super) fn run_digest(
         project.coverage_paths.cache_key(&mut hasher);
         project.duplicate_statements.cache_key(&mut hasher);
         project.probed.cache_key(&mut hasher);
-        let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
-        test_modules.sort_unstable();
-        test_modules.cache_key(&mut hasher);
-        let mut dependency_hosts: Vec<&Path> = project.dependency_hosts.iter().copied().collect();
-        dependency_hosts.sort_unstable();
-        dependency_hosts.cache_key(&mut hasher);
-        let mut distribution_roots: Vec<(&Path, &Path)> =
-            project.distribution_roots.iter().map(|(path, root)| (*path, *root)).collect();
-        distribution_roots.sort_unstable_by_key(|(path, _)| *path);
-        for (path, root) in distribution_roots {
+        project.test_modules.iter().sorted_unstable().collect_vec().cache_key(&mut hasher);
+        project.dependency_hosts.iter().sorted_unstable().collect_vec().cache_key(&mut hasher);
+        for (path, root) in project.distribution_roots.iter().sorted_unstable_by_key(|(path, _)| **path) {
             path.cache_key(&mut hasher);
             root.cache_key(&mut hasher);
         }
-        let mut roles: Vec<(&Path, ModuleRole)> = project.roles.iter().map(|(path, role)| (*path, *role)).collect();
-        roles.sort_unstable_by_key(|(path, _)| *path);
-        for (path, role) in roles {
+        for (path, role) in project.roles.iter().sorted_unstable_by_key(|(path, _)| **path) {
             path.cache_key(&mut hasher);
             role.cache_key(&mut hasher);
         }
     }
-    let mut documented: Vec<(&Option<PathBuf>, &DocReferences)> = docs.iter().collect();
-    documented.sort_unstable_by_key(|(project, _)| *project);
-    for (project, references) in documented {
+    for (project, references) in docs.iter().sorted_unstable_by_key(|(project, _)| *project) {
         project.cache_key(&mut hasher);
         references.cache_key(&mut hasher);
     }
