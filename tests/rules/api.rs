@@ -84,6 +84,17 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
     ; "module_variable_prefix_type_checking_stubs"
 )]
 #[test_case("unexported-public-name", "unexported_public_name_source_text.py" ; "unexported_public_name_source_text")]
+#[test_case("unexported-public-name", "unexported_public_name_self_lookup.py" ; "unexported_public_name_self_lookup")]
+#[test_case(
+    "unexported-public-name", "unexported_public_name_self_lookup_get.py" ; "unexported_public_name_self_lookup_get"
+)]
+#[test_case(
+    "unexported-public-name", "unexported_public_name_self_lookup_module.py"
+    ; "unexported_public_name_self_lookup_module"
+)]
+#[test_case(
+    "unexported-public-name", "unexported_public_name_literal_lookup.py" ; "unexported_public_name_literal_lookup"
+)]
 #[test_case("all-format", "all_format.py" ; "all_format")]
 #[test_case("all-format", "all_format_tuple.py" ; "all_format_tuple")]
 #[test_case("all-format", "all_format_bare.py" ; "all_format_bare_tuple")]

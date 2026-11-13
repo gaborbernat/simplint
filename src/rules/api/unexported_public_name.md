@@ -326,6 +326,22 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   __all__ = []
   ```
 
+- **Every name of a module that looks itself up by a computed name**, as `globals()[key]`, `vars()[key]`,
+  `globals().get(key)` or `getattr(sys.modules[__name__], key)` do with a key that is not a string literal: the lookup
+  may reach any of them.
+
+  ```python ok
+  def do_upper(value: str) -> str:
+      return value.upper()
+
+
+  def parse(name: str, value: str) -> str:
+      return globals()["do_" + name](value)
+
+
+  __all__ = ["parse"]
+  ```
+
 ### Fix
 
 The fix renames the name to `_name` everywhere in the file. **Unsafe fix:** always, as importers outside the run keep
