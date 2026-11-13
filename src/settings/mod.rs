@@ -5,7 +5,6 @@ mod options;
 mod pytest;
 mod schema;
 
-use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
 use std::path::{Path, PathBuf};
@@ -19,6 +18,7 @@ use ruff_diagnostics::{Applicability, Fix};
 use ruff_linter::settings::types::GlobPath;
 use ruff_linter::warn_user_once_by_message;
 use ruff_macros::CacheKey;
+use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
 pub use api::{ApiScope, DocstringStyle, ModuleRole, ProjectKind};
@@ -29,10 +29,7 @@ pub use schema::config_schema;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
 pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
-use crate::settings::options::{
-    ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
-    SelectorLayer,
-};
+use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
 pub(crate) use crate::settings::pytest::PytestConfig;
 
 // Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
@@ -61,10 +58,7 @@ impl SettingsResolver {
                 return Ok(Self { root, overrides, discovery });
             }
         };
-        let pyproject = match pyproject {
-            Some(path) => Some((path, read_table(path)?)),
-            None => None,
-        };
+        let pyproject = pyproject.map(|path| read_table(path).map(|table| (path, table))).transpose()?;
         // The one file is both: a `--config` run takes its metadata from the same file, as it takes its settings.
         let table = pyproject.as_ref().map(|(path, table)| (*path, table));
         let fixed = Arc::new(Settings::resolve(root, None, table, table, &overrides, isolated)?);
@@ -77,6 +71,11 @@ impl SettingsResolver {
     pub(crate) fn for_file(&self, path: &Path) -> Result<Arc<Settings>> {
         self.discovery.settings(path, &self.overrides)
     }
+}
+
+fn read_table(path: &Path) -> Result<toml::Table> {
+    let text = std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
 // Ruff's `PyprojectDiscoveryStrategy`: one configuration for every file, or the one each file's location points at,
@@ -170,6 +169,16 @@ impl Discovery {
     }
 }
 
+// Whether a `pyproject.toml` has a `[tool.<name>]` table.
+fn configures(table: &toml::Table, name: &str) -> bool {
+    table.get("tool").and_then(|tool| tool.get(name)).is_some()
+}
+
+// Whether a `pyproject.toml` describes a project: a `[project]` table, or a `[build-system]` that installs it.
+fn describes(table: &toml::Table) -> bool {
+    table.contains_key("project") || table.contains_key("build-system")
+}
+
 // What discovery found so far: the settings by the directories they apply to, the settings each root and metadata file
 // resolves to, and each `pyproject.toml` it met, so every one is read and parsed once.
 #[derive(Default)]
@@ -238,6 +247,21 @@ pub(crate) fn is_nested_root(main: &Path, dir: &Path) -> bool {
         && ["conf.py", "pyproject.toml", "setup.py", "setup.cfg"].iter().any(|marker| dir.join(marker).is_file())
 }
 
+// Whether a path, relative to a project, has a directory that marks a nested test project: `tests` or `test`, or a
+// `test-*` or `test_*` directory such as the roots of Sphinx's test suite. A name that only starts with `test`, such as
+// `testkit`, is a library's.
+fn in_nested_test_directory(relative: &Path) -> bool {
+    in_test_directory(relative)
+        || relative.components().any(|part| {
+            part.as_os_str().to_str().is_some_and(|name| name.starts_with("test-") || name.starts_with("test_"))
+        })
+}
+
+// Whether a path, relative to a project, has a directory named `tests` or `test`, where the project keeps its tests.
+fn in_test_directory(relative: &Path) -> bool {
+    relative.components().any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+}
+
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.
 pub(crate) struct Settings {
@@ -281,7 +305,6 @@ impl Settings {
         overrides: &Overrides,
         isolated: bool,
     ) -> Result<Self> {
-        let path = configuration.map(|(path, _)| path);
         let configures_flake8_lazy =
             [metadata, configuration].into_iter().flatten().any(|(_, table)| configures(table, "flake8-lazy"));
         let pyproject = metadata.map(|(_, table)| table);
@@ -301,6 +324,7 @@ impl Settings {
             }
             None => (None, ProjectMetadata::default(), BuildConfiguration::default()),
         };
+        let path = configuration.map(|(path, _)| path);
         let configuration = match configuration {
             Some((path, table)) => {
                 let pyproject: Pyproject =
@@ -316,15 +340,15 @@ impl Settings {
         metadata.entry_points.extend(pytest.plugins.iter().cloned());
         let coverage = pyproject
             .map_or_else(CoveragePlugins::default, |table| CoveragePlugins::of(table, project_dir, &pytest.pythonpath));
-        // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
-        let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = resolve_rules(
             configuration.rule_selections.iter().map(|selection| &selection.enabled),
             RuleSet::all().subtract(RuleSet::from_rules([Rule::UnusedIgnore])),
         )?;
         // flake8-lazy rebuilds each module's `__lazy_modules__` from its imports, so it and this rule's fix keep
         // rewriting each other's output; the rule stays off for the whole project. The hook configuration is read only
-        // when the rule would run.
+        // when the rule would run. Without a `pyproject.toml`, the run's root holds the project, unless `--isolated`
+        // reads no files.
+        let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = if rules.contains(Rule::AbsoluteSiblingImport)
             && (configures_flake8_lazy || hook_runs_flake8_lazy(project, main))
         {
@@ -336,22 +360,13 @@ impl Settings {
             resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable), RuleSet::all())?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
-        let ProjectOptions {
-            max_paragraph_words,
-            naming,
-            imports,
-            logic,
-            classes,
-            project_kind,
-            api_packages,
-            docstring_style,
-        } = configuration.project;
+        let options = configuration.project;
         let api = ApiScope::resolve(
             project_dir,
-            project_kind.unwrap_or_default(),
+            options.project_kind.unwrap_or_default(),
             &build,
             &metadata,
-            api_packages.as_deref(),
+            options.api_packages.as_deref(),
         );
         Ok(Self {
             root: root.to_path_buf(),
@@ -366,9 +381,9 @@ impl Settings {
             pytest,
             metadata,
             api,
-            docstring_style,
+            docstring_style: options.docstring_style,
             run: configuration.run,
-            knobs: Knobs::resolve(max_paragraph_words, naming, imports, logic, classes),
+            knobs: Knobs::resolve(options),
             rules,
             fixable,
             fix_safety,
@@ -394,13 +409,9 @@ impl Settings {
     // Ruff drops the fix of a rule `fixable` leaves out, and `extend-safe-fixes` and `extend-unsafe-fixes` change how
     // safe the rest are.
     pub(crate) fn fix_for(&self, rule: Rule, fix: Option<Fix>) -> Option<Fix> {
-        let fix = fix.filter(|_| self.is_fixable(rule))?;
+        let fix = fix.filter(|_| self.fixable.contains(rule))?;
         let applicability = self.fix_safety.resolve_applicability(rule, fix.applicability());
         Some(fix.with_applicability(applicability))
-    }
-
-    fn is_fixable(&self, rule: Rule) -> bool {
-        self.fixable.contains(rule)
     }
 
     pub(crate) fn is_test_module(&self, path: &Path) -> bool {
@@ -460,6 +471,26 @@ impl CacheKey for Settings {
 
 // Ruff's `as_rule_table`: each layer applies its selectors from the least to the most specific, an ignore beating a
 // select of the same specificity, and a layer that sets `select` (or `fixable`) starts from nothing.
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct ProjectFile {
+    project: ProjectMetadata,
+    #[serde(rename = "dependency-groups")]
+    dependency_groups: BTreeMap<String, Vec<toml::Value>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Pyproject {
+    tool: Tool,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Tool {
+    simplint: SimplintOptions,
+}
+
 fn resolve_rules<'a>(layers: impl IntoIterator<Item = &'a SelectorLayer>, default: RuleSet) -> Result<RuleSet> {
     layers.into_iter().try_fold(default, |rules, layer| {
         let enable = layer.replace.iter().flatten().chain(&layer.extend).map(|selector| (selector, true));
@@ -601,13 +632,8 @@ pub struct Knobs {
 }
 
 impl Knobs {
-    fn resolve(
-        max_paragraph_words: Option<usize>,
-        naming: NamingOptions,
-        imports: ImportsOptions,
-        logic: LogicOptions,
-        classes: ClassesOptions,
-    ) -> Self {
+    fn resolve(options: ProjectOptions) -> Self {
+        let ProjectOptions { max_paragraph_words, naming, imports, logic, classes, .. } = options;
         Self {
             max_paragraph_words: max_paragraph_words.unwrap_or(100),
             keep_names: naming.keep_names.unwrap_or_default(),
@@ -667,56 +693,6 @@ impl PerFileIgnore {
     }
 }
 
-// Whether a path, relative to a project, has a directory that marks a nested test project: `tests` or `test`, or a
-// `test-*` or `test_*` directory such as the roots of Sphinx's test suite. A name that only starts with `test`, such as
-// `testkit`, is a library's.
-fn in_nested_test_directory(relative: &Path) -> bool {
-    in_test_directory(relative)
-        || relative.components().any(|part| {
-            part.as_os_str().to_str().is_some_and(|name| name.starts_with("test-") || name.starts_with("test_"))
-        })
-}
-
-// Whether a path, relative to a project, has a directory named `tests` or `test`, where the project keeps its tests.
-fn in_test_directory(relative: &Path) -> bool {
-    relative.components().any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
-}
-
-// Whether a `pyproject.toml` has a `[tool.<name>]` table.
-fn configures(table: &toml::Table, name: &str) -> bool {
-    table.get("tool").and_then(|tool| tool.get(name)).is_some()
-}
-
-// Whether a `pyproject.toml` describes a project: a `[project]` table, or a `[build-system]` that installs it.
-fn describes(table: &toml::Table) -> bool {
-    table.contains_key("project") || table.contains_key("build-system")
-}
-
-fn read_table(path: &Path) -> Result<toml::Table> {
-    let text = std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-    toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct ProjectFile {
-    project: ProjectMetadata,
-    #[serde(rename = "dependency-groups")]
-    dependency_groups: BTreeMap<String, Vec<toml::Value>>,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Pyproject {
-    tool: Tool,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(default)]
-struct Tool {
-    simplint: SimplintOptions,
-}
-
 #[cfg(test)]
 mod tests {
     use ruff_options_metadata::{OptionEntry, OptionsMetadata};
@@ -725,13 +701,7 @@ mod tests {
 
     #[test]
     fn documented_defaults_are_the_resolved_ones() {
-        let knobs = Knobs::resolve(
-            None,
-            NamingOptions::default(),
-            ImportsOptions::default(),
-            LogicOptions::default(),
-            ClassesOptions::default(),
-        );
+        let knobs = Knobs::resolve(ProjectOptions::default());
         let resolved = [
             ("max-paragraph-words", serde_json::json!(knobs.max_paragraph_words)),
             ("naming.keep-names", serde_json::json!(knobs.keep_names)),
