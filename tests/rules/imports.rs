@@ -12,6 +12,7 @@ use crate::common;
 #[test_case("future-annotations", "future_annotations_class_bindings.py", None ; "future_annotations_class_bindings")]
 #[test_case("future-annotations", "future_annotations_class_shadow.py", None ; "future_annotations_class_shadow")]
 #[test_case("future-annotations", "future_annotations_quoted_union.py", None ; "future_annotations_quoted_union")]
+#[test_case("future-annotations", "future_annotations_quoted_union_right.py", None ; "future_annotations_quoted_union_right")]
 #[test_case("future-annotations", "future_annotations_guarded_import.py", None ; "future_annotations_guarded_import")]
 #[test_case("future-annotations", "future_annotations_comments.py", None ; "future_annotations_comments")]
 #[test_case(
@@ -1587,6 +1588,31 @@ fn module_attribute_import_outside_modules(source: &str, reported: bool) {
     assert_eq!(stdout.contains("Import `"), reported, "{stdout}");
 }
 
+// The module stays when the run imports a module of the same name or binding, when `module-attributes` keeps it, and
+// a listed module covers its submodules.
+#[test_case(
+    "module-attribute-scope = [\"stdlib\"]\n", "from . import helpers\nimport json\n\nTEXT = json.dumps(helpers.VALUE)\n", true
+    ; "beside_a_run_module"
+)]
+#[test_case(
+    "module-attribute-scope = [\"stdlib\"]\nmodule-attributes = [\"json\"]\n", "import json\n\nTEXT = json.dumps([])\n",
+    false ; "kept_on_the_module"
+)]
+#[test_case(
+    "module-attribute-scope = [\"os\"]\n", "import os.path as osp\n\nTEXT = osp.join(\"a\")\n", true
+    ; "submodule_of_listed_module"
+)]
+fn module_attribute_import_scope(settings: &str, source: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.simplint.imports]\n{settings}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/consumer.py", source),
+        ("pkg/helpers.py", "VALUE = []\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304"]).1;
+    assert_eq!(stdout.contains("Import `dumps`") || stdout.contains("Import `join`"), reported, "{stdout}");
+}
+
 // Only the modules importing the package runs need what they import installed, so a plugin module, a test, a guarded
 // or deferred import and an import a version check picks are left alone; the `else` of a `TYPE_CHECKING` check and a
 // check of anything but the environment run.
@@ -1620,6 +1646,23 @@ fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, 
     let found: Vec<&str> =
         common::reports(&stdout, "SMP312").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
     assert_eq!(found, reported, "{stdout}");
+}
+
+// A handler for another error and a test of anything but the environment run the import wherever the package runs.
+#[test]
+fn undeclared_dependency_reports_imports_other_guards_leave() {
+    let core = "import config\nimport os\n\ntry:\n    import rich\nexcept AttributeError:\n    pass\n\nif config.DEBUG:\n    \
+                import click\n\nif os.name == \"nt\":\n    import colorama\n";
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\ndependencies = []\n"),
+        ("pkg/__init__.py", "from pkg import core\n"),
+        ("pkg/core.py", core),
+        ("config.py", "DEBUG = False\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "undeclared-dependency"]);
+    let found: Vec<&str> =
+        common::reports(&stdout, "SMP312").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(found, ["rich", "click"], "{stdout}");
 }
 
 // A module of the run imported beside a third-party one in the same statement leaves the third-party one reported.
