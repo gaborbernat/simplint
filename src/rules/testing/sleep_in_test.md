@@ -41,7 +41,8 @@ def test_worker_finishes():
 
 - **`time.sleep` and [`asyncio.sleep`](https://docs.python.org/3/library/asyncio-task.html#asyncio.sleep) calls**: the
   call resolves through the module's imports, so `from time import sleep` and `await asyncio.sleep(...)` are reported
-  too. Every call counts, in a test function or in a helper of the module, as the helper runs for the tests too.
+  too. A call counts in the body of a test function, a fixture, or a unittest `setUp`, `tearDown`, `setUpClass` or
+  `tearDownClass`.
 
   ```python report file=tests/test_sleep.py
   import asyncio
@@ -57,6 +58,19 @@ def test_worker_finishes():
   ```
 
 ### Exceptions
+
+- **Sleeps in helpers**: a function or class that is not a test or a fixture, including one a test defines inside its
+  body, such as a test server, a test double or a backoff helper, may wait on purpose to stand in for a slow peer.
+
+  ```python ok file=tests/test_server.py
+  import time
+
+
+  class SlowServer:
+      def respond(self) -> bytes:
+          time.sleep(0.1)
+          return b"ok"
+  ```
 
 - **A sleep for the literal `0`**: `sleep(0)` yields to other tasks without waiting, so it does not make a test slow.
 
