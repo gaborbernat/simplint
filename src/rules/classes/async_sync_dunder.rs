@@ -1,9 +1,9 @@
-use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
+use crate::syntax::yields;
 
 // The special methods Python calls without awaiting the result. `__getitem__`, `__getattr__`, `__get__` and `__call__`
 // are left out, as `await obj[key]`, `await obj.name` and `await obj()` are ways to design an awaitable API.
@@ -38,31 +38,4 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             "Python calls `{name}` without awaiting it, so `async def` makes it return {result}; define it with `def`"
         ),
     );
-}
-
-fn yields(body: &[Stmt]) -> bool {
-    let mut finder = Yields { found: false };
-    finder.visit_body(body);
-    finder.found
-}
-
-struct Yields {
-    found: bool,
-}
-
-impl<'a> Visitor<'a> for Yields {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            visitor::walk_stmt(self, stmt);
-        }
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        match expr {
-            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
-            Expr::Lambda(_) => return,
-            _ => {}
-        }
-        visitor::walk_expr(self, expr);
-    }
 }

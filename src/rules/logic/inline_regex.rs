@@ -10,14 +10,14 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, Import, above_comments, ensure_import, fix_of, preamble_len, statement_lines};
-use crate::rules::logic::regex_pattern::{Call, Context, Facts, Literal};
+use crate::rules::logic::regex_pattern::{Call, Context, Literal};
 use crate::rules::typing::missing_final::final_qualifier;
 
 const METACHARACTERS: &[u8] = b".^$*+?{[\\|()";
 const ESCAPABLE: &[u8] = b"abfnrtv";
 
 pub fn inline_regex(checker: &Checker) {
-    let facts = Facts::collect(checker);
+    let facts = checker.state().regex_facts(checker);
     let sites: Vec<(&Literal, &Call)> = facts
         .sites()
         .into_iter()

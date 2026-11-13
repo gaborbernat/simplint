@@ -273,12 +273,7 @@ fn is_helper_with_ids(semantic: &Semantic, element: &Expr) -> bool {
 }
 
 fn is_cache(semantic: &Semantic, decorator: &ast::Decorator) -> bool {
-    let expression = match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-        other => other,
-    };
-    semantic.resolves_to(expression, &["functools", "cache"])
-        || semantic.resolves_to(expression, &["functools", "lru_cache"])
+    semantic.is_decorator(decorator, &[&["functools", "cache"], &["functools", "lru_cache"]])
 }
 
 // Only the last statement decides. A loop never counts, as it may run no times, and a `with` whose manager may swallow

@@ -3,7 +3,8 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 15:5 SMP923 `numbers` is a generator; document what it yields with `:yields:` instead of `:returns:` [unsafe fix: Rename the field to `:yields:`]
---- fixed (1 applied, 0 remaining) ---
+24:5 SMP923 `echo` is a generator; document what it yields with `:yields:` instead of `:returns:` [unsafe fix: Rename the field to `:yields:`]
+--- fixed (2 applied, 0 remaining) ---
 from collections.abc import Iterator
 
 
@@ -24,3 +25,11 @@ def numbers(limit: int) -> Iterator[int]:
     """
     probe = lambda: (yield)  # noqa: E731
     yield from range(limit) if probe else ()
+
+
+def echo() -> Iterator[int]:
+    """Echo what is sent.
+
+    :yields: The values sent.
+    """
+    return (yield 0)

@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 #[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n", None ; "ini_options")]
@@ -521,6 +521,6 @@ fn startup_pth_reads_are_production_use(pth: &str, stdout: &str) {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }

@@ -3,6 +3,7 @@ use std::ops::Bound;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -11,7 +12,7 @@ use super::constructors::alternative_constructors;
 use super::definition_time::{bound_names, definition_name, definition_time_exprs};
 use super::reorder::{Read, depth_first};
 use crate::lint::checker::Checker;
-use crate::syntax::{ExprCollector, decorator_names, signature_annotations};
+use crate::syntax::{ExprCollector, has_decorator, signature_annotations};
 
 // A method that is in none of them sorts after all of them.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -458,12 +459,9 @@ fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
         Some(Section::Constructor(rank))
     } else if factories.contains(name) {
         Some(Section::Factory)
-    } else if name.len() > 4 && name.starts_with("__") && name.ends_with("__") {
+    } else if is_dunder(name) {
         Some(Section::Dunder)
-    } else if decorator_names(&function.decorator_list)
-        .iter()
-        .any(|name| matches!(*name, "property" | "cached_property" | "setter" | "getter" | "deleter"))
-    {
+    } else if has_decorator(&function.decorator_list, &["property", "cached_property", "setter", "getter", "deleter"]) {
         Some(Section::Property)
     } else {
         None

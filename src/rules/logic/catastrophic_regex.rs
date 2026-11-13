@@ -1,9 +1,9 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::regex_pattern::{Facts, scan};
+use crate::rules::logic::regex_pattern::{INLINE_FLAGS, bounds, class_length, scan};
 
 pub fn catastrophic_regex(checker: &Checker) {
-    let facts = Facts::collect(checker);
+    let facts = checker.state().regex_facts(checker);
     for (literal, call) in facts.sites() {
         let pattern = literal.decoded();
         let Some(scan) = scan(&pattern, call.verbose) else {
@@ -204,7 +204,7 @@ impl<'p> Parser<'p> {
             [b'(', b'?', b'=' | b'!', ..] => (3, true, true),
             [b'(', b'?', b'<', b'=' | b'!', ..] => (4, true, true),
             [b'(', b'?', ..] => {
-                let flags = rest[2..].iter().take_while(|byte| b"aiLmsux-".contains(byte)).count();
+                let flags = rest[2..].iter().take_while(|byte| INLINE_FLAGS.contains(byte)).count();
                 match rest.get(2 + flags)? {
                     // A global flag; the scan already read a verbose one.
                     b')' => {
@@ -260,41 +260,5 @@ impl<'p> Parser<'p> {
         let span = (start, self.index);
         let repeated = Node::Repeat { node: Box::new(node), min, unbounded, possessive, span };
         self.quantified(repeated, start)
-    }
-}
-
-// A `{m,n}` repeat: its length, its minimum, and whether it has no maximum. `None` when the braces are a literal, as
-// `re` reads `{` without digits.
-fn bounds(rest: &[u8]) -> Option<(usize, u32, bool)> {
-    let end = rest.iter().position(|&byte| byte == b'}')?;
-    let inner = std::str::from_utf8(&rest[1..end]).ok()?;
-    let (low, high) = match inner.split_once(',') {
-        Some((low, high)) => (low, Some(high)),
-        None => (inner, None),
-    };
-    if !low.bytes().chain(high.unwrap_or_default().bytes()).all(|byte| byte.is_ascii_digit())
-        || (low.is_empty() && high.is_none_or(str::is_empty))
-    {
-        return None;
-    }
-    let min = if low.is_empty() { 0 } else { low.parse().ok()? };
-    Some((end + 1, min, high.is_some_and(str::is_empty)))
-}
-
-// A `]` right after the opening `[` or `[^` is a member of the class, not its end.
-fn class_length(class: &[u8]) -> Option<usize> {
-    let mut index = 1;
-    if class.get(index) == Some(&b'^') {
-        index += 1;
-    }
-    if class.get(index) == Some(&b']') {
-        index += 1;
-    }
-    loop {
-        match class.get(index)? {
-            b'\\' => index += 2,
-            b']' => return Some(index + 1),
-            _ => index += 1,
-        }
     }
 }

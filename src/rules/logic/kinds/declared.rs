@@ -5,8 +5,8 @@ use super::Kind;
 use super::tables::{CONTAINERS, PATH_CLASSES, items, shared};
 use crate::lint::checker::Checker;
 use crate::rules::is_class_like;
-use crate::semantic::BindingKind;
-use crate::syntax::{is_classmethod, is_name, receiver, target_leaves};
+use crate::semantic::{BindingKind, Semantic};
+use crate::syntax::{decorator_callee, is_classmethod, is_name, receiver, target_leaves};
 
 #[derive(Clone, Copy)]
 pub(super) struct Class<'a> {
@@ -24,13 +24,6 @@ pub(super) fn attribute_root(expr: &Expr) -> &Expr {
         head = value;
     }
     head
-}
-
-fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
-    match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-        expr => expr,
-    }
 }
 
 pub(super) fn self_parameter(method: &ast::StmtFunctionDef) -> Option<&str> {
@@ -53,11 +46,7 @@ pub(super) fn keeps_return(checker: &Checker, decorator: &ast::Decorator) -> boo
 }
 
 pub(super) fn is_property(checker: &Checker, decorator: &ast::Decorator) -> bool {
-    is_builtin_call(checker, &decorator.expression, &["property"])
-        || checker
-            .semantic()
-            .qualified_name(&decorator.expression)
-            .is_some_and(|name| name.segments() == ["functools", "cached_property"])
+    checker.semantic().is_decorator(decorator, Semantic::PROPERTY)
 }
 
 pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {

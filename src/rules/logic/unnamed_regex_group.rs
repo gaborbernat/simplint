@@ -4,12 +4,12 @@ use ruff_text_size::{TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::fix_of;
-use crate::rules::logic::regex_pattern::{Context, Facts, scan};
+use crate::rules::logic::regex_pattern::{Context, scan};
 
 const MATCH_CALLS: [&str; 6] = ["compile", "match", "prefixmatch", "search", "fullmatch", "finditer"];
 
 pub fn unnamed_regex_group(checker: &Checker) {
-    let facts = Facts::collect(checker);
+    let facts = checker.state().regex_facts(checker);
     for (literal, call) in facts.sites() {
         let Some(scan) = scan(&literal.decoded(), call.verbose) else {
             continue;
@@ -25,7 +25,7 @@ pub fn unnamed_regex_group(checker: &Checker) {
         if !reported {
             continue;
         }
-        let fix = (!scan.refers && facts.call_flows(call))
+        let fix = (!scan.refers && facts.call_flows(checker, call))
             .then(|| insertions(checker, &literal.parts, &scan.groups))
             .flatten();
         let message = if count == 1 {

@@ -9,7 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::callee::local_function;
 use crate::rules::testing::collected_tests;
-use crate::syntax::{last_segment, receiver};
+use crate::syntax::{decorator_callee, last_segment, receiver};
 
 // Prefixes of the helpers that check a result, such as `check_output`, `verify_signature` or Playwright's `expect`.
 const CHECKING_PREFIXES: &[&str] = &["check", "verify", "expect", "validate", "ensure", "compare", "fail"];
@@ -42,7 +42,10 @@ pub fn test_without_assertion(checker: &Checker) {
         if is_skipped(test)
             || test.parameters.iter().any(|parameter| MEASURING_FIXTURES.contains(&parameter.name().as_str()))
             || only_runs(checker, test)
-            || test.decorator_list.iter().any(|decorator| decorator.expression.as_call_expr().is_some_and(escalates_warnings))
+            || test
+                .decorator_list
+                .iter()
+                .any(|decorator| decorator.expression.as_call_expr().is_some_and(escalates_warnings))
         {
             continue;
         }
@@ -74,15 +77,16 @@ pub fn test_without_assertion(checker: &Checker) {
 // Tests pytest always skips or expects to fail are placeholders, not checks that went missing.
 fn is_skipped(test: &ast::StmtFunctionDef) -> bool {
     test.decorator_list.iter().any(|decorator| {
-        let func = decorator.expression.as_call_expr().map_or(&decorator.expression, |call| &call.func);
-        UnqualifiedName::from_expr(func)
-            .is_some_and(|name| matches!(name.segments(), [.., "mark", "skip" | "xfail"] | ["unittest", "skip"] | ["skip"]))
+        UnqualifiedName::from_expr(decorator_callee(decorator)).is_some_and(|name| {
+            matches!(name.segments(), [.., "mark", "skip" | "xfail"] | ["unittest", "skip"] | ["skip"])
+        })
     })
 }
 
 fn only_runs(checker: &Checker, test: &ast::StmtFunctionDef) -> bool {
     let docstring = crate::syntax::docstring(&test.body).map(|literal| literal.value.to_str());
-    let comments = checker.comment_ranges().comments_in_range(test.range()).iter().map(|comment| checker.text(*comment));
+    let comments =
+        checker.comment_ranges().comments_in_range(test.range()).iter().map(|comment| checker.text(*comment));
     std::iter::once(test.name.as_str()).chain(docstring).chain(comments).any(|text| {
         let lowered = text.to_ascii_lowercase();
         RUNS_CLEANLY.iter().any(|word| lowered.contains(word))
@@ -107,7 +111,8 @@ fn support_names(body: &[Stmt]) -> FxHashSet<&str> {
             Stmt::ImportFrom(import) => {
                 let module = import.module.as_ref().map_or("", |module| module.as_str());
                 if import.level > 0 || is_testing_path(module) {
-                    names.extend(import.names.iter().map(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str()));
+                    names
+                        .extend(import.names.iter().map(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str()));
                 }
             }
             Stmt::Import(import) => {
@@ -210,16 +215,14 @@ impl<'b> Checks<'_, 'b> {
                     return self.follows_function(helper);
                 }
                 // A helper class the module defines may check in its methods.
-                self.checker
-                    .body()
-                    .iter()
-                    .filter_map(Stmt::as_class_def_stmt)
-                    .find(|class| class.name.as_str() == id)
-                    .is_some_and(|class| self.follows(&class.body, class.range()))
+                self.checker.module_classes().get(id).is_some_and(|class| self.follows(&class.body, class.range()))
             }
             // A base class's test, reached through `super()`, may assert.
             Expr::Attribute(attribute)
-                if attribute.value.as_call_expr().is_some_and(|inner| inner.func.as_name_expr().is_some_and(|name| name.id == "super")) =>
+                if attribute
+                    .value
+                    .as_call_expr()
+                    .is_some_and(|inner| inner.func.as_name_expr().is_some_and(|name| name.id == "super")) =>
             {
                 true
             }
@@ -273,10 +276,13 @@ impl<'b> Checks<'_, 'b> {
 
 // A warning filter set to `error` fails the test on any warning the code emits.
 fn escalates_warnings(call: &ast::ExprCall) -> bool {
-    let is_error = |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str().starts_with("error"));
+    let is_error =
+        |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str().starts_with("error"));
     match last_segment(&call.func) {
-        Some("simplefilter" | "filterwarnings") => call.arguments.args.first().is_some_and(is_error)
-            || call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value)),
+        Some("simplefilter" | "filterwarnings") => {
+            call.arguments.args.first().is_some_and(is_error)
+                || call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value))
+        }
         Some("catch_warnings") => call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value)),
         _ => false,
     }

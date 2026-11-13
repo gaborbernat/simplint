@@ -5,13 +5,13 @@ use std::rc::Rc;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 
-use super::attributes::{Attribute, annotation_name, attributes, is_field_call, skips_init};
+use super::attributes::{Attribute, attributes, is_field_call, skips_init};
 use super::has_attribute_bases;
 use super::parse::Docstring;
 use crate::lint::checker::Checker;
 use crate::rules::public_api::Need;
 use crate::settings::DocstringStyle;
-use crate::syntax::{Visibility, docstring, is_overload, last_segment, module_statements, receiver};
+use crate::syntax::{Declares, Visibility, docstring, is_overload, last_segment, module_statements, receiver};
 
 pub(crate) enum Owner<'a> {
     Function { def: &'a ast::StmtFunctionDef, class: Option<&'a ast::StmtClassDef> },
@@ -176,7 +176,7 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     let attrs = generator.is_some_and(|name| name != "dataclass");
     let fields = module_statements(&class.body).filter_map(|stmt| match stmt {
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
-            let marker = matches!(annotation_name(annotation), Some("ClassVar" | "KW_ONLY"));
+            let marker = matches!(Declares::of(annotation), Declares::ClassVar | Declares::KwOnly);
             let skipped = value.as_deref().and_then(Expr::as_call_expr).is_some_and(skips_init);
             target.as_name_expr().filter(|_| !marker && !skipped).map(|name| (name, value.as_deref(), true))
         }

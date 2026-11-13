@@ -29,7 +29,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
     let checker = walker.checker;
     let text = checker.parenthesized_text(value, compare.into());
-    let fix = is_condition(walker, expr).then(|| {
+    let fix = walker.is_boolean_test(0).then(|| {
         let replacement = match op {
             CmpOp::Eq if needs_parentheses(value) && !text.starts_with('(') => format!("not ({text})"),
             CmpOp::Eq => format!("not {text}"),
@@ -53,24 +53,6 @@ fn empty_literal(expr: &Expr) -> Option<&'static str> {
         Expr::Tuple(ast::ExprTuple { elts, .. }) if elts.is_empty() => Some("()"),
         Expr::Dict(ast::ExprDict { items, .. }) if items.is_empty() => Some("{}"),
         _ => None,
-    }
-}
-
-// The test of an `if`, `elif`, `while` or conditional expression, where only the truth of the comparison counts.
-fn is_condition(walker: &Walker, expr: &Expr) -> bool {
-    let is_expr = |candidate: &Expr| std::ptr::eq(candidate, expr);
-    if let Some(Expr::If(ternary)) = walker.expression_parent() {
-        return is_expr(&ternary.test);
-    }
-    if walker.expression_parent().is_some() {
-        return false;
-    }
-    match walker.statement() {
-        Some(Stmt::If(ast::StmtIf { test, elif_else_clauses, .. })) => {
-            is_expr(test) || elif_else_clauses.iter().any(|clause| clause.test.as_ref().is_some_and(is_expr))
-        }
-        Some(Stmt::While(ast::StmtWhile { test, .. })) => is_expr(test),
-        _ => false,
     }
 }
 

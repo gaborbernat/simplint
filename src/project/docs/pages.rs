@@ -121,44 +121,34 @@ mod tests {
 
     use super::super::{AutoclassContent, Directives, DocReferences};
 
-    #[test_case(":func:`~pkg.mod.name`", &["pkg.mod.name"] ; "tilde_prefix")]
-    #[test_case(":func:`.pkg.name`", &["pkg.name"] ; "dot_prefix")]
-    #[test_case(":func:`!pkg.name`", &["pkg.name"] ; "exclamation_prefix")]
-    #[test_case(":func:`pkg.name()`", &["pkg.name"] ; "call_parentheses")]
-    #[test_case(":class:`Title <~pkg.Thing>`", &["pkg.Thing"] ; "explicit_title")]
-    #[test_case(":func:`~`", &[] ; "nothing_left_after_the_prefix")]
-    #[test_case("`pkg.name`:func:", &["pkg.name"] ; "suffix_role")]
-    #[test_case(":func:`pkg.\nname`", &["pkg.\nname"] ; "target_across_lines_keeps_the_break")]
-    #[test_case("``:func:`pkg.name` ``", &["pkg.name"] ; "role_after_an_unclosed_literal_start")]
-    #[test_case("{func}`pkg.name`", &[] ; "myst_role_in_an_rst_page")]
-    fn role_targets_name_definitions(text: &str, expected: &[&str]) {
+    #[test_case("page.rst", ":func:`~pkg.mod.name`", &["pkg.mod.name"] ; "tilde_prefix")]
+    #[test_case("page.rst", ":func:`.pkg.name`", &["pkg.name"] ; "dot_prefix")]
+    #[test_case("page.rst", ":func:`!pkg.name`", &["pkg.name"] ; "exclamation_prefix")]
+    #[test_case("page.rst", ":func:`pkg.name()`", &["pkg.name"] ; "call_parentheses")]
+    #[test_case("page.rst", ":class:`Title <~pkg.Thing>`", &["pkg.Thing"] ; "explicit_title")]
+    #[test_case("page.rst", ":func:`~`", &[] ; "nothing_left_after_the_prefix")]
+    #[test_case("page.rst", "`pkg.name`:func:", &["pkg.name"] ; "suffix_role")]
+    #[test_case("page.rst", ":func:`pkg.\nname`", &["pkg.\nname"] ; "target_across_lines_keeps_the_break")]
+    #[test_case("page.rst", "``:func:`pkg.name` ``", &["pkg.name"] ; "role_after_an_unclosed_literal_start")]
+    #[test_case("page.rst", "{func}`pkg.name`", &[] ; "myst_role_in_an_rst_page")]
+    #[test_case("page.md", "{func}`pkg.name`", &["pkg.name"] ; "myst_role")]
+    #[test_case("page.md", ":func:`pkg.name`", &[] ; "rst_role_in_a_markdown_page")]
+    #[test_case("page.md", "```python\n{func}`pkg.hidden`\n```\n", &[] ; "role_in_a_code_fence")]
+    #[test_case("page.md", "```{note}\n{func}`pkg.name`\n```\n", &["pkg.name"] ; "role_in_a_note_fence")]
+    #[test_case("page.md", "    {func}`pkg.hidden`\n", &[] ; "role_in_indented_code")]
+    #[test_case("page.rst", ".. Function:: pkg.f\n", &["pkg.f"] ; "directive_name_ignores_case")]
+    #[test_case(
+        "page.rst", ".. automodule:: pkg\n   :members: a,\n      b\n", &["pkg", "pkg.a", "pkg.b"] ;
+        "members_continue_on_deeper_lines"
+    )]
+    #[test_case(
+        "page.rst", ".. data:: IDLE\n          SEND_RESPONSE\n", &["IDLE", "SEND_RESPONSE"] ;
+        "every_signature_of_a_directive_is_recorded"
+    )]
+    #[test_case("page.rst", ".. function:: f(a,\\\n   b)\n", &["f"] ; "backslash_joins_a_signature_with_the_next_line")]
+    fn names_read_from_a_page(page: &str, text: &str, expected: &[&str]) {
         let mut references = DocReferences::default();
-        references.read(Path::new("page.rst"), text, &mut Directives::default());
-        let mut names: Vec<String> = references.names.into_iter().collect();
-        names.sort();
-        assert_eq!(names, expected);
-    }
-
-    #[test_case("{func}`pkg.name`", &["pkg.name"] ; "myst_role")]
-    #[test_case(":func:`pkg.name`", &[] ; "rst_role_in_a_markdown_page")]
-    #[test_case("```python\n{func}`pkg.hidden`\n```\n", &[] ; "role_in_a_code_fence")]
-    #[test_case("```{note}\n{func}`pkg.name`\n```\n", &["pkg.name"] ; "role_in_a_note_fence")]
-    #[test_case("    {func}`pkg.hidden`\n", &[] ; "role_in_indented_code")]
-    fn myst_role_targets_name_definitions(text: &str, expected: &[&str]) {
-        let mut references = DocReferences::default();
-        references.read(Path::new("page.md"), text, &mut Directives::default());
-        let mut names: Vec<String> = references.names.into_iter().collect();
-        names.sort();
-        assert_eq!(names, expected);
-    }
-
-    #[test_case(".. Function:: pkg.f\n", &["pkg.f"] ; "directive_name_ignores_case")]
-    #[test_case(".. automodule:: pkg\n   :members: a,\n      b\n", &["pkg", "pkg.a", "pkg.b"] ; "members_continue_on_deeper_lines")]
-    #[test_case(".. data:: IDLE\n          SEND_RESPONSE\n", &["IDLE", "SEND_RESPONSE"] ; "every_signature_of_a_directive_is_recorded")]
-    #[test_case(".. function:: f(a,\\\n   b)\n", &["f"] ; "backslash_joins_a_signature_with_the_next_line")]
-    fn directive_names(text: &str, expected: &[&str]) {
-        let mut references = DocReferences::default();
-        references.read(Path::new("page.rst"), text, &mut Directives::default());
+        references.read(Path::new(page), text, &mut Directives::default());
         let mut names: Vec<String> = references.names.into_iter().collect();
         names.sort();
         assert_eq!(names, expected);

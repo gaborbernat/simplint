@@ -1,3 +1,4 @@
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 
@@ -97,11 +98,7 @@ fn container(checker: &Checker, value: &Expr) -> Option<Container> {
                 return None;
             };
             let annotation = semantic.parameter_annotation(binding)?;
-            let base = match annotation {
-                Expr::Subscript(ast::ExprSubscript { value, .. }) => value.as_ref(),
-                other => other,
-            };
-            builtin(checker, base)
+            builtin(checker, map_subscript(annotation))
         }
         _ => None,
     }

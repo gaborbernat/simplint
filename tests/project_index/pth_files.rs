@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 // A source root under `src` holds the `.pth` file the interpreter reads, as a project laid out with `src/` does.
@@ -56,7 +56,7 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 

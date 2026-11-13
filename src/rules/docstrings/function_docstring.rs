@@ -4,6 +4,7 @@ mod text;
 use std::cell::OnceCell;
 
 use ruff_diagnostics::Fix;
+use ruff_python_ast::helpers::map_callable;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Decorator, Expr, ExprContext, Stmt};
 use ruff_text_size::Ranged;
@@ -148,7 +149,7 @@ impl<'a> Visitor<'a> for ClassDocstringReads {
 // `property` do, only hands it to `help()`. pytest shows a fixture's docstring in `pytest --fixtures`, a listing of the
 // suite's own helpers like `help()`.
 fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
-    let decorator = decorator.as_call_expr().map_or(decorator, |call| &call.func);
+    let decorator = map_callable(decorator);
     // `name.setter` on a property, whose name the module scope does not resolve.
     if decorator
         .as_attribute_expr()

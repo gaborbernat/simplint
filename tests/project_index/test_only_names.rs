@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 // A production module reaches another as a value through a dotted name, or through an import in a function or class
@@ -69,7 +69,7 @@ fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service:
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -93,7 +93,7 @@ fn import_only_called_through_keeps_other_test_only_names() {
         check(root.path(), &["--select", "SMP408"]).1,
         "pkg/fast.py:5:5: SMP408 `encode` is used only by tests; move it into the tests or a test helper module\nFound \
         1 error.\n"
-            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+            .replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -151,7 +151,7 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP410"]).1,
-        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("app/", &native("app/"))
     );
 }
 
@@ -179,7 +179,7 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP401"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 

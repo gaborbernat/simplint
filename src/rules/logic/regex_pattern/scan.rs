@@ -1,3 +1,6 @@
+// The flags an inline `(?flags)` or `(?flags:...)` group sets or clears.
+pub(crate) const INLINE_FLAGS: &[u8] = b"aiLmsux-";
+
 // `refers` matters because a fix that stops a group capturing would break a reference to it.
 pub(crate) struct Scan {
     pub(crate) groups: Vec<usize>,
@@ -57,7 +60,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
             }
             // `(?i)` sets flags for the whole pattern, which is not a group; `(?i:...)` and `(?:...)` are.
             [b'(', b'?', ..] => {
-                let flags = rest[2..].iter().take_while(|byte| b"aiLmsux-".contains(byte)).count();
+                let flags = rest[2..].iter().take_while(|byte| INLINE_FLAGS.contains(byte)).count();
                 if rest.get(2 + flags) == Some(&b')') {
                     3 + flags
                 } else {
@@ -104,7 +107,7 @@ fn scoped_verbose(flags: &[u8], verbose: bool) -> bool {
 }
 
 // A `]` right after the opening `[` or `[^` is a member of the class, not its end.
-fn class_length(class: &[u8]) -> Option<usize> {
+pub(crate) fn class_length(class: &[u8]) -> Option<usize> {
     let mut index = 1;
     if class.get(index) == Some(&b'^') {
         index += 1;
@@ -121,17 +124,25 @@ fn class_length(class: &[u8]) -> Option<usize> {
     }
 }
 
-// Whether a repeat operator starts `rest`, which applies to the group or class before it: `*`, `+`, `?`, or a `{m,n}`
-// bound with at least one digit.
+// Whether a repeat operator starts `rest`, which applies to the group or class before it.
 fn repeats(rest: &[u8]) -> bool {
-    match rest {
-        [b'*' | b'+' | b'?', ..] => true,
-        [b'{', ..] => rest.iter().position(|&byte| byte == b'}').is_some_and(|end| {
-            let bounds = &rest[1..end];
-            bounds.iter().any(u8::is_ascii_digit) && bounds.iter().all(|byte| byte.is_ascii_digit() || *byte == b',')
-        }),
-        _ => false,
+    matches!(rest, [b'*' | b'+' | b'?', ..]) || bounds(rest).is_some()
+}
+
+// A `{m,n}` repeat: its length, its minimum, and whether it has no maximum. `None` when the braces are a literal, as
+// `re` reads `{}`, and braces holding anything but digits around at most one comma.
+pub(crate) fn bounds(rest: &[u8]) -> Option<(usize, u32, bool)> {
+    let end = rest.strip_prefix(b"{")?.iter().position(|&byte| byte == b'}')? + 1;
+    let inner = std::str::from_utf8(&rest[1..end]).ok()?;
+    let (low, high) = match inner.split_once(',') {
+        Some((low, high)) => (low, Some(high)),
+        None => (inner, None),
+    };
+    if inner.is_empty() || !low.bytes().chain(high.unwrap_or_default().bytes()).all(|byte| byte.is_ascii_digit()) {
+        return None;
     }
+    let min = if low.is_empty() { 0 } else { low.parse().ok()? };
+    Some((end + 1, min, high.is_some_and(str::is_empty)))
 }
 
 // An inline `(?x)` at the start of a pattern turns verbose mode on, as `re.VERBOSE` does.
@@ -139,5 +150,5 @@ fn has_verbose_flag(pattern: &[u8]) -> bool {
     pattern
         .strip_prefix(b"(?")
         .and_then(|rest| rest.iter().position(|&byte| byte == b')').map(|end| &rest[..end]))
-        .is_some_and(|flags| flags.contains(&b'x') && flags.iter().all(|flag| b"aiLmsux-".contains(flag)))
+        .is_some_and(|flags| flags.contains(&b'x') && flags.iter().all(|flag| INLINE_FLAGS.contains(flag)))
 }

@@ -84,6 +84,7 @@ pub(crate) use iterator_reuse::iterator_reuse;
 pub(crate) use kinds::KindsCache;
 pub(crate) use inline::LOCALS_READERS;
 pub(crate) use name_uses::LocalScopes;
+pub(crate) use regex_pattern::Facts as RegexFacts;
 pub(crate) use range_len_loop::range_len_loop;
 pub(crate) use loop_variable_after_loop::loop_variable_after_loop;
 pub(crate) use side_effect_expression::side_effect_expression;

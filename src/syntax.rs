@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use ruff_python_ast::AnyParameterRef;
-use ruff_python_ast::helpers::{any_over_expr, is_dunder};
+use ruff_python_ast::helpers::{any_over_expr, is_dunder, map_callable, map_subscript};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
@@ -11,7 +11,7 @@ use ruff_python_parser::parse_expression;
 use ruff_python_stdlib::typing::{is_literal_member, is_pep_593_generic_member, is_standard_library_generic_member};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // Ranges that nest or are disjoint, such as the scopes of a file, so that the ranges holding another range are found
 // by a search instead of a scan.
@@ -96,7 +96,8 @@ pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
     has_decorator(decorators, &["overload"])
 }
 
-// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`.
+// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`, and a called decorator by its
+// factory, so `pytest.fixture(scope="module")` matches `"fixture"`.
 pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
     decorator_names(decorators).iter().any(|name| names.contains(name))
 }
@@ -173,14 +174,59 @@ pub fn dataclass_decorator<'a>(
     class
         .decorator_list
         .iter()
+        .find(|decorator| is_dataclass(decorator_callee(decorator)))
         .map(|decorator| &decorator.expression)
-        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
 }
 
-// An attribute a method writes on its instance through its receiver, with the statement that writes it, the one after
-// it in the same body, and whether the write is an `object.__setattr__` call, which a frozen dataclass makes.
+// What a dataclass's annotated class attribute declares: a field, or what its `ClassVar`, `InitVar` or `KW_ONLY`
+// annotation makes it instead.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Declares {
+    Field,
+    ClassVar,
+    InitVar,
+    KwOnly,
+}
+
+impl Declares {
+    pub fn of(annotation: &Expr) -> Self {
+        match annotation_name(annotation) {
+            Some("ClassVar") => Self::ClassVar,
+            Some("InitVar") => Self::InitVar,
+            Some("KW_ONLY") => Self::KwOnly,
+            _ => Self::Field,
+        }
+    }
+}
+
+pub struct DataclassField<'a> {
+    pub name: &'a str,
+    pub stmt: &'a ast::StmtAnnAssign,
+    pub kind: Declares,
+}
+
+// The class attributes a dataclass body annotates by name, in order.
+pub fn dataclass_fields(body: &[Stmt]) -> impl Iterator<Item = DataclassField<'_>> {
+    body.iter().filter_map(Stmt::as_ann_assign_stmt).filter_map(|stmt| {
+        let name = stmt.target.as_name_expr()?.id.as_str();
+        Some(DataclassField { name, stmt, kind: Declares::of(&stmt.annotation) })
+    })
+}
+
+// The last segment of the name an annotation subscripts or names, read inside the quotes of a string annotation too.
+pub fn annotation_name(annotation: &Expr) -> Option<&str> {
+    match annotation.as_string_literal_expr() {
+        Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
+        None => last_segment(map_subscript(annotation)),
+    }
+}
+
+// An attribute a method writes on its instance through its receiver, with the range that names it, the statement that
+// writes it, the one after it in the same body, and whether the write is an `object.__setattr__` call, which a frozen
+// dataclass makes.
 pub struct InstanceWrite<'a> {
     pub attr: &'a str,
+    pub range: TextRange,
     pub stmt: &'a Stmt,
     pub next: Option<&'a Stmt>,
     pub method: &'a ast::StmtFunctionDef,
@@ -198,20 +244,38 @@ pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
         for_each_body_outside_classes(&method.body, &mut |body| {
             for (index, stmt) in body.iter().enumerate() {
                 let next = body.get(index + 1);
-                if let Some(attr) = set_through_object(stmt, receiver) {
-                    writes.push(InstanceWrite { attr, stmt, next, method, through_object: true });
+                if let Some(name) = set_through_object(stmt, receiver) {
+                    let (attr, range) = (name.value.to_str(), name.range);
+                    writes.push(InstanceWrite { attr, range, stmt, next, method, through_object: true });
                 }
                 for target in write_targets(stmt) {
                     if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
                         && is_name(value, receiver)
                     {
-                        writes.push(InstanceWrite { attr: attr.as_str(), stmt, next, method, through_object: false });
+                        let (range, attr) = (attr.range, attr.as_str());
+                        writes.push(InstanceWrite { attr, range, stmt, next, method, through_object: false });
                     }
                 }
             }
         });
     }
     writes
+}
+
+// The attributes a class's instance methods assign on their instance, each with its first assignment in the source.
+pub fn instance_attributes(class: &ast::StmtClassDef) -> Vec<(&str, TextRange)> {
+    let mut first: FxHashMap<&str, TextRange> = FxHashMap::default();
+    for write in instance_writes(class) {
+        if !write.through_object && !is_classmethod(write.method) && !matches!(write.stmt, Stmt::Delete(_)) {
+            let range = first.entry(write.attr).or_insert(write.range);
+            if write.range.start() < range.start() {
+                *range = write.range;
+            }
+        }
+    }
+    let mut attributes: Vec<(&str, TextRange)> = first.into_iter().collect();
+    attributes.sort_unstable_by_key(|(_, range)| range.start());
+    attributes
 }
 
 // The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
@@ -240,7 +304,7 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
 }
 
 pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
-    if decorator_names(&method.decorator_list).contains(&"staticmethod") {
+    if has_decorator(&method.decorator_list, &["staticmethod"]) {
         return None;
     }
     first_positional(&method.parameters)
@@ -260,7 +324,7 @@ fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'
 
 // The attribute an `object.__setattr__(receiver, "name", value)` call sets, which a frozen dataclass uses to set its
 // own attributes.
-fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
+fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a ast::ExprStringLiteral> {
     let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
     let attribute = call.func.as_attribute_expr()?;
     let is_object = is_name(&attribute.value, "object");
@@ -268,7 +332,7 @@ fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
         [Expr::Name(target), Expr::StringLiteral(name), ..]
             if is_object && attribute.attr.as_str() == "__setattr__" && target.id.as_str() == receiver =>
         {
-            Some(name.value.to_str())
+            Some(name)
         }
         _ => None,
     }
@@ -329,11 +393,15 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
 }
 
 pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
-    decorator_names(&method.decorator_list).contains(&"classmethod")
+    has_decorator(&method.decorator_list, &["classmethod"])
 }
 
 pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
-    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
+    decorators.iter().filter_map(|decorator| last_segment(decorator_callee(decorator))).collect()
+}
+
+pub fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
+    map_callable(&decorator.expression)
 }
 
 pub fn statement_index(body: &[Stmt], offset: TextSize) -> usize {
@@ -816,7 +884,10 @@ impl<'a> Visitor<'a> for ReturnVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
-            Stmt::Return(stmt) => self.returns.push(stmt),
+            Stmt::Return(ret) => {
+                self.returns.push(ret);
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
@@ -829,6 +900,11 @@ impl<'a> Visitor<'a> for ReturnVisitor<'a> {
             _ => visitor::walk_expr(self, expr),
         }
     }
+}
+
+// Whether an expression is the condition of one of a comprehension's `if` clauses.
+pub fn is_comprehension_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
+    generators.iter().any(|generator| generator.ifs.iter().any(|condition| std::ptr::eq(condition, expr)))
 }
 
 pub fn is_main_guard(stmt: &Stmt) -> bool {

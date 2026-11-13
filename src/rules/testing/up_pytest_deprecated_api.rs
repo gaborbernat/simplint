@@ -8,6 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_class;
 use crate::rules::testing::recognize::is_fixture;
+use crate::syntax::decorator_callee;
 
 // The `py.path` fixtures pytest keeps only in its `legacypath` plugin, and the pathlib fixture that replaces each.
 const LEGACY_FIXTURES: &[(&str, &str)] =
@@ -15,8 +16,10 @@ const LEGACY_FIXTURES: &[(&str, &str)] =
 // The nose-style hooks pytest 8 no longer calls, and the pytest hook that runs at the same point.
 const NOSE_METHODS: &[(&str, &str, &str)] =
     &[("setup", "setup_method", "before each test method"), ("teardown", "teardown_method", "after each test method")];
-const NOSE_FUNCTIONS: &[(&str, &str, &str)] =
-    &[("setup", "setup_module", "before the module's tests"), ("teardown", "teardown_module", "after the module's tests")];
+const NOSE_FUNCTIONS: &[(&str, &str, &str)] = &[
+    ("setup", "setup_module", "before the module's tests"),
+    ("teardown", "teardown_module", "after the module's tests"),
+];
 // The outcome functions whose `msg` pytest 8 removed in favor of `reason`.
 const OUTCOMES: &[&str] = &["fail", "skip", "exit"];
 
@@ -30,7 +33,9 @@ pub fn up_pytest_deprecated_api(checker: &Checker) {
                 nose_hook(checker, function, NOSE_FUNCTIONS);
                 function_checks(checker, function);
             }
-            Stmt::ClassDef(class) if is_test_class(checker, class) && !crate::rules::testing::is_test_case(checker, class) => {
+            Stmt::ClassDef(class)
+                if is_test_class(checker, class) && !crate::rules::testing::is_test_case(checker, class) =>
+            {
                 for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
                     nose_hook(checker, method, NOSE_METHODS);
                     function_checks(checker, method);
@@ -53,7 +58,10 @@ fn nose_hook(checker: &Checker, function: &ast::StmtFunctionDef, hooks: &[(&str,
         return;
     };
     // A `setup` the module calls itself is a helper, and a decorated one, such as a fixture, is not a hook either.
-    if checker.name_token_count(name) != 1 || checker.file_name() == "conftest.py" || !function.decorator_list.is_empty() {
+    if checker.name_token_count(name) != 1
+        || checker.file_name() == "conftest.py"
+        || !function.decorator_list.is_empty()
+    {
         return;
     }
     // pytest stopped calling it, so renaming it makes it run again: a change in behavior.
@@ -71,8 +79,7 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
     let fixture = function.decorator_list.iter().any(is_fixture);
     if fixture {
         for decorator in &function.decorator_list {
-            let func = decorator.expression.as_call_expr().map_or(&decorator.expression, |call| &call.func);
-            if let Some(name) = UnqualifiedName::from_expr(func)
+            if let Some(name) = UnqualifiedName::from_expr(decorator_callee(decorator))
                 && let [.., "mark", mark] = name.segments()
                 // Ruff's PT025 reports `usefixtures` on a fixture.
                 && *mark != "usefixtures"
@@ -80,7 +87,10 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
                 checker.report(
                     Rule::PytestDeprecatedApi,
                     decorator.range(),
-                    format!("A mark on a fixture does nothing, and pytest 9 rejects it; mark the tests that request `{}`", function.name),
+                    format!(
+                        "A mark on a fixture does nothing, and pytest 9 rejects it; mark the tests that request `{}`",
+                        function.name
+                    ),
                 );
             }
         }

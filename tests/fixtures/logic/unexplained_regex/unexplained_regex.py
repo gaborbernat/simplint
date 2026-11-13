@@ -132,3 +132,7 @@ def backreference(text):
 
 
 PATTERN = re.compile(r"(a)(b)(c)(d)")
+
+
+def literal_braces(text):
+    return bool(re.match(r"(a)(b)(c){1,2,3}", text))

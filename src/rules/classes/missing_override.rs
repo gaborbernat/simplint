@@ -1,6 +1,7 @@
 use std::cell::OnceCell;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
@@ -20,8 +21,9 @@ pub fn missing_override(checker: &Checker) {
         for &method in &methods {
             let name = method.name.as_str();
             // The checks that hold for every definition of the name come first, as they skip most methods without
-            // resolving a decorator. Overloads leave the decorator to the implementation, and a property's setter to
-            // its getter, the first definition of the name.
+            // resolving a decorator. Every class inherits the special methods from `object`, so overriding one is how a
+            // class takes part in a protocol. Overloads leave the decorator to the implementation, and a property's
+            // setter to its getter, the first definition of the name.
             if is_dunder(name)
                 || !project.is_override(class.name.as_str(), name)
                 || marked.get_or_init(|| marked_names(checker, &methods)).contains(name)
@@ -60,19 +62,12 @@ fn marked_names<'a>(checker: &Checker, methods: &[&'a ast::StmtFunctionDef]) -> 
 }
 
 fn is_override(checker: &Checker, decorator: &Expr) -> bool {
-    let semantic = checker.semantic();
-    semantic.resolves_to(decorator, &["typing", "override"])
-        || semantic.resolves_to(decorator, &["typing_extensions", "override"])
+    checker.semantic().match_typing_expr(decorator, "override")
 }
 
 fn is_overload(checker: &Checker, method: &ast::StmtFunctionDef) -> bool {
-    method.decorator_list.iter().any(|decorator| {
-        checker.semantic().resolves_to(&decorator.expression, &["typing", "overload"])
-            || checker.semantic().resolves_to(&decorator.expression, &["typing_extensions", "overload"])
-    })
-}
-
-// Every class inherits the special methods from `object`, so overriding one is how a class takes part in a protocol.
-fn is_dunder(name: &str) -> bool {
-    name.len() > 4 && name.starts_with("__") && name.ends_with("__")
+    method
+        .decorator_list
+        .iter()
+        .any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "overload"))
 }

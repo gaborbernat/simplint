@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, check_with_stdin, project};
+use crate::common::{check, check_with_stdin, native, project};
 use test_case::test_case;
 
 // An application has no Python API, so a function other modules import is internal, its docstring included.
@@ -246,7 +246,7 @@ fn excluded_init_module_still_reexports() {
         check(root.path(), &["--select", "SMP903"]).1,
         "pkg/_core.py:1:5: SMP903 Public function `run` has no docstring; document it for its users; \
          `pkg/__init__.py` re-exports it\nFound 1 error.\n"
-            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+            .replace("pkg/", &native("pkg/"))
     );
 }
 

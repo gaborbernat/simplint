@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::{last_segment, pattern_capture};
+use crate::syntax::{has_decorator, pattern_capture};
 
 pub(crate) use catch_all_module::catch_all_module;
 pub(crate) use entrypoint_module_name::entrypoint_module_name;
@@ -77,13 +77,7 @@ fn parameters<'a>(
     check: NameCheck<'a>,
 ) {
     let parameters = match scope {
-        Scope::Function(function)
-            if !exempt(function)
-                && !function
-                    .decorator_list
-                    .iter()
-                    .any(|decorator| last_segment(&decorator.expression) == Some("override")) =>
-        {
+        Scope::Function(function) if !exempt(function) && !has_decorator(&function.decorator_list, &["override"]) => {
             &*function.parameters
         }
         Scope::Lambda(ast::ExprLambda { parameters: Some(parameters), .. }) => parameters,

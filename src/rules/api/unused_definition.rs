@@ -14,8 +14,7 @@ use crate::rules::is_named_by_doctest;
 use crate::rules::logic::LOCALS_READERS;
 use crate::rules::public_api::Need;
 use crate::semantic::Evaluation;
-use crate::project::constructors::instance_attributes;
-use crate::syntax::{Visibility, for_each_child_body, identifier_words, module_statements};
+use crate::syntax::{Visibility, for_each_child_body, identifier_words, instance_attributes, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
     nested_functions(checker);

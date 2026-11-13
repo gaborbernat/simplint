@@ -1,5 +1,5 @@
 use ruff_diagnostics::Fix;
-use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Stmt, UnaryOp};
+use ruff_python_ast::{self as ast, CmpOp, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
@@ -38,7 +38,7 @@ fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
         && call.arguments.len() == 2
         && call.arguments.find_argument_value("string", 1).is_some()
         && call.arguments.find_argument_value("pattern", 0).is_some_and(|pattern| is_plain_text(walker, pattern))
-        && (is_compared_to_none(outer.last().copied()) || is_boolean_test(walker, outer, expressions[outer.len()]))
+        && (is_compared_to_none(outer.last().copied()) || walker.is_boolean_test(1))
 }
 
 // The pattern RUF055 reads: a string or bytes literal, or a name bound once to one, with no regular expression
@@ -66,43 +66,6 @@ fn is_compared_to_none(parent: Option<&Expr>) -> bool {
         .is_some_and(|(_, op, right)| matches!(op, CmpOp::Is | CmpOp::IsNot) && right.is_none_literal_expr())
 }
 
-// A boolean test as Ruff's checker marks one; RUF055 rewrites a call in such a test.
-fn is_boolean_test<'a>(walker: &Walker<'_, 'a>, outer: &[&'a Expr], expr: &'a Expr) -> bool {
-    let mut child = expr;
-    for &parent in outer.iter().rev() {
-        let is_child = |candidate: &Expr| std::ptr::eq(candidate, child);
-        match parent {
-            Expr::BoolOp(ast::ExprBoolOp { op: BoolOp::And | BoolOp::Or, .. }) => child = parent,
-            Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::Not, .. }) => return true,
-            Expr::If(ast::ExprIf { test, .. }) => return is_child(test),
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
-                let semantic = walker.checker.semantic();
-                return arguments.args.first().is_some_and(is_child)
-                    && (semantic.is_builtin(func, "bool") || semantic.resolves_to(func, &["builtins", "bool"]));
-            }
-            Expr::ListComp(ast::ExprListComp { generators, .. })
-            | Expr::SetComp(ast::ExprSetComp { generators, .. })
-            | Expr::Generator(ast::ExprGenerator { generators, .. }) => return is_condition(generators, child),
-            Expr::DictComp(ast::ExprDictComp { generators, .. }) => return is_condition(generators, child),
-            _ => return false,
-        }
-    }
-    let is_child = |candidate: &Expr| std::ptr::eq(candidate, child);
-    match walker.statement() {
-        Some(Stmt::If(ast::StmtIf { test, elif_else_clauses, .. })) => {
-            is_child(test) || elif_else_clauses.iter().any(|clause| clause.test.as_ref().is_some_and(is_child))
-        }
-        Some(Stmt::While(ast::StmtWhile { test, .. }) | Stmt::Assert(ast::StmtAssert { test, .. })) => is_child(test),
-        Some(Stmt::Match(ast::StmtMatch { cases, .. })) => {
-            cases.iter().any(|case| case.guard.as_deref().is_some_and(is_child))
-        }
-        _ => false,
-    }
-}
-
-fn is_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
-    generators.iter().any(|generator| generator.ifs.iter().any(|condition| std::ptr::eq(condition, expr)))
-}
 
 // SMP550 turns a call whose pattern is anchored at its end into `re.fullmatch`, a fix that conflicts with the rename, so
 // while it is selected it takes such a call.
