@@ -36,9 +36,7 @@ impl<'a, 'c> GlobalsWrites<'a, 'c> {
                     && (semantic.is_builtin(&call.func, "vars") || semantic.is_builtin(&call.func, "locals"))
         })
     }
-}
 
-impl<'a> GlobalsWrites<'a, '_> {
     // The body of a function, class or lambda is its own scope, while its header runs in the enclosing one.
     fn scoped_body(&mut self, body: &'a [Stmt]) {
         self.scopes += 1;

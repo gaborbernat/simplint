@@ -1,8 +1,8 @@
+use ruff_python_ast::helpers::map_callable;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::raised_class;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::callee::local_function;
@@ -171,7 +171,7 @@ impl<'a> Visitor<'a> for Effects<'_, 'a> {
                         None => self.unknown = true,
                     },
                     Some(exc) => {
-                        let class = raised_class(exc);
+                        let class = map_callable(exc);
                         match class {
                             Expr::Name(name) if self.bound.contains_key(name.id.as_str()) => {
                                 let types = self.bound[name.id.as_str()].clone();

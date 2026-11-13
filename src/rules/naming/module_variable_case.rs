@@ -7,7 +7,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::rename::rename_fix;
-use crate::syntax::target_leaves;
+use crate::syntax::{for_each_child_body, target_leaves};
 
 pub fn module_variable_case(checker: &Checker) {
     let named_tuples = OnceCell::new();
@@ -65,31 +65,8 @@ fn collect_named_tuples(checker: &Checker, body: &[Stmt], targets: &mut FxHashSe
                     targets.extend(target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(Ranged::range));
                 }
             }
-            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
-                collect_named_tuples(checker, body, targets);
-                for clause in elif_else_clauses {
-                    collect_named_tuples(checker, &clause.body, targets);
-                }
-            }
-            Stmt::For(ast::StmtFor { body, orelse, .. }) | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
-                collect_named_tuples(checker, body, targets);
-                collect_named_tuples(checker, orelse, targets);
-            }
-            Stmt::With(ast::StmtWith { body, .. }) => collect_named_tuples(checker, body, targets),
-            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
-                collect_named_tuples(checker, body, targets);
-                for ast::ExceptHandler::ExceptHandler(handler) in handlers {
-                    collect_named_tuples(checker, &handler.body, targets);
-                }
-                collect_named_tuples(checker, orelse, targets);
-                collect_named_tuples(checker, finalbody, targets);
-            }
-            Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                for case in cases {
-                    collect_named_tuples(checker, &case.body, targets);
-                }
-            }
-            _ => {}
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            _ => for_each_child_body(stmt, &mut |child| collect_named_tuples(checker, child, targets)),
         }
     }
 }

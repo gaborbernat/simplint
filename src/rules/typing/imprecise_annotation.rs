@@ -75,11 +75,10 @@ fn ann401_checks(walker: &Walker, function: &ast::StmtFunctionDef) -> bool {
 
 // The first parameter of a non-static method receives the instance or the class, which ANN401 skips.
 fn receiver_name(walker: &Walker, function: &ast::StmtFunctionDef) -> Option<TextRange> {
-    let is_method = matches!(walker.scopes().last(), Some(Scope::Class(_)));
     let semantic = walker.checker.semantic();
-    let is_static =
-        function.decorator_list.iter().any(|decorator| semantic.is_builtin(&decorator.expression, "staticmethod"));
-    if !is_method || is_static {
+    if !matches!(walker.scopes().last(), Some(Scope::Class(_)))
+        || function.decorator_list.iter().any(|decorator| semantic.is_builtin(&decorator.expression, "staticmethod"))
+    {
         return None;
     }
     function.parameters.iter_non_variadic_params().next().map(|parameter| parameter.name().range())
