@@ -12,7 +12,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 60:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
 67:5 SMP526 `total` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
 79:5 SMP526 `name` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
---- fixed (9 applied, 1 remaining) ---
+86:5 SMP526 `cases` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+--- fixed (10 applied, 1 remaining) ---
 def total(items: list[int]) -> int:
     count = 0
     items.sort()
@@ -95,3 +96,11 @@ def comprehension_binds_its_own(values: list[str]) -> list[str]:
     name = "x"
     print(name)
     return [name for name in values]
+
+
+def string_keys_name_it(loaded: dict[str, list[dict[str, int]]]) -> list[dict[str, int]]:
+    defaults = loaded["defaults"][0]
+    cases = []
+    for case in loaded["cases"]:
+        cases.append({"cases": 1, **defaults, **case})
+    return cases

@@ -80,3 +80,11 @@ def comprehension_binds_its_own(values: list[str]) -> list[str]:
     print(values)
     print(name)
     return [name for name in values]
+
+
+def string_keys_name_it(loaded: dict[str, list[dict[str, int]]]) -> list[dict[str, int]]:
+    cases = []
+    defaults = loaded["defaults"][0]
+    for case in loaded["cases"]:
+        cases.append({"cases": 1, **defaults, **case})
+    return cases

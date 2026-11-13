@@ -146,6 +146,17 @@ that statement comes at least two statements below the assignment in the same bl
       print(locals())
   ```
 
+- **A string between the assignment and the use that spells the name**: code may run it as source, as `exec` does. A
+  string that keys a subscript or a dict display is data and does not count.
+
+  ```python ok
+  def run(items: list[int]) -> list[int]:
+      out = []
+      print("out.append(1)")
+      out.extend(items)
+      return out
+  ```
+
 - **A comment between the assignment and the use**: moving the statement would move the comment's meaning with it.
 
   ```python ok
