@@ -220,8 +220,10 @@ any test below it, and from the `test*` functions and fixtures of any other modu
 
 The rule has no fix. A fixture may be requested by a pytest plugin or by a name the run builds at run time, which the
 rule cannot see, so the author decides whether to remove it. A plugin installed as a dependency, rather than named in
-`pytest_plugins`, may request a `conftest.py` fixture that overrides one of its own, such as pytest-django's
-`django_db_setup` or anyio's `anyio_backend`; suppress the report on such an override.
+`pytest_plugins`, may request a `conftest.py` fixture that overrides one of its own; suppress the report on such an
+override. The fixtures that widely used plugins request are never reported: anyio's `anyio_backend`, pytest-asyncio's
+`event_loop_policy`, and pytest-django's `django_db_setup`, `django_db_modify_db_settings`, `django_db_use_migrations`,
+`django_db_keepdb` and `django_db_createdb`.
 
 ## Other tools
 
