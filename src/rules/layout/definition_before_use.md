@@ -257,10 +257,11 @@ whatever the target version, because many decorators read them while the module 
 - pydantic's `validate_call`, typer, click, attrs and
   [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too
 
-Moving such a name below its user would leave the decorator with an unresolved forward reference. Standard decorators
-that never evaluate those annotations are the exception: `property` and its accessors, `classmethod`, `staticmethod`,
+Moving such a name below its user would leave the decorator with an unresolved forward reference. Decorators that never
+evaluate those annotations are the exception: `property` and its accessors, `classmethod`, `staticmethod`,
 `abstractmethod`, `contextmanager`, `functools.cache`, `lru_cache`, `cached_property`, `wraps` and `total_ordering`,
-`typing.final`, `overload` and `override`, and `dataclass`, which reads its fields as strings or forward references.
+`typing.final`, `overload`, `override` and `deprecated`, `mock.patch`, `pytest.fixture`, `pytest.hookimpl` and every
+`pytest.mark`, and `dataclass`, which reads its fields as strings or forward references.
 
 ### Type parameters and type statements
 

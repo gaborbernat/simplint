@@ -190,8 +190,8 @@ impl<'a> Semantic<'a> {
 
     pub const PROPERTY: &[&[&str]] = &[&["", "property"], &["functools", "cached_property"]];
 
-    // Standard decorators that never evaluate the annotations of what they wrap; `dataclass` reads its fields' as
-    // strings or forward references.
+    // Decorators that never evaluate the annotations of what they wrap, including every `pytest.mark` one; `dataclass`
+    // reads its fields' as strings or forward references, and pytest reads a fixture's signature only once it collects.
     const KEEPS_ANNOTATIONS_LAZY: &[&[&str]] = &[
         &["", "classmethod"],
         &["", "property"],
@@ -205,19 +205,36 @@ impl<'a> Semantic<'a> {
         &["functools", "lru_cache"],
         &["functools", "total_ordering"],
         &["functools", "wraps"],
+        &["mock", "patch"],
+        &["mock", "patch", "dict"],
+        &["mock", "patch", "multiple"],
+        &["mock", "patch", "object"],
+        &["pytest", "fixture"],
+        &["pytest", "hookimpl"],
+        &["pytest", "hookspec"],
         &["typing", "final"],
         &["typing", "overload"],
         &["typing", "override"],
         &["typing_extensions", "final"],
         &["typing_extensions", "overload"],
+        &["typing_extensions", "deprecated"],
         &["typing_extensions", "override"],
+        &["unittest", "mock", "patch"],
+        &["unittest", "mock", "patch", "dict"],
+        &["unittest", "mock", "patch", "multiple"],
+        &["unittest", "mock", "patch", "object"],
+        &["warnings", "deprecated"],
     ];
 
     // Whether a decorator may read the annotations of what it decorates while the module loads, as FastAPI routes,
     // pydantic's `validate_call` or `functools.singledispatch` do, even when Python defers them.
     pub fn reads_annotations(&self, decorators: &[ast::Decorator]) -> bool {
         decorators.iter().any(|decorator| {
-            !is_property_accessor(&decorator.expression) && !self.is_decorator(decorator, Self::KEEPS_ANNOTATIONS_LAZY)
+            !is_property_accessor(&decorator.expression)
+                && !self.is_decorator(decorator, Self::KEEPS_ANNOTATIONS_LAZY)
+                && !self
+                    .qualified_name(decorator_callee(decorator))
+                    .is_some_and(|name| name.segments().starts_with(&["pytest", "mark"]))
         })
     }
 
