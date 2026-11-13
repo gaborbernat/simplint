@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use filetime::FileTime;
 use log::error;
 use rkyv::util::AlignedVec;
@@ -120,9 +120,9 @@ fn remove_stale(current: &Path) {
         let newest = fs::read_dir(&sibling)
             .into_iter()
             .flatten()
-            .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
+            .filter_map(|entry| entry.and_then(|entry| entry.metadata()).and_then(|metadata| metadata.modified()).ok())
             .max()
-            .or_else(|| sibling.metadata().ok()?.modified().ok());
+            .or_else(|| sibling.metadata().and_then(|metadata| metadata.modified()).ok());
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
         if newest.is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
         {
@@ -172,11 +172,9 @@ pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf
 // Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
 // first, as the run may write before it has opened the package caches.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    let directory = path.parent().context("a cache file sits in a directory")?;
+    let directory = path.parent().expect("a cache file sits in a directory");
     fs::create_dir_all(directory)?;
-    let mut temporary = tempfile_in(directory)?;
-    temporary.write_all(bytes)?;
-    temporary.persist(path)?;
+    tempfile_in(directory).and_then(|mut temporary| temporary.write_all(bytes).map(|()| temporary))?.persist(path)?;
     Ok(())
 }
 
@@ -190,4 +188,67 @@ pub fn tempfile_in(path: &Path) -> io::Result<NamedTempFile> {
 #[cfg(not(unix))]
 pub fn tempfile_in(path: &Path) -> io::Result<NamedTempFile> {
     tempfile::Builder::new().tempfile_in(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+    use test_case::test_case;
+
+    use super::{init, is_build_name, read_aligned, write_atomically};
+
+    #[test_case("0.11.1-0123456789abcdef", true ; "release")]
+    #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
+    #[test_case("0.11_1-0123456789abcdef", false ; "underscore_in_version")]
+    #[test_case("-0123456789abcdef", false ; "no_version")]
+    #[test_case("0.11.1-0123456789ABCDEF", false ; "uppercase_hash")]
+    fn build_directory_names(name: &str, build: bool) {
+        assert_eq!(is_build_name(name), build);
+    }
+
+    #[test]
+    fn reading_a_directory_as_a_cache_fails() {
+        let directory = TempDir::new().expect("create a temporary directory");
+
+        assert!(read_aligned(directory.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_ruff_cache_fails_the_initialization() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TempDir::new().expect("create a temporary directory");
+        let ruff_cache = root.path().join("ruff");
+        fs::create_dir(&ruff_cache).expect("create the directory");
+        fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o555)).expect("make the directory read-only");
+        let initialized = init(&ruff_cache, &root.path().join("build"));
+        fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o755)).expect("make the directory writable");
+
+        assert!(initialized.is_err());
+    }
+
+    #[test]
+    fn writing_over_a_directory_fails() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let target = root.path().join("cache");
+        fs::create_dir(&target).expect("create the directory");
+
+        assert!(write_atomically(&target, b"data").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writing_into_a_read_only_directory_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TempDir::new().expect("create a temporary directory");
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o555)).expect("make the directory read-only");
+        let written = write_atomically(&root.path().join("cache"), b"data");
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o755)).expect("make the directory writable");
+
+        assert!(written.is_err());
+    }
 }
