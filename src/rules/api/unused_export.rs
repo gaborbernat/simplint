@@ -9,7 +9,7 @@ use crate::lint::registry::Rule;
 use crate::rules::api::{AllList, is_alone_on_line};
 use crate::rules::edits::fix_of;
 use crate::settings::ProjectKind;
-use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, module_statements};
+use crate::syntax::{Exports, alias_binding, all_binding, builds_all, module_statements};
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
@@ -80,10 +80,6 @@ pub fn unused_export(checker: &Checker) {
             title,
         );
     }
-}
-
-fn builds_all(stmt: &Stmt) -> bool {
-    all_binding(stmt).is_some() || all_mutation(stmt).is_some()
 }
 
 fn doubled_bindings<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {

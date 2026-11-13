@@ -542,6 +542,11 @@ pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
     Some((attribute.attr.as_str(), &call.arguments))
 }
 
+// The statement binds `__all__` or changes it in place.
+pub fn builds_all(stmt: &Stmt) -> bool {
+    all_binding(stmt).is_some() || all_mutation(stmt).is_some()
+}
+
 impl<'a> Listing<'a> {
     fn new(names: Vec<&'a str>) -> Self {
         Self { members: names.iter().copied().collect(), names }
