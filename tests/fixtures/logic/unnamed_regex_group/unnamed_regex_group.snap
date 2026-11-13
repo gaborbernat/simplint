@@ -49,7 +49,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 310:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 314:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 318:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
---- fixed (23 applied, 24 remaining) ---
+332:24 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+--- fixed (23 applied, 25 remaining) ---
 import re
 import regex
 from re import compile as compile_pattern
@@ -379,3 +380,10 @@ def natural_key(value):
 
 def natural_key_compiled(value):
     return [(text, int(digits or 0)) for text, digits in NATURAL.findall(value)]
+
+
+PASSED_ON = re.compile(r"(\w+)=(\w+)")
+
+
+def passed_on(value):
+    return PASSED_ON.findall(value), print(PASSED_ON)

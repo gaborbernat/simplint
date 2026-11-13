@@ -27,3 +27,6 @@ def class_names(klass: type[Base]) -> list[str]:
 
 def instance_names(item: Base) -> list[str]:
     return list(vars(item))
+
+
+names_of = lambda klass: list(vars(klass))
