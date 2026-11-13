@@ -305,6 +305,13 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("tests/test_beta.py", "def test_beta() -> None:\n    assert True\n"),
     (0, 1) ; "collected_test_module_added_beside"
 )]
+// A function another file calls becomes a coroutine, so the call that drops it is reported.
+#[test_case(
+    &[("helper.py", "def fetch() -> int:\n    return 1\n"), ("client.py", "from helper import fetch\n\nfetch()\n")],
+    "SMP555",
+    Change::Write("helper.py", "async def fetch() -> int:\n    return 1\n"),
+    (0, 1) ; "imported_function_becomes_a_coroutine"
+)]
 fn cached_result_is_checked_again_after_an_edit(
     files: &[(&str, &str)],
     select: &str,

@@ -48,3 +48,6 @@ class Child(Base):
 
     def explicit(self):
         return list(super(Child, self).method() for _ in range(3))
+
+    def in_dict_comprehension(self):
+        return {item: super().method() for item in super().items()}

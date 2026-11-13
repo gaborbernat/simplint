@@ -123,3 +123,84 @@ def unraised_sibling() -> None:
     :raises DeprecationWarning: Never.
     """
     raise UserWarning
+
+
+def raised_by_helper_twice(first: str, second: str) -> str:
+    """Check two names.
+
+    :param first: The first.
+    :param second: The second.
+    :returns: The names.
+    :raises KeyError: When one is unknown.
+    """
+    return _unraised_validated(first) + _unraised_validated(second)
+
+
+def raised_in_with(lock: object, path: str) -> str:
+    """Return a path under a lock.
+
+    :param lock: The lock.
+    :param path: The path.
+    :returns: The path.
+    :raises KeyError: When the lock's exit says so.
+    """
+    with lock:
+        return path
+
+
+def raised_by_assert(text: str) -> str:
+    """Check a name.
+
+    :param text: The text.
+    :returns: The text.
+    :raises AssertionError: When it is empty.
+    """
+    assert text
+    return text
+
+
+def raised_bare() -> None:
+    """Re-raise.
+
+    :raises KeyError: When a handler around the call caught one.
+    """
+    raise
+
+
+def raised_with_cause(text: str) -> None:
+    """Reject a name.
+
+    :param text: The text.
+    :raises ValueError: Always.
+    :raises RuntimeError: Never.
+    """
+    raise ValueError(text) from None
+
+
+def raised_in_set(names: list[str]) -> set[str]:
+    """Collect names.
+
+    :param names: The names.
+    :returns: The names.
+    :raises KeyError: When the iterable says so.
+    """
+    return {name for name in names}
+
+
+def raised_in_dict(names: list[str]) -> dict[str, int]:
+    """Count names.
+
+    :param names: The names.
+    :returns: The counts.
+    :raises KeyError: When the iterable says so.
+    """
+    return {name: 1 for name in names}
+
+
+def unraised_over_display() -> dict[str, int]:
+    """Count names.
+
+    :returns: The counts.
+    :raises KeyError: Never.
+    """
+    return {name: 1 for name in ("a", "b")}

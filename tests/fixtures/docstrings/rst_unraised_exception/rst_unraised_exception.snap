@@ -6,7 +6,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 20:6 SMP925 `:raises KeyError:` documents `KeyError`, which `unraised_through_helper` never raises [unsafe fix: Remove `:raises KeyError:`]
 83:10 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `check` never raises [unsafe fix: Remove `:raises RuntimeError:`]
 123:6 SMP925 `:raises DeprecationWarning:` documents `DeprecationWarning`, which `unraised_sibling` never raises [unsafe fix: Remove `:raises DeprecationWarning:`]
---- fixed (4 applied, 0 remaining) ---
+134:6 SMP925 `:raises KeyError:` documents `KeyError`, which `raised_by_helper_twice` never raises [unsafe fix: Remove `:raises KeyError:`]
+175:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `raised_with_cause` never raises [unsafe fix: Remove `:raises RuntimeError:`]
+204:6 SMP925 `:raises KeyError:` documents `KeyError`, which `unraised_over_display` never raises [unsafe fix: Remove `:raises KeyError:`]
+--- fixed (7 applied, 0 remaining) ---
 import json
 
 
@@ -126,3 +129,81 @@ def raised_alias(path: str) -> None:
 def unraised_sibling() -> None:
     """Warn."""
     raise UserWarning
+
+
+def raised_by_helper_twice(first: str, second: str) -> str:
+    """Check two names.
+
+    :param first: The first.
+    :param second: The second.
+    :returns: The names.
+    """
+    return _unraised_validated(first) + _unraised_validated(second)
+
+
+def raised_in_with(lock: object, path: str) -> str:
+    """Return a path under a lock.
+
+    :param lock: The lock.
+    :param path: The path.
+    :returns: The path.
+    :raises KeyError: When the lock's exit says so.
+    """
+    with lock:
+        return path
+
+
+def raised_by_assert(text: str) -> str:
+    """Check a name.
+
+    :param text: The text.
+    :returns: The text.
+    :raises AssertionError: When it is empty.
+    """
+    assert text
+    return text
+
+
+def raised_bare() -> None:
+    """Re-raise.
+
+    :raises KeyError: When a handler around the call caught one.
+    """
+    raise
+
+
+def raised_with_cause(text: str) -> None:
+    """Reject a name.
+
+    :param text: The text.
+    :raises ValueError: Always.
+    """
+    raise ValueError(text) from None
+
+
+def raised_in_set(names: list[str]) -> set[str]:
+    """Collect names.
+
+    :param names: The names.
+    :returns: The names.
+    :raises KeyError: When the iterable says so.
+    """
+    return {name for name in names}
+
+
+def raised_in_dict(names: list[str]) -> dict[str, int]:
+    """Count names.
+
+    :param names: The names.
+    :returns: The counts.
+    :raises KeyError: When the iterable says so.
+    """
+    return {name: 1 for name in names}
+
+
+def unraised_over_display() -> dict[str, int]:
+    """Count names.
+
+    :returns: The counts.
+    """
+    return {name: 1 for name in ("a", "b")}

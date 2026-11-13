@@ -1561,19 +1561,25 @@ fn module_attribute_import_outside_modules(source: &str, reported: bool) {
 }
 
 // Only the modules importing the package runs need what they import installed, so a plugin module, a test, a guarded
-// or deferred import and an import a version check picks are left alone.
-#[test_case("dependencies = [\"requests\", \"google-auth\"]\n", &["yaml"] ; "listed")]
-#[test_case("dependencies = [\"requests\", \"google-auth\", \"pyyaml\"]\n", &[] ; "declared")]
+// or deferred import and an import a version check picks are left alone; the `else` of a `TYPE_CHECKING` check and a
+// check of anything but the environment run.
+#[test_case("dependencies = [\"requests\", \"google-auth\"]\n", &["yaml", "attrs", "click"] ; "listed")]
 #[test_case(
-    "dependencies = [\"requests\", \"google-auth\"]\noptional-dependencies.yaml = [\"PyYAML\"]\n", &[]
+    "dependencies = [\"requests\", \"google-auth\", \"pyyaml\", \"attrs\", \"click\"]\n", &[]
+    ; "declared"
+)]
+#[test_case(
+    "dependencies = [\"requests\", \"google-auth\", \"attrs\", \"click\"]\noptional-dependencies.yaml = \
+     [\"PyYAML\"]\n", &[]
     ; "extra"
 )]
 #[test_case("dynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
 fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, reported: &[&str]) {
     let core = "import sys\nfrom typing import TYPE_CHECKING\n\nimport requests\nimport yaml\nfrom google.auth import \
                 default\n\nfrom pkg import helpers\n\ntry:\n    import rich\nexcept ImportError:\n    import \
-                colorama\n\nif TYPE_CHECKING:\n    import numpy\n\nif sys.version_info < (3, 11):\n    import \
-                tomli\n\n\ndef plot() -> None:\n    import matplotlib\n";
+                colorama\n\nif TYPE_CHECKING:\n    import numpy\nelse:\n    import attrs\n\nif \
+                sys.version_info < (3, 11):\n    import tomli\n\nif sys.flags.optimize:\n    import click\n\n\ndef \
+                plot() -> None:\n    import matplotlib\n";
     let root = common::project(&[
         ("pyproject.toml", format!("[project]\nname = \"pkg\"\n{project}").as_str()),
         ("pkg/__init__.py", "from pkg import core\n"),

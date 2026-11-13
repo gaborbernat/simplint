@@ -6,7 +6,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 15:13 SMP709 `__lt__` raises `TypeError` for an operand type it does not handle, which stops Python from asking the other operand; return `NotImplemented` [unsafe fix: Return `NotImplemented`]
 20:13 SMP709 `__add__` raises `TypeError` for an operand type it does not handle, which stops Python from asking the other operand; return `NotImplemented` [unsafe fix: Return `NotImplemented`]
 26:13 SMP709 `__sub__` returns `False` for an operand type it does not handle, which stops Python from asking the other operand; return `NotImplemented` [unsafe fix: Return `NotImplemented`]
---- fixed (4 applied, 0 remaining) ---
+51:13 SMP709 `__eq__` returns `False` for an operand type it does not handle, which stops Python from asking the other operand; return `NotImplemented` [unsafe fix: Return `NotImplemented`]
+--- fixed (5 applied, 0 remaining) ---
 __all__ = []
 
 
@@ -52,3 +53,31 @@ class Point:
         if not isinstance(other, Point):
             raise ValueError("no")
         return self
+
+
+class Vector:
+    def __eq__(self, other, /):
+        if not isinstance(other, Vector):
+            return NotImplemented
+        return True
+
+    def __ne__(self, *others):
+        return NotImplemented
+
+    def __lt__(self, other):
+        if not isinstance(other, Vector):
+            print("rejected")
+            return False
+        return True
+
+    def __le__(self, other):
+        if not isinstance(other, Vector):
+            return False
+        elif other is self:
+            return True
+        return False
+
+    def __gt__(self, other):
+        if isinstance(other, int):
+            return False
+        return True

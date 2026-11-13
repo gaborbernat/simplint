@@ -23,12 +23,22 @@ def _udm_dynamic() -> dict[str, object]:
     return locals()
 
 
+def _udm_deleted() -> None:
+    def _udm_dropped() -> int:
+        return 1
+
+    del _udm_dropped
+
+
 class _UdmCounter:
     def __init__(self, start: int) -> None:
         self._udm_start = start
         self._udm_never_read = start
         self._udm_bumped = 0
         self._udm_named_in_getattr = 1
+        if start:
+            self._udm_set_twice = 1
+        self._udm_set_twice = 2
 
     def bump(self) -> int:
         self._udm_bumped += 1

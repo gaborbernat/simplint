@@ -22,9 +22,25 @@ class Pool:
     def stop(self, cancel, cancel_msg, exc_type=None):
         return cancel, cancel_msg, exc_type
 
+    restart = stop
+    limit: int = 3
+
+    class Inner:
+        pass
+
+    def twice(self, first, second, third):
+        return first, second, third
+
+    def twice(self, first, second, third):
+        return third, second, first
+
     def close(self, cancel, cancel_msg):
         self.stop(cancel, cancel, cancel_msg)
         self.stop(cancel, cancel_msg)
+        self.restart(cancel, cancel, cancel_msg)
+
+    def shift(self, first, second, third):
+        return self.twice(second, third, first), self.Inner(second, third, first), self.limit
 
 
 def caller(cancel, cancel_msg, source, target, first, second, third, rest):

@@ -239,6 +239,8 @@ const MARKED: &str =
 #[test_case("[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "unregistered")]
 #[test_case("[tool.pytest]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "native_table")]
 #[test_case("", MARKED, 0 ; "no_configuration")]
+#[test_case("[tool.pytest.ini_options]\nmarkers = \"\"\"\nfast: fast tests\n\n\"\"\"\n", MARKED, 1 ; "string_markers")]
+#[test_case("[tool.pytest.ini_options]\nmarkers = 1\n", MARKED, 0 ; "malformed_markers")]
 #[test_case(
     "[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n",
     "import pytest\n\n\n@pytest.mark.timeout(5)\ndef test_marked() -> None:\n    assert True\n",
@@ -263,6 +265,7 @@ fn unregistered_marker_reads_pytest_configuration(configuration: &str, test: &st
 #[test_case(".pytest.ini", "[pytest]\nmarkers =\n    slow\n" ; "hidden_pytest_ini")]
 #[test_case("tox.ini", "[pytest]\nmarkers =\n    slow: slow tests\n" ; "tox_ini")]
 #[test_case("setup.cfg", "[tool:pytest]\nmarkers =\n    slow: slow tests\n" ; "setup_cfg")]
+#[test_case("pytest.ini", "# shared settings\n\n[pytest]\n; registered marks\nmarkers =\n    slow: slow tests\n" ; "comments")]
 fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
@@ -275,12 +278,24 @@ fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
     common::assert_report_count(root.path(), "SMP820", 1);
 }
 
+// pytest fails on a `pytest.ini` it cannot decode, so which marks it registers is unknown.
+#[test]
+fn unregistered_marker_leaves_an_unreadable_pytest_ini() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
+        ("tests/test_marks.py", MARKED),
+    ]);
+    std::fs::write(root.path().join("pytest.ini"), b"[pytest]\nmarkers =\n    \xff\n").expect("write pytest.ini");
+    common::assert_report_count(root.path(), "SMP820", 0);
+}
+
 // A module pytest collects by its `python_files`, under its `testpaths` when set, is a test module like `test_*.py`.
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"check_*.py\"\n", "src/check_value.py", 1 ; "python_files")]
 #[test_case("pytest.ini", "[pytest]\npython_files = check_*.py\n", "src/check_value.py", 1 ; "pytest_ini")]
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "suite/value.py", 1 ; "under_testpaths")]
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "src/value.py", 0 ; "outside_testpaths")]
 #[test_case("pyproject.toml", "", "src/check_value.py", 0 ; "default_python_files")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = 1\n", "src/check_value.py", 0 ; "malformed_python_files")]
 fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &str, reports: usize) {
     let pyproject = format!(
         "[project]\nname = \"example\"\nversion = \"1\"\n\n{}",

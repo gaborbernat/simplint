@@ -43,3 +43,31 @@ class Point:
         if not isinstance(other, Point):
             raise ValueError("no")
         return self
+
+
+class Vector:
+    def __eq__(self, other, /):
+        if not isinstance(other, Vector):
+            return False
+        return True
+
+    def __ne__(self, *others):
+        return NotImplemented
+
+    def __lt__(self, other):
+        if not isinstance(other, Vector):
+            print("rejected")
+            return False
+        return True
+
+    def __le__(self, other):
+        if not isinstance(other, Vector):
+            return False
+        elif other is self:
+            return True
+        return False
+
+    def __gt__(self, other):
+        if isinstance(other, int):
+            return False
+        return True
