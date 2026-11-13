@@ -304,11 +304,10 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             _ => Vec::new(),
         };
         self.reads_docstrings |= reads_docstring(expr);
-        if self.parts.has(Parts::REFLECTED_NAMES) {
-            self.reads_class_names |= reads_class_name(expr);
-            if let Some(name) = reflected_name(expr) {
-                self.reflected_names.insert(name.to_owned());
-            }
+        if self.parts.has(Parts::REFLECTED_NAMES)
+            && let Some(receiver) = name_read_on(expr)
+        {
+            self.record_name_read(receiver);
         }
         if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
             && self.handler_depth > 0
@@ -453,6 +452,13 @@ fn parameter_names(parameters: &ast::Parameters) -> Vec<&str> {
 }
 
 impl<'a> FactVisitor<'a> {
+    fn record_name_read(&mut self, receiver: &Expr) {
+        self.reads_class_names |= reads_class_name(receiver);
+        if let Some(name) = reflected_name(receiver) {
+            self.reflected_names.insert(name.to_owned());
+        }
+    }
+
     // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
     // as values.
     fn record_value_load(&mut self, expr: &'a Expr) {
@@ -794,30 +800,26 @@ fn reads_docstring(expr: &Expr) -> bool {
     }
 }
 
-fn reads_class_name(expr: &Expr) -> bool {
+// The object whose `__name__` or `__qualname__` the expression reads.
+fn name_read_on(expr: &Expr) -> Option<&Expr> {
     let Expr::Attribute(ast::ExprAttribute { attr, value, ctx: ExprContext::Load, .. }) = expr else {
-        return false;
+        return None;
     };
-    matches!(attr.as_str(), "__name__" | "__qualname__")
-        && match value.as_ref() {
-            Expr::Call(ast::ExprCall { func, .. }) => {
-                func.as_name_expr().is_some_and(|name| name.id.as_str() == "type")
-            }
-            Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr.as_str() == "__class__",
-            // A classmethod reads its class's name off `cls`.
-            Expr::Name(name) => name.id.as_str() == "cls",
-            _ => false,
-        }
+    matches!(attr.as_str(), "__name__" | "__qualname__").then_some(value)
 }
 
-fn reflected_name(expr: &Expr) -> Option<&str> {
-    let Expr::Attribute(ast::ExprAttribute { attr, value, ctx: ExprContext::Load, .. }) = expr else {
-        return None;
-    };
-    if !matches!(attr.as_str(), "__name__" | "__qualname__") {
-        return None;
+fn reads_class_name(receiver: &Expr) -> bool {
+    match receiver {
+        Expr::Call(ast::ExprCall { func, .. }) => func.as_name_expr().is_some_and(|name| name.id.as_str() == "type"),
+        Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr.as_str() == "__class__",
+        // A classmethod reads its class's name off `cls`.
+        Expr::Name(name) => name.id.as_str() == "cls",
+        _ => false,
     }
-    match value.as_ref() {
+}
+
+fn reflected_name(receiver: &Expr) -> Option<&str> {
+    match receiver {
         Expr::Name(name) => Some(name.id.as_str()),
         Expr::Attribute(ast::ExprAttribute { attr, .. }) => Some(attr.as_str()),
         _ => None,
