@@ -67,6 +67,16 @@ No fix is offered: the typed replacement depends on how the result is used.
   print(vars(1))
   ```
 
+- **A class object**: `vars(cls)`, `vars(type(obj))`, `vars(obj.__class__)`, a class the file defines and a parameter
+  annotated `type[...]`. A class's own namespace, without inherited names, has no typed replacement.
+
+  ```python ok
+  class Base:
+      @classmethod
+      def own_names(cls) -> list[str]:
+          return list(vars(cls))
+  ```
+
 - **Passing `vars` as a value**: these are not reported.
 
   ```python ok

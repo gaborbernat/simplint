@@ -22,7 +22,10 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::syntax::{decorator_callee, first_positional, is_name, is_property_accessor, receiver, statement_index};
+use crate::syntax::{
+    annotation_name, decorator_callee, first_positional, is_classmethod, is_name, is_property_accessor, receiver,
+    statement_index,
+};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
@@ -326,6 +329,37 @@ impl<'a> Semantic<'a> {
                 .and_then(Stmt::as_class_def_stmt)
                 .expect("a class binding's statement is its class"),
         )
+    }
+
+    // Whether `expr` holds a class object: a class the file defines, `type(x)`, `x.__class__`, a parameter annotated
+    // `type` or `type[...]`, or the receiver of a class method.
+    pub fn is_class_object(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Call(call) => self.is_builtin(&call.func, "type") && call.arguments.len() == 1,
+            Expr::Attribute(attribute) => attribute.attr.as_str() == "__class__",
+            Expr::Name(name) => {
+                let bindings = self.resolved_bindings(name);
+                !bindings.is_empty()
+                    && bindings.iter().all(|binding| match binding.kind {
+                        RuffBindingKind::ClassDefinition(_) => true,
+                        RuffBindingKind::Argument => self.is_class_parameter(binding),
+                        _ => false,
+                    })
+            }
+            _ => false,
+        }
+    }
+
+    fn is_class_parameter(&self, binding: &RuffBinding<'a>) -> bool {
+        if let Some(annotation) = self.parameter_annotation(binding) {
+            return matches!(annotation_name(annotation), Some("type" | "Type"));
+        }
+        let Some(Stmt::FunctionDef(function)) = binding.statement(&self.model) else {
+            return false;
+        };
+        let receiver = function.parameters.posonlyargs.iter().chain(&function.parameters.args).next();
+        receiver.is_some_and(|parameter| parameter.name().range() == binding.range)
+            && (is_classmethod(function) || function.name.as_str() == "__new__")
     }
 
     pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {

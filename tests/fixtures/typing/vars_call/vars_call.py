@@ -8,3 +8,22 @@ def options(parser: argparse.ArgumentParser) -> dict[str, str]:
 
 def shadowed(vars: Callable[[], int]) -> int:
     return vars()
+
+
+class Base:
+    shared = 1
+
+    @classmethod
+    def own_names(cls) -> list[str]:
+        return list(vars(cls))
+
+    def type_names(self) -> list[str]:
+        return list(vars(type(self))) + list(vars(self.__class__))
+
+
+def class_names(klass: type[Base]) -> list[str]:
+    return list(vars(klass)) + list(vars(Base))
+
+
+def instance_names(item: Base) -> list[str]:
+    return list(vars(item))
