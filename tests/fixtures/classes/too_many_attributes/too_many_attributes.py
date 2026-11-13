@@ -1,5 +1,5 @@
 import dataclasses
-from dataclasses import KW_ONLY, dataclass
+from dataclasses import KW_ONLY, InitVar, dataclass
 from typing import ClassVar
 
 
@@ -76,3 +76,21 @@ class NotADataclass:
     k: int
     l: int
     m: int
+
+
+@dataclass
+class AtLimitWithMarkers:
+    a: int
+    b: int
+    c: int
+    d: int
+    e: int
+    f: int
+    g: int
+    h: int
+    i: int
+    j: int
+    k: int
+    l: int
+    seed: InitVar[int]
+    registry: "ClassVar[list[str]]" = []

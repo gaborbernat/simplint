@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use ruff_python_ast::AnyParameterRef;
-use ruff_python_ast::helpers::{any_over_expr, is_dunder, map_callable};
+use ruff_python_ast::helpers::{any_over_expr, is_dunder, map_callable, map_subscript};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
@@ -176,6 +176,49 @@ pub fn dataclass_decorator<'a>(
         .iter()
         .find(|decorator| is_dataclass(decorator_callee(decorator)))
         .map(|decorator| &decorator.expression)
+}
+
+// What a dataclass's annotated class attribute declares: a field, or what its `ClassVar`, `InitVar` or `KW_ONLY`
+// annotation makes it instead.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Declares {
+    Field,
+    ClassVar,
+    InitVar,
+    KwOnly,
+}
+
+impl Declares {
+    pub fn of(annotation: &Expr) -> Self {
+        match annotation_name(annotation) {
+            Some("ClassVar") => Self::ClassVar,
+            Some("InitVar") => Self::InitVar,
+            Some("KW_ONLY") => Self::KwOnly,
+            _ => Self::Field,
+        }
+    }
+}
+
+pub struct DataclassField<'a> {
+    pub name: &'a str,
+    pub stmt: &'a ast::StmtAnnAssign,
+    pub kind: Declares,
+}
+
+// The class attributes a dataclass body annotates by name, in order.
+pub fn dataclass_fields(body: &[Stmt]) -> impl Iterator<Item = DataclassField<'_>> {
+    body.iter().filter_map(Stmt::as_ann_assign_stmt).filter_map(|stmt| {
+        let name = stmt.target.as_name_expr()?.id.as_str();
+        Some(DataclassField { name, stmt, kind: Declares::of(&stmt.annotation) })
+    })
+}
+
+// The last segment of the name an annotation subscripts or names, read inside the quotes of a string annotation too.
+pub fn annotation_name(annotation: &Expr) -> Option<&str> {
+    match annotation.as_string_literal_expr() {
+        Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
+        None => last_segment(map_subscript(annotation)),
+    }
 }
 
 // An attribute a method writes on its instance through its receiver, with the range that names it, the statement that

@@ -18,8 +18,8 @@ use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
 use crate::syntax::{
-    ExprCollector, alias_binding, attribute_call, dataclass_decorator, identifier_words, instance_attributes,
-    keyword_is_true, last_segment, module_statements,
+    DataclassField, Declares, ExprCollector, alias_binding, attribute_call, dataclass_decorator, dataclass_fields,
+    identifier_words, instance_attributes, keyword_is_true, last_segment, module_statements,
 };
 
 // What `dataclass-kw-only` needs to rewrite positional calls of a dataclass: the dataclasses declared without
@@ -495,28 +495,17 @@ pub(crate) fn init_fields(
     let keyword_only = keyword_is_true(decorator, "kw_only");
     let mut rest_keyword_only = false;
     let mut seen: FxHashSet<String> = fields.iter().cloned().collect();
-    let declared = class.body.iter().filter_map(|stmt| {
-        let field = stmt.as_ann_assign_stmt()?;
-        Some((field.target.as_name_expr()?.id.as_str(), field))
-    });
-    for (name, ast::StmtAnnAssign { annotation, value, .. }) in declared {
-        if let Some(text) = annotation.as_string_literal_expr().map(|literal| literal.value.to_str()) {
-            if text.contains("ClassVar") || text.contains("KW_ONLY") {
-                return None;
+    for DataclassField { name, stmt, kind } in dataclass_fields(&class.body) {
+        match kind {
+            Declares::ClassVar | Declares::KwOnly if stmt.annotation.is_string_literal_expr() => return None,
+            Declares::ClassVar => continue,
+            Declares::KwOnly => {
+                rest_keyword_only = true;
+                continue;
             }
-        } else {
-            match UnqualifiedName::from_expr(subscripted(annotation))
-                .as_ref()
-                .and_then(|name| name.segments().last().copied())
-            {
-                Some("ClassVar") => continue,
-                Some("KW_ONLY") => {
-                    rest_keyword_only = true;
-                    continue;
-                }
-                _ => {}
-            }
+            Declares::Field | Declares::InitVar => {}
         }
+        let value = &stmt.value;
         let options = value.as_deref().and_then(|value| match value {
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if UnqualifiedName::from_expr(func).is_some_and(|func| func.segments().last() == Some(&"field")) =>
