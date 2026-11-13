@@ -9,10 +9,6 @@ use crate::rules::testing::recognize::is_fixture;
 use crate::rules::testing::{is_test_class, is_test_function};
 use crate::semantic::{Referent, binding_referent};
 
-const ENVIRON_METHODS: &[&str] = &["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"];
-const LIST_METHODS: &[&str] = &["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"];
-const MODULES_METHODS: &[&str] = &["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"];
-
 pub fn test_process_state(checker: &Checker) {
     if !checker.is_test_module() {
         return;
@@ -27,24 +23,76 @@ pub fn test_process_state(checker: &Checker) {
         finder.visit_body(&function.body);
         let mut saves = Saves { checker, saved: FxHashSet::default() };
         saves.visit_body(&function.body);
-        for (range, what) in finder.found.into_iter().filter(|(_, what)| !saves.saved.contains(what)) {
+        for (range, state) in finder.found.into_iter().filter(|(_, state)| !saves.saved.contains(state)) {
             checker.report(
                 Rule::TestProcessState,
                 range,
-                format!("Changing {what} by hand leaks into the tests that run after this one; {}", remedy(what)),
+                format!(
+                    "Changing {} by hand leaks into the tests that run after this one; {}",
+                    state.noun(),
+                    state.remedy()
+                ),
             );
         }
     }
 }
 
-fn remedy(what: &str) -> &'static str {
-    match what {
-        "an environment variable" => "use `monkeypatch.setenv` or `monkeypatch.delenv`",
-        "the working directory" => "use `monkeypatch.chdir`",
-        "`sys.path`" => "use `monkeypatch.syspath_prepend`",
-        "`sys.modules`" => "use `monkeypatch.setitem` or `mock.patch.dict`",
-        "`sys.argv`" => "use `monkeypatch.setattr(sys, \"argv\", ...)`",
-        _ => "use `monkeypatch.setattr` or `mock.patch.object`",
+// The state of the test process a test changes for the tests that run after it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum State {
+    Environment,
+    WorkingDirectory,
+    SysPath,
+    SysModules,
+    SysArgv,
+    ModuleAttribute,
+}
+
+impl State {
+    // The process-wide objects whose items are the state, by their qualified name.
+    const OBJECTS: [([&str; 2], Self); 4] = [
+        (["os", "environ"], Self::Environment),
+        (["sys", "path"], Self::SysPath),
+        (["sys", "modules"], Self::SysModules),
+        (["sys", "argv"], Self::SysArgv),
+    ];
+
+    fn of_object(checker: &Checker, expr: &Expr) -> Option<Self> {
+        let semantic = checker.semantic();
+        Self::OBJECTS.into_iter().find_map(|(segments, state)| semantic.resolves_to(expr, &segments).then_some(state))
+    }
+
+    // The methods that change the object in place.
+    fn mutators(self) -> &'static [&'static str] {
+        match self {
+            Self::Environment | Self::SysModules => {
+                &["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"]
+            }
+            Self::SysPath => &["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"],
+            Self::WorkingDirectory | Self::SysArgv | Self::ModuleAttribute => &[],
+        }
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Environment => "an environment variable",
+            Self::WorkingDirectory => "the working directory",
+            Self::SysPath => "`sys.path`",
+            Self::SysModules => "`sys.modules`",
+            Self::SysArgv => "`sys.argv`",
+            Self::ModuleAttribute => "a module attribute",
+        }
+    }
+
+    fn remedy(self) -> &'static str {
+        match self {
+            Self::Environment => "use `monkeypatch.setenv` or `monkeypatch.delenv`",
+            Self::WorkingDirectory => "use `monkeypatch.chdir`",
+            Self::SysPath => "use `monkeypatch.syspath_prepend`",
+            Self::SysModules => "use `monkeypatch.setitem` or `mock.patch.dict`",
+            Self::SysArgv => "use `monkeypatch.setattr(sys, \"argv\", ...)`",
+            Self::ModuleAttribute => "use `monkeypatch.setattr` or `mock.patch.object`",
+        }
     }
 }
 
@@ -144,7 +192,7 @@ fn restores_itself(function: &ast::StmtFunctionDef) -> bool {
 
 struct Changes<'a, 'b> {
     checker: &'a Checker<'b>,
-    found: Vec<(TextRange, &'static str)>,
+    found: Vec<(TextRange, State)>,
     // Inside a `with` block whose context manager may put the state back on exit.
     restored_depth: usize,
 }
@@ -192,31 +240,22 @@ impl Changes<'_, '_> {
         context.as_call_expr().is_some_and(|call| !self.checker.semantic().is_builtin(&call.func, "open"))
     }
 
-    fn push(&mut self, range: TextRange, what: &'static str) {
+    fn push(&mut self, range: TextRange, state: State) {
         if self.restored_depth == 0 {
-            self.found.push((range, what));
+            self.found.push((range, state));
         }
     }
 
     fn target(&mut self, target: &Expr, statement: TextRange) {
         match target {
             Expr::Subscript(subscript) => self.subscript(&subscript.value, statement),
-            Expr::Attribute(attribute) => {
-                let semantic = self.checker.semantic();
+            Expr::Attribute(attribute) => match State::of_object(self.checker, target) {
                 // Ruff's B003 reports rebinding `os.environ`.
-                if semantic.resolves_to(target, &["os", "environ"]) {
-                    return;
-                }
-                if semantic.resolves_to(target, &["sys", "path"]) {
-                    self.push(statement, "`sys.path`");
-                } else if semantic.resolves_to(target, &["sys", "modules"]) {
-                    self.push(statement, "`sys.modules`");
-                } else if semantic.resolves_to(target, &["sys", "argv"]) {
-                    self.push(statement, "`sys.argv`");
-                } else if self.is_module(&attribute.value) {
-                    self.push(statement, "a module attribute");
-                }
-            }
+                Some(State::Environment) => {}
+                Some(state) => self.push(statement, state),
+                None if self.is_module(&attribute.value) => self.push(statement, State::ModuleAttribute),
+                None => {}
+            },
             Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
                 for element in elts {
                     self.target(element, statement);
@@ -227,15 +266,8 @@ impl Changes<'_, '_> {
     }
 
     fn subscript(&mut self, value: &Expr, statement: TextRange) {
-        let semantic = self.checker.semantic();
-        if semantic.resolves_to(value, &["os", "environ"]) {
-            self.push(statement, "an environment variable");
-        } else if semantic.resolves_to(value, &["sys", "path"]) {
-            self.push(statement, "`sys.path`");
-        } else if semantic.resolves_to(value, &["sys", "modules"]) {
-            self.push(statement, "`sys.modules`");
-        } else if semantic.resolves_to(value, &["sys", "argv"]) {
-            self.push(statement, "`sys.argv`");
+        if let Some(state) = State::of_object(self.checker, value) {
+            self.push(statement, state);
         }
     }
 
@@ -243,19 +275,14 @@ impl Changes<'_, '_> {
         let semantic = self.checker.semantic();
         let func = &*call.func;
         if semantic.resolves_to(func, &["os", "putenv"]) || semantic.resolves_to(func, &["os", "unsetenv"]) {
-            self.push(call.range(), "an environment variable");
+            self.push(call.range(), State::Environment);
         } else if semantic.resolves_to(func, &["os", "chdir"]) {
-            self.push(call.range(), "the working directory");
-        } else if let Expr::Attribute(attribute) = func {
-            let method = attribute.attr.as_str();
-            if ENVIRON_METHODS.contains(&method) && semantic.resolves_to(&attribute.value, &["os", "environ"]) {
-                self.push(call.range(), "an environment variable");
-            } else if LIST_METHODS.contains(&method) && semantic.resolves_to(&attribute.value, &["sys", "path"]) {
-                self.push(call.range(), "`sys.path`");
-            } else if MODULES_METHODS.contains(&method) && semantic.resolves_to(&attribute.value, &["sys", "modules"])
-            {
-                self.push(call.range(), "`sys.modules`");
-            }
+            self.push(call.range(), State::WorkingDirectory);
+        } else if let Expr::Attribute(attribute) = func
+            && let Some(state) = State::of_object(self.checker, &attribute.value)
+            && state.mutators().contains(&attribute.attr.as_str())
+        {
+            self.push(call.range(), state);
         }
     }
 
@@ -272,21 +299,21 @@ impl Changes<'_, '_> {
 // What the function copies before changing it, as `old = os.getcwd()` or `saved = sys.path[:]` do, to put back later.
 struct Saves<'a, 'b> {
     checker: &'a Checker<'b>,
-    saved: FxHashSet<&'static str>,
+    saved: FxHashSet<State>,
 }
 
 impl<'a> Visitor<'a> for Saves<'_, '_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if let Stmt::Assign(ast::StmtAssign { value, .. }) = stmt {
-            if let Some(what) = self.copied(value) {
-                self.saved.insert(what);
+            if let Some(state) = self.copied(value) {
+                self.saved.insert(state);
             }
             // `original = module.attribute` keeps the value a test puts back.
             if let Expr::Attribute(attribute) = &**value
                 && let Expr::Name(name) = &*attribute.value
                 && self.checker.semantic().resolved_bindings(name).iter().all(|binding| matches!(binding_referent(binding), Referent::Module))
             {
-                self.saved.insert("a module attribute");
+                self.saved.insert(State::ModuleAttribute);
             }
         }
         visitor::walk_stmt(self, stmt);
@@ -296,14 +323,14 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
         if let Expr::Call(call) = expr
             && self.checker.semantic().resolves_to(&call.func, &["os", "getcwd"])
         {
-            self.saved.insert("the working directory");
+            self.saved.insert(State::WorkingDirectory);
         }
         visitor::walk_expr(self, expr);
     }
 }
 
 impl Saves<'_, '_> {
-    fn copied(&self, value: &Expr) -> Option<&'static str> {
+    fn copied(&self, value: &Expr) -> Option<State> {
         let source = match value {
             Expr::Subscript(subscript) if subscript.slice.is_slice_expr() => &*subscript.value,
             Expr::Call(call) => match &*call.func {
@@ -315,14 +342,6 @@ impl Saves<'_, '_> {
             },
             _ => return None,
         };
-        let semantic = self.checker.semantic();
-        [
-            (["os", "environ"], "an environment variable"),
-            (["sys", "path"], "`sys.path`"),
-            (["sys", "modules"], "`sys.modules`"),
-            (["sys", "argv"], "`sys.argv`"),
-        ]
-        .into_iter()
-        .find_map(|(segments, what)| semantic.resolves_to(source, &segments).then_some(what))
+        State::of_object(self.checker, source)
     }
 }
