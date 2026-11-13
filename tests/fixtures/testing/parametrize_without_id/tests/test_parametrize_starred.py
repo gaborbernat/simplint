@@ -12,7 +12,7 @@ def test_case(case: str) -> None:
 
 
 _SIMPLE_ARGS = [pytest.param("a", "b", id="ab")]
-_UNIDENTIFIED_ARGS = [(1, 2), pytest.param(3, 4, id="three")]
+_UNIDENTIFIED_ARGS = [(1, [2]), pytest.param(3, 4, id="three")]
 
 
 @pytest.mark.parametrize(("value", "expected"), [*_SIMPLE_ARGS, pytest.param("c", "d", id="cd")])

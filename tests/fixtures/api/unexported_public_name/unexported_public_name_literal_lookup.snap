@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP403 `helper` is not in `__all__`; list it there, or rename it to `_helper` by hand

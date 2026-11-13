@@ -404,7 +404,11 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn tests_read_all(&self) -> bool {
-        self.project.wide.reads.tests_read_all
+        self.project.wide.reads.all.in_tests
+    }
+
+    pub fn reads_unknown_all(&self) -> bool {
+        self.project.wide.reads.all.dynamic_in_production
     }
 
     pub fn is_all_read(&self) -> bool {
@@ -430,6 +434,10 @@ impl<'a> FileIndex<'a> {
 
     pub fn is_base_class(&self, name: &str) -> bool {
         self.project.wide.base_classes.contains(name)
+    }
+
+    pub fn is_mixin(&self, name: &str) -> bool {
+        self.project.wide.mixins.contains(name)
     }
 
     pub fn computed_reads(&self) -> &'a ComputedReads {
@@ -502,6 +510,15 @@ impl<'a> FileIndex<'a> {
     // An object of unknown class may have this attribute set; mocks do not count.
     pub fn is_attribute_written(&self, name: &str) -> bool {
         self.project.wide.writes.untyped.contains(name)
+    }
+
+    // Code sets an attribute no class of the run declares on an object of unknown class, which may be a dataclass.
+    pub fn writes_strangers(&self) -> bool {
+        self.project.wide.writes.strangers
+    }
+
+    pub fn reaches_untyped_storage(&self) -> bool {
+        self.project.wide.writes.reaches_untyped_storage()
     }
 
     pub fn is_class_attribute_accessed(&self, class: &str, name: &str) -> bool {

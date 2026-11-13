@@ -1,6 +1,10 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from unittest import mock
+from warnings import deprecated
+
+import pytest
 
 from api import router
 
@@ -78,3 +82,41 @@ class Vault:
     @grant.setter
     def grant(self, value: Grant) -> None:
         pass
+
+
+class Sample:
+    pass
+
+
+@pytest.fixture
+def sample() -> Sample:
+    return Sample()
+
+
+class Patched:
+    pass
+
+
+@pytest.mark.slow
+@mock.patch("os.getcwd")
+def run_patched(cwd: object) -> Patched:
+    return Patched()
+
+
+class Legacy:
+    pass
+
+
+@deprecated("use something else")
+def legacy() -> Legacy:
+    return Legacy()
+
+
+class Query:
+    pass
+
+
+def mount() -> None:
+    @router.get("/query")
+    def query(value: Query) -> None:
+        print(value)

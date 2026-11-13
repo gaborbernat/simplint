@@ -916,6 +916,41 @@ fn test_module_without_pyproject(name: &str, reported: bool) {
     LAZY_ANNOTATIONS ;
     "per_file_target_version"
 )]
+#[test_case(&[("setup.py", "setup(python_requires=\">=3.14\")\n")], &[], LAZY_ANNOTATIONS ; "setup_py")]
+#[test_case(&[("setup.py", "setup(python_requires = '>=3')\n")], &[], PASSED ; "setup_py_below_the_oldest_known")]
+#[test_case(&[("setup.py", "setup(python_requires=\">=3.x\")\n")], &[], PASSED ; "setup_py_unparsable")]
+#[test_case(&[("setup.py", "setup(python_requires=\">=x.1\")\n")], &[], PASSED ; "setup_py_unparsable_major")]
+#[test_case(&[("setup.py", "# python_requires comes from setup.cfg\nsetup()\n")], &[], PASSED ; "setup_py_mention_only")]
+#[test_case(&[("setup.py", "setup(python_requires=MINIMUM)\n")], &[], PASSED ; "setup_py_not_a_literal")]
+#[test_case(&[("setup.py", "setup(python_requires=\">=3.14")], &[], PASSED ; "setup_py_unterminated")]
+#[test_case(
+    &[("setup.cfg", "[metadata]\nname = demo\n[options]\npackages = demo\npython_requires = >=3.14, !=3.14.1\n")],
+    &[],
+    LAZY_ANNOTATIONS ;
+    "setup_cfg"
+)]
+#[test_case(
+    &[("setup.cfg", "[options]\npackages = demo\n"), ("setup.py", "setup(python_requires=\">=3.14\")\n")],
+    &[],
+    LAZY_ANNOTATIONS ;
+    "setup_cfg_without_python_requires"
+)]
+#[test_case(
+    &[("pyproject.toml", "[tool.poetry.dependencies]\npython = \"^3.14 || >=3.15\"\n")],
+    &[],
+    LAZY_ANNOTATIONS ;
+    "poetry_python"
+)]
+#[test_case(
+    &[("pyproject.toml", "[tool.poetry.dependencies]\npython = \"3.14\"\n")], &[], LAZY_ANNOTATIONS ;
+    "poetry_exact_python"
+)]
+#[test_case(
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.13\"\n"), ("setup.cfg", "[options]\npython_requires = >=3.14\n")],
+    &[],
+    PASSED ;
+    "requires_python_beats_setup_cfg"
+)]
 fn target_version_resolution(files: &[(&str, &str)], flags: &[&str], stdout: &str) {
     let root = project(&[files, &[("module.py", "from __future__ import annotations\n")]].concat());
     assert_eq!(check(root.path(), &[&["--select", "SMP301"], flags].concat()).1, stdout);

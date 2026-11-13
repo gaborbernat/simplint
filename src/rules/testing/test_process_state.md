@@ -93,9 +93,25 @@ since `setup_method` and its kin run as part of each test.
   `list(sys.argv)`, `dict(os.environ)` or `sys.modules.copy()`, or reading `module.attribute` into a name, saves the
   rest, so the function can put it back.
 
-- **Modules, classes and tests with their own teardown**: a module with `teardown_module` or `teardown_function`, a
-  class with `tearDown`, `teardown_method` or `teardown_class`, and a test, class or module with a `usefixtures` mark,
-  whose fixture may restore the state.
+- **State a patcher or `monkeypatch` puts back**: `patch.dict(os.environ)` or `mocker.patch.dict(sys.modules)`, as a
+  decorator or a call in the function, restores the whole mapping once the test ends, and `monkeypatch.setenv`,
+  `delenv`, `syspath_prepend` or `chdir` restores what it replaced.
+
+  ```python ok file=tests/test_patched_env.py
+  import os
+  from unittest import mock
+
+
+  @mock.patch.dict(os.environ)
+  def test_reads_override() -> None:
+      os.environ["APP_MODE"] = "debug"
+      assert os.environ["APP_MODE"] == "debug"
+  ```
+
+- **Modules, classes and tests with their own teardown**: a module with `teardown_module`, `teardown_function` or an
+  autouse fixture that restores what it changes, a class with `tearDown`, `teardown_method` or `teardown_class`, a
+  `patch` decorator, or a base other than `unittest.TestCase`, whose hooks it inherits, and a test, class or module with
+  a `usefixtures` mark, whose fixture may restore the state.
 
 - **Tests that request `pytester` or `testdir`**: pytester snapshots the working directory, `sys.path` and
   `sys.modules`, and restores them after the test.

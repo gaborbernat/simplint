@@ -16,3 +16,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 24:40 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 24:51 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 24:74 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+34:48 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+34:60 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+34:72 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+34:89 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+39:53 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`

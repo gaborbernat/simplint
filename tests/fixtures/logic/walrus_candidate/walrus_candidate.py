@@ -122,3 +122,44 @@ def trailing_semicolon(text: str) -> str:
     if size > 3:
         return text
     return ""
+
+
+def comprehension_binds_its_own(data: dict[str, int]) -> dict[str, int]:
+    rgb = data.get("rgb")
+    if rgb:
+        print(rgb)
+    return {key: rgb for key, rgb in data.items()}
+
+
+def nested_binds_its_own(data: dict[str, int]) -> object:
+    rgb = data.get("rgb")
+    if rgb:
+        print(rgb)
+
+    def inner(rgb: int) -> int:
+        return rgb
+
+    return inner
+
+
+def nested_reads_outer(data: dict[str, int]) -> object:
+    rgb = data.get("rgb")
+    if rgb:
+        print(rgb)
+
+    def inner() -> object:
+        return rgb
+
+    return inner
+
+
+def outer_binds_what_a_nested_one_checks(data: dict[str, int]) -> object:
+    rgb = 0
+
+    def inner() -> int:
+        rgb = data.get("rgb")
+        if rgb:
+            print(rgb)
+        return 0
+
+    return rgb, inner

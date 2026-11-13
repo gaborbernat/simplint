@@ -2,6 +2,7 @@
 mod fstring;
 mod literals;
 mod names;
+mod scopes;
 
 use ruff_python_ast::{self as ast, Expr, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextRange};
@@ -14,6 +15,7 @@ pub(in crate::rules::logic) use fstring::{fstring_body_parts, requoted_text};
 pub(in crate::rules::logic) use literals::{is_constant, is_hashable};
 pub(crate) use names::LOCALS_READERS;
 pub(in crate::rules::logic) use names::Names;
+pub(in crate::rules::logic) use scopes::{InnerScopes, body_region};
 
 pub(super) fn for_each_scoped_body<'a, S: Copy>(
     body: &'a [Stmt],

@@ -43,7 +43,8 @@ pub(super) fn analyze(checker: &Checker<'_>, decorated: &Decorated) -> Option<An
         mutated: hazards.mutated,
         parameters: fields.parameters,
         keyworded: !class.keywords().is_empty(),
-        suspected: hazards.suspected,
+        suspected: hazards.suspected || checker.project().writes_strangers(),
+        storage_suspected: checker.project().reaches_untyped_storage(),
     })
 }
 
@@ -58,6 +59,9 @@ pub(super) struct Analysis {
     // The fields the plain class's `__init__` would take, `InitVar`s included.
     pub(super) parameters: usize,
     suspected: bool,
+    // Whether code reaches the `__dict__` or a weak reference of an object of unknown class, which may be an instance
+    // of this class: slots take both away, though freezing keeps them.
+    storage_suspected: bool,
     // Whether the class has a keyword such as `metaclass=`, which `slots=True` runs again when it builds the class.
     keyworded: bool,
 }
@@ -68,7 +72,11 @@ impl Analysis {
     }
 
     pub(super) fn slots_applicability(&self) -> Applicability {
-        if self.suspected || self.keyworded { Applicability::Unsafe } else { Applicability::Safe }
+        if self.suspected || self.storage_suspected || self.keyworded {
+            Applicability::Unsafe
+        } else {
+            Applicability::Safe
+        }
     }
 }
 

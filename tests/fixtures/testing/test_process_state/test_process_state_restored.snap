@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+31:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+51:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+56:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`

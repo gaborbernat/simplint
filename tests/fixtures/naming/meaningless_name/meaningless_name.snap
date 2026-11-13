@@ -18,3 +18,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 64:19 SMP103 Meaningless name `quux`; name what it holds
 76:5 SMP103 Meaningless name `FOO`; name what it holds
 77:5 SMP103 Meaningless name `_baz`; name what it holds
+103:5 SMP103 Meaningless name `foo`; name what it holds

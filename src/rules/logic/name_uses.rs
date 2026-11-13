@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::rules::logic::inline::Names;
-use crate::syntax::{Nesting, target_names, top_level};
+use crate::syntax::{Nesting, top_level};
 
 // The module and each function of a file, nested ones included, with what the local-variable rules read off each. A
 // rule asks only for the scopes its cheap syntactic trigger points at, and the first rule to ask builds the answer for
@@ -280,14 +280,13 @@ pub(super) struct FunctionNames<'a> {
     pub(super) names: Names<'a>,
     // The nested functions, classes and lambdas.
     pub(super) deferred: Nesting,
-    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
 }
 
 impl<'a> FunctionNames<'a> {
     fn of(body: &'a [Stmt]) -> Self {
         let mut walk = NestedScopes::default();
         walk.visit_body(body);
-        Self { names: Names::of(body), deferred: Nesting::new(walk.deferred), comprehensions: walk.comprehensions }
+        Self { names: Names::of(body), deferred: Nesting::new(walk.deferred) }
     }
 
     // Whether the rule can follow the name: the function binds it only by assignment, reads no local by its text, and
@@ -301,22 +300,18 @@ impl<'a> FunctionNames<'a> {
             && self.mentions(name).all(|(range, _)| self.deferred.holders(range).next().is_none())
     }
 
-    // The mentions of the function's own name, in source order, leaving out those of a comprehension that binds a name
-    // of the same spelling.
+    // The mentions of the function's own name, in source order.
     pub(super) fn mentions(&self, name: &str) -> impl Iterator<Item = (TextRange, ExprContext)> + Clone {
-        self.names.mentions.get(name).map_or(&[][..], Vec::as_slice).iter().copied().filter(move |(range, _)| {
-            !self.comprehensions.iter().any(|(scope, bound)| scope.contains_range(*range) && bound.contains(&name))
-        })
+        self.names.mentions.get(name).map_or(&[][..], Vec::as_slice).iter().copied()
     }
 }
 
 #[derive(Default)]
-struct NestedScopes<'a> {
+struct NestedScopes {
     deferred: Vec<TextRange>,
-    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
 }
 
-impl<'a> Visitor<'a> for NestedScopes<'a> {
+impl<'a> Visitor<'a> for NestedScopes {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
             self.deferred.push(stmt.range());
@@ -327,11 +322,6 @@ impl<'a> Visitor<'a> for NestedScopes<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if expr.is_lambda_expr() {
             self.deferred.push(expr.range());
-        }
-        let generators = comprehension_generators(expr);
-        if !generators.is_empty() {
-            let bound = generators.iter().flat_map(|generator| target_names(&generator.target)).collect();
-            self.comprehensions.push((expr.range(), bound));
         }
         walk_expr(self, expr);
     }

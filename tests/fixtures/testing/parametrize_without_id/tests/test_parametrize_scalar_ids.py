@@ -24,3 +24,23 @@ def test_float_reprs(value: float) -> None:
 @pytest.mark.parametrize("value", [-0, 0, 1j, 2j, 100000000000000000000, 100000000000000000000, 0x1_0000_0000_0000_0000])
 def test_integer_and_complex_ids(value: complex) -> None:
     assert value
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("FALSE", "false"), ("True", "true"), (1, None)])
+def test_tuple_rows_of_scalars(raw: object, expected: object) -> None:
+    assert raw != expected
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("a", "b"), ("a", "b"), ("a", object()), ("a",)])
+def test_tuple_rows_pytest_cannot_name(raw: object, expected: object) -> None:
+    assert raw != expected
+
+
+@pytest.mark.parametrize("header", [b"gzip", b"br", b"a\\b"])
+def test_bytes_rows(header: bytes) -> None:
+    assert header
+
+
+@pytest.mark.parametrize(("raw", "expected"), [["FALSE", "false"], ["True", "true"]])
+def test_list_rows_of_scalars(raw: str, expected: str) -> None:
+    assert raw != expected

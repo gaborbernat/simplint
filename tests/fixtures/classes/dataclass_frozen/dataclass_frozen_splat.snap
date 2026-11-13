@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-39:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+39:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 49:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 --- fixed (1 applied, 1 remaining) ---
 from dataclasses import dataclass

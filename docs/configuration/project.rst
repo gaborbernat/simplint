@@ -26,8 +26,10 @@ Python version
 `target-version <https://docs.astral.sh/ruff/settings/#target-version>`__ and
 `per-file-target-version <https://docs.astral.sh/ruff/settings/#per-file-target-version>`__ set the Python version the
 rules assume for each file, and ``--target-version`` overrides them. Without them, the version comes from
-`requires-python <https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python>`__, and then
-from simplint's default, Python 3.11.
+`requires-python <https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python>`__, then from
+the project's other declarations, which Ruff does not read: the ``python`` dependency of
+``[tool.poetry.dependencies]``, and the ``python_requires`` of setuptools in ``setup.cfg`` or as a string literal in
+``setup.py``. Without any of these, simplint's default is Python 3.11.
 
 Every rule and fix that depends on the language version follows it:
 

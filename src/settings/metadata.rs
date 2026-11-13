@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 use itertools::Itertools;
+use ruff_python_ast::PythonVersion;
 use serde::Deserialize;
 
 use crate::syntax::top_level;
@@ -200,6 +201,59 @@ pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Cl
 }
 
 // A value under `[tool]`, by the keys leading to it.
+// The oldest Python a project declares outside `requires-python`, which is all Ruff reads: Poetry's `python`
+// dependency, or the `python_requires` setuptools takes from `setup.cfg` or a literal in `setup.py`. A missing file
+// declares nothing.
+pub(super) fn declared_python(dir: &Path, pyproject: Option<&toml::Table>) -> Option<PythonVersion> {
+    pyproject
+        .and_then(|table| tool_value(table, &["poetry", "dependencies", "python"]))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| std::fs::read_to_string(dir.join("setup.cfg")).ok().and_then(|text| setup_cfg_requires(&text)))
+        .or_else(|| std::fs::read_to_string(dir.join("setup.py")).ok().and_then(|text| setup_py_requires(&text)))
+        .and_then(|specifier| oldest_python(&specifier))
+}
+
+fn setup_cfg_requires(text: &str) -> Option<String> {
+    let mut in_options = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_options = line == "[options]";
+        } else if in_options
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "python_requires"
+        {
+            return Some(value.trim().to_owned());
+        }
+    }
+    None
+}
+
+fn setup_py_requires(text: &str) -> Option<String> {
+    let value = text.split_once("python_requires")?.1.trim_start().strip_prefix('=')?.trim_start();
+    let quote = value.chars().next().filter(|first| matches!(first, '"' | '\''))?;
+    Some(value[1..].split_once(quote)?.0.to_owned())
+}
+
+// The lowest version a PEP 440 or Poetry specifier admits, raised to the oldest version Ruff knows.
+fn oldest_python(specifier: &str) -> Option<PythonVersion> {
+    let oldest = specifier
+        .split([',', '|'])
+        .filter_map(|clause| {
+            let clause = clause.trim();
+            let version = [">=", "~=", "==", ">", "^", "~"]
+                .iter()
+                .find_map(|operator| clause.strip_prefix(operator))
+                .or_else(|| clause.starts_with(|first: char| first.is_ascii_digit()).then_some(clause))?;
+            let mut parts = version.trim().split('.').map(str::parse::<u8>);
+            let major = parts.next().and_then(Result::ok)?;
+            let minor = parts.next().unwrap_or(Ok(0)).ok()?;
+            Some((major, minor))
+        })
+        .min()?;
+    PythonVersion::iter().find(|version| (version.major, version.minor) >= oldest)
+}
+
 pub(super) fn tool_value<'a>(pyproject: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value> {
     path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key))
 }
@@ -413,4 +467,87 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Vec<(PathB
     };
     hooks.extend(names.into_iter().map(|name| (file.clone(), name)));
     hooks
+}
+
+// The `__version__` a build backend or a release tool reads from the project's code, so the assignment has to stay
+// where the tool looks: the files that setuptools' `attr:`, hatch's or pdm's version `path`, flit, bump-my-version,
+// bump2version or tbump name, and every package's `__init__.py` when `setup.py` reads it itself.
+#[derive(Default)]
+pub struct VersionReaders {
+    pub(crate) files: Vec<PathBuf>,
+    pub(crate) any_init: bool,
+}
+
+impl VersionReaders {
+    pub(super) fn of(project_dir: &Path, pyproject: Option<&toml::Table>) -> Self {
+        let read = |name: &str| std::fs::read_to_string(project_dir.join(name)).unwrap_or_default();
+        let setup_cfg = read("setup.cfg");
+        let mut modules: Vec<String> = setup_cfg
+            .lines()
+            .filter_map(|line| {
+                let (key, value) = line.split_once('=')?;
+                (key.trim() == "version").then(|| value.trim().strip_prefix("attr:")).flatten()
+            })
+            .map(|attribute| attribute.trim().to_owned())
+            .collect();
+        let mut paths: Vec<String> = [setup_cfg.as_str(), read(".bumpversion.cfg").as_str()]
+            .into_iter()
+            .flat_map(str::lines)
+            .filter_map(|line| line.trim().strip_prefix("[bumpversion:file:")?.strip_suffix(']').map(str::to_owned))
+            .collect();
+        let hatch = read("hatch.toml").parse::<toml::Table>().ok();
+        paths.extend(hatch.as_ref().and_then(|hatch| hatch.get("version")?.get("path")?.as_str()).map(str::to_owned));
+        let tbump = read("tbump.toml").parse::<toml::Table>().ok();
+        let bump_my_version = read(".bumpversion.toml").parse::<toml::Table>().ok();
+        let tables = pyproject.into_iter().chain(bump_my_version.as_ref()).chain(tbump.as_ref());
+        for table in tables {
+            modules.extend(
+                tool_value(table, &["setuptools", "dynamic", "version", "attr"])
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_owned),
+            );
+            paths.extend(
+                [&["hatch", "version", "path"][..], &["pdm", "version", "path"]]
+                    .iter()
+                    .filter_map(|path| tool_value(table, path)?.as_str().map(str::to_owned)),
+            );
+            let files = tool_value(table, &["bumpversion", "files"])
+                .into_iter()
+                .chain(tool_value(table, &["tbump", "file"]))
+                .chain(table.get("file"))
+                .filter_map(toml::Value::as_array)
+                .flatten();
+            paths.extend(
+                files.filter_map(|file| file.get("filename").or_else(|| file.get("src"))?.as_str().map(str::to_owned)),
+            );
+        }
+        if let Some(table) = pyproject {
+            let backend =
+                table.get("build-system").and_then(|system| system.get("build-backend")).and_then(toml::Value::as_str);
+            let dynamic_version = table.get("project").filter(|project| {
+                project
+                    .get("dynamic")
+                    .and_then(toml::Value::as_array)
+                    .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("version")))
+            });
+            if let Some(project) = dynamic_version
+                && backend.is_some_and(|backend| backend.starts_with("flit"))
+            {
+                let module = tool_value(table, &["flit", "module", "name"])
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_owned)
+                    .or_else(|| project.get("name")?.as_str().map(|name| name.replace('-', "_")));
+                modules.extend(module.map(|module| format!("{module}.__version__")));
+            }
+        }
+        let module_files = modules.iter().flat_map(|attribute| {
+            let module = attribute.rsplit_once('.').map_or(attribute.as_str(), |(module, _)| module).replace('.', "/");
+            ["", "src/"]
+                .into_iter()
+                .flat_map(move |prefix| [format!("{prefix}{module}/__init__.py"), format!("{prefix}{module}.py")])
+        });
+        let files =
+            paths.into_iter().chain(module_files).map(|path| normalized(&absolute(&project_dir.join(path)))).collect();
+        Self { files, any_init: read("setup.py").contains("__version__") }
+    }
 }

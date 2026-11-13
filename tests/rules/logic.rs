@@ -66,6 +66,7 @@ use crate::common::{self, check, read};
 #[test_case("single-use-variable", "single_use_variable_walrus.py", None ; "single_use_variable_walrus")]
 #[test_case("single-use-variable", "single_use_variable_tstring.py", None ; "single_use_variable_tstring")]
 #[test_case("single-use-variable", "single_use_variable_format_spec.py", None ; "single_use_variable_format_spec")]
+#[test_case("single-use-variable", "single_use_variable_scopes.py", None ; "single_use_variable_scopes")]
 #[test_case("string-concatenation", "string_concatenation.py", None ; "string_concatenation")]
 #[test_case("string-concatenation", "string_concatenation_old.py", Some("py310") ; "string_concatenation_py310")]
 #[test_case("string-concatenation", "string_concatenation_types.py", None ; "string_concatenation_types")]
@@ -736,6 +737,37 @@ fn unused_default_counts_calls_that_suppress_dataclass_kw_only(call: &str) {
     assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
 }
 
+// `getattr(module, name)()` may call any function of a module it reads by a computed name or through `__all__`, with no
+// arguments at all.
+#[test_case("import core\n\nconnect(\"a\", 1)\nprint([getattr(core, name) for name in names])\n" ; "getattr")]
+#[test_case("import core\n\nconnect(\"a\", 1)\nprint(core.__all__)\n" ; "all")]
+#[test_case("import pkg.core\n\nconnect(\"a\", 1)\nprint(hasattr(pkg.core, names[0]))\n" ; "dotted_hasattr")]
+fn unused_default_leaves_a_module_read_dynamically_alone(reader: &str) {
+    let main = format!("from pkg.core import connect\nfrom pkg import core\nnames = []\n{reader}");
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/core.py", "def connect(host, timeout=30):\n    return host, timeout\n"),
+        ("main.py", main.as_str()),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
+}
+
+// A literal attribute name reads one function, so the others keep their judgment.
+#[test]
+fn unused_default_judges_a_module_read_by_a_literal_name() {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/core.py", "def connect(host, timeout=30):\n    return host, timeout\n"),
+        (
+            "main.py",
+            "from pkg import core\nfrom pkg.core import connect\n\nconnect(\"a\", 1)\nprint(getattr(core, \"x\"))\n",
+        ),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
+}
+
 // A library's public functions may be called by outside code that omits the argument.
 #[test]
 fn unused_default_leaves_the_public_api_alone() {
@@ -1051,7 +1083,7 @@ fn long_tuple_return_limit(settings: &str, reports: usize) {
 #[test_case("from typing import override", "@override", 0 ; "typing_override")]
 #[test_case("from typing_extensions import override", "@override", 0 ; "typing_extensions_override")]
 #[test_case("from compatibility import override", "@override", 0 ; "compatibility_override")]
-#[test_case("", "", 1 ; "unconstrained_return")]
+#[test_case("", "", 0 ; "base_of_the_run_sets_the_shape")]
 fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, reports: usize) {
     let root = common::project(&[(
         "module.py",
@@ -1061,6 +1093,18 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
         ),
     )]);
     common::assert_report_count(root.path(), "SMP528", reports + 1);
+}
+
+// A base outside the run sets no shape the rule can see, so only the codec state method is exempt.
+#[test]
+fn long_tuple_return_override_of_an_outside_base() {
+    let root = common::project(&[(
+        "module.py",
+        "from codecs import IncrementalDecoder\n\n\nclass Decoder(IncrementalDecoder):\n    def fields(self) -> \
+            tuple[int, int, int]:\n        return 1, 2, 3\n\n    def getstate(self) -> tuple[bytes, int, int]:\n        \
+            return b\"\", 0, 0\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP528", 1);
 }
 
 #[test_case(

@@ -132,6 +132,16 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
     &["first/src/first/a.py", "first/src/first/b.py"]
     ; "separate_distributions"
 )]
+#[test_case(
+    &[("pkg/_async/parser.py", REPEATED), ("pkg/_sync/parser.py", REPEATED)],
+    &[]
+    ; "unasync_output"
+)]
+#[test_case(
+    &[("pkg/_async/parser.py", REPEATED), ("pkg/_sync/reader.py", REPEATED)],
+    &["pkg/_async/parser.py", "pkg/_sync/reader.py"]
+    ; "sync_module_without_an_async_twin"
+)]
 fn repeats_are_compared_within_one_project(files: &[(&str, &str)], expected: &[&str]) {
     assert_eq!(duplicate_code_reports(files), expected);
 }

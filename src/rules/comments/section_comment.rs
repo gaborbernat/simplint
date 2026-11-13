@@ -23,11 +23,18 @@ pub fn section_comment(checker: &Checker) {
                     && source[previous].chars().any(char::is_alphanumeric)
                     && !is_section_comment(&source[previous])
             });
-        if continues_prose || !is_section_comment(&source[range]) {
+        // A short line of a `##` paragraph, a URL or code after `##` is no heading, so it is left to Ruff too.
+        let ruff_prose = left_to_ruff(&source[range])
+            && (prose(&source[range]).is_some()
+                || !is_title(content)
+                || index
+                    .checked_sub(1)
+                    .map(|previous| comments[previous])
+                    .is_some_and(|previous| follows(source, previous, range) && left_to_ruff(&source[previous])));
+        if continues_prose || ruff_prose || !is_section_comment(&source[range]) {
             continue;
         }
         match prose(&source[range]) {
-            Some(_) if left_to_ruff(&source[range]) => {}
             Some(text) => checker.report_fix(
                 Rule::SectionComment,
                 range,
@@ -65,7 +72,11 @@ fn is_section_comment(comment: &str) -> bool {
         return true;
     }
     if !content.chars().any(char::is_alphanumeric) {
-        return content.chars().filter(|char| !char.is_whitespace()).count() + hashes >= 4
+        // Runs split by spaces rule off the columns of a table, such as `------  ------`.
+        let table_rule =
+            content.split_whitespace().nth(1).is_some() && content.split_whitespace().any(|run| run.len() > 1);
+        return !table_rule
+            && content.chars().filter(|char| !char.is_whitespace()).count() + hashes >= 4
             && content.chars().all(|char| char.is_whitespace() || DIVIDER_CHARS.contains(&char));
     }
     // Two repeated characters also end prose (`C++`), so a single run needs three; a pair on both ends frames a title.
@@ -83,11 +94,16 @@ fn decoration(content: &str) -> (usize, usize) {
     (leading, trailing)
 }
 
-// Ruff's E266 and E265 report a plain comment with the text this rule's fix keeps, so the comment is left to them. A
-// decorated comment is not one of them: their fix keeps the decoration.
+// Ruff's E266 and E265 report text after more than one `#`. Their fix keeps a decorated comment's decoration, and a
+// title's text where this rule removes it.
 fn left_to_ruff(comment: &str) -> bool {
     let hashes = comment.chars().take_while(|char| *char == '#').count();
-    decoration(comment[hashes..].trim()) == (0, 0)
+    let content = comment[hashes..].trim();
+    hashes >= 2 && content.chars().any(char::is_alphanumeric) && decoration(content) == (0, 0)
+}
+
+fn is_title(content: &str) -> bool {
+    !content.contains("://") && !content.contains(['(', ')', '[', ']', '{', '}', '=', '<', '>', '`'])
 }
 
 // Up to three words are a title that labels the code below, so the fix removes the comment with them.

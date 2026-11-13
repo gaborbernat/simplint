@@ -100,3 +100,13 @@ class CtorOverloadAfterAlias:
 
     def __init__(self, value: int | str) -> None:
         self.value = value
+
+
+class AnnotatedField:
+    items: list[Item]
+
+    def size(self) -> int:
+        return len(self.items)
+
+    class Item:
+        pass

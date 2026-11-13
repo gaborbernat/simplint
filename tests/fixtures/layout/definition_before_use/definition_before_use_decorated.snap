@@ -2,14 +2,22 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-17:7 SMP201 `Payload` is defined before its first use in `Envelope`; move it below `Envelope` [unsafe fix: Move `Payload` below `Envelope`]
-40:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller`
-60:7 SMP201 `Lease` is defined before its first use in `lease`; move it below `lease`
-69:7 SMP201 `Grant` is defined before its first use in `Vault`; move it below `Vault`
+21:7 SMP201 `Payload` is defined before its first use in `Envelope`; move it below `Envelope` [unsafe fix: Move `Payload` below `Envelope`]
+44:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller`
+64:7 SMP201 `Lease` is defined before its first use in `lease`; move it below `lease`
+73:7 SMP201 `Grant` is defined before its first use in `Vault`; move it below `Vault`
+87:7 SMP201 `Sample` is defined before its first use in `sample`; move it below `sample`
+96:7 SMP201 `Patched` is defined before its first use in `run_patched`; move it below `run_patched`
+106:7 SMP201 `Legacy` is defined before its first use in `legacy`; move it below `legacy`
+115:7 SMP201 `Query` is defined before its first use in `mount`; move it below `mount`
 --- fixed (1 applied, 0 remaining) ---
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from unittest import mock
+from warnings import deprecated
+
+import pytest
 
 from api import router
 
@@ -86,4 +94,42 @@ class Vault:
 
 
 class Grant:
+    pass
+
+
+@pytest.fixture
+def sample() -> Sample:
+    return Sample()
+
+
+class Sample:
+    pass
+
+
+@pytest.mark.slow
+@mock.patch("os.getcwd")
+def run_patched(cwd: object) -> Patched:
+    return Patched()
+
+
+class Patched:
+    pass
+
+
+@deprecated("use something else")
+def legacy() -> Legacy:
+    return Legacy()
+
+
+class Legacy:
+    pass
+
+
+def mount() -> None:
+    @router.get("/query")
+    def query(value: Query) -> None:
+        print(value)
+
+
+class Query:
     pass

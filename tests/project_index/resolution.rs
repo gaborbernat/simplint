@@ -385,7 +385,7 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
 }
 
 // Another file's writes count by the class of their receiver: a mock's never, an instance's or an unknown object's
-// always.
+// always. A name no class declares written on an unknown object, as `upper` on `result.log`, makes the fix unsafe.
 #[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True)" ; "mock")]
 #[test_case("result = Result(log=\"\")\n    result.log = log\n", "", "@dataclass" ; "instance")]
 #[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass" ; "unknown")]
@@ -398,7 +398,7 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
 )]
 #[test_case(
     "result = Result(log=\"\")\n    result.log.upper = log\n",
-    "[*] ",
+    "",
     "@dataclass(frozen=True)"
     ; "write_on_a_member_of_an_instance"
 )]

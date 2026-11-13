@@ -609,6 +609,9 @@ __all__ = []
 
 No fix is offered when:
 
+- code outside the tests reads `__all__` off a module it imports by a computed name, as a plugin loader that walks
+  `__import__(name).__all__` does: that list may be what uses the names
+
 - the list holds a comment and its names share lines, since the comment may belong to a removed name
 
   ```python report

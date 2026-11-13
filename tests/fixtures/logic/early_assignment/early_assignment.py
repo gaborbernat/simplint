@@ -61,3 +61,30 @@ def use_before_lone_semicolon(items: list[int]) -> int:
     items.sort()
     print(limit);
     return len(items)
+
+
+def nested_binds_its_own(values: list[int]) -> object:
+    total = 0
+    print(values)
+    print(total)
+
+    def inner(items: list[int]) -> int:
+        total = len(items)
+        return total * 2
+
+    return inner
+
+
+def comprehension_binds_its_own(values: list[str]) -> list[str]:
+    name = "x"
+    print(values)
+    print(name)
+    return [name for name in values]
+
+
+def string_keys_name_it(loaded: dict[str, list[dict[str, int]]]) -> list[dict[str, int]]:
+    cases = []
+    defaults = loaded["defaults"][0]
+    for case in loaded["cases"]:
+        cases.append({"cases": 1, **defaults, **case})
+    return cases

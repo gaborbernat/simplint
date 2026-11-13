@@ -362,7 +362,8 @@ definition a Sphinx page names is used.
   ```
 
 - **Dunder and sunder names** such as `__repr__`, which the interpreter calls without a name in the source, and
-  `_repr_html_` or `_missing_`, which Jupyter and `enum` call by name.
+  `_repr_html_` or `_missing_`, which Jupyter and `enum` call by name. A nested function with a dunder name is kept too,
+  as pytest reads a `__tracebackhide__` local from the frame.
 
   ```python ok
   class Record:
@@ -377,7 +378,8 @@ definition a Sphinx page names is used.
   ```
 
 - **Methods and attributes of classes with bases**: a base class may call the method, or a framework may. Classes with a
-  decorator are left alone for the same reason.
+  decorator are left alone for the same reason, and so are mixins: a class some class lists beside another base, whose
+  methods that base may call.
 
   ```python ok
   class Base:
@@ -390,6 +392,22 @@ definition a Sphinx page names is used.
 
 
   print(Client())
+  ```
+
+  ```python ok
+  from http.client import HTTPConnection
+
+
+  class _BufferMixin:
+      def _send_output(self, message_body: bytes | None = None) -> None:
+          print(message_body)
+
+
+  class Connection(_BufferMixin, HTTPConnection):
+      pass
+
+
+  print(Connection("example.com"))
   ```
 
 - **Test modules**: a test module's helpers belong to the tests, and pytest may call them by name.

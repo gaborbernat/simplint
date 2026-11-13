@@ -3,28 +3,31 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 3:1 SMP202 `_TIMEOUT` is used by one function only; define it there [unsafe fix: Move `_TIMEOUT` into `connect`]
-28:1 SMP202 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
-42:1 SMP202 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
-43:1 SMP202 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
-85:1 SMP202 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
-93:1 SMP202 `_PORT` is used by one function only; define it there [unsafe fix: Move `_PORT` into `describe`]
-107:1 SMP202 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
-108:1 SMP202 `_HOUR` is used by one function only; define it there [unsafe fix: Move `_HOUR` into `literals`]
-109:1 SMP202 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
-110:1 SMP202 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
-111:1 SMP202 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
-127:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
-151:1 SMP202 `_5_SMOOTH` is used by one function only; define it there
-152:1 SMP202 `_CLASS` is used by one function only; define it there
-159:1 SMP202 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
-173:1 SMP202 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
-190:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
-191:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
-200:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
-210:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
---- fixed (18 applied, 2 remaining) ---
+29:1 SMP202 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
+43:1 SMP202 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
+44:1 SMP202 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
+86:1 SMP202 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
+94:1 SMP202 `_PORT` is used by one function only; define it there [unsafe fix: Move `_PORT` into `describe`]
+108:1 SMP202 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
+109:1 SMP202 `_HOUR` is used by one function only; define it there [unsafe fix: Move `_HOUR` into `literals`]
+110:1 SMP202 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
+111:1 SMP202 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
+112:1 SMP202 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
+128:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
+152:1 SMP202 `_5_SMOOTH` is used by one function only; define it there
+153:1 SMP202 `_CLASS` is used by one function only; define it there
+160:1 SMP202 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
+174:1 SMP202 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
+191:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
+192:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
+201:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
+211:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
+235:1 SMP202 `_FIRST` is used by one function only; define it there [unsafe fix: Move `_FIRST` into `first`]
+236:1 SMP202 `_SECOND` is used by one function only; define it there [unsafe fix: Move `_SECOND` into `second`]
+--- fixed (20 applied, 2 remaining) ---
 from typing import Final
 
+print("loading")
 _RETRIES = 3
 _SHARED = 1
 # cached: rebuilding the table on every call is too slow
@@ -213,3 +216,28 @@ def resource(project: str, location: str) -> str:
 def twice() -> int:
     état = 2
     return état + état
+
+
+_RED = "#ff0000"
+_GREEN = "#00ff00"
+_BLUE = "#0000ff"
+
+
+def warning_color() -> str:
+    return _RED
+
+
+def ok_color() -> str:
+    return _GREEN
+
+
+def info_color() -> str:
+    return _BLUE
+
+
+def first() -> int:
+    return 1
+
+
+def second() -> int:
+    return 2

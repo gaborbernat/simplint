@@ -536,124 +536,40 @@ def total_price(prices: list[float]) -> str:
 The fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires
 them.
 
-**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the
-value would run after it instead of before.
+**Unsafe fix:** the value only reads names, and the next statement calls something, awaits, or reads an attribute or a
+subscript before the read, so the names would be read after that instead of before. It differs only when that step
+rebinds or mutates what they name.
 
 ```python report
-def run(items: list[str], log: Log) -> None:
-    count = len(items)
-    log.write(count)
+def run(limit: int, log: Log) -> None:
+    size = limit
+    log.write(size)
 ```
 
 ```python fixed
-def run(items: list[str], log: Log) -> None:
-    log.write(len(items))
+def run(limit: int, log: Log) -> None:
+    log.write(limit)
 ```
 
-Here `log.write` is looked up before [`len(items)`](https://docs.python.org/3/builtins/functions.html#len) runs, which
-differs only when that lookup has side effects.
+**No fix:** the value calls, awaits or looks something up, and inlining would run it after a step it used to precede,
+swapping their effects:
 
-The fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read
-that sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the
-object's state at that point, or a name some function in the module declares `global` or `nonlocal`, which the call can
-rebind.
+- the next statement calls something, awaits, or reads an attribute or a subscript before the read
+- the next statement reads a name before the read that sees what the value changes: in an f-string field, unpacked with
+  `*` or `**`, in an operator such as `not queue`, as the target of an augmented assignment, or a name some function
+  declares `global` or `nonlocal`
+- the next statement reads an attribute or a subscript of the name, such as `tmp.name`, so the value's object is dropped
+  right after that read and its finalizer runs early
+- the value holds a walrus that rebinds a name the next statement reads before the read
 
 ```python report
-def run(stack: list[int]) -> str:
-    top = stack.pop()
-    return f"{stack} after popping {top}"
+def evaluate(stack: list[str]) -> float:
+    right = operand(stack)
+    left = operand(stack)
+    return left / right
 ```
 
-```python fixed
-def run(stack: list[int]) -> str:
-    return f"{stack} after popping {stack.pop()}"
-```
-
-Inlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.
-
-A call in the value also makes the fix unsafe when the next statement reads an attribute or a subscript of the name,
-such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A method
-call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
-
-```python report
-import tempfile
-from pathlib import Path
-
-
-def make_note() -> None:
-    tmp = tempfile.TemporaryDirectory()
-    Path(tmp.name, "note").write_text("hi")
-```
-
-```python fixed
-import tempfile
-from pathlib import Path
-
-
-def make_note() -> None:
-    Path(tempfile.TemporaryDirectory().name, "note").write_text("hi")
-```
-
-A value that calls something is unsafe to inline when the next statement reads a name in an operator before the read,
-such as `not queue`, because the operator takes the name's state before the call runs.
-
-```python report
-def pop_once(queue: list[int]) -> tuple[bool, int]:
-    head = queue.pop()
-    return (not queue, head)
-```
-
-```python fixed
-def pop_once(queue: list[int]) -> tuple[bool, int]:
-    return (not queue, queue.pop())
-```
-
-An augmented assignment before the read is unsafe when the value calls something, because the target is loaded before
-that call runs, or when its target is an attribute or a subscript, whose object and lookup run first.
-
-```python report
-def run(counter: Counter) -> int:
-    step = counter.bump()
-    counter.total += step
-    return counter.total
-```
-
-```python fixed
-def run(counter: Counter) -> int:
-    counter.total += counter.bump()
-    return counter.total
-```
-
-```python report
-def count_items(items: list[int]) -> int:
-    total = 0
-    step = len(items)
-    total += step
-    return total
-```
-
-```python fixed
-def count_items(items: list[int]) -> int:
-    total = 0
-    total += len(items)
-    return total
-```
-
-The fix is also unsafe when the value holds a walrus that rebinds a name the next statement reads before the read,
-because that read would see the new value.
-
-```python report
-def run(reader: Reader) -> tuple[int, int]:
-    y = 0
-    count = (y := reader.read()) + 1
-    return (y, count)
-```
-
-```python fixed
-def run(reader: Reader) -> tuple[int, int]:
-    y = 0
-    return (y, ((y := reader.read()) + 1))
-```
+Inlined, `right` would pop its operand after `left` does, swapping the two.
 
 A read in a t-string is reported without a fix, because a t-string keeps the source text of each field, which the
 inlined value would change.

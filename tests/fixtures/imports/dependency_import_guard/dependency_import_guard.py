@@ -114,3 +114,10 @@ try:
     import requests
 except builtins.ModuleNotFoundError:
     requests = None
+
+try:
+    import _socket
+    import tracemalloc
+except ImportError:
+    _socket = tracemalloc = None
+print(_socket, tracemalloc)

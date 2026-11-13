@@ -174,13 +174,19 @@ parameter by position counts for it, and so does one that passes it by keyword.
   handlers = [connect]
   ```
 
-- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.
+- **Functions of a module read by a computed name**: a file of the run reads the module through `getattr(module, name)`
+  or `hasattr(module, name)` with a name that is not a string literal, or reads its `__all__`, so a call such as
+  `getattr(module, name)()` may reach any of them without arguments.
+
+- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
+  decorator that passes each call on unchanged keeps the function judged: `functools.cache`, `lru_cache` and `wraps`,
+  `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and `override`.
 
   ```python ok
-  from functools import lru_cache
+  from atexit import register
 
 
-  @lru_cache
+  @register
   def connect(host, timeout=30):
       return host, timeout
 

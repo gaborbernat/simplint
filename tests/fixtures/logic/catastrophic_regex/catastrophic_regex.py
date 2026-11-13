@@ -58,3 +58,8 @@ UNCLOSED_BRACE = re.compile(r"(a+){2")
 BYTES_BRACE = re.compile(b"(a+){\xff}")
 HUGE_MINIMUM = re.compile(r"(a+){99999999999}")
 UNCLOSED_REFERENCE = re.compile(r"(a)(?P=x")
+# Nothing after the repeat can fail, so the first way it matches ends the search.
+TAIL_EMPTY = re.sub(r"[.]a([.]?([0-9]+))*([.]?([a-z]+))*", "", "1.a1")
+TAIL_ANCHORED = re.sub(r"[.]a([.]?([0-9]+))*$", "", "1.a1")
+TAIL_LOOKAHEAD = re.search(r"(a+)+(?=b)", "aab")
+TAIL_FULL = re.fullmatch(r"(a+)+", "aa")

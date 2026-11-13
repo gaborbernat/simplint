@@ -5,14 +5,15 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::testing::recognize::is_patch_by_name;
+use crate::rules::testing::recognize::{is_fixture, is_patch_by_name};
 use crate::semantic::Semantic;
 
 pub fn sleep_in_test(checker: &Checker) {
     if !checker.is_test_module() {
         return;
     }
-    let mut finder = Sleeps { checker, calls: Vec::new(), busy_waits: Vec::new(), patches_sleep: false };
+    let mut finder =
+        Sleeps { checker, calls: Vec::new(), busy_waits: Vec::new(), patches_sleep: false, in_test: false };
     finder.visit_body(checker.body());
     // A test that patches `time.sleep` already controls the wait, so its sleeps are not the problem.
     if finder.patches_sleep {
@@ -33,6 +34,9 @@ struct Sleeps<'a, 'b> {
     // The awaited `asyncio.sleep` calls that are the whole body of a `while`, which Ruff's ASYNC110 reports.
     busy_waits: Vec<TextRange>,
     patches_sleep: bool,
+    // Whether the walk is in the body of a test or fixture itself; a helper it defines, such as a server or a test
+    // double, may wait on purpose.
+    in_test: bool,
 }
 
 impl<'a> Visitor<'a> for Sleeps<'_, '_> {
@@ -45,18 +49,36 @@ impl<'a> Visitor<'a> for Sleeps<'_, '_> {
         {
             self.busy_waits.push(awaited.range());
         }
-        visitor::walk_stmt(self, stmt);
+        if let Stmt::FunctionDef(function) = stmt {
+            let outer = self.in_test;
+            self.in_test = !outer && is_test_or_fixture(function);
+            visitor::walk_stmt(self, stmt);
+            self.in_test = outer;
+        } else if stmt.is_class_def_stmt() && self.in_test {
+            self.in_test = false;
+            visitor::walk_stmt(self, stmt);
+            self.in_test = true;
+        } else {
+            visitor::walk_stmt(self, stmt);
+        }
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Call(call) = expr {
-            if is_sleep(self.checker, call) && !self.busy_waits.contains(&expr.range()) {
+            if self.in_test && is_sleep(self.checker, call) && !self.busy_waits.contains(&expr.range()) {
                 self.calls.push(expr.range());
             }
             self.patches_sleep |= patches_sleep(self.checker.semantic(), call);
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+fn is_test_or_fixture(function: &ast::StmtFunctionDef) -> bool {
+    let name = function.name.as_str();
+    name.starts_with("test")
+        || matches!(name, "setUp" | "tearDown" | "asyncSetUp" | "asyncTearDown" | "setUpClass" | "tearDownClass")
+        || function.decorator_list.iter().any(is_fixture)
 }
 
 // `sleep(0)` only yields to the event loop, so it does not wait.

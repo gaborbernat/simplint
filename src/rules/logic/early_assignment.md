@@ -93,7 +93,8 @@ that statement comes at least two statements below the assignment in the same bl
   ```
 
 - **A name read by a nested function, lambda or class**: the nested scope may read it whenever it is called, so the name
-  must exist from the assignment onwards.
+  must exist from the assignment onwards. One that binds the name for itself, as a parameter or an assignment, reads its
+  own variable and does not count.
 
   ```python ok
   def collect(items: list[int]) -> list[int]:
@@ -143,6 +144,17 @@ that statement comes at least two statements below the assignment in the same bl
       seed = 2
       items.sort()
       print(locals())
+  ```
+
+- **A string between the assignment and the use that spells the name**: code may run it as source, as `exec` does. A
+  string that keys a subscript or a dict display is data and does not count.
+
+  ```python ok
+  def run(items: list[int]) -> list[int]:
+      out = []
+      print("out.append(1)")
+      out.extend(items)
+      return out
   ```
 
 - **A comment between the assignment and the use**: moving the statement would move the comment's meaning with it.

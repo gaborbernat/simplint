@@ -61,8 +61,11 @@ pub fn unused_definition(checker: &Checker) {
             && class.bases().is_empty()
             && class.keywords().is_empty()
             && class.decorator_list.is_empty()
+            && !project.is_mixin(class.name.as_str())
         {
-            // The members of an unused class are reported with it, so only the members of a used class are judged.
+            // The members of an unused class are reported with it, so only the members of a used class are judged. A
+            // class mixed in beside another base may supply a method that base calls, as `_send_output` does for
+            // `http.client.HTTPConnection`.
             members(checker, class, &local_reads, &strings);
         }
     }
@@ -299,7 +302,13 @@ fn nested_functions(checker: &Checker) {
                 .loads
                 .get(name)
                 .is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
-            if inner.decorator_list.is_empty() && !read && !scope.declared.contains(&name) && name != "_" {
+            // A tool reads a dunder local by name, as pytest reads `__tracebackhide__` from the frame.
+            if inner.decorator_list.is_empty()
+                && !read
+                && !scope.declared.contains(&name)
+                && name != "_"
+                && Visibility::of(name) != Visibility::Dunder
+            {
                 checker.report(
                     Rule::UnusedDefinition,
                     inner.name.range(),

@@ -99,6 +99,19 @@ its own `return` statements, so a nested function's return belongs to the nested
           return 0, len(text), 1
   ```
 
+- **A method that redefines one a base class of the run defines**: the base sets the shape, so the override keeps it.
+
+  ```python ok
+  class Source:
+      def field_value(self, name: str) -> tuple[object, str, bool]:
+          raise NotImplementedError
+
+
+  class EnvSource(Source):
+      def field_value(self, name: str) -> tuple[object, str, bool]:
+          return None, name, False
+  ```
+
 - **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and
   `__getnewargs_ex__` must return a tuple of the shape those protocols read.
 
@@ -108,7 +121,8 @@ its own `return` statements, so a nested function's return belongs to the nested
           return self.__class__, (self.x,), self.__dict__
   ```
 
-- **`__getstate__`**: its tuple goes back to the class's own `__setstate__`, which the pickle protocol calls with it.
+- **`__getstate__`**, and **`getstate`** of an incremental codec: its tuple goes back to the class's own `__setstate__`
+  or `setstate`, which the pickle protocol or the codec calls with it.
 
   ```python ok
   class Point:

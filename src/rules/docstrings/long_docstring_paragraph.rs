@@ -40,7 +40,7 @@ fn long_paragraphs_of(text: &str, start: TextSize, limit: usize) -> Vec<TextRang
         }
         let indent = TextSize::of(leading_whitespace(line));
         let range = TextRange::new(line_start + indent, line_start + indent + content.text_len());
-        Some((range, content.split_whitespace().count()))
+        Some((range, content))
     });
     long_paragraphs(lines, limit)
 }

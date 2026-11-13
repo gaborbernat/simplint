@@ -77,10 +77,11 @@ pub fn missing_from_all(checker: &Checker) {
             (missing.range, format!("`{}` {reason}; list it in `__all__`", missing.name), title.clone())
         })
         .collect();
-    // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
-    // the author decides.
+    // Listing a name in a public module of a library widens its API and what `import *` binds, and a loader that walks
+    // the `__all__` of modules it imports by a computed name would load the new name too, so the report stays and the
+    // author decides.
     checker.report_shared_fix(Rule::MissingFromAll, reports, || {
-        if checker.project().role().public {
+        if checker.project().role().public || checker.project().reads_unknown_all() {
             None
         } else {
             all_insertion(checker, missing.iter().map(|missing| missing.name))

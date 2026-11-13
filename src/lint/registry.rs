@@ -312,7 +312,7 @@ rules! {
     DeprecatedStdlibAlias => ("SMP525", "up-deprecated-stdlib-alias", "Deprecated standard library names that have a replacement", Sometimes, logic::up_deprecated_stdlib_alias { expression }),
     EarlyAssignment => ("SMP526", "early-assignment", "Constants assigned well above their first use", Sometimes, logic::early_assignment { module }),
     SuperForwardingMethod => ("SMP527", "super-forwarding-method", "Methods that only return the parent's method called with their own arguments", Sometimes, logic::super_forwarding_method { module }),
-    LongTupleReturn => ("SMP528", "long-tuple-return", "Functions returning tuples too long to unpack by position", None, logic::long_tuple_return { statement }),
+    LongTupleReturn => ("SMP528", "long-tuple-return", "Functions returning tuples too long to unpack by position", None, logic::long_tuple_return { statement } reads [cross_file]),
     CognitiveComplexity => ("SMP529", "cognitive-complexity", "Functions whose cognitive complexity is over the limit", None, logic::cognitive_complexity { module }),
     DuplicateCode => ("SMP530", "duplicate-code", "Statements that another module repeats", None, logic::duplicate_code { module } reads [cross_file, STATEMENTS, working_directory]),
     CollectionBuiltByStatements => ("SMP531", "collection-built-by-statements", "Empty collections filled by the statements right after them", Sometimes, logic::collection_built_by_statements { module }),

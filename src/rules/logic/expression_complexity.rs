@@ -71,8 +71,9 @@ fn boolean_operands(bool_op: &ast::ExprBoolOp) -> usize {
 }
 
 // The deepest nesting of weighted parts, a simplification of flake8-expression-complexity's ECE001: each part adds its
-// weight to the operands below it. A name, a literal, an attribute and a collection display add nothing, and the left
-// operand of the same binary operator continues its chain, as `a + b + c` reads as one sum.
+// weight to the operands below it. A name, a literal, an attribute and a collection display add nothing. The left
+// operand of the same binary operator continues its chain, as `a + b + c` reads as one sum, and the receiver of a call
+// or a subscript continues its chain, as `query.filter(a).order_by(b)` and `data["a"]["b"]` read left to right.
 #[derive(Default)]
 struct Depth<'a> {
     current: usize,
@@ -90,18 +91,33 @@ impl<'a> Depth<'a> {
 
 impl<'a> Visitor<'a> for Depth<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
-        let continued = self.chained.take().is_some_and(|chained| std::ptr::eq(chained, expr));
-        let weight = if continued { 0 } else { weight(expr) };
+        let own = weight(expr);
+        // The chained part is the next weighted part visited, as only attributes sit between a call and its receiver.
+        let continued = own > 0 && self.chained.take().is_some_and(|chained| std::ptr::eq(chained, expr));
+        let weight = if continued { 0 } else { own };
         self.current += weight;
         self.deepest = self.deepest.max(self.current);
-        if let Expr::BinOp(ast::ExprBinOp { left, op, .. }) = expr
-            && left.as_bin_op_expr().is_some_and(|inner| inner.op == *op)
-        {
-            self.chained = Some(left);
-        }
+        self.chained = match expr {
+            Expr::BinOp(ast::ExprBinOp { left, op, .. })
+                if left.as_bin_op_expr().is_some_and(|inner| inner.op == *op) =>
+            {
+                Some(left)
+            }
+            Expr::Call(ast::ExprCall { func: receiver, .. })
+            | Expr::Subscript(ast::ExprSubscript { value: receiver, .. }) => chained_receiver(receiver),
+            _ => self.chained,
+        };
         visitor::walk_expr(self, expr);
         self.current -= weight;
     }
+}
+
+// The call or subscript a call or subscript continues, through the attributes between them.
+fn chained_receiver(mut receiver: &Expr) -> Option<&Expr> {
+    while let Expr::Attribute(attribute) = receiver {
+        receiver = &attribute.value;
+    }
+    matches!(receiver, Expr::Call(_) | Expr::Subscript(_)).then_some(receiver)
 }
 
 fn weight(expr: &Expr) -> usize {

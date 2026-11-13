@@ -15,6 +15,9 @@ pub(super) struct Writes {
     pub(super) unslottable_bases: FxHashSet<String>,
     pub(super) stateful_bases: FxHashSet<String>,
     pub(super) pickles_low_protocol: bool,
+    // Whether code sets an attribute no class of the run gives its instances on an object of unknown class, which may
+    // be an instance of any dataclass. A dunder name is left out, as code sets those on functions and classes.
+    pub(super) strangers: bool,
     pub(super) namesakes: FxHashMap<String, usize>,
 }
 
@@ -60,10 +63,28 @@ impl Writes {
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
+        // A name read or set through a class, such as `Config.level = 1`, is a member of that class.
+        let members: FxHashSet<&str> = files
+            .iter()
+            .flat_map(|(_, facts)| {
+                let facts = &facts.attribute_writes;
+                facts.members.iter().chain(facts.class_attributes.iter().map(|(_, attribute)| attribute))
+            })
+            .map(String::as_str)
+            .collect();
+        writes.strangers = writes
+            .untyped
+            .iter()
+            .any(|name| !name.starts_with("__") && name != ANY_ATTRIBUTE && !members.contains(name.as_str()));
         for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
             *writes.namesakes.entry(last_dotted_segment(class).to_owned()).or_default() += 1;
         }
         writes
+    }
+
+    // Whether code reaches the `__dict__` or a weak reference of an object of unknown class, which slots take away.
+    pub(super) fn reaches_untyped_storage(&self) -> bool {
+        ["__dict__", "__weakref__"].iter().any(|name| self.untyped.contains(*name))
     }
 }
 

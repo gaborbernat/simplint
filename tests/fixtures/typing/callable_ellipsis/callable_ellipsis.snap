@@ -4,3 +4,5 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 4:11 SMP603 `Callable[..., T]` hides the signature; describe it with a `Protocol`
 7:19 SMP603 `Callable[..., T]` hides the signature; describe it with a `Protocol`
+13:25 SMP603 `Callable[..., T]` hides the signature; describe it with a `Protocol`
+20:48 SMP603 `Callable[..., T]` hides the signature; describe it with a `Protocol`

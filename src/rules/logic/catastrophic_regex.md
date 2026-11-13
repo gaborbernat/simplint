@@ -47,6 +47,19 @@ WORDS = re.compile(r"^\w+(?:\s\w+)*\s?$")
   WORDS = re.compile(r"^(?>\w+\s?)*$")
   ```
 
+- **A repeat followed only by parts that can match nothing**, in a call other than `fullmatch` or `compile`: the first
+  way the repeat matches lets the rest match too, so nothing makes the engine backtrack into it. An anchor such as `$`
+  or a lookaround after the repeat can fail, and `fullmatch` or a compiled pattern may have to reach the end, so those
+  stay reported.
+
+  ```python ok
+  import re
+
+
+  def strip_suffix(version: str) -> str:
+      return re.sub(r"[.]a([.]?([0-9]+))*", "", version)
+  ```
+
 - **Bounded repeats**, as `(a+){3}`, whose backtracking stays polynomial.
 
 - **Patterns the rule does not read**, with a conditional group `(?(1)...)` or a scoped verbose flag `(?x:...)`.

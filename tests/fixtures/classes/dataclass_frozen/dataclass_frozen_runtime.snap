@@ -6,10 +6,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 16:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 26:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 35:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
-43:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+43:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 69:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 79:2 SMP701 Dataclass is missing frozen; set `frozen=True`
-84:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+84:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 89:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 --- fixed (4 applied, 5 remaining) ---
 from dataclasses import InitVar, dataclass

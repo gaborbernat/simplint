@@ -22,7 +22,7 @@ pub fn unnamed_regex_group(checker: &Checker) {
                 && !scan.named
                 && MATCH_CALLS.contains(&call.attr)
                 && matches!(call.context, Context::Bind { name, scope } if facts.reads_index(scope, name)));
-        if !reported {
+        if !reported || facts.positional_only(call) {
             continue;
         }
         let fix = (!scan.refers && facts.call_flows(checker, call))

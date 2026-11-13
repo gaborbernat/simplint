@@ -211,15 +211,26 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
     limit = limit()
     ```
 
-- **Aliases of a function the module defines**: an alias reads as the function, so it keeps the function's name, as a
-  class alias does. An alias of an imported name is not covered, as the rule cannot tell what an import binds.
+- **Aliases of a callable**: an alias reads as the callable and is called like it, so it keeps the callable's name, as a
+  class alias does. These are a function the module defines, a lowercase imported name, a lowercase attribute of an
+  imported module, as PEP 517 backends re-export hooks, and a method of an instance of a class the module defines. An
+  uppercase name or attribute reads as a constant and stays reported.
 
   ```python ok
-  def build_cli() -> str:
-      return "cli"
+  from json import dumps
+
+  from setuptools import build_meta
 
 
-  _build_cli = build_cli
+  class _Codec:
+      def encode(self, value: object) -> str:
+          return dumps(value)
+
+
+  _CODEC = _Codec()
+  encode = _CODEC.encode
+  to_json = dumps
+  build_wheel = build_meta.build_wheel
   ```
 
 - **Names bound only as `for`, `with`, `except` or `match` targets**: these hold whatever the statement produces, not a

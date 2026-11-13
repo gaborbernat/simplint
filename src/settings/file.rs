@@ -23,7 +23,7 @@ pub struct FileSettings<'a> {
 
 impl<'a> FileSettings<'a> {
     pub(crate) fn new(project: &'a Settings, ruff: &'a ruff_workspace::Settings, path: &Path) -> Self {
-        let from_ruff = FromRuff::of(ruff, path);
+        let from_ruff = FromRuff::of(ruff, path, project.declared_python);
         let rules = project.rules_for(path).for_target(from_ruff.target_version);
         Self { project, from_ruff, rules, is_test: project.is_test_module(path) }
     }
@@ -84,12 +84,12 @@ pub struct FromRuff<'a> {
 }
 
 impl<'a> FromRuff<'a> {
-    fn of(settings: &'a ruff_workspace::Settings, path: &Path) -> Self {
+    fn of(settings: &'a ruff_workspace::Settings, path: &Path, declared: Option<PythonVersion>) -> Self {
         let target_version = settings.linter.resolve_target_version(path);
         let formatter = &settings.formatter;
         let pycodestyle = &settings.linter.pycodestyle;
         Self {
-            target_version: target_version.linter_version(),
+            target_version: target_version.0.or(declared).unwrap_or_default(),
             magic_trailing_comma: !formatter.magic_trailing_comma.is_ignore(),
             parser_version: target_version.parser_version(),
             line_width: usize::from(formatter.line_width.value()),

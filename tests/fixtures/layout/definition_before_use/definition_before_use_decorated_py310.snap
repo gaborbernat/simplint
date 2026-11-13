@@ -2,11 +2,16 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-40:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller` [unsafe fix: Move `Helper` below `caller`]
+44:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller` [unsafe fix: Move `Helper` below `caller`]
+115:7 SMP201 `Query` is defined before its first use in `mount`; move it below `mount`
 --- fixed (1 applied, 0 remaining) ---
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from unittest import mock
+from warnings import deprecated
+
+import pytest
 
 from api import router
 
@@ -84,3 +89,41 @@ class Vault:
     @grant.setter
     def grant(self, value: Grant) -> None:
         pass
+
+
+class Sample:
+    pass
+
+
+@pytest.fixture
+def sample() -> Sample:
+    return Sample()
+
+
+class Patched:
+    pass
+
+
+@pytest.mark.slow
+@mock.patch("os.getcwd")
+def run_patched(cwd: object) -> Patched:
+    return Patched()
+
+
+class Legacy:
+    pass
+
+
+@deprecated("use something else")
+def legacy() -> Legacy:
+    return Legacy()
+
+
+def mount() -> None:
+    @router.get("/query")
+    def query(value: Query) -> None:
+        print(value)
+
+
+class Query:
+    pass

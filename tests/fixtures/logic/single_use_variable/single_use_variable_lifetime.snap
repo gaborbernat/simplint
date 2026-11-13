@@ -7,13 +7,13 @@ expression: "lint_fixture(rule, fixture, target_version)"
 27:5 SMP504 `reply` is used once, right below; inline its value [fix: Inline `reply`]
 44:5 SMP504 `stream` is used once, right below; inline its value [fix: Inline `stream`]
 45:5 SMP504 `items` is used once, right below; inline its value [fix: Inline `items`]
-62:5 SMP504 `scratch` is used once, right below; inline its value [unsafe fix: Inline `scratch`]
+62:5 SMP504 `scratch` is used once, right below; inline its value
 63:5 SMP504 `name` is used once, right below; inline its value [fix: Inline `name`]
 68:5 SMP504 `scratch` is used once, right below; inline its value [fix: Inline `scratch`]
 73:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
 79:5 SMP504 `target` is used once, right below; inline its value [fix: Inline `target`]
 105:5 SMP504 `positive` is used once, right below; inline its value [fix: Inline `positive`]
---- fixed (11 applied, 0 remaining) ---
+--- fixed (10 applied, 1 remaining) ---
 import weakref
 from weakref import WeakMethod
 
@@ -70,7 +70,8 @@ def make_scratch() -> Scratch:
 
 
 def name_of_temporary() -> str:
-    return make_scratch().name.upper()
+    scratch = make_scratch()
+    return scratch.name.upper()
 
 
 def method_on_temporary() -> str:

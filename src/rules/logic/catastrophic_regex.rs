@@ -11,7 +11,10 @@ pub fn catastrophic_regex(checker: &Checker) {
         let Some(nodes) = Parser::new(&pattern, scan.verbose).alternatives() else {
             continue;
         };
-        let Some(repeat) = nodes.iter().find_map(find_nested) else {
+        // Only a call that must match up to the end can fail after the pattern's last part, and a compiled pattern may
+        // be used for one.
+        let open_end = !matches!(call.attr, "fullmatch" | "compile");
+        let Some(repeat) = nodes.iter().find_map(|node| find_nested(node, open_end)) else {
             continue;
         };
         let shown = shown(&pattern[repeat.0..repeat.1], scan.verbose);
@@ -183,6 +186,19 @@ enum Node {
 }
 
 impl Node {
+    // Whether the node matches at any position. A lookaround, a comment and a global flag share the empty atomic group,
+    // and a lookaround can fail, so that group counts as one that may.
+    fn never_fails(&self) -> bool {
+        match self {
+            Node::Atom => false,
+            Node::Group { alternatives, atomic: true } if alternatives.iter().all(Vec::is_empty) => false,
+            Node::Group { alternatives, .. } => {
+                alternatives.iter().any(|sequence| sequence.iter().all(Node::never_fails))
+            }
+            Node::Repeat { node, min, .. } => *min == 0 || node.never_fails(),
+        }
+    }
+
     fn is_optional(&self) -> bool {
         match self {
             Node::Atom => false,
@@ -197,19 +213,26 @@ impl Node {
 // The first repeat that the input can drive into exponential backtracking: an unbounded repeat of a group where one
 // alternative is a single unbounded repeat with everything else around it optional, as `(a+)+`, `(\w+\s*)*` or
 // `(x|y+)+` are. A string of `y`s then splits between the outer and inner repeat in exponentially many ways.
-fn find_nested(node: &Node) -> Option<(usize, usize)> {
+// A repeat followed only by parts that never fail is left alone: the first way the repeat matches lets the rest match
+// too, so the engine never backtracks into it. `safe_tail` says whether what follows the node never fails.
+fn find_nested(node: &Node, safe_tail: bool) -> Option<(usize, usize)> {
     match node {
         Node::Atom => None,
-        Node::Group { alternatives, .. } => alternatives.iter().flatten().find_map(find_nested),
+        Node::Group { alternatives, .. } => alternatives.iter().find_map(|sequence| {
+            sequence.iter().enumerate().find_map(|(index, node)| {
+                find_nested(node, safe_tail && sequence[index + 1..].iter().all(Node::never_fails))
+            })
+        }),
         Node::Repeat { node: inner, unbounded, possessive, span, .. } => {
-            if *unbounded
+            if !safe_tail
+                && *unbounded
                 && !possessive
                 && let Node::Group { alternatives, atomic: false } = inner.as_ref()
                 && alternatives.iter().any(|sequence| splits(sequence))
             {
                 return Some(*span);
             }
-            find_nested(inner)
+            find_nested(inner, safe_tail)
         }
     }
 }

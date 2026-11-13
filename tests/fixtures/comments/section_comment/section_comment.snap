@@ -40,3 +40,23 @@ VALUE = os.sep  # ---- trailing is fine
 # the lock must hold
 # __getattribute__ triggered through __getattr__
 # __init__ wires the parser
+
+
+def negotiate(requested: bool, configured: bool) -> bool:
+    #   Config  Req.    Resp.
+    #   ------  ------  ------
+    #   False   False   False
+    return requested or configured
+
+
+def flow(column: int, indent: int) -> bool:
+    ## The stricter condition would reject intuitively correct
+    ## constructions such as
+    ## a mapping that opens on the key line.
+    return indent > column
+
+
+## https://yaml.org/spec/1.2.2/
+## tokens.append(token)
+## Remove this
+LAST = 1

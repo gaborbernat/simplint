@@ -35,8 +35,10 @@ pub fn long_paragraph(checker: &Checker) {
 fn long_comment_paragraphs(source: &str, block: &[TextRange], limit: usize) -> Vec<TextRange> {
     long_paragraphs(
         block.iter().map(|range| {
-            let text = source[*range].trim_start_matches('#').trim();
-            (!text.is_empty()).then(|| (*range, text.split_whitespace().count()))
+            // Sphinx reads `#:` comments as attribute docs, so a `#:` line with no text is a blank line.
+            let text = source[*range].trim_start_matches('#');
+            let text = text.strip_prefix(':').unwrap_or(text).trim();
+            (!text.is_empty()).then_some((*range, text))
         }),
         limit,
     )

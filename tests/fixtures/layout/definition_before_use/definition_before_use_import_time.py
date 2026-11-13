@@ -45,3 +45,81 @@ def _method_helper():
 class NeverCalledInBody:
     def run(self):
         return _method_helper()
+
+
+def _base_helper():
+    return 3
+
+
+class Base:
+    def run(self):
+        return _base_helper()
+
+
+class Child(Base):
+    pass
+
+
+LIMIT = 3
+
+
+def _default_helper():
+    return 4
+
+
+def with_default(count=LIMIT):
+    return _default_helper() + count
+
+
+def main():
+    return _limited()
+
+
+def _limited(count=LIMIT):
+    return count
+
+
+def _from_constant(count=LIMIT):
+    return count
+
+
+def entry():
+    return _from_constant()
+
+
+def _scaled_part():
+    return 2
+
+
+def _scaled():
+    return _scaled_part() * 2
+
+
+SCALED = _scaled()
+
+
+def _left():
+    return 1
+
+
+def _right():
+    return 2
+
+
+def pick(sides=(_left, _right)):
+    return [side() for side in sides]
+
+
+def _shared_step():
+    return 5
+
+
+def _first_step():
+    return _shared_step()
+
+
+def _second_step():
+    return _shared_step()
+
+
+STEPS = (_first_step(), _second_step())

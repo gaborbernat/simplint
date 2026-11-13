@@ -1,4 +1,5 @@
 import pickle
+from http.client import HTTPConnection
 
 
 def _udm_outer(values: list[int]) -> list[int]:
@@ -30,6 +31,31 @@ def _udm_deleted() -> None:
     del _udm_dropped
 
 
+def _udm_hidden(value: int) -> int:
+    def __tracebackhide__(error: object) -> bool:
+        return isinstance(error, ValueError)
+
+    return value
+
+
+class _UdmSendMixin:
+    def _udm_send_output(self) -> None:
+        return None
+
+
+class _UdmConnection(_UdmSendMixin, HTTPConnection):
+    pass
+
+
+class _UdmPlainBase:
+    def _udm_never_called(self) -> None:
+        return None
+
+
+class _UdmPlainChild(_UdmPlainBase):
+    pass
+
+
 class _UdmCounter:
     def __init__(self, start: int) -> None:
         self._udm_start = start
@@ -54,4 +80,12 @@ class _UdmPickled:
 
 
 _UDM_STATE = pickle.dumps(_UdmPickled())
-_UDM_TOTAL = _udm_outer([1]), _udm_source_only(), _udm_dynamic(), _UdmCounter(1).bump()
+_UDM_TOTAL = (
+    _udm_outer([1]),
+    _udm_source_only(),
+    _udm_dynamic(),
+    _UdmCounter(1).bump(),
+    _udm_hidden(1),
+    _UdmConnection("host"),
+    _UdmPlainChild(),
+)

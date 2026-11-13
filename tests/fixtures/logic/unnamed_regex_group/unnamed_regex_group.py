@@ -316,3 +316,21 @@ def named_backreference(text):
 
 def escaped_class(text):
     return bool(re.match(r"[\]\(](a)(b)", text))
+
+
+NATURAL = re.compile(r"(\D*)(\d*)")
+
+
+def natural_key(value):
+    return [(text, int(digits or 0)) for text, digits in re.findall(r"(\D*)(\d*)", value)]
+
+
+def natural_key_compiled(value):
+    return [(text, int(digits or 0)) for text, digits in NATURAL.findall(value)]
+
+
+PASSED_ON = re.compile(r"(\w+)=(\w+)")
+
+
+def passed_on(value):
+    return PASSED_ON.findall(value), print(PASSED_ON)

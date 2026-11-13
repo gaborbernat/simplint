@@ -38,6 +38,11 @@ def _memoized(value=1):
     return value
 
 
+@functools.singledispatch
+def _dispatched(value=1):
+    return value
+
+
 def _last_param_default(value, flag=True):
     return value, flag
 
@@ -57,6 +62,7 @@ _mapping(**{"value": 2})
 _spread(1)
 _mapping(1)
 _memoized(1)
+_dispatched(1)
 _last_param_default("x", False)
 _last_param_default("y", flag=True)
 list(map(_passed_as_value, [1]))

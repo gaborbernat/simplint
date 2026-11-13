@@ -14,3 +14,8 @@ def ufix_orphan() -> int:
 @pytest.fixture(autouse=True)
 def ufix_autouse() -> None:
     return None
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"

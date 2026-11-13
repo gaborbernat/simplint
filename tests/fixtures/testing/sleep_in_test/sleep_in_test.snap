@@ -6,3 +6,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 11:5 SMP808 Sleeping makes the test slow and flaky; wait on an event the code sets instead
 23:11 SMP808 Sleeping makes the test slow and flaky; wait on an event the code sets instead
 32:5 SMP808 Sleeping makes the test slow and flaky; wait on an event the code sets instead
+40:5 SMP808 Sleeping makes the test slow and flaky; wait on an event the code sets instead

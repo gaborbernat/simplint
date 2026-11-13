@@ -106,6 +106,25 @@ def parse_header(line: str) -> str:
   VALUE = 1
   ```
 
+- **Table rules**: divider runs split by spaces underline the columns of a table.
+
+  ```python ok
+  #   Config  Resp.
+  #   ------  ------
+  #   False   False
+  VALUE = 1
+  ```
+
+- **`##` comments Ruff reports**: a line of a `##` paragraph, or a URL or code after `##`, is not a heading; see Ruff
+  overlap.
+
+  ```python ok
+  ## The stricter condition would reject
+  ## constructions such as
+  ## https://yaml.org/spec/1.2.2/
+  VALUE = 1
+  ```
+
 ### Fix
 
 The fix is safe, since comments do not affect behavior. What it does depends on the text left once the decoration is
@@ -140,8 +159,9 @@ gone:
 [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and
 [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a prose heading such as
 `## Remove this return to update the cron job`, whose fix here would be the same, so this rule leaves it to them whether
-or not the project enables preview. Short headings such as `## Setup`, decorated dividers and regions stay with this
-rule, since they report a section divider to replace with a function or remove, not the hash count E266 reports.
+or not the project enables preview. The same goes for a short line inside a `##` paragraph and for a URL or code after
+`##`, which are no headings. Short headings such as `## Setup`, decorated dividers and regions stay with this rule,
+since they report a section divider to replace with a function or remove, not the hash count E266 reports.
 
 ## Other tools
 

@@ -5,6 +5,7 @@ use ruff_text_size::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::declared_outer;
+use super::scopes::InnerScopes;
 use crate::syntax::{alias_root_binding, last_segment, pattern_capture};
 
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
@@ -24,6 +25,8 @@ pub(in crate::rules::logic) struct Names<'a> {
     // Whether the function reads its locals by name, which keeps every name alive.
     pub(in crate::rules::logic) reads_locals: bool,
     pub(in crate::rules::logic) reads_by_text: bool,
+    // A nested scope's own variable is not the function's, though spelled the same, so its mentions are left out.
+    inner: InnerScopes<'a>,
 }
 
 impl<'a> Names<'a> {
@@ -36,6 +39,7 @@ impl<'a> Names<'a> {
             in_annotation: false,
             reads_locals: false,
             reads_by_text: false,
+            inner: InnerScopes::default(),
         };
         names.visit_body(body);
         names
@@ -45,18 +49,21 @@ impl<'a> Names<'a> {
 impl<'a> Visitor<'a> for Names<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::FunctionDef(definition) => {
-                self.rebound.insert(definition.name.as_str());
-            }
-            Stmt::ClassDef(class) => {
-                self.rebound.insert(class.name.as_str());
+            Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+                self.rebind(name.as_str(), name.range);
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                self.rebound.extend(names.iter().map(alias_root_binding));
+                for alias in names {
+                    self.rebind(alias_root_binding(alias), alias.range);
+                }
             }
             _ => {}
         }
+        let entered = self.inner.enter_stmt(stmt);
         visitor::walk_stmt(self, stmt);
+        if entered {
+            self.inner.leave();
+        }
     }
 
     fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
@@ -78,6 +85,7 @@ impl<'a> Visitor<'a> for Names<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
+            Expr::Name(name) if self.inner.binds(name.id.as_str(), name.range) => {}
             Expr::Name(name) => {
                 self.mentions.entry(name.id.as_str()).or_default().push((name.range, name.ctx));
                 self.reads_locals |= LOCALS_READERS.contains(&name.id.as_str());
@@ -94,7 +102,11 @@ impl<'a> Visitor<'a> for Names<'a> {
             }
             _ => {}
         }
+        let entered = self.inner.enter_expr(expr);
         visitor::walk_expr(self, expr);
+        if entered {
+            self.inner.leave();
+        }
     }
 }
 
@@ -105,7 +117,13 @@ fn reads_by_text(name: &str) -> bool {
     LOCALS_READERS.contains(&name) || name == "globals" || name.ends_with("exec") || name.ends_with("exec_")
 }
 
-impl Names<'_> {
+impl<'a> Names<'a> {
+    fn rebind(&mut self, name: &'a str, range: TextRange) {
+        if !self.inner.binds(name, range) {
+            self.rebound.insert(name);
+        }
+    }
+
     // A string annotation is code that Ruff reads as an expression, so the names it spells are reads.
     fn read_forward_reference(&mut self, string: &ast::ExprStringLiteral) {
         let Ok(parsed) = parse_expression(string.value.to_str()) else {

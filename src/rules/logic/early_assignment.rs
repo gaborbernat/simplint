@@ -3,10 +3,12 @@ use std::cell::OnceCell;
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, ExprContext, Stmt};
+use ruff_python_ast::visitor::{Visitor, walk_expr};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -42,15 +44,45 @@ fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
     (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
 }
 
-// The ranges of the string tokens of the file in source order, which may hold a name the rule must not move past.
+// The ranges of the string tokens of the file in source order, which may hold a name the rule must not move past. A
+// string that keys a subscript or a dict display is data, never code `exec` runs, so it is left out.
 fn string_tokens(checker: &Checker) -> Vec<TextRange> {
+    let mut keys = Keys(Vec::new());
+    keys.visit_body(checker.body());
+    let keys: FxHashSet<TextRange> = keys.0.into_iter().collect();
     checker
         .parsed
         .tokens()
         .iter()
         .filter(|token| matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle))
         .map(Ranged::range)
+        .filter(|range| !keys.contains(range))
         .collect()
+}
+
+struct Keys(Vec<TextRange>);
+
+impl Keys {
+    fn add(&mut self, key: &Expr) {
+        if let Expr::StringLiteral(string) = key {
+            self.0.extend(string.value.iter().map(Ranged::range));
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for Keys {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Subscript(subscript) => self.add(&subscript.slice),
+            Expr::Dict(dict) => {
+                for key in dict.iter_keys().flatten() {
+                    self.add(key);
+                }
+            }
+            _ => {}
+        }
+        walk_expr(self, expr);
+    }
 }
 
 // Moving the assignment down to its first use cannot change what the function does: nothing reads or binds the name

@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{StoredNameFinder, is_dunder};
@@ -20,7 +21,9 @@ use crate::semantic::{Binding, BindingKind, Evaluation};
 use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment};
 
 pub fn single_user_constant(checker: &Checker) {
-    for stmt in checker.body() {
+    let body = checker.body();
+    let in_block = sibling_blocks(checker, body);
+    for (stmt, _) in body.iter().zip(in_block).filter(|(_, in_block)| !in_block) {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
         };
@@ -179,7 +182,8 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     if !is_identifier(&local) || checker.name_token_count(&local) > 0 {
         return None;
     }
-    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before it.
+    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before
+    // it.
     let anchor =
         &function.body[function.body.partition_point(|stmt| stmt.start() <= constant.references[0].start()) - 1];
     // A body on the `def` line, as in `def f(): return _X`, has no line of its own to declare the local on, and its
@@ -272,4 +276,25 @@ impl<'a> Visitor<'a> for ReferenceContext {
         visitor::walk_expr(self, expr);
         self.depth -= usize::from(repeats);
     }
+}
+
+// Whether each statement belongs to a run of at least three adjacent literal constants that different functions read,
+// such as a palette or a set of limits, which reads as one unit even when each constant has a single user.
+fn sibling_blocks(checker: &Checker, body: &[Stmt]) -> Vec<bool> {
+    const BLOCK: usize = 3;
+    let user = |name: &str| checker.semantic().references_to(name).first()?.function;
+    let mut in_block = vec![false; body.len()];
+    let mut start = 0;
+    while start < body.len() {
+        let run: Vec<&str> = body[start..].iter().map_while(literal_constant).collect();
+        if run.len() >= BLOCK && run.iter().filter_map(|name| user(name)).unique().nth(1).is_some() {
+            in_block[start..start + run.len()].fill(true);
+        }
+        start += run.len().max(1);
+    }
+    in_block
+}
+
+fn literal_constant(stmt: &Stmt) -> Option<&str> {
+    single_assignment(stmt).filter(|(_, _, value)| is_literal(value)).map(|(target, _, _)| target.id.as_str())
 }

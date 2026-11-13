@@ -12,6 +12,7 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
     if semantic.is_builtin(&call.func, "vars")
         && semantic.references_to("vars").iter().any(|reference| reference.range == call.func.range())
         && !builds_mapping(walker, expr)
+        && !call.arguments.args.first().is_some_and(|argument| semantic.is_class_object(argument))
     {
         walker.checker.report(
             Rule::VarsCall,

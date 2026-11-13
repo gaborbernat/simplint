@@ -322,8 +322,9 @@ Some members stay where they are, and some reports come without a fix:
   ```
 
 - **A name the class body reads while it runs** pins the definition that binds it. Default values, decorators and
-  annotations that Python evaluates when the `def` runs count as reads: a definition cannot move below a reader of its
-  name, and a reader that needs the name bound cannot move above it.
+  annotations that Python evaluates when the `def` or the class body runs count as reads: a definition cannot move below
+  a reader of its name, and a reader that needs the name bound cannot move above it. A lazy annotation is not read then,
+  unless a decorator such as pydantic's reads it.
 
   ```python report
   class Parser:

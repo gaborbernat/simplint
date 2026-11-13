@@ -2,12 +2,12 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-10:9 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
-23:5 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
-30:5 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
+10:9 SMP504 `step` is used once, right below; inline its value
+23:5 SMP504 `step` is used once, right below; inline its value
+30:5 SMP504 `step` is used once, right below; inline its value
 37:5 SMP504 `step` is used once, right below; inline its value [fix: Inline `step`]
 43:5 SMP504 `holder` is used once, right below; inline its value [fix: Inline `holder`]
---- fixed (5 applied, 0 remaining) ---
+--- fixed (2 applied, 3 remaining) ---
 class Counter:
     def __init__(self) -> None:
         self.total = 0
@@ -17,7 +17,8 @@ class Counter:
         return 1
 
     def run(self) -> int:
-        self.total += self.bump()
+        step = self.bump()
+        self.total += step
         return self.total
 
 
@@ -29,13 +30,15 @@ def closure() -> int:
         total += 10
         return 1
 
-    total += bump()
+    step = bump()
+    total += step
     return total
 
 
 def local_call(items: list[int]) -> int:
     count = 0
-    count += len(items)
+    step = len(items)
+    count += step
     return count
 
 

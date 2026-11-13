@@ -22,7 +22,7 @@ pub fn unused_fixture(checker: &Checker) {
         let Some(name) = fixture_name(function) else {
             continue;
         };
-        if !project.is_fixture_requested(name) {
+        if !project.is_fixture_requested(name) && !PLUGIN_REQUESTED.contains(&name) {
             checker.report(
                 Rule::UnusedFixture,
                 function.name.range(),
@@ -31,6 +31,19 @@ pub fn unused_fixture(checker: &Checker) {
         }
     }
 }
+
+// Fixtures that a widely used plugin requests by name, so a project defines them to configure the plugin: anyio's
+// plugin reads `anyio_backend`, pytest-asyncio's runs `event_loop_policy` for every test, and pytest-django's
+// `django_db_setup` requests the others.
+const PLUGIN_REQUESTED: &[&str] = &[
+    "anyio_backend",
+    "event_loop_policy",
+    "django_db_setup",
+    "django_db_modify_db_settings",
+    "django_db_use_migrations",
+    "django_db_keepdb",
+    "django_db_createdb",
+];
 
 // The name pytest requests the fixture by, or `None` when the function is no fixture or runs for every test.
 fn fixture_name(function: &ast::StmtFunctionDef) -> Option<&str> {

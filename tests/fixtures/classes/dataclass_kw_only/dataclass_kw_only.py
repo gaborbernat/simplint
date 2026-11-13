@@ -22,3 +22,16 @@ class OptedOut:
 @dataclass(kw_only=True)
 class Done:
     value: int
+
+
+@dataclass(init=False)
+class _HandWritten:
+    code: int
+
+    def __init__(self, code: int) -> None:
+        self.code = code
+
+
+@dataclass(init=True)
+class _Generated:
+    code: int

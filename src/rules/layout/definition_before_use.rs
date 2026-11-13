@@ -12,15 +12,36 @@ use super::reorder::{Read, Suite, depth_first, moved_span, moves_definition_unsa
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
-use crate::syntax::signature_annotations;
+use crate::syntax::{signature_annotations, statement_index};
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
     let runtime_names: FxHashMap<TextRange, FxHashSet<&str>> =
         checker.class_defs().iter().map(|class| (class.range, class_runtime_names(class))).collect();
     let uses = definition_uses(checker, body, &runtime_names);
-    let owners = owners(body.len(), &uses);
-    let expected = expected_order(body.len(), &owners, &uses);
+    let mut owners = owners(body.len(), &uses);
+    // A definition whose own statement reads names moves only where those names are still bound above it.
+    let expected = loop {
+        let expected = expected_order(body.len(), &owners, &uses);
+        let mut position = vec![0; body.len()];
+        for (at, &index) in expected.iter().enumerate() {
+            position[index] = at;
+        }
+        let stuck: Vec<usize> = uses
+            .header_reads
+            .iter()
+            .filter(|(reader, read)| {
+                owners[**reader].is_some() && read.iter().any(|&bound| position[bound] > position[**reader])
+            })
+            .map(|(reader, _)| *reader)
+            .collect();
+        if stuck.is_empty() {
+            break expected;
+        }
+        for reader in stuck {
+            owners[reader] = None;
+        }
+    };
     report_misplaced(checker, &Suite { body, blank_lines: 2 }, &expected, &owners);
     let orders = checker.state().class_orders(checker);
     for class in checker.class_defs() {
@@ -33,7 +54,13 @@ pub fn definition_before_use(checker: &Checker) {
 #[derive(Default)]
 struct DefinitionUses {
     deferred: FxHashMap<usize, Vec<Read>>,
+    // Read while the module loads, so they stay where they are.
     runtime: FxHashSet<usize>,
+    // Run while the module loads, so what they call stays where it is too. A base class or a default value is read
+    // there without running its body.
+    invoked: FxHashSet<usize>,
+    // The statements binding the names a definition's own statement reads, such as its defaults or decorators.
+    header_reads: FxHashMap<usize, FxHashSet<usize>>,
 }
 
 fn definition_uses(
@@ -47,7 +74,8 @@ fn definition_uses(
     eager.sort_unstable_by_key(Ranged::start);
     let import_time = import_time_functions(body, runtime_names);
     // Some decorators read the annotations they decorate while the module loads, even when Python defers them. Without
-    // lazy annotations, a `def` evaluates its own signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
+    // lazy annotations, a `def` evaluates its own signature's annotations when it runs. A name a function only
+    // annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
         Evaluation::Annotation if in_ranges(&eager, reference.range) => {
             if reference.function.is_none() {
@@ -62,20 +90,25 @@ fn definition_uses(
         }
         other => other,
     };
-    // The statements that, as they run, read a name something other than an import above the first definition binds. A
-    // definition moves past an import below it, so that import pins its readers like any other binding.
+    // The statements that, as they run, read a name something other than an import above the first definition binds,
+    // with the statements binding it. A definition moves past an import below it, so that import counts like any other
+    // binding.
     let first_definition = body.iter().find(|stmt| definition_name(stmt).is_some()).map(Ranged::start);
-    let runtime_readers: FxHashSet<usize> = semantic
-        .references()
-        .filter(|reference| {
-            evaluation(reference) == Evaluation::Runtime
-                && semantic.bindings(reference.name).iter().any(|binding| {
-                    binding.kind != BindingKind::Import
-                        || first_definition.is_some_and(|start| binding.range.start() > start)
-                })
-        })
-        .map(|reference| reference.statement)
-        .collect();
+    let mut runtime_readers: FxHashMap<usize, FxHashSet<usize>> = FxHashMap::default();
+    for reference in semantic.references().filter(|reference| evaluation(reference) == Evaluation::Runtime) {
+        let bound = semantic
+            .bindings(reference.name)
+            .iter()
+            .filter(|binding| {
+                binding.module_scope
+                    && (binding.kind != BindingKind::Import
+                        || first_definition.is_some_and(|start| binding.range.start() > start))
+            })
+            .map(|binding| statement_index(body, binding.range.start()))
+            .filter(|&statement| statement != reference.statement);
+        runtime_readers.entry(reference.statement).or_default().extend(bound);
+    }
+    let passive = passive_reads(body);
     let mut uses = DefinitionUses::default();
     for (index, stmt) in body.iter().enumerate() {
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
@@ -89,6 +122,9 @@ fn definition_uses(
             match evaluation(reference) {
                 Evaluation::Runtime => {
                     uses.runtime.insert(index);
+                    if !passive.contains(&reference.range) {
+                        uses.invoked.insert(index);
+                    }
                 }
                 Evaluation::Deferred if reference.statement != index => {
                     uses.deferred
@@ -99,11 +135,65 @@ fn definition_uses(
                 Evaluation::Deferred | Evaluation::Annotation => {}
             }
         }
-        if runtime_readers.contains(&index) {
-            uses.runtime.insert(index);
+        if let Some(bound) = runtime_readers.remove(&index).filter(|bound| !bound.is_empty()) {
+            uses.header_reads.insert(index, bound);
         }
     }
     uses
+}
+
+// The names read while the module loads that only name a definition without running it: a base class, or a default
+// value. A call anywhere above the name may run it.
+fn passive_reads(body: &[Stmt]) -> FxHashSet<TextRange> {
+    let mut finder = PassiveReads::default();
+    finder.visit_body(body);
+    finder.ranges
+}
+
+#[derive(Default)]
+struct PassiveReads {
+    ranges: FxHashSet<TextRange>,
+}
+
+impl PassiveReads {
+    fn collect(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Name(name) => {
+                self.ranges.insert(name.range);
+            }
+            Expr::Attribute(attribute) => self.collect(&attribute.value),
+            Expr::Subscript(subscript) => {
+                self.collect(&subscript.value);
+                self.collect(&subscript.slice);
+            }
+            Expr::Tuple(tuple) => tuple.elts.iter().for_each(|element| self.collect(element)),
+            _ => {}
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for PassiveReads {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::ClassDef(class) => {
+                for base in class.bases() {
+                    self.collect(base);
+                }
+                for keyword in class.keywords() {
+                    self.collect(&keyword.value);
+                }
+            }
+            Stmt::FunctionDef(function) => {
+                for parameter in function.parameters.iter_non_variadic_params() {
+                    if let Some(default) = parameter.default.as_deref() {
+                        self.collect(default);
+                    }
+                }
+            }
+            _ => {}
+        }
+        walk_stmt(self, stmt);
+    }
 }
 
 fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
@@ -201,7 +291,10 @@ fn owners(length: usize, uses: &DefinitionUses) -> Vec<Option<usize>> {
             dependencies.entry(read.reader).or_default().push(*dependency);
         }
     }
-    let mut pinned: Vec<usize> = uses.runtime.iter().copied().collect();
+    for &index in &uses.runtime {
+        owners[index] = None;
+    }
+    let mut pinned: Vec<usize> = uses.invoked.iter().copied().collect();
     let mut seen: FxHashSet<usize> = pinned.iter().copied().collect();
     while let Some(index) = pinned.pop() {
         owners[index] = None;

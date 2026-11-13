@@ -7,9 +7,10 @@ use crate::lint::walker::{Scope, Walker};
 use crate::syntax::has_decorator;
 
 // The methods the pickle and copy protocols call, which return a tuple of the shape they read. `__getstate__` returns
-// what the class's own `__setstate__` reads back.
-const PROTOCOL_METHODS: [&str; 5] =
-    ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__", "__getstate__"];
+// what the class's own `__setstate__` reads back, as `getstate` of an incremental codec returns what its `setstate`
+// does.
+const PROTOCOL_METHODS: [&str; 6] =
+    ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__", "__getstate__", "getstate"];
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::Return(ast::StmtReturn { value: Some(value), .. }) = stmt else {
@@ -31,6 +32,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         || tuple.elts.iter().any(Expr::is_starred_expr)
         || function.returns.as_deref().is_some_and(|returns| is_sequence(walker, returns))
         || has_decorator(&function.decorator_list, &["override"])
+        || overrides_run_method(walker, name)
     {
         return;
     }
@@ -39,6 +41,14 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         value.range(),
         format!("`{name}` returns a tuple of {length} elements; a dataclass or a named tuple names its fields"),
     );
+}
+
+// A method that redefines one a base class of the run defines returns the shape that base set.
+fn overrides_run_method(walker: &Walker, name: &str) -> bool {
+    let [.., Scope::Class(class), Scope::Function(_)] = walker.scopes() else {
+        return false;
+    };
+    walker.checker.project().is_override(class.name.as_str(), name)
 }
 
 // An annotation of a tuple of any length, `tuple[T, ...]`, written out or quoted, as a forward reference is.

@@ -56,7 +56,8 @@ or a literal, where each of these adds one:
 - a list, set or dict comprehension and a generator expression
 
 A name, a literal, an attribute and a collection display add nothing. A chain of the same binary operator counts once,
-as `a + b + c` reads as one sum.
+as `a + b + c` reads as one sum, and so does a chain of calls and subscripts on one receiver, as
+`query.filter(a).order_by(b).all()` and `data["a"]["b"]` read left to right.
 
 ### Active on
 

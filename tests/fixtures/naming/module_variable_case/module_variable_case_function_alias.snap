@@ -4,7 +4,17 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 7:1 SMP102 Module-scope variable `limit` should be named `LIMIT`
 8:1 SMP102 Module-scope variable `_last` should be named `_LAST` [unsafe fix: Rename `_last` to `_LAST`]
---- fixed (1 applied, 1 remaining) ---
+20:1 SMP102 Module-scope variable `_codec` should be named `_CODEC` [unsafe fix: Rename `_codec` to `_CODEC`]
+26:1 SMP102 Module-scope variable `indent` should be named `INDENT`
+27:1 SMP102 Module-scope variable `size` should be named `SIZE`
+28:1 SMP102 Module-scope variable `_twice` should be named `_TWICE` [unsafe fix: Rename `_twice` to `_TWICE`]
+30:1 SMP102 Module-scope variable `twice_encode` should be named `TWICE_ENCODE`
+31:1 SMP102 Module-scope variable `_made` should be named `_MADE` [unsafe fix: Rename `_made` to `_MADE`]
+32:1 SMP102 Module-scope variable `made_encode` should be named `MADE_ENCODE`
+33:1 SMP102 Module-scope variable `scanner` should be named `SCANNER`
+34:1 SMP102 Module-scope variable `_table` should be named `_TABLE` [unsafe fix: Rename `_table` to `_TABLE`]
+35:1 SMP102 Module-scope variable `lookup` should be named `LOOKUP`
+--- fixed (5 applied, 7 remaining) ---
 def build_cli() -> int:
     return 1
 
@@ -13,3 +23,30 @@ _build_cli = build_cli
 alias = build_cli
 limit = build_cli()
 _LAST = limit
+
+import json
+from json import JSONDecoder, dumps
+from string import ascii_letters
+
+
+class _Codec:
+    def encode(self, value: object) -> str:
+        return dumps(value)
+
+
+_CODEC = _Codec()
+encode = _CODEC.encode
+to_json = dumps
+loads = json.loads
+decoder = JSONDecoder
+letters = ascii_letters
+indent = json.INDENT
+size = _CODEC.size
+_TWICE = _Codec()
+_TWICE = _Codec()
+twice_encode = _TWICE.encode
+_MADE = build_cli()
+made_encode = _MADE.encode
+scanner = json.decoder.scanstring
+_TABLE = {"a": 1}
+lookup = _TABLE.get

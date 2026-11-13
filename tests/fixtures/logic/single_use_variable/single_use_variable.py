@@ -401,3 +401,9 @@ def decorated_reader(items: list[int]) -> object:
 def any_listed(first: bool, second: bool) -> bool:
     flags = [first, second]
     return any(flags)
+
+
+def operands_keep_their_order(stack: list) -> float:
+    right = evaluate(stack)
+    left = evaluate(stack)
+    return divide(left, right)

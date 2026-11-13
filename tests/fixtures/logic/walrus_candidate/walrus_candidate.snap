@@ -12,7 +12,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 99:24 SMP502 Inline single-use `total` into the `if` test [fix: Inline `total` into the `if` test]
 105:5 SMP502 Inline single-use `size` into the `if` test [fix: Inline `size` into the `if` test]
 114:9 SMP502 Inline single-use `size` into the `if` test [fix: Inline `size` into the `if` test]
---- fixed (10 applied, 0 remaining) ---
+128:5 SMP502 Assign `rgb` with `:=` inside the `if` test that consumes it [fix: Assign `rgb` with `:=` in the `if` test]
+135:5 SMP502 Assign `rgb` with `:=` inside the `if` test that consumes it [fix: Assign `rgb` with `:=` in the `if` test]
+160:9 SMP502 Assign `rgb` with `:=` inside the `if` test that consumes it [fix: Assign `rgb` with `:=` in the `if` test]
+--- fixed (13 applied, 0 remaining) ---
 import re
 
 
@@ -128,3 +131,41 @@ def trailing_semicolon(text: str) -> str:
     if size > 3:
         return text
     return ""
+
+
+def comprehension_binds_its_own(data: dict[str, int]) -> dict[str, int]:
+    if rgb := data.get("rgb"):
+        print(rgb)
+    return {key: rgb for key, rgb in data.items()}
+
+
+def nested_binds_its_own(data: dict[str, int]) -> object:
+    if rgb := data.get("rgb"):
+        print(rgb)
+
+    def inner(rgb: int) -> int:
+        return rgb
+
+    return inner
+
+
+def nested_reads_outer(data: dict[str, int]) -> object:
+    rgb = data.get("rgb")
+    if rgb:
+        print(rgb)
+
+    def inner() -> object:
+        return rgb
+
+    return inner
+
+
+def outer_binds_what_a_nested_one_checks(data: dict[str, int]) -> object:
+    rgb = 0
+
+    def inner() -> int:
+        if rgb := data.get("rgb"):
+            print(rgb)
+        return 0
+
+    return rgb, inner

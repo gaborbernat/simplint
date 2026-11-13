@@ -2,7 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-5:9 SMP409 `_udm_outer._udm_unused_helper` is defined inside `_udm_outer` but never called or read; remove it
-26:5 SMP409 `_udm_deleted` is never used in the run; remove it or give it a caller
-36:14 SMP409 `_UdmCounter._udm_never_read` is stored on the instance but never read in the run; remove it or give it a reader
-40:18 SMP409 `_UdmCounter._udm_set_twice` is stored on the instance but never read in the run; remove it or give it a reader
+6:9 SMP409 `_udm_outer._udm_unused_helper` is defined inside `_udm_outer` but never called or read; remove it
+27:5 SMP409 `_udm_deleted` is never used in the run; remove it or give it a caller
+51:9 SMP409 `_UdmPlainBase._udm_never_called` is never called or read in the run; remove it or give it a caller
+62:14 SMP409 `_UdmCounter._udm_never_read` is stored on the instance but never read in the run; remove it or give it a reader
+66:18 SMP409 `_UdmCounter._udm_set_twice` is stored on the instance but never read in the run; remove it or give it a reader

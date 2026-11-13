@@ -38,21 +38,13 @@ No fix is offered, since a meaningful name cannot be derived from the code.
       return 1
   ```
 
-- **Parameters**: the body reads them away from the signature, and callers see the name in the signature and keyword
-  arguments. This covers:
+- **Parameters of a `def`**, such as `v` in `def scale(v: float)`: the body reads them away from the signature, and
+  callers see the name in the signature and keyword arguments.
 
-  - Parameters of a `def`, such as `v` in `def scale(v: float)`:
-
-    ```python report
-    def scale(v: float) -> float:
-        return v * 2
-    ```
-
-  - Parameters of a [lambda](https://docs.python.org/3/reference/expressions.html#lambda), such as `v` in `lambda v: v`:
-
-    ```python report
-    callback = lambda v: v
-    ```
+  ```python report
+  def scale(v: float) -> float:
+      return v * 2
+  ```
 
 - **Assignment and [walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets**: the
   value is computed once, and every later use relies on the name alone to say what it is.
@@ -140,6 +132,14 @@ No fix is offered, since a meaningful name cannot be derived from the code.
   ```python ok
   values = [1, 2]
   doubled = [x * 2 for x in values]
+  ```
+
+- **Parameters of a [lambda](https://docs.python.org/3/reference/expressions.html#lambda)**: a lambda is a single
+  expression, so like a comprehension it keeps each parameter next to every use.
+
+  ```python ok
+  def order(values: list[int]) -> list[int]:
+      return sorted(values, key=lambda v: (v < 0, abs(v)))
   ```
 
 - **`_`**: the conventional throwaway name, which says the value is unused.

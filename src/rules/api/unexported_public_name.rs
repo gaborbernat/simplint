@@ -1,4 +1,5 @@
-use ruff_python_ast::Stmt;
+use ruff_python_ast::helpers::any_over_body;
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -15,6 +16,11 @@ pub fn unexported_public_name(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
+    // A module that finds its own functions by a computed name, as `globals()["do_" + name]`, reaches the names it does
+    // not list, so they are not leftovers to hide.
+    if any_over_body(checker.body(), &|expr: &Expr| looks_itself_up(checker, expr)) {
+        return;
+    }
     // Scans the module's statements once, not once per definition.
     let ply = uses_ply(checker);
     for definition in definitions(checker.body().iter()).filter(|definition| !definition.decorated) {
@@ -51,4 +57,39 @@ pub fn unexported_public_name(checker: &Checker) {
 
 fn is_discovered_by_name(name: &str) -> bool {
     name.starts_with("pytest_") || matches!(name, "load_tests" | "setup_module" | "teardown_module" | "setup")
+}
+
+// `globals()[key]`, `vars()[key]`, `globals().get(key)` or `getattr(sys.modules[__name__], key)` with a key that is not
+// a string literal.
+fn looks_itself_up(checker: &Checker, expr: &Expr) -> bool {
+    let semantic = checker.semantic();
+    let is_namespace = |expr: &Expr| {
+        expr.as_call_expr().is_some_and(|call| {
+            call.arguments.is_empty()
+                && (semantic.is_builtin(&call.func, "globals") || semantic.is_builtin(&call.func, "vars"))
+        })
+    };
+    let computed = |key: &Expr| !key.is_string_literal_expr();
+    match expr {
+        Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => is_namespace(value) && computed(slice),
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => match func.as_ref() {
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "get" => {
+                is_namespace(value) && arguments.args.first().is_some_and(computed)
+            }
+            func if semantic.is_builtin(func, "getattr") => {
+                arguments.args.first().is_some_and(|target| is_own_module(checker, target))
+                    && arguments.args.get(1).is_some_and(computed)
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+// `sys.modules[__name__]`.
+fn is_own_module(checker: &Checker, expr: &Expr) -> bool {
+    expr.as_subscript_expr().is_some_and(|subscript| {
+        checker.semantic().resolves_to(&subscript.value, &["sys", "modules"])
+            && subscript.slice.as_name_expr().is_some_and(|name| name.id.as_str() == "__name__")
+    })
 }

@@ -45,28 +45,62 @@ pub(crate) fn is_class_like(name: &str) -> bool {
 }
 
 // The paragraphs of prose longer than `limit` words, each reported once from its first line to the line that passes
-// the limit. Each item is a line's range and word count, or `None` where a line ends the paragraph.
-pub(crate) fn long_paragraphs(
-    lines: impl IntoIterator<Item = Option<(TextRange, usize)>>,
+// the limit. Each item is a line's range and text, or `None` where a line ends the paragraph. A heading underline ends
+// a paragraph too, and a line opening a block, such as a list item, a field or a section header, starts a new one.
+pub(crate) fn long_paragraphs<'a>(
+    lines: impl IntoIterator<Item = Option<(TextRange, &'a str)>>,
     limit: usize,
 ) -> Vec<TextRange> {
     let mut long = Vec::new();
     let mut words = 0;
     let mut first = None;
     for line in lines {
-        let Some((range, count)) = line else {
+        let Some((range, text)) = line.filter(|(_, text)| !is_underline(text)) else {
             words = 0;
             first = None;
             continue;
         };
+        if opens_block(text) {
+            words = 0;
+            first = None;
+        }
         let start = *first.get_or_insert(range.start());
         let before = words;
-        words += count;
+        words += text.split_whitespace().count();
         if before <= limit && words > limit {
             long.push(TextRange::new(start, range.end()));
         }
     }
     long
+}
+
+fn is_underline(text: &str) -> bool {
+    text.len() > 2 && text.chars().all(|char| matches!(char, '-' | '=' | '~' | '^' | '*' | '+' | '#'))
+}
+
+// A bullet or enumerated item, an RST field or directive, a Google section header or entry, or a numpydoc entry.
+fn opens_block(text: &str) -> bool {
+    let (head, rest) = text.split_once(' ').unwrap_or((text, ""));
+    let enumerated = head.strip_suffix(['.', ')']).is_some_and(|number| {
+        number == "#" || (!number.is_empty() && number.chars().all(|char| char.is_ascii_digit()))
+    });
+    let field = text.strip_prefix(':').is_some_and(|field| field.contains(':'));
+    let typed = rest.starts_with(':')
+        || rest
+            .strip_prefix('(')
+            .and_then(|typed| typed.split_once(')'))
+            .is_some_and(|(_, after)| after.starts_with(':'));
+    let entry = head.strip_suffix(':').is_some_and(is_identifier) || (is_identifier(head) && typed);
+    let section = text.strip_suffix(':').is_some_and(|title| {
+        title.starts_with(char::is_uppercase) && title.chars().all(|char| char.is_alphabetic() || char == ' ')
+    });
+    matches!(head, "-" | "*" | "+" | "\u{2022}" | "..") || enumerated || field || entry || section
+}
+
+fn is_identifier(word: &str) -> bool {
+    let name = word.trim_start_matches('*');
+    name.starts_with(|char: char| char.is_alphabetic() || char == '_')
+        && name.chars().all(|char| char.is_alphanumeric() || matches!(char, '_' | '.'))
 }
 
 // Ruff ranks names isort-style: constants in SCREAMING_SNAKE_CASE first, then CamelCase classes, then the rest. The two
