@@ -2,13 +2,14 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:5 SMP504 `count` is used once, right below; inline its value [unsafe fix: Inline `count`]
+3:5 SMP504 `count` is used once, right below; inline its value
 9:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 15:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
---- fixed (5 applied, 0 remaining) ---
+--- fixed (4 applied, 1 remaining) ---
 def nested_walrus(f) -> tuple[int, int]:
     y = 0
-    return (y, ((y := f()) + 1))
+    count = (y := f()) + 1
+    return (y, count)
 
 
 def plain_value(f) -> tuple[int, int]:

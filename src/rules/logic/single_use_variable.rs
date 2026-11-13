@@ -63,15 +63,18 @@ fn check_pair<'a>(
     // An empty value, such as `''` spliced into an f-string, leaves nothing to write, which only a deletion expresses.
     let edit =
         if replacement.is_empty() { Edit::range_deletion(range) } else { Edit::range_replacement(replacement, range) };
+    let reordered = reorders(rebindable, assign, &reading);
+    // A value with its own calls or lookups that would run after effects it used to precede swaps the two, which is
+    // almost never what the author meant, so the report stands without a fix.
     let fix = match keep_debug_text(checker, vec![edit]) {
+        Some(_) if reordered && any_over_expr(&assign.value, &is_effect) => None,
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
             let replace = &edits[0];
             if !fits(checker, next, replace, depth) {
                 return;
             }
-            let applicability =
-                if reorders(rebindable, assign, &reading) { Applicability::Unsafe } else { Applicability::Safe };
+            let applicability = if reordered { Applicability::Unsafe } else { Applicability::Safe };
             Some(Fix::applicable_edits(deletion, edits, applicability))
         }
         // A debug field that cannot be rewritten keeps the report, and so does a t-string, whose fields keep their

@@ -8,8 +8,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 23:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
 28:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 34:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
-39:5 SMP504 `count` is used once, right below; inline its value [unsafe fix: Inline `count`]
-44:5 SMP504 `count` is used once, right below; inline its value [unsafe fix: Inline `count`]
+39:5 SMP504 `count` is used once, right below; inline its value
+44:5 SMP504 `count` is used once, right below; inline its value
 49:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 54:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 59:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
@@ -18,18 +18,19 @@ expression: "lint_fixture(rule, fixture, target_version)"
 131:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 268:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 299:9 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
-335:5 SMP504 `top` is used once, right below; inline its value [unsafe fix: Inline `top`]
-340:5 SMP504 `added` is used once, right below; inline its value [unsafe fix: Inline `added`]
-345:5 SMP504 `head` is used once, right below; inline its value [unsafe fix: Inline `head`]
-350:5 SMP504 `removed` is used once, right below; inline its value [unsafe fix: Inline `removed`]
-355:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
-367:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
+335:5 SMP504 `top` is used once, right below; inline its value
+340:5 SMP504 `added` is used once, right below; inline its value
+345:5 SMP504 `head` is used once, right below; inline its value
+350:5 SMP504 `removed` is used once, right below; inline its value
+355:5 SMP504 `value` is used once, right below; inline its value
+367:5 SMP504 `value` is used once, right below; inline its value
 372:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 377:5 SMP504 `shown` is used once, right below; inline its value [fix: Inline `shown`]
 382:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 387:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
 402:5 SMP504 `flags` is used once, right below; inline its value [fix: Inline `flags`]
---- fixed (28 applied, 0 remaining) ---
+408:5 SMP504 `left` is used once, right below; inline its value [fix: Inline `left`]
+--- fixed (21 applied, 9 remaining) ---
 import os
 from typing import Any
 
@@ -62,11 +63,13 @@ def inlined_after_store(items: list[str], flags: dict[int, int]) -> None:
 
 
 def inlined_before_effect(items: list[str], log: Any) -> None:
-    log.write(len(items))
+    count = len(items)
+    log.write(count)
 
 
 def inlined_after_call(items: list[str], log: Any) -> None:
-    print(log.name, len(items))
+    count = len(items)
+    print(log.name, count)
 
 
 def inlined_after_plain_names(items: list[str], other: int) -> None:
@@ -346,23 +349,28 @@ def bump() -> int:
 
 
 def unsafe_before_formatted_name(stack: list[int]) -> str:
-    return f"{stack} after popping {stack.pop()}"
+    top = stack.pop()
+    return f"{stack} after popping {top}"
 
 
 def unsafe_before_double_star(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
-    return {**base, "n": (base.update(extra) or len(base))}
+    added = base.update(extra) or len(base)
+    return {**base, "n": added}
 
 
 def unsafe_before_star(items: list[int]) -> None:
-    print([*items], items.pop())
+    head = items.pop()
+    print([*items], head)
 
 
 def unsafe_before_keyword_unpacking(options: dict[str, int]) -> None:
-    print(**options, removed=options.pop("a"))
+    removed = options.pop("a")
+    print(**options, removed=removed)
 
 
 def unsafe_before_global_name() -> None:
-    print(calls, bump())
+    value = bump()
+    print(calls, value)
 
 
 def unsafe_before_nonlocal_name() -> tuple[int, int]:
@@ -373,7 +381,8 @@ def unsafe_before_nonlocal_name() -> tuple[int, int]:
         total += 1
         return total
 
-    return total, step()
+    value = step()
+    return total, value
 
 
 def inlined_after_parameter(items: list[int], log: list[int]) -> None:
@@ -404,3 +413,8 @@ def decorated_reader(items: list[int]) -> object:
 
 def any_listed(first: bool, second: bool) -> bool:
     return any([first, second])
+
+
+def operands_keep_their_order(stack: list) -> float:
+    right = evaluate(stack)
+    return divide(evaluate(stack), right)

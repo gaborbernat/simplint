@@ -400,7 +400,7 @@ fn fix_finds_a_bad_fix_among_many_valid_ones_quickly() {
     for index in 0..400 {
         write!(
             source,
-            "def func_{index}(arg):\n    value_{index} = arg.compute({index})\n    arg.record(value_{index})\n\n\n"
+            "def func_{index}(arg):\n    value_{index} = compute(arg, {index})\n    record(value_{index})\n\n\n"
         )
         .expect("write source");
     }
