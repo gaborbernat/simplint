@@ -245,9 +245,9 @@ fn oldest_python(specifier: &str) -> Option<PythonVersion> {
                 .iter()
                 .find_map(|operator| clause.strip_prefix(operator))
                 .or_else(|| clause.starts_with(|first: char| first.is_ascii_digit()).then_some(clause))?;
-            let mut parts = version.trim().split('.');
-            let major: u8 = parts.next()?.parse().ok()?;
-            let minor: u8 = parts.next().map_or(Some(0), |minor| minor.parse().ok())?;
+            let mut parts = version.trim().split('.').map(str::parse::<u8>);
+            let major = parts.next().and_then(Result::ok)?;
+            let minor = parts.next().unwrap_or(Ok(0)).ok()?;
             Some((major, minor))
         })
         .min()?;
@@ -524,16 +524,19 @@ impl VersionReaders {
         if let Some(table) = pyproject {
             let backend =
                 table.get("build-system").and_then(|system| system.get("build-backend")).and_then(toml::Value::as_str);
-            let project = table.get("project");
-            let dynamic_version = project
-                .and_then(|project| project.get("dynamic"))
-                .and_then(toml::Value::as_array)
-                .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("version")));
-            if backend.is_some_and(|backend| backend.starts_with("flit")) && dynamic_version {
+            let dynamic_version = table.get("project").filter(|project| {
+                project
+                    .get("dynamic")
+                    .and_then(toml::Value::as_array)
+                    .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("version")))
+            });
+            if let Some(project) = dynamic_version
+                && backend.is_some_and(|backend| backend.starts_with("flit"))
+            {
                 let module = tool_value(table, &["flit", "module", "name"])
                     .and_then(toml::Value::as_str)
                     .map(str::to_owned)
-                    .or_else(|| project?.get("name")?.as_str().map(|name| name.replace('-', "_")));
+                    .or_else(|| project.get("name")?.as_str().map(|name| name.replace('-', "_")));
                 modules.extend(module.map(|module| format!("{module}.__version__")));
             }
         }

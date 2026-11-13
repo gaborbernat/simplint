@@ -317,6 +317,19 @@ fn init_module_content_keeps_the_version_tooling_reads(config: &str, content: &s
 }
 
 #[test]
+fn init_module_content_is_reported_when_flit_has_no_module_name() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\ndynamic = [\"version\"]\n[build-system]\nbuild-backend = \"flit_core.buildapi\"\n",
+        ),
+        ("package/__init__.py", INIT_WITH_VERSION),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 2, "{stdout}");
+}
+
+#[test]
 fn missing_from_all_allows_main_modules() {
     let root = common::project(&[
         ("package/__main__.py", common::CLEAN_MODULE),

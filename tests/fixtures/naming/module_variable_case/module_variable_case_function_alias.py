@@ -31,3 +31,5 @@ twice_encode = _twice.encode
 _made = build_cli()
 made_encode = _made.encode
 scanner = json.decoder.scanstring
+_table = {"a": 1}
+lookup = _table.get

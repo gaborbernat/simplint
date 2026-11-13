@@ -39,3 +39,8 @@ def test_tuple_rows_pytest_cannot_name(raw: object, expected: object) -> None:
 @pytest.mark.parametrize("header", [b"gzip", b"br", b"a\\b"])
 def test_bytes_rows(header: bytes) -> None:
     assert header
+
+
+@pytest.mark.parametrize(("raw", "expected"), [["FALSE", "false"], ["True", "true"]])
+def test_list_rows_of_scalars(raw: str, expected: str) -> None:
+    assert raw != expected

@@ -3,5 +3,5 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 6:12 SMP604 `vars()` erases types; read attributes from a typed object
-29:17 SMP604 `vars()` erases types; read attributes from a typed object
-32:31 SMP604 `vars()` erases types; read attributes from a typed object
+33:17 SMP604 `vars()` erases types; read attributes from a typed object
+36:31 SMP604 `vars()` erases types; read attributes from a typed object

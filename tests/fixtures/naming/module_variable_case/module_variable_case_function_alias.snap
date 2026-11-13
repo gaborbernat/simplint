@@ -12,7 +12,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 31:1 SMP102 Module-scope variable `_made` should be named `_MADE` [unsafe fix: Rename `_made` to `_MADE`]
 32:1 SMP102 Module-scope variable `made_encode` should be named `MADE_ENCODE`
 33:1 SMP102 Module-scope variable `scanner` should be named `SCANNER`
---- fixed (4 applied, 6 remaining) ---
+34:1 SMP102 Module-scope variable `_table` should be named `_TABLE` [unsafe fix: Rename `_table` to `_TABLE`]
+35:1 SMP102 Module-scope variable `lookup` should be named `LOOKUP`
+--- fixed (5 applied, 7 remaining) ---
 def build_cli() -> int:
     return 1
 
@@ -46,3 +48,5 @@ twice_encode = _TWICE.encode
 _MADE = build_cli()
 made_encode = _MADE.encode
 scanner = json.decoder.scanstring
+_TABLE = {"a": 1}
+lookup = _TABLE.get

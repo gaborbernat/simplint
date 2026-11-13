@@ -919,6 +919,8 @@ fn test_module_without_pyproject(name: &str, reported: bool) {
 #[test_case(&[("setup.py", "setup(python_requires=\">=3.14\")\n")], &[], LAZY_ANNOTATIONS ; "setup_py")]
 #[test_case(&[("setup.py", "setup(python_requires = '>=3')\n")], &[], PASSED ; "setup_py_below_the_oldest_known")]
 #[test_case(&[("setup.py", "setup(python_requires=\">=3.x\")\n")], &[], PASSED ; "setup_py_unparsable")]
+#[test_case(&[("setup.py", "setup(python_requires=\">=x.1\")\n")], &[], PASSED ; "setup_py_unparsable_major")]
+#[test_case(&[("setup.py", "# python_requires comes from setup.cfg\nsetup()\n")], &[], PASSED ; "setup_py_mention_only")]
 #[test_case(&[("setup.py", "setup(python_requires=MINIMUM)\n")], &[], PASSED ; "setup_py_not_a_literal")]
 #[test_case(&[("setup.py", "setup(python_requires=\">=3.14")], &[], PASSED ; "setup_py_unterminated")]
 #[test_case(

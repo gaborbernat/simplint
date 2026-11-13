@@ -17,6 +17,10 @@ class Base:
     def own_names(cls) -> list[str]:
         return list(vars(cls))
 
+    def __new__(cls):
+        print(vars(cls))
+        return super().__new__(cls)
+
     def type_names(self) -> list[str]:
         return list(vars(type(self))) + list(vars(self.__class__))
 
