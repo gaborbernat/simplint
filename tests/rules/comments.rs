@@ -186,6 +186,22 @@ fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
     assert_eq!(common::read(root.path(), "module.py"), format!("{needed}\n\nvalue = 2\nother = 3\n"));
 }
 
+// An indentation as wide as the comment limit leaves no room for the text, so the string is reported without a fix.
+#[test]
+fn string_statement_comment_without_room_has_no_fix() {
+    let source = "def run() -> None:\n    start()\n    \"\"\"Wait.\"\"\"\n    wait()\n";
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff.lint.pycodestyle]\nmax-doc-length = 4\n"),
+        ("module.py", source),
+    ]);
+    let (status, output, _) = common::check(root.path(), &["--no-cache", "--select", "SMP006", "--fix"]);
+    assert_eq!(
+        (status, output.contains("SMP006"), common::read(root.path(), "module.py")),
+        (1, true, source.to_owned()),
+        "{output}"
+    );
+}
+
 #[test]
 fn unused_ignore_keeps_required_selectors() {
     let source = "x = 1  # simplint: ignore[SMP101]  # short fixture name\n";
