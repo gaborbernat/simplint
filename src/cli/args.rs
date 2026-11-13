@@ -401,14 +401,8 @@ impl CheckCommand {
             fixable: self.fixable.clone(),
             extend_fixable: self.extend_fixable.clone(),
             unfixable: chained(&self.unfixable, &self.extend_unfixable),
-            extend_unfixable: None,
-            extend_safe_fixes: None,
-            extend_unsafe_fixes: None,
             per_file_ignores: self.per_file_ignores.as_deref().map(collect_per_file_ignores),
             extend_per_file_ignores: self.extend_per_file_ignores.as_deref().map(collect_per_file_ignores),
-            project_kind: None,
-            api_packages: None,
-            docstring_style: None,
             ..SimplintOptions::default()
         }
     }

@@ -35,24 +35,6 @@ bitflags! {
     }
 }
 
-#[derive(Serialize)]
-struct ExpandedStatistics<'a> {
-    code: Option<&'a SecondaryCode>,
-    #[serde(skip)]
-    url: Option<&'a str>,
-    name: &'static str,
-    count: usize,
-    #[serde(rename = "fixable")]
-    all_fixable: bool,
-    fixable_count: usize,
-}
-
-impl ExpandedStatistics<'_> {
-    fn any_fixable(&self) -> bool {
-        self.fixable_count > 0
-    }
-}
-
 pub(super) struct Printer<'a> {
     pub(crate) format: OutputFormat,
     pub(crate) log_level: LogLevel,
@@ -152,7 +134,7 @@ impl Printer<'_> {
                 for (element, diagnostic) in related {
                     element["related"] = related_entries(diagnostic)
                         .into_iter()
-                        .map(|(name, start, end, message)| {
+                        .map(|Related { name, start, end, message }| {
                             serde_json::json!({
                                 "filename": name,
                                 "location": {"row": start.line.get(), "column": start.column.get()},
@@ -217,7 +199,7 @@ impl Printer<'_> {
                 for (result, diagnostic) in related {
                     result["relatedLocations"] = related_entries(diagnostic)
                         .into_iter()
-                        .map(|(name, start, end, message)| {
+                        .map(|Related { name, start, end, message }| {
                             serde_json::json!({
                                 "physicalLocation": {
                                     "artifactLocation": {"uri": file_uri(&name)},
@@ -274,7 +256,6 @@ impl Printer<'_> {
         }
         let fixables = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
         let fixed = diagnostics.fixed.values().flat_map(FixTable::counts).sum::<usize>();
-        let fix_prefix = format!("[{}]", "*".cyan());
         if self.flags.intersects(Flags::SHOW_VIOLATIONS) {
             let remaining = diagnostics.inner.len();
             let total = fixed + remaining;
@@ -290,6 +271,7 @@ impl Printer<'_> {
                 return text;
             };
             let unsafe_es = plural(fixables.inapplicable_unsafe, "es");
+            let fix_prefix = format!("[{}]", "*".cyan());
             let line = match (self.mode.unsafe_fixes.is_hint(), fixables.applicable, fixables.inapplicable_unsafe) {
                 (true, 0, unsafe_fixes) => {
                     format!("{unsafe_fixes} unsafe fix{unsafe_es} available with `--fix --unsafe-fixes`.")
@@ -365,6 +347,60 @@ impl Printer<'_> {
     }
 }
 
+struct FixableStatistics {
+    applicable: usize,
+    inapplicable_unsafe: usize,
+}
+
+impl FixableStatistics {
+    fn try_from(diagnostics: &Diagnostics, unsafe_fixes: UnsafeFixes) -> Option<Self> {
+        let mut applicable = 0;
+        let mut inapplicable_unsafe = 0;
+        for fix in diagnostics.inner.iter().filter_map(Diagnostic::fix) {
+            if fix.applies(unsafe_fixes.required_applicability()) {
+                applicable += 1;
+            } else if fix.applicability().is_unsafe() {
+                inapplicable_unsafe += 1;
+            }
+        }
+        (applicable > 0 || inapplicable_unsafe > 0).then_some(Self { applicable, inapplicable_unsafe })
+    }
+}
+
+fn fix_summary(fixed: &FixMap, by_name: bool) -> String {
+    let total = fixed.values().map(|table| table.counts().sum::<usize>()).sum::<usize>();
+    let width = num_digits(fixed.values().filter_map(|table| table.counts().max()).max().unwrap_or(1));
+    let mut text = String::new();
+    push_line(&mut text, &format!("Fixed {total} error{}:", plural(total, "s")).bold().green().to_string());
+    for (filename, table) in fixed.iter().sorted_by_key(|(filename, ..)| filename.as_str()) {
+        push_line(&mut text, &format!("{} {}{}", "-".cyan(), relativize_path(filename).bold(), ":".cyan()));
+        for (name, code, count) in table.iter().sorted_by_key(|(.., count)| Reverse(*count)) {
+            let code = code.map_or_else(|| name.as_str(), SecondaryCode::as_str);
+            let (shown, detail) = if by_name { (name.as_str(), code) } else { (code, name.as_str()) };
+            push_line(&mut text, &format!("    {count:>width$} × {} ({detail})", shown.red().bold()));
+        }
+    }
+    text
+}
+
+fn num_digits(n: usize) -> usize {
+    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
+}
+
+fn push_line(text: &mut String, line: &str) {
+    text.push_str(line);
+    text.push('\n');
+}
+
+fn plural(count: usize, suffix: &str) -> &str {
+    if count == 1 { "" } else { suffix }
+}
+
+// With fixes applied, a violation left over was not fixable after all, so no fix marker is shown.
+fn show_fix_status(fix_mode: flags::FixMode, fixables: Option<&FixableStatistics>) -> bool {
+    !fix_mode.is_apply() && fixables.is_some_and(|fixables| fixables.applicable > 0)
+}
+
 // Writes the diagnostics in order. A file whose text is known is written as it is, the others render in parallel
 // chunks, as they do when no text is known.
 fn write_full(
@@ -393,6 +429,14 @@ fn write_full(
     Ok(())
 }
 
+fn file_name(diagnostic: &Diagnostic) -> &str {
+    diagnostic
+        .primary_annotation()
+        .and_then(|annotation| annotation.get_span().as_ruff_file())
+        .expect("simplint reports a diagnostic on a Ruff source file")
+        .name()
+}
+
 // Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
 // rendered output held in memory, and each window is written before the next one renders.
 fn render_chunks<'a>(
@@ -414,12 +458,77 @@ fn render_chunks<'a>(
     })
 }
 
-fn file_name(diagnostic: &Diagnostic) -> &str {
+fn rule_metadata() -> FxHashMap<LintName, RuleMetadata> {
+    Rule::ALL
+        .iter()
+        .map(|rule| {
+            let name = LintName::of(rule.name());
+            let metadata = RuleMetadata {
+                name,
+                summary: rule.summary(),
+                description: rule.explanation().into(),
+                help_url: rule.url(),
+                linter: Some("simplint"),
+                default_severity: Some(Severity::Error),
+                enabled_by_default: true,
+            };
+            (name, metadata)
+        })
+        .collect()
+}
+
+fn has_related(diagnostic: &Diagnostic) -> bool {
+    diagnostic.secondary_annotations().next().is_some()
+}
+
+// The locations a diagnostic's secondary annotations name, each as its file's name, its start and end, and its message.
+// A location in a file the diagnostic cannot name is left out.
+fn related_entries(diagnostic: &Diagnostic) -> Vec<Related> {
     diagnostic
-        .primary_annotation()
-        .and_then(|annotation| annotation.get_span().as_ruff_file())
-        .expect("simplint reports a diagnostic on a Ruff source file")
-        .name()
+        .secondary_annotations()
+        .filter_map(|annotation| {
+            let span = annotation.get_span();
+            let UnifiedFile::Ruff(file) = span.file() else { return None };
+            let range = span.range()?;
+            let code = file.to_source_code();
+            Some(Related {
+                name: file.name().to_owned(),
+                start: code.line_column(range.start()),
+                end: code.line_column(range.end()),
+                message: annotation.get_message().unwrap_or_default().to_owned(),
+            })
+        })
+        .collect()
+}
+
+struct Related {
+    name: String,
+    start: LineColumn,
+    end: LineColumn,
+    message: String,
+}
+
+// A file's URI as Ruff writes a result's primary location, so the locations of one result agree.
+fn file_uri(name: &str) -> String {
+    url::Url::from_file_path(name).map_or_else(|()| format!("file://{name}"), |url| url.to_string())
+}
+
+#[derive(Serialize)]
+struct ExpandedStatistics<'a> {
+    code: Option<&'a SecondaryCode>,
+    #[serde(skip)]
+    url: Option<&'a str>,
+    name: &'static str,
+    count: usize,
+    #[serde(rename = "fixable")]
+    all_fixable: bool,
+    fixable_count: usize,
+}
+
+impl ExpandedStatistics<'_> {
+    fn any_fixable(&self) -> bool {
+        self.fixable_count > 0
+    }
 }
 
 // Flake8's `--statistics` layout, as Ruff prints it: count, code, a fixability marker and the rule name.
@@ -454,106 +563,4 @@ fn statistics_table(statistics: &[ExpandedStatistics]) -> String {
         push_line(&mut text, &line);
     }
     text
-}
-
-fn rule_metadata() -> FxHashMap<LintName, RuleMetadata> {
-    Rule::ALL
-        .iter()
-        .map(|rule| {
-            let name = LintName::of(rule.name());
-            let metadata = RuleMetadata {
-                name,
-                summary: rule.summary(),
-                description: rule.explanation().into(),
-                help_url: rule.url(),
-                linter: Some("simplint"),
-                default_severity: Some(Severity::Error),
-                enabled_by_default: true,
-            };
-            (name, metadata)
-        })
-        .collect()
-}
-
-// With fixes applied, a violation left over was not fixable after all, so no fix marker is shown.
-fn show_fix_status(fix_mode: flags::FixMode, fixables: Option<&FixableStatistics>) -> bool {
-    !fix_mode.is_apply() && fixables.is_some_and(|fixables| fixables.applicable > 0)
-}
-
-fn fix_summary(fixed: &FixMap, by_name: bool) -> String {
-    let total = fixed.values().map(|table| table.counts().sum::<usize>()).sum::<usize>();
-    let width = num_digits(fixed.values().filter_map(|table| table.counts().max()).max().unwrap_or(1));
-    let mut text = String::new();
-    push_line(&mut text, &format!("Fixed {total} error{}:", plural(total, "s")).bold().green().to_string());
-    for (filename, table) in fixed.iter().sorted_by_key(|(filename, ..)| filename.as_str()) {
-        push_line(&mut text, &format!("{} {}{}", "-".cyan(), relativize_path(filename).bold(), ":".cyan()));
-        for (name, code, count) in table.iter().sorted_by_key(|(.., count)| Reverse(*count)) {
-            let code = code.map_or_else(|| name.as_str(), SecondaryCode::as_str);
-            let (shown, detail) = if by_name { (name.as_str(), code) } else { (code, name.as_str()) };
-            push_line(&mut text, &format!("    {count:>width$} × {} ({detail})", shown.red().bold()));
-        }
-    }
-    text
-}
-
-fn plural(count: usize, suffix: &str) -> &str {
-    if count == 1 { "" } else { suffix }
-}
-
-fn push_line(text: &mut String, line: &str) {
-    text.push_str(line);
-    text.push('\n');
-}
-
-fn num_digits(n: usize) -> usize {
-    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
-}
-
-struct FixableStatistics {
-    applicable: usize,
-    inapplicable_unsafe: usize,
-}
-
-impl FixableStatistics {
-    fn try_from(diagnostics: &Diagnostics, unsafe_fixes: UnsafeFixes) -> Option<Self> {
-        let mut applicable = 0;
-        let mut inapplicable_unsafe = 0;
-        for fix in diagnostics.inner.iter().filter_map(Diagnostic::fix) {
-            if fix.applies(unsafe_fixes.required_applicability()) {
-                applicable += 1;
-            } else if fix.applicability().is_unsafe() {
-                inapplicable_unsafe += 1;
-            }
-        }
-        (applicable > 0 || inapplicable_unsafe > 0).then_some(Self { applicable, inapplicable_unsafe })
-    }
-}
-
-fn has_related(diagnostic: &Diagnostic) -> bool {
-    diagnostic.secondary_annotations().next().is_some()
-}
-
-// The locations a diagnostic's secondary annotations name, each as its file's name, its start and end, and its message.
-// A location in a file the diagnostic cannot name is left out.
-fn related_entries(diagnostic: &Diagnostic) -> Vec<(String, LineColumn, LineColumn, String)> {
-    diagnostic
-        .secondary_annotations()
-        .filter_map(|annotation| {
-            let span = annotation.get_span();
-            let UnifiedFile::Ruff(file) = span.file() else { return None };
-            let range = span.range()?;
-            let code = file.to_source_code();
-            Some((
-                file.name().to_owned(),
-                code.line_column(range.start()),
-                code.line_column(range.end()),
-                annotation.get_message().unwrap_or_default().to_owned(),
-            ))
-        })
-        .collect()
-}
-
-// A file's URI as Ruff writes a result's primary location, so the locations of one result agree.
-fn file_uri(name: &str) -> String {
-    url::Url::from_file_path(name).map_or_else(|()| format!("file://{name}"), |url| url.to_string())
 }

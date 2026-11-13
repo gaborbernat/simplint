@@ -74,18 +74,56 @@ trait HelpOutput: Serialize {
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
 // generated from the definition the binary parses with.
 pub(crate) fn cli_schema(command: &clap::Command) -> Result<()> {
+    write_json(&command_schema(command))
+}
+
+fn command_schema(command: &clap::Command) -> serde_json::Value {
+    let arguments: Vec<serde_json::Value> = command
+        .get_arguments()
+        .filter(|argument| !matches!(argument.get_action(), ArgAction::Help | ArgAction::Version))
+        .map(|argument| {
+            serde_json::json!({
+                "id": argument.get_id().as_str(),
+                "long": argument.get_long(),
+                "short": argument.get_short(),
+                "help": argument.get_help().map(ToString::to_string),
+                "flag": matches!(argument.get_action(), ArgAction::SetTrue),
+                "multiple": argument.get_num_args().is_some_and(|range| range.max_values() > 1),
+                "delimiter": argument.get_value_delimiter(),
+                "default": argument
+                    .get_default_values()
+                    .iter()
+                    .map(|value| value.to_string_lossy())
+                    .collect::<Vec<_>>(),
+                "choices": argument
+                    .get_possible_values()
+                    .iter()
+                    .map(|value| value.get_name().to_owned())
+                    .collect::<Vec<_>>(),
+                "value_name": argument.get_value_names().and_then(|names| names.first()).map(ToString::to_string),
+            })
+        })
+        .collect();
+    let subcommands: Vec<serde_json::Value> =
+        command.get_subcommands().filter(|subcommand| !subcommand.is_hide_set()).map(command_schema).collect();
+    serde_json::json!({
+        "name": command.get_name(),
+        "about": command.get_about().map(ToString::to_string),
+        "arguments": arguments,
+        "subcommands": subcommands,
+    })
+}
+
+fn write_json(value: &impl Serialize) -> Result<()> {
     let mut stdout = BufWriter::new(std::io::stdout().lock());
-    writeln!(stdout, "{}", serde_json::to_string_pretty(&command_schema(command))?)?;
+    writeln!(stdout, "{}", serde_json::to_string_pretty(value)?)?;
     stdout.flush()?;
     Ok(())
 }
 
 // The JSON Schema of `[tool.simplint]`, committed as `simplint.schema.json` and checked by `tests/docs_data.rs`.
 pub fn config_schema() -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    writeln!(stdout, "{}", serde_json::to_string_pretty(&crate::settings::config_schema())?)?;
-    stdout.flush()?;
-    Ok(())
+    write_json(&crate::settings::config_schema())
 }
 
 // Ruff's `VersionInfo`. simplint records no commit, which Ruff reports as `null` when built outside a git checkout.
@@ -136,8 +174,7 @@ impl Explanation {
         }
     }
 
-    // Ruff's `format_rule_text`. A terminal cannot draw the documentation's mermaid diagrams, so their source is left
-    // out.
+    // Ruff's `format_rule_text`.
     fn text(&self) -> String {
         let mut output = format!("# {} ({})\n\n", self.name, self.code);
         if !matches!(self.fix_availability, FixAvailability::None) {
@@ -218,6 +255,15 @@ fn shown_fences(example: &Example) -> impl Iterator<Item = Shown<'_>> {
     config.into_iter().chain(blocks)
 }
 
+fn example_label(role: Role) -> Option<&'static str> {
+    match role {
+        Role::Report => Some("Reported:"),
+        Role::Ok => Some("Not reported:"),
+        Role::Fixed => Some("After the fix:"),
+        Role::Context => None,
+    }
+}
+
 fn block_comment(block: &Block) -> Option<String> {
     let mut parts = Vec::new();
     if block.named {
@@ -246,15 +292,6 @@ fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
         kept.extend([line, "\n"]);
     }
     kept.extend([lines[shown.fence.end_line - 1], "\n"]);
-}
-
-fn example_label(role: Role) -> Option<&'static str> {
-    match role {
-        Role::Report => Some("Reported:"),
-        Role::Ok => Some("Not reported:"),
-        Role::Fixed => Some("After the fix:"),
-        Role::Context => None,
-    }
 }
 
 impl HelpOutput for Explanation {
@@ -356,43 +393,6 @@ impl HelpOutput for Vec<LinterInfo> {
         }
         Ok(())
     }
-}
-
-fn command_schema(command: &clap::Command) -> serde_json::Value {
-    let arguments: Vec<serde_json::Value> = command
-        .get_arguments()
-        .filter(|argument| !matches!(argument.get_action(), ArgAction::Help | ArgAction::Version))
-        .map(|argument| {
-            serde_json::json!({
-                "id": argument.get_id().as_str(),
-                "long": argument.get_long(),
-                "short": argument.get_short(),
-                "help": argument.get_help().map(ToString::to_string),
-                "flag": matches!(argument.get_action(), ArgAction::SetTrue),
-                "multiple": argument.get_num_args().is_some_and(|range| range.max_values() > 1),
-                "delimiter": argument.get_value_delimiter(),
-                "default": argument
-                    .get_default_values()
-                    .iter()
-                    .map(|value| value.to_string_lossy())
-                    .collect::<Vec<_>>(),
-                "choices": argument
-                    .get_possible_values()
-                    .iter()
-                    .map(|value| value.get_name().to_owned())
-                    .collect::<Vec<_>>(),
-                "value_name": argument.get_value_names().and_then(|names| names.first()).map(ToString::to_string),
-            })
-        })
-        .collect();
-    let subcommands: Vec<serde_json::Value> =
-        command.get_subcommands().filter(|subcommand| !subcommand.is_hide_set()).map(command_schema).collect();
-    serde_json::json!({
-        "name": command.get_name(),
-        "about": command.get_about().map(ToString::to_string),
-        "arguments": arguments,
-        "subcommands": subcommands,
-    })
 }
 
 // Ruff's `clean`, for simplint's directory in each Ruff cache directory, which leaves Ruff's own cache alone.
