@@ -174,6 +174,10 @@ parameter by position counts for it, and so does one that passes it by keyword.
   handlers = [connect]
   ```
 
+- **Functions of a module read by a computed name**: a file of the run reads the module through `getattr(module, name)`
+  or `hasattr(module, name)` with a name that is not a string literal, or reads its `__all__`, so a call such as
+  `getattr(module, name)()` may reach any of them without arguments.
+
 - **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.
 
   ```python ok

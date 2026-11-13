@@ -26,10 +26,11 @@ use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
 use ruff_python_parser::{Parsed, parse_module};
 use ruff_text_size::{TextRange, TextSize};
+use rustc_hash::FxHashMap;
 
 use self::api_reached::interface;
 pub(crate) use self::api_reached::{Closure, Definition};
-use self::module_reads::module_reads;
+use self::module_reads::{dynamic_modules, module_reads};
 use self::runtime::{Runs, constants};
 use self::scan::{Scan, string_words};
 use self::statements::statements;
@@ -55,6 +56,8 @@ pub struct FileFacts {
     pub(super) module_names: Vec<(String, String)>,
     // A call through a module value reaches the module's names without an attribute read.
     pub(super) module_values: Vec<String>,
+    // Modules read by a computed attribute name or through their `__all__`, whose functions any call may reach.
+    pub(super) dynamic_modules: Vec<String>,
     pub(super) main_guard: bool,
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
@@ -153,6 +156,12 @@ impl FileFacts {
         }
         let bindings = top_level_bindings(&visitor.from_statements);
         let (module_names, module_values) = module_bindings(&bindings, &visitor);
+        let bound: FxHashMap<&str, &str> =
+            module_names.iter().map(|(bound, module)| (bound.as_str(), module.as_str())).collect();
+        let dynamic_modules = dynamic_modules(&parsed.syntax().body, |expr| match expr {
+            Expr::Name(name) => bound.get(name.id.as_str()).map(|module| (*module).to_owned()),
+            other => visitor.qualified(other),
+        });
         Some(Self {
             names: visitor.names.map(grouped),
             declared,
@@ -169,6 +178,7 @@ impl FileFacts {
             },
             bindings,
             module_values,
+            dynamic_modules,
             main_guard: parsed.syntax().body.iter().any(is_main_guard),
             module_names,
             defined,

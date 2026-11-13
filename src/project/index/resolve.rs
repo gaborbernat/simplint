@@ -198,6 +198,7 @@ pub(super) struct ModuleFacts<F> {
     pub(super) unresolved_names: Vec<String>,
     pub(super) modules: Vec<(String, String, F)>,
     pub(super) values: Vec<F>,
+    pub(super) dynamic: Vec<F>,
     pub(super) caught: Vec<(F, String)>,
     pub(super) class_tuples: Vec<(String, Vec<(F, String)>)>,
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
@@ -231,6 +232,7 @@ impl<F> ModuleFacts<F> {
             unresolved_names: self.unresolved_names,
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
             values: self.values.into_iter().map(&mut to).collect(),
+            dynamic: self.dynamic.into_iter().map(&mut to).collect(),
             caught: self.caught.into_iter().map(|(file, name)| (to(file), name)).collect(),
             class_tuples: self
                 .class_tuples
@@ -331,6 +333,7 @@ impl ModuleFacts<PathBuf> {
         let modules = named_modules(&facts.module_names, &resolved, &own);
         let values =
             facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
+        let dynamic = facts.dynamic_modules.iter().filter_map(|module| resolved(module)).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let class_tuples = class_tuples(&facts.class_tuples, &resolved);
         let (runtime, runtime_modules) = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
@@ -358,6 +361,7 @@ impl ModuleFacts<PathBuf> {
             unresolved_names,
             modules,
             values,
+            dynamic,
             caught,
             class_tuples,
             classes,

@@ -43,6 +43,36 @@ impl<'a> Visitor<'a> for ModuleReads<'_> {
     }
 }
 
+// The module values read by a computed attribute name, as `getattr(module, name)`, or through their `__all__`, which may
+// reach any of their names: `qualify` names the module an expression holds.
+pub(super) fn dynamic_modules(body: &[Stmt], qualify: impl Fn(&Expr) -> Option<String>) -> Vec<String> {
+    let mut found = DynamicModules { targets: Vec::new() };
+    found.visit_body(body);
+    found.targets.into_iter().filter_map(qualify).collect::<BTreeSet<String>>().into_iter().collect()
+}
+
+struct DynamicModules<'a> {
+    targets: Vec<&'a Expr>,
+}
+
+impl<'a> Visitor<'a> for DynamicModules<'a> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "__all__" => {
+                self.targets.push(value);
+            }
+            _ => {
+                if let Some((module, attribute)) = attribute_call(expr, &["getattr", "hasattr"])
+                    && !attribute.is_string_literal_expr()
+                {
+                    self.targets.push(module);
+                }
+            }
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
 pub(super) fn is_module_load(expr: &Expr) -> bool {
     match expr {
         Expr::Call(ast::ExprCall { func, .. }) => match func.as_ref() {

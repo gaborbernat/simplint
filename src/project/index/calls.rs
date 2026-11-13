@@ -15,6 +15,7 @@ pub(super) fn run_calls(
     module_reads: &FxHashSet<String>,
     entry_names: Vec<(FileId, String)>,
     referenced: &FxHashMap<FileId, FxHashSet<String>>,
+    read_dynamically: &FxHashSet<FileId>,
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
 ) -> RunCalls {
     let dynamic: FxHashSet<&str> =
@@ -29,6 +30,12 @@ pub(super) fn run_calls(
         library_api,
     );
     hide_names(&mut calls, entry_names, referenced);
+    // `getattr(module, name)()` may call any function of a module read by a computed name or through its `__all__`.
+    for file in read_dynamically {
+        for name in sources.get(file).into_iter().flat_map(|facts| &facts.functions) {
+            calls.mark_opaque(*file, name.clone());
+        }
+    }
     method_loads(&mut calls, files);
     calls
 }

@@ -180,6 +180,7 @@ impl Project {
             computed_writes,
             written,
             read_whole,
+            read_dynamically,
         } = Gathered::of(&indexed, resolver, &test_modules, &production);
         for (file, name) in plugin_names {
             uses.read(file, &[name], Origin::Other);
@@ -281,6 +282,7 @@ impl Project {
                             &wide.module_reads,
                             entry_names,
                             &referenced,
+                            &read_dynamically,
                             &library_api,
                         )
                     },
@@ -461,6 +463,7 @@ struct Gathered<'r> {
     computed_writes: FxHashSet<FileId>,
     written: FxHashMap<FileId, FxHashSet<String>>,
     read_whole: FxHashSet<FileId>,
+    read_dynamically: FxHashSet<FileId>,
 }
 
 impl<'r> Gathered<'r> {
@@ -480,6 +483,7 @@ impl<'r> Gathered<'r> {
             for (file, names) in &module.written {
                 gathered.written.entry(*file).or_default().extend(names.iter().cloned());
             }
+            gathered.read_dynamically.extend(module.dynamic.iter().copied());
             let production = production.contains(&id);
             if production {
                 gathered.read_whole.extend(module.values.iter().copied());
