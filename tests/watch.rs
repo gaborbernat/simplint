@@ -90,6 +90,13 @@ fn check_watch_quiet_prints_only_diagnostics() {
     assert_eq!((first, watched.stop(root.path()).0), (format!("{}module.py:1:1: {SINGLE_X}", clear_screen()), Some(2)));
 }
 
+#[test]
+fn check_watch_fails_on_a_path_it_cannot_watch() {
+    let root = project(&[("module.py", "x = 1\n")]);
+    let (code, _, stderr) = common::simplint(root.path(), &["check", "--watch", "missing.py"]);
+    assert_eq!((code, stderr.contains("simplint failed")), (2, true), "{stderr}");
+}
+
 // A `--watch` run, read line by line; a run that misses an expected line within the deadline is killed.
 struct Watched {
     child: process::Child,

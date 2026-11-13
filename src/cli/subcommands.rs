@@ -1,10 +1,11 @@
 // Ports of the `ruff` crate's informational subcommands, which it keeps private, over simplint's rules and options.
-use std::io::{self, BufWriter, Write};
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::Result;
 use clap::ArgAction;
 use colored::Colorize;
+use itertools::Itertools;
 use ruff::args::HelpFormat;
 use ruff_cache::CACHE_DIR_NAME;
 use ruff_linter::FixAvailability;
@@ -14,6 +15,7 @@ use ruff_options_metadata::{OptionEntry, OptionSet, OptionsMetadata};
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::cli::write_flushed;
 use crate::lint::examples::{Block, Example, Examples, Fence, Role, parse};
 use crate::lint::registry::{GROUPS, Rule};
 use crate::project::cache;
@@ -50,17 +52,14 @@ pub(crate) fn linter(format: HelpFormat) -> Result<()> {
 }
 
 fn print<T: HelpOutput>(output: &T, format: HelpFormat) -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    match format {
-        HelpFormat::Text => output.write_text(&mut stdout)?,
+    let text = match format {
+        HelpFormat::Text => output.text(),
         HelpFormat::Json => {
-            serde_json::to_writer_pretty(&mut stdout, output)?;
-            if T::JSON_NEWLINE {
-                writeln!(stdout)?;
-            }
+            let json = serde_json::to_string_pretty(output).expect("help output serializes to JSON");
+            if T::JSON_NEWLINE { json + "\n" } else { json }
         }
-    }
-    stdout.flush()?;
+    };
+    write_flushed(&mut std::io::stdout().lock(), [text])?;
     Ok(())
 }
 
@@ -68,7 +67,7 @@ trait HelpOutput: Serialize {
     // Ruff ends some JSON outputs with a newline and others not.
     const JSON_NEWLINE: bool;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()>;
+    fn text(&self) -> String;
 }
 
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
@@ -115,9 +114,8 @@ fn command_schema(command: &clap::Command) -> serde_json::Value {
 }
 
 fn write_json(value: &impl Serialize) -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    writeln!(stdout, "{}", serde_json::to_string_pretty(value)?)?;
-    stdout.flush()?;
+    let json = serde_json::to_string_pretty(value).expect("a schema serializes to JSON");
+    write_flushed(&mut std::io::stdout().lock(), [json, "\n".to_owned()])?;
     Ok(())
 }
 
@@ -136,8 +134,8 @@ struct VersionInfo {
 impl HelpOutput for VersionInfo {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "simplint {}", self.version)
+    fn text(&self) -> String {
+        format!("simplint {}\n", self.version)
     }
 }
 
@@ -175,7 +173,7 @@ impl Explanation {
     }
 
     // Ruff's `format_rule_text`.
-    fn text(&self) -> String {
+    fn explanation_text(&self) -> String {
         let mut output = format!("# {} ({})\n\n", self.name, self.code);
         if !matches!(self.fix_availability, FixAvailability::None) {
             output.push_str(&self.fix);
@@ -297,19 +295,18 @@ fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
 impl HelpOutput for Explanation {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "{}", self.text())
+    fn text(&self) -> String {
+        format!("{}\n", self.explanation_text())
     }
 }
 
 impl HelpOutput for Vec<Explanation> {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for explanation in self {
-            writeln!(writer, "{}\n", explanation.text())?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |explanation, f| f(&format_args!("{}\n\n", explanation.explanation_text())))
+            .to_string()
     }
 }
 
@@ -347,16 +344,17 @@ impl RuleEntry {
 impl HelpOutput for Vec<RuleEntry> {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for entry in self {
-            let fix = match entry.fix {
-                FixAvailability::Always => " (fix)",
-                FixAvailability::Sometimes => " (fix sometimes)",
-                FixAvailability::None => "",
-            };
-            writeln!(writer, "{} {}{fix}", entry.code, entry.name)?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |entry, f| {
+                let fix = match entry.fix {
+                    FixAvailability::Always => " (fix)",
+                    FixAvailability::Sometimes => " (fix sometimes)",
+                    FixAvailability::None => "",
+                };
+                f(&format_args!("{} {}{fix}\n", entry.code, entry.name))
+            })
+            .to_string()
     }
 }
 
@@ -370,10 +368,10 @@ enum ConfigOutput {
 impl HelpOutput for ConfigOutput {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
+    fn text(&self) -> String {
         match self {
-            Self::All(metadata) => writeln!(writer, "{metadata}"),
-            Self::Entry(entry) => write!(writer, "{entry}"),
+            Self::All(metadata) => format!("{metadata}\n"),
+            Self::Entry(entry) => entry.to_string(),
         }
     }
 }
@@ -387,17 +385,15 @@ struct LinterInfo {
 impl HelpOutput for Vec<LinterInfo> {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for LinterInfo { name, codes } in self {
-            writeln!(writer, "{name}: {}", codes.join(", "))?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |LinterInfo { name, codes }, f| f(&format_args!("{name}: {}\n", codes.join(", "))))
+            .to_string()
     }
 }
 
 // Ruff's `clean`, for simplint's directory in each Ruff cache directory, which leaves Ruff's own cache alone.
 pub(crate) fn clean(level: LogLevel) -> Result<()> {
-    let mut stderr = BufWriter::new(std::io::stderr().lock());
     for entry in WalkDir::new(std::env::current_dir()?)
         .into_iter()
         .filter_map(Result::ok)
@@ -407,12 +403,11 @@ pub(crate) fn clean(level: LogLevel) -> Result<()> {
         let cache = cache::directory(&ruff_cache);
         if is_real_dir(&ruff_cache) && is_real_dir(&cache) {
             if level >= LogLevel::Default {
-                writeln!(stderr, "Removing cache at: {}", relativize_path(&cache).bold())?;
+                writeln!(std::io::stderr(), "Removing cache at: {}", relativize_path(&cache).bold())?;
             }
             std::fs::remove_dir_all(&cache)?;
         }
     }
-    stderr.flush()?;
     Ok(())
 }
 

@@ -366,7 +366,10 @@ impl CheckCommand {
         format.extend(switch("respect-gitignore", self.respect_gitignore, self.no_respect_gitignore));
         format.extend(switch("force-exclude", self.force_exclude, self.no_force_exclude));
         format.extend(switch("preview", self.preview, self.no_preview));
-        let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)?.global_options;
+        // Each `--config` value is a file or a part of a table Ruff's own parser accepted while simplint parsed it.
+        let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)
+            .expect("Ruff accepted these `--config` values")
+            .global_options;
         let (_, config_arguments) = FormatCommand::try_parse_from(format)?.partition(ruff_global)?;
         let arguments = SimplintArguments {
             config_file,
