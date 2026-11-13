@@ -21,6 +21,10 @@ pub(super) const SINCE: PythonVersion = PythonVersion::PY310;
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
     require_options(checker, Rule::DataclassKwOnly, &["kw_only"], |decorated, missing| {
+        // Without a generated `__init__`, `kw_only` changes nothing.
+        if decorated.option("init").and_then(Expr::as_boolean_literal_expr).is_some_and(|init| !init.value) {
+            return Some(Offer::unreported());
+        }
         let module = module.get_or_init(|| ModuleClasses::of(checker));
         let class = decorated.class;
         let call_message = "positional arguments pass the fields by position";

@@ -159,6 +159,20 @@ Release(name="simplint", version="1.0.0")
 
 ### Exceptions
 
+- **`@dataclass(init=False)`**: no `__init__` is generated, so `kw_only` changes nothing.
+
+  ```python ok
+  from dataclasses import dataclass
+
+
+  @dataclass(init=False)
+  class Event:
+      code: int
+
+      def __init__(self, code: int) -> None:
+          self.code = code
+  ```
+
 - **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its
   `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as
   the base class of a listed class or a return annotation. Users of the library call it by position, so neither the
@@ -591,17 +605,6 @@ No fix is offered while any use could still pass fields by position, or while a 
 
         def __init__(self, name: str) -> None:
             self.name = name
-    ```
-
-  - that sets `init=False`.
-
-    ```python report
-    from dataclasses import dataclass
-
-
-    @dataclass(frozen=True, slots=True, init=False)
-    class Release:
-        name: str
     ```
 
   - that has a base class that is not a dataclass of the same module.
