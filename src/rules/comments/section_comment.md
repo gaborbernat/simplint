@@ -135,9 +135,6 @@ gone:
   VALUE = 1
   ```
 
-A divider run joined to a word without a space, such as the `++` of `C++`, stays unless it is three characters or
-longer.
-
 ## Ruff overlap
 
 [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and

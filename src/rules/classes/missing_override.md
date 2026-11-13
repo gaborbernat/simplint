@@ -1,4 +1,4 @@
-Flags methods that define again a method a base class of the run defines, without
+Flags methods that override a method of a base class in the run without
 [`@typing.override`](https://docs.python.org/3/library/typing.html#typing.override).
 
 ## Why is this bad?

@@ -5,8 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::public_api::Need;
-use crate::syntax::ExprCollector;
-use crate::syntax::module_statements;
+use crate::syntax::{ExprCollector, module_statements};
 
 pub fn indistinct_error_class(checker: &Checker) {
     if checker.is_test_module() {

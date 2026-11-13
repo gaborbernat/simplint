@@ -15,8 +15,7 @@ use crate::rules::api::{AllList, exploded};
 use crate::rules::edits::fix_of;
 use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
-use crate::syntax::is_main_guard;
-use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases};
+use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases, is_main_guard};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()

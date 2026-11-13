@@ -7,8 +7,8 @@ rebuild an exception by calling its class with its `args`, which `BaseException.
 receives. A subclass that takes a path but passes its parent a formatted message, or that requires a keyword-only
 argument, raises `TypeError` when it is unpickled. That breaks exceptions sent across
 [`multiprocessing`](https://docs.python.org/3/library/multiprocessing.html) and
-[`concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html) workers, where the original error is
-replaced by a confusing one about the rebuild.
+[`concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html) workers, where a `TypeError` about the
+rebuild replaces the original error.
 
 ## Example
 

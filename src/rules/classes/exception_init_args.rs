@@ -5,9 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::exception_classes::{ClassKey, derives_from_base_exception, lineage};
-
-// The methods that tell `pickle` and `copy` how to rebuild an object, which replace rebuilding it from its `args`.
-const REBUILDERS: [&str; 4] = ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__"];
+use crate::syntax::REBUILD_HOOKS;
 
 // `pickle` and `copy` rebuild an exception by calling its class with its `args`, which `BaseException.__init__` sets to
 // the arguments it receives. A subclass whose `__init__` passes its parent fewer or more positional values than it
@@ -23,14 +21,23 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             .bases()
             .iter()
             .any(|base| base.as_name_expr().is_some_and(|name| checker.project().is_exception_type(name.id.as_str())));
+    if !is_exception {
+        return;
+    }
     // A base of this file that defines a rebuilding method passes it on.
     let rebuilt = std::iter::once(class)
         .chain(lineages.iter().flatten().filter_map(|key| match key {
             ClassKey::Local(range) => checker.class_defs().iter().copied().find(|class| class.range() == *range),
             ClassKey::Known(_) => None,
         }))
-        .any(|class| class.body.iter().any(|stmt| defines(stmt, &REBUILDERS)));
-    if !is_exception || rebuilt {
+        .any(|class| {
+            class
+                .body
+                .iter()
+                .filter_map(Stmt::as_function_def_stmt)
+                .any(|def| REBUILD_HOOKS.contains(&def.name.as_str()))
+        });
+    if rebuilt {
         return;
     }
     let Some(init) =
@@ -63,8 +70,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             continue;
         }
         let passed = args.len() - usize::from(!is_super_call(&call.func));
-        let fits = passed >= required && (parameters.vararg.is_some() || passed <= positional.len());
-        if fits {
+        if passed >= required && (parameters.vararg.is_some() || passed <= positional.len()) {
             continue;
         }
         checker.report(
@@ -82,10 +88,6 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
 fn takes(required: usize, total: usize) -> String {
     let count = |count: usize| format!("{count} positional argument{}", if count == 1 { "" } else { "s" });
     if required == total { count(total) } else { format!("{required} to {}", count(total)) }
-}
-
-fn defines(stmt: &Stmt, names: &[&str]) -> bool {
-    stmt.as_function_def_stmt().is_some_and(|def| names.contains(&def.name.as_str()))
 }
 
 // `super().__init__(...)` or `super(Class, self).__init__(...)`, whose arguments start after `self`, or

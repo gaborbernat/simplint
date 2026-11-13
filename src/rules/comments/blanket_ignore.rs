@@ -4,7 +4,9 @@ use crate::lint::registry::Rule;
 
 pub fn blanket_ignore(checker: &Checker) {
     for (range, comment) in checker.state().comments(checker) {
-        for directive in comment.directives.iter().filter(|d| d.missing_codes && d.ruff_rule.is_none()) {
+        for directive in
+            comment.directives.iter().filter(|candidate| candidate.missing_codes && candidate.ruff_rule.is_none())
+        {
             let scope = match directive.scope {
                 Scope::Line => "on the line",
                 Scope::File | Scope::Module => "in the file",

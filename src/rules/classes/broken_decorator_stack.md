@@ -1,4 +1,4 @@
-Flags descriptor decorators stacked in an order that does not work.
+Flags descriptor decorators stacked so that the outer one cannot wrap what the inner one returns.
 
 ## Why is this bad?
 
