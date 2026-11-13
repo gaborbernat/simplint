@@ -71,6 +71,8 @@ use crate::common;
 #[test_case("unused-fixture", "tests/conftest.py", None ; "unused_fixture_conftest")]
 #[test_case("test-process-state", "tests/test_process_state.py", None ; "test_process_state")]
 #[test_case("test-process-state", "tests/test_process_state_teardown_module.py", None ; "test_process_state_teardown")]
+#[test_case("test-process-state", "tests/test_process_state_restored.py", None ; "test_process_state_restored")]
+#[test_case("test-process-state", "tests/test_process_state_autouse.py", None ; "test_process_state_autouse")]
 #[test_case("test-process-state", "tests/test_process_state_pytestmark.py", None ; "test_process_state_pytestmark")]
 #[test_case("test-process-state", "tests/test_process_state_pytestmark_tuple.py", None ; "test_process_state_pytestmark_tuple")]
 #[test_case(

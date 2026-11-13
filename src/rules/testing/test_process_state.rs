@@ -1,3 +1,4 @@
+use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -8,7 +9,7 @@ use crate::lint::registry::Rule;
 use crate::rules::testing::recognize::is_fixture;
 use crate::rules::testing::{is_test_class, is_test_function};
 use crate::semantic::{Referent, binding_referent};
-use crate::syntax::is_name;
+use crate::syntax::{is_name, is_true_literal};
 
 pub fn test_process_state(checker: &Checker) {
     if !checker.is_test_module() {
@@ -23,6 +24,9 @@ pub fn test_process_state(checker: &Checker) {
         let mut finder = Changes { checker, found: Vec::new(), restored_depth: 0 };
         finder.visit_body(&function.body);
         let mut saves = Saves { checker, saved: FxHashSet::default() };
+        for decorator in &function.decorator_list {
+            saves.visit_expr(&decorator.expression);
+        }
         saves.visit_body(&function.body);
         for (range, state) in finder.found.into_iter().filter(|(_, state)| !saves.saved.contains(state)) {
             checker.report(
@@ -42,7 +46,7 @@ pub fn test_process_state(checker: &Checker) {
 // or a `usefixtures` mark, may restore the state, so its functions are left out.
 fn functions<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
     let body = checker.body();
-    if defines_teardown(body) || body.iter().any(is_pytestmark_usefixtures) {
+    if defines_teardown(body) || body.iter().any(is_pytestmark_usefixtures) || body.iter().any(is_restoring_autouse) {
         return Vec::new();
     }
     let mut functions = Vec::new();
@@ -57,7 +61,9 @@ fn functions<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
             Stmt::ClassDef(class)
                 if is_test_class(checker, class)
                     && !defines_teardown(&class.body)
-                    && !uses_fixtures(&class.decorator_list) =>
+                    && !uses_fixtures(&class.decorator_list)
+                    && !inherits_hooks(checker, class)
+                    && !class.decorator_list.iter().any(|decorator| is_patcher(&decorator.expression)) =>
             {
                 functions.extend(
                     class
@@ -90,6 +96,33 @@ fn defines_teardown(body: &[Stmt]) -> bool {
                 | "teardown_function"
         )
     })
+}
+
+// An autouse fixture that restores what it changes runs around every test of the module, so it may put back what they
+// change too.
+fn is_restoring_autouse(stmt: &Stmt) -> bool {
+    stmt.as_function_def_stmt().is_some_and(|function| {
+        function.decorator_list.iter().any(|decorator| {
+            is_fixture(decorator)
+                && decorator.expression.as_call_expr().is_some_and(|call| {
+                    call.arguments.find_keyword("autouse").is_some_and(|keyword| is_true_literal(&keyword.value))
+                })
+        }) && restores_itself(function)
+    })
+}
+
+// A test class deriving from a class other than `unittest.TestCase` may inherit set-up and tear-down hooks, such as a
+// base `setUp` that starts a patcher and a `tearDown` that stops it.
+fn inherits_hooks(checker: &Checker, class: &ast::StmtClassDef) -> bool {
+    class.bases().iter().any(|base| {
+        !checker.semantic().resolves_to(base, &["unittest", "TestCase"]) && !checker.semantic().is_builtin(base, "object")
+    })
+}
+
+// `patch`, `patch.object` or `patch.dict` as a decorator restores its target once the test ends.
+fn is_patcher(expr: &Expr) -> bool {
+    let func = expr.as_call_expr().map_or(expr, |call| &call.func);
+    UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().contains(&"patch"))
 }
 
 fn is_pytestmark_usefixtures(stmt: &Stmt) -> bool {
@@ -272,16 +305,30 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Call(call) = expr
-            && self.checker.semantic().resolves_to(&call.func, &["os", "getcwd"])
-        {
-            self.saved.insert(State::WorkingDirectory);
+        if let Expr::Call(call) = expr {
+            if self.checker.semantic().resolves_to(&call.func, &["os", "getcwd"]) {
+                self.saved.insert(State::WorkingDirectory);
+            }
+            self.saved.extend(self.restored_by(call));
         }
         visitor::walk_expr(self, expr);
     }
 }
 
 impl Saves<'_, '_> {
+    // The state a patcher or the monkeypatch fixture puts back once the test ends: `patch.dict(os.environ)` restores the
+    // whole mapping, and `monkeypatch.setenv`, `delenv`, `syspath_prepend` and `chdir` record the value they replace.
+    fn restored_by(&self, call: &ast::ExprCall) -> Option<State> {
+        let name = UnqualifiedName::from_expr(&call.func)?;
+        match name.segments() {
+            [.., "patch", "dict"] => State::of_object(self.checker, call.arguments.find_argument_value("in_dict", 0)?),
+            [.., "monkeypatch", "setenv" | "delenv"] => Some(State::Environment),
+            [.., "monkeypatch", "syspath_prepend"] => Some(State::SysPath),
+            [.., "monkeypatch", "chdir"] => Some(State::WorkingDirectory),
+            _ => None,
+        }
+    }
+
     fn copied(&self, value: &Expr) -> Option<State> {
         let source = match value {
             Expr::Subscript(subscript) if subscript.slice.is_slice_expr() => &*subscript.value,
