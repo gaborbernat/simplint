@@ -1,4 +1,3 @@
-use rustc_hash::FxHashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,6 +10,7 @@ use ruff_python_ast::token::{Token, TokenKind, Tokens};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use crate::fix::apply::{FixResult, fix_ruff_file};
 use crate::fix::{add_fixes, errors};

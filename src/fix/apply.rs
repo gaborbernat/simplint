@@ -27,14 +27,13 @@ pub(super) fn fix_file(
     unsafe_fixes: UnsafeFixes,
     withdrawn: &Withdrawn,
 ) -> Option<(FixResult, FxHashSet<usize>)> {
-    let required = unsafe_fixes.required_applicability();
     let candidates = diagnostics
         .iter()
         .enumerate()
         .zip(withdrawn.held_back(source, diagnostics))
         .filter(|(_, held)| !held)
         .filter_map(|((index, diagnostic), _)| diagnostic.fix().map(|fix| (index, diagnostic, fix)))
-        .filter(|(_, _, fix)| fix.applies(required))
+        .filter(|(_, _, fix)| fix.applies(unsafe_fixes.required_applicability()))
         .sorted_by_key(|(_, _, fix)| fix.min_start())
         .collect::<Vec<_>>();
     if candidates.is_empty() {

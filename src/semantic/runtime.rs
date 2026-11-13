@@ -28,15 +28,11 @@ impl<'a> Runtime<'a> {
         semantics.min(self.decorators(&class_def.decorator_list, semantic))
     }
 
-    pub fn function(&self, function_def: &ast::StmtFunctionDef, semantic: &SemanticModel) -> RuntimeSemantics {
-        self.decorators(&function_def.decorator_list, semantic)
-    }
-
     fn base_class(&self, class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> RuntimeSemantics {
-        let mut result = RuntimeSemantics::Default;
         if self.base_classes.is_empty() {
-            return result;
+            return RuntimeSemantics::Default;
         }
+        let mut result = RuntimeSemantics::Default;
         class::any_qualified_base_class(class_def, semantic, |qualified_name| {
             match self
                 .base_classes
@@ -58,10 +54,10 @@ impl<'a> Runtime<'a> {
     }
 
     fn decorators(&self, decorator_list: &[Decorator], semantic: &SemanticModel) -> RuntimeSemantics {
-        let mut result = RuntimeSemantics::Default;
         if self.decorators.is_empty() {
-            return result;
+            return RuntimeSemantics::Default;
         }
+        let mut result = RuntimeSemantics::Default;
         for decorator in decorator_list {
             let expression = map_callable(&decorator.expression);
             let listed = semantic
@@ -79,5 +75,9 @@ impl<'a> Runtime<'a> {
             }
         }
         result
+    }
+
+    pub fn function(&self, function_def: &ast::StmtFunctionDef, semantic: &SemanticModel) -> RuntimeSemantics {
+        self.decorators(&function_def.decorator_list, semantic)
     }
 }

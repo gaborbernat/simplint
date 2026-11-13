@@ -35,14 +35,10 @@ pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix>
         || checker.settings.project.metadata.native
         || ranges.is_empty()
         || checker.name_token_count(old) != ranges.len()
+        || appears_in_strings(checker, old)
+        // A name in a t-string keeps its source text, which a new spelling would change.
+        || ranges.iter().any(|range| checker.state().in_source_text(checker, *range))
     {
-        return None;
-    }
-    if appears_in_strings(checker, old) {
-        return None;
-    }
-    // A name in a t-string keeps its source text, which a new spelling would change.
-    if ranges.iter().any(|range| checker.state().in_source_text(checker, *range)) {
         return None;
     }
     let exports = checker.state().export_strings(checker);
