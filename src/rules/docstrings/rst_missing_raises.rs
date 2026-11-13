@@ -1,8 +1,8 @@
+use ruff_python_ast::helpers::map_callable;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Stmt};
 use rustc_hash::FxHashSet;
 
-use super::raised_class;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner};
@@ -63,7 +63,7 @@ impl<'a> Visitor<'a> for Raises<'_, 'a> {
                 self.visit_body(finalbody);
             }
             Stmt::Raise(ast::StmtRaise { exc: Some(exc), .. }) => {
-                let class = raised_class(exc);
+                let class = map_callable(exc);
                 let (Some(name), Some(lineage)) = (last_segment(class), lineage_names(self.checker, class)) else {
                     return;
                 };

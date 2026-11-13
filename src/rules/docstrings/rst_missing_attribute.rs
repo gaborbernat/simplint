@@ -1,8 +1,9 @@
+use rustc_hash::FxHashSet;
+
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner};
 use crate::syntax::Visibility;
-use rustc_hash::FxHashSet;
 
 pub fn rst_missing_attribute(checker: &Checker) {
     for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
