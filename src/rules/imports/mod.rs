@@ -20,7 +20,7 @@ pub(crate) use future_annotations::future_annotations;
 pub(crate) use import_cycle::import_cycle;
 pub(crate) use module_attribute_import::module_attribute_import;
 pub(crate) use undeclared_dependency::undeclared_dependency;
-pub(crate) use unused_dependency::unused_dependency;
+pub(crate) use unused_dependency::{is_dependency_host, unused_dependency};
 pub(crate) use up_backport_import::up_backport_import;
 pub(crate) use up_lazy_modules_list::up_lazy_modules_list;
 pub(crate) use up_type_checking_lazy_import::up_type_checking_lazy_import;

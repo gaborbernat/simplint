@@ -287,7 +287,7 @@ rules! {
     PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
     FlattenedPackage => ("SMP311", "flattened-package", "Private modules sharing a name prefix instead of a package", None, imports::flattened_package { module } reads [cross_file]),
     UndeclaredDependency => ("SMP312", "undeclared-dependency", "Imports of third-party modules no requirement of the project installs", None, imports::undeclared_dependency { module } reads [cross_file, RUNTIME_IMPORTS]),
-    UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file]),
+    UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file, IMPORTED_MODULES]),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),
@@ -353,10 +353,10 @@ rules! {
     ShadowedExceptHandler => ("SMP552", "shadowed-except-handler", "`except` clauses an earlier, broader clause already catches", Sometimes, logic::shadowed_except_handler { statement }),
     DroppedExceptionNote => ("SMP553", "dropped-exception-note", "Exceptions given a note and then dropped", None, logic::dropped_exception_note { statement, except_handler }),
     CachedGenerator => ("SMP554", "cached-generator", "Generators under `functools.cache`, `lru_cache` or `cached_property`", None, logic::cached_generator { statement }),
-    UnawaitedCoroutine => ("SMP555", "unawaited-coroutine", "Calls of the run's coroutine functions that nothing awaits", Sometimes, logic::unawaited_coroutine { statement } reads [cross_file]),
-    SwappedArguments => ("SMP556", "swapped-arguments", "Positional arguments named after another parameter of the call", None, logic::swapped_arguments { expression } reads [cross_file]),
+    UnawaitedCoroutine => ("SMP555", "unawaited-coroutine", "Calls of the run's coroutine functions that nothing awaits", Sometimes, logic::unawaited_coroutine { statement } reads [cross_file, SIGNATURES]),
+    SwappedArguments => ("SMP556", "swapped-arguments", "Positional arguments named after another parameter of the call", None, logic::swapped_arguments { expression } reads [cross_file, SIGNATURES]),
     WrapperWithoutWraps => ("SMP557", "wrapper-without-wraps", "Decorator wrappers without `functools.wraps`", Sometimes, logic::wrapper_without_wraps { statement }),
-    FunctionAsCondition => ("SMP558", "function-as-condition", "Functions tested for truth instead of called", Sometimes, logic::function_as_condition { statement, expression } reads [cross_file]),
+    FunctionAsCondition => ("SMP558", "function-as-condition", "Functions tested for truth instead of called", Sometimes, logic::function_as_condition { statement, expression } reads [cross_file, SIGNATURES]),
     CatastrophicRegex => ("SMP559", "catastrophic-regex", "Regular expressions whose nested repeats backtrack exponentially", None, logic::catastrophic_regex { module }),
     DefaultArgumentValue => ("SMP560", "default-argument-value", "Arguments that pass a parameter its own default", Always, logic::default_argument_value { module } reads [cross_file]),
     ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
@@ -365,7 +365,7 @@ rules! {
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
-    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file]),
+    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file, DOCTESTS, COMPUTED_WRITES]),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
@@ -394,7 +394,7 @@ rules! {
     TestReturnValue => ("SMP817", "test-return-value", "Test functions that return a value", Sometimes, testing::test_return_value { module }),
     TestWithoutAssertion => ("SMP818", "test-without-assertion", "Tests that check nothing", None, testing::test_without_assertion { module }),
     PytestDeprecatedApi => ("SMP819", "up-pytest-deprecated-api", "pytest APIs that pytest removed or no longer calls", Sometimes, testing::up_pytest_deprecated_api { module }),
-    UnregisteredMarker => ("SMP820", "unregistered-marker", "pytest marks the configuration does not register", None, testing::unregistered_marker { module } reads [cross_file, STRING_WORDS]),
+    UnregisteredMarker => ("SMP820", "unregistered-marker", "pytest marks the configuration does not register", None, testing::unregistered_marker { module } reads [cross_file, STRING_WORDS, BOUND_MARKS]),
     UncollectedTestModule => ("SMP821", "uncollected-test-module", "Test modules whose file name pytest does not collect", None, testing::uncollected_test_module { module } reads [cross_file, STRING_WORDS]),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file, docs] skips [nested]),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module } skips [nested]),
@@ -423,12 +423,13 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
     diagnostic.secondary_code().and_then(|code| Rule::from_code(code.as_str()))
 }
 
-const WORDS: usize = 8;
+// One bit per rule, in as few words as the rules need, so a membership test on the walker's path reads one word.
+const WORDS: usize = Rule::ALL.len().div_ceil(128);
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct RuleSet([u128; WORDS]);
 
-const _: () = assert!(Rule::ALL.len() <= WORDS * 128, "RuleSet holds one bit per rule in its u128 words");
+const _: () = assert!(Rule::ALL.len() <= 1024, "the rule set holds at most 1024 rules");
 
 impl CacheKey for RuleSet {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
@@ -447,7 +448,7 @@ impl RuleSet {
             return Some((Self::from_rules([rule]), usize::MAX));
         }
         let set = Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.code().starts_with(selector)));
-        (!selector.is_empty() && set != Self::default()).then_some((set, selector.len()))
+        (!selector.is_empty() && !set.is_empty()).then_some((set, selector.len()))
     }
 
     pub fn all() -> Self {
@@ -488,11 +489,16 @@ impl RuleSet {
     }
 
     pub fn contains(self, rule: Rule) -> bool {
-        self.overlaps(Self::single(rule))
+        let bit = rule as usize;
+        self.0[bit / 128] >> (bit % 128) & 1 != 0
     }
 
     pub fn overlaps(self, other: Self) -> bool {
-        self.combine(other, |left, right| left & right) != Self::default()
+        self.0.iter().zip(other.0).any(|(left, right)| left & right != 0)
+    }
+
+    fn is_empty(self) -> bool {
+        self.0.iter().all(|word| *word == 0)
     }
 
     // The rules that read the project index, directly or through the public API, the rst targets' publicness, string

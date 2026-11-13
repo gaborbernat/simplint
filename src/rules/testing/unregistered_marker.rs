@@ -68,6 +68,7 @@ pub fn unregistered_marker(checker: &Checker) {
             || BUILTIN.contains(&name)
             || PLUGIN.contains(&name)
             || checker.project().string_word_count(name) > 0
+            || checker.project().is_mark_bound(name)
         {
             continue;
         }

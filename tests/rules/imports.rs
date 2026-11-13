@@ -1589,11 +1589,26 @@ fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, 
     assert_eq!(found, reported, "{stdout}");
 }
 
+// A module of the run imported beside a third-party one in the same statement leaves the third-party one reported.
+#[test]
+fn undeclared_dependency_judges_each_module_of_an_import() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\ndependencies = []\n"),
+        ("pkg/__init__.py", "import vendored, yaml\n"),
+        ("vendored.py", ""),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "undeclared-dependency"]);
+    let found: Vec<&str> =
+        stdout.lines().filter(|line| line.contains("SMP312")).filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(found, ["yaml"], "{stdout}");
+}
+
 // An import anywhere outside the tests uses a requirement, a deferred one too; a requirement with a marker installs
 // only somewhere, so it is left alone. The package's `__init__.py` holds the reports.
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"tomli; python_version < '3.11'\"]\n", &[] ; "used")]
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"pytest-mock\"]\n", &["pytest-mock"] ; "test_only")]
 #[test_case("dependencies = [\"requests\"]\ndynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
+#[test_case("dependencies = [\"requests\", \"PKG\"]\n", &[] ; "own_name_spelled_otherwise")]
 fn unused_dependency_reports_requirements_nothing_imports(project: &str, reported: &[&str]) {
     let root = common::project(&[
         ("pyproject.toml", format!("[project]\nname = \"pkg\"\n{project}").as_str()),

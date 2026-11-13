@@ -48,7 +48,7 @@ use self::enums::enum_classes;
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
-use self::prefixes::{PrefixSiblings, prefix_siblings};
+use self::prefixes::{PrefixSiblings, prefix_siblings, test_directory_modules};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
@@ -82,14 +82,16 @@ pub struct Project {
     pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     // The files that run when a top-level package of the run is imported or one of its entry points runs.
     pub(super) package_loaded: FxHashSet<FileId>,
-    // The offsets of each file's runtime import statements that reach a file of the run.
-    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<u32>>,
+    // The modules whose runtime import in each file reaches a file of the run.
+    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<String>>,
     // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
     pub(super) imported_modules: FxHashSet<String>,
+    pub(super) dependency_hosts: FxHashSet<FileId>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
     pub(super) prefix_siblings: FxHashMap<FileId, PrefixSiblings>,
+    pub(super) test_directory_modules: FxHashMap<PathBuf, Vec<String>>,
     // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -110,6 +112,8 @@ pub struct IndexInputs<'a> {
     pub roles: &'a FxHashMap<&'a Path, ModuleRole>,
     pub test_modules: &'a FxHashSet<&'a Path>,
     pub distribution_roots: &'a FxHashMap<&'a Path, &'a Path>,
+    // The files `unused-dependency` reports in, the only ones the index tells which modules the project imports.
+    pub dependency_hosts: &'a FxHashSet<&'a Path>,
     pub docs: &'a DocReferences,
     pub duplicate_statements: Option<usize>,
     pub probed: Option<u64>,
@@ -180,14 +184,17 @@ impl Project {
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
         let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
+        let dependency_hosts: FxHashSet<FileId> = inputs.dependency_hosts.iter().filter_map(|path| ids_of.get(path)).collect();
         let imported_modules: FxHashSet<String> = indexed
             .iter()
-            .filter(|(id, _)| !test_modules.contains(id))
+            .filter(|(id, _)| !dependency_hosts.is_empty() && !test_modules.contains(id))
             .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
             .collect();
-        let resolved_imports: FxHashMap<FileId, FxHashSet<u32>> = runtime
+        let resolved_imports: FxHashMap<FileId, FxHashSet<String>> = resolver
+            .modules
             .iter()
-            .map(|(file, imports)| (*file, imports.iter().map(|(_, range)| range.start().to_u32()).collect()))
+            .filter(|(_, module)| !module.runtime_modules.is_empty())
+            .map(|(file, module)| (*file, module.runtime_modules.iter().cloned().collect()))
             .collect();
         // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
         // steps, so they are worked out alongside them.
@@ -310,11 +317,13 @@ impl Project {
             package_loaded,
             resolved_imports,
             imported_modules,
+            dependency_hosts,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
             duplicates: duplicate_reports,
             prefix_siblings: prefix_siblings(&indexed, &resolver.files),
+            test_directory_modules: test_directory_modules(&indexed, &test_modules, &resolver.files),
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
             computed_writes,
@@ -364,13 +373,16 @@ impl Project {
                 overridden: entry(&self.overridden, id),
                 package_loaded: id.is_some_and(|id| self.package_loaded.contains(&id)),
                 resolved_imports: entry(&self.resolved_imports, id),
-                imported_modules: path
-                    .file_name()
-                    .is_some_and(|name| name == "__init__.py")
+                imported_modules: id
+                    .is_some_and(|id| self.dependency_hosts.contains(&id))
                     .then_some(&self.imported_modules),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
                 prefix_siblings: entry(&self.prefix_siblings, id),
+                directory_modules: path
+                    .parent()
+                    .and_then(|directory| self.test_directory_modules.get(directory))
+                    .map_or(&[], Vec::as_slice),
                 calls: self.calls.file(id),
                 reads: &self.wide.reads,
                 computed_reads: &self.wide.computed_reads,

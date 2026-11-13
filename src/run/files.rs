@@ -12,6 +12,7 @@ use super::conflicts::{self, Scope};
 use super::digest::probed_layout_key;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::{DocReferences, Parts, SearchRoots};
+use crate::rules::imports::is_dependency_host;
 use crate::run::cache::FileIdentity;
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -26,6 +27,7 @@ pub(super) struct ProjectInputs<'f> {
     pub(super) roles: FxHashMap<&'f Path, ModuleRole>,
     pub(super) test_modules: FxHashSet<&'f Path>,
     pub(super) distribution_roots: FxHashMap<&'f Path, &'f Path>,
+    pub(super) dependency_hosts: FxHashSet<&'f Path>,
 }
 
 impl<'f> ProjectInputs<'f> {
@@ -82,6 +84,14 @@ impl<'f> ProjectInputs<'f> {
             distribution_roots: files
                 .iter()
                 .map(|file| (file.absolute.as_path(), file.settings.project.project_dir.as_path()))
+                .collect(),
+            dependency_hosts: linted
+                .iter()
+                .filter(|file| {
+                    file.settings.rules.contains(Rule::UnusedDependency)
+                        && is_dependency_host(file.settings.project, file.module_path.as_deref(), file.settings.is_test)
+                })
+                .map(|file| file.absolute.as_path())
                 .collect(),
         }
     }

@@ -2,7 +2,7 @@ use ruff_python_ast::helpers::{any_over_expr, extract_handled_exceptions};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -29,12 +29,12 @@ pub fn undeclared_dependency(checker: &Checker) {
     let mut imports = Imports::default();
     imports.visit_body(checker.body());
     let project = checker.project();
-    for (module, range, start) in imports.found {
+    for (module, range) in imports.found {
         let root = top_level(module);
         if root == "__future__"
             || ships_on_some_version(module)
             || packages.contains(root)
-            || project.imports_run_file(start)
+            || project.imports_run_file(module)
             || metadata.may_install(module)
         {
             continue;
@@ -52,18 +52,18 @@ pub fn undeclared_dependency(checker: &Checker) {
 // platform runs only where that environment provides it.
 #[derive(Default)]
 struct Imports<'a> {
-    // Each module with the range to report and the start of its statement.
-    found: Vec<(&'a str, TextRange, TextSize)>,
+    // Each module with the range to report.
+    found: Vec<(&'a str, TextRange)>,
 }
 
 impl<'a> Visitor<'a> for Imports<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::Import(ast::StmtImport { names, .. }) => {
-                self.found.extend(names.iter().map(|alias| (alias.name.as_str(), alias.range(), stmt.start())));
+                self.found.extend(names.iter().map(|alias| (alias.name.as_str(), alias.range())));
             }
             Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
-                self.found.push((module.as_str(), module.range(), stmt.start()));
+                self.found.push((module.as_str(), module.range()));
             }
             // A function imports when it runs, which an optional integration relies on to import only when used.
             Stmt::FunctionDef(_) => {}
