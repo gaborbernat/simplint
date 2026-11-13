@@ -254,6 +254,27 @@ functions nested in it. These values count:
       return _CODES[name]
   ```
 
+- **Three or more adjacent constants that different functions read**, such as a palette or a set of limits: the block
+  reads as one unit, and splitting it across its users scatters values that are tuned together.
+
+  ```python ok
+  _RED = "#ff0000"
+  _GREEN = "#00ff00"
+  _BLUE = "#0000ff"
+
+
+  def warning() -> str:
+      return _RED
+
+
+  def ok() -> str:
+      return _GREEN
+
+
+  def info() -> str:
+      return _BLUE
+  ```
+
 - **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must
   exist while the module loads, before any function runs.
 

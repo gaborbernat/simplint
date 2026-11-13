@@ -1,6 +1,7 @@
 from typing import Final
 
 _TIMEOUT: Final[int] = 30
+print("loading")
 _RETRIES = 3
 _SHARED = 1
 # cached: rebuilding the table on every call is too slow
@@ -212,3 +213,32 @@ _ÉTAT = 2
 
 def twice() -> int:
     return _ÉTAT + _ÉTAT
+
+
+_RED = "#ff0000"
+_GREEN = "#00ff00"
+_BLUE = "#0000ff"
+
+
+def warning_color() -> str:
+    return _RED
+
+
+def ok_color() -> str:
+    return _GREEN
+
+
+def info_color() -> str:
+    return _BLUE
+
+
+_FIRST = 1
+_SECOND = 2
+
+
+def first() -> int:
+    return _FIRST
+
+
+def second() -> int:
+    return _SECOND
