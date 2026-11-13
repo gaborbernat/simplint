@@ -44,7 +44,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         .join(", ");
     let name = callee.name();
     walker.checker.report(
-        Rule::SwappedArguments,
+        Rule::MisplacedArguments,
         arguments.range(),
         format!(
             "arguments of `{name}` are out of order: {pairs}; pass them in the order of the parameters, or by keyword"

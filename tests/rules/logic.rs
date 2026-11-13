@@ -325,7 +325,7 @@ use crate::common::{self, check, read};
 )]
 #[test_case("cached-generator", "cached_generator.py", None ; "cached_generator")]
 #[test_case("unawaited-coroutine", "unawaited_coroutine.py", None ; "unawaited_coroutine")]
-#[test_case("swapped-arguments", "swapped_arguments.py", None ; "swapped_arguments")]
+#[test_case("misplaced-arguments", "misplaced_arguments.py", None ; "misplaced_arguments")]
 #[test_case("wrapper-without-wraps", "wrapper_without_wraps.py", None ; "wrapper_without_wraps")]
 #[test_case("wrapper-without-wraps", "wrapper_without_wraps_from_import.py", None ; "wrapper_without_wraps_from_import")]
 #[test_case("wrapper-without-wraps", "wrapper_without_wraps_no_import.py", None ; "wrapper_without_wraps_no_import")]

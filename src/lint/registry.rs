@@ -354,7 +354,7 @@ rules! {
     DroppedExceptionNote => ("SMP553", "dropped-exception-note", "Exceptions given a note and then dropped", None, logic::dropped_exception_note { statement, except_handler }),
     CachedGenerator => ("SMP554", "cached-generator", "Generators under `functools.cache`, `lru_cache` or `cached_property`", None, logic::cached_generator { statement }),
     UnawaitedCoroutine => ("SMP555", "unawaited-coroutine", "Calls of the run's coroutine functions that nothing awaits", Sometimes, logic::unawaited_coroutine { statement } reads [cross_file, SIGNATURES]),
-    SwappedArguments => ("SMP556", "swapped-arguments", "Positional arguments named after another parameter of the call", None, logic::swapped_arguments { expression } reads [cross_file, SIGNATURES]),
+    MisplacedArguments => ("SMP556", "misplaced-arguments", "Positional arguments named after another parameter of the call", None, logic::misplaced_arguments { expression } reads [cross_file, SIGNATURES]),
     WrapperWithoutWraps => ("SMP557", "wrapper-without-wraps", "Decorator wrappers without `functools.wraps`", Sometimes, logic::wrapper_without_wraps { statement }),
     FunctionAsCondition => ("SMP558", "function-as-condition", "Functions tested for truth instead of called", Sometimes, logic::function_as_condition { statement, expression } reads [cross_file, SIGNATURES]),
     CatastrophicRegex => ("SMP559", "catastrophic-regex", "Regular expressions whose nested repeats backtrack exponentially", None, logic::catastrophic_regex { module }),
