@@ -1,5 +1,4 @@
-Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and
-makes a test look like it verifies more than it does.
+Flags `assert` statements whose test is a truthy constant.
 
 ## Why is this bad?
 

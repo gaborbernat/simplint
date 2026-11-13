@@ -1,5 +1,4 @@
-Flags attributes set on a mock right after it is created. The mock constructors take any attribute as a keyword
-argument, so the whole setup fits in one call.
+Flags attributes set on a mock right after it is created.
 
 ## Why is this bad?
 

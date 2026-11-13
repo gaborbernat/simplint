@@ -5,8 +5,7 @@ the package is imported.
 
 An import of a module the project does not declare works on the author's machine, where a development tool or another
 package happened to install it, and fails with `ModuleNotFoundError` for a user who installs only what the project
-lists. A module another requirement pulls in is no safer: that requirement can drop it in any release. Declaring each
-module the code imports keeps the install complete.
+lists. A module another requirement pulls in is no safer: that requirement can drop it in any release.
 
 ## Example
 

@@ -7,8 +7,8 @@ so pytest never collects it.
 pytest only
 [collects](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery)
 `test_*.py` and `*_test.py` files unless the configuration says otherwise. A module named `tests/parser_tests.py` or
-`tests/check_parser.py` holds tests that never run, and nothing says so: the run passes and the coverage report just
-misses the lines.
+`tests/check_parser.py` holds tests that never run, and nothing says so: the run passes, and the coverage report shows
+their lines as never run.
 
 ## Example
 
