@@ -15,9 +15,9 @@ use crate::syntax::Visibility;
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
 use super::prefixes::PrefixSiblings;
-use super::reach::unqualified;
 use super::run_imports::Members;
 use super::{FileId, FileIds, Project, RunReads};
+use crate::syntax::last_dotted_segment;
 
 #[derive(PartialEq)]
 pub struct ModuleUse {
@@ -448,7 +448,7 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
-        let namesake = self.project.wide.class_namesakes.contains(unqualified(qualified));
+        let namesake = self.project.wide.class_namesakes.contains(last_dotted_segment(qualified));
         self.project.docs.class_doc_from(root, qualified, namesake)
     }
 
@@ -492,7 +492,7 @@ impl<'a> FileIndex<'a> {
         let writes = &self.project.wide.writes;
         let own =
             usize::from(writes.on_class.contains_key(class)) + usize::from(writes.unslottable_bases.contains(class));
-        writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
+        writes.namesakes.get(last_dotted_segment(class)).is_some_and(|count| *count > own)
     }
 
     // Storing `__dict__` fails on a frozen instance, unlike reading it through `vars(obj)`.

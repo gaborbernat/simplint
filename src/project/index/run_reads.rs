@@ -10,9 +10,9 @@ use crate::project::facts::Channel;
 use crate::project::{DocReferences, FileFacts};
 
 use super::files::FileId;
-use super::reach::unqualified;
 use super::writes::Writes;
 use super::{every, every_in};
+use crate::syntax::last_dotted_segment;
 
 pub(in crate::project) struct RunWide {
     pub(super) reads: RunReads,
@@ -195,7 +195,7 @@ impl RunWide {
             .chain(writes.dict_stores.symmetric_difference(&others.dict_stores))
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
-            .map(|class| unqualified(class));
+            .map(|class| last_dotted_segment(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
         let all_read = (self.reads.tests_read_all != other.reads.tests_read_all).then_some("__all__");
         self.assigned_attributes
@@ -210,7 +210,7 @@ impl RunWide {
             .chain(
                 self.referenced_paths
                     .symmetric_difference(&other.referenced_paths)
-                    .map(|path| path.rsplit_once('.').map_or(path.as_str(), |(_, name)| name)),
+                    .map(|path| last_dotted_segment(path)),
             )
             .chain(classes)
             .chain(pickling)

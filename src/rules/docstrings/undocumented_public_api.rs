@@ -7,7 +7,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::{is_documented_variable, ruff_ignores_function};
 use crate::rules::public_api::{ApiItem, ApiKind};
-use crate::syntax::{alias_binding, docstring, for_each_child_body, is_name};
+use crate::syntax::{alias_binding, docstring, for_each_child_body, is_name, top_level};
 
 pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
@@ -177,7 +177,7 @@ impl<'a> RuffPublic<'a> {
             return None;
         }
         // A dotted name is a member, whose visibility follows the class it sits in, so only the outermost name matters.
-        let top = item.name.split_once('.').map_or(item.name.as_str(), |(top, _)| top);
+        let top = top_level(&item.name);
         if top.starts_with('_') || self.exports.as_ref().is_some_and(|names| !names.contains(top)) {
             return None;
         }

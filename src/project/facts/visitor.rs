@@ -18,7 +18,9 @@ use super::loaded::{Globals, lexically_normalized};
 use super::patches::named_attribute_call;
 use super::runtime::{Constants, Runs, catches_import_error};
 use super::{Channel, Channels, ImportSite, ModuleNames, Parts};
-use crate::syntax::{alias_binding, alias_root_binding, attribute_call, last_segment, target_names};
+use crate::syntax::{
+    alias_binding, alias_root_binding, attribute_call, last_dotted_segment, last_segment, target_names,
+};
 
 // `redundant` marks `name as name`, which the typing spec reads as a re-export.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -707,7 +709,7 @@ impl FactVisitor<'_> {
 
     fn base_class(&self, base: &Expr) -> Option<String> {
         let written = UnqualifiedName::from_expr(base)?;
-        self.qualified(base).unwrap_or_else(|| written.segments().join(".")).rsplit('.').next().map(str::to_owned)
+        Some(last_dotted_segment(&self.qualified(base).unwrap_or_else(|| written.segments().join("."))).to_owned())
     }
 
     pub(super) fn qualified(&self, expr: &Expr) -> Option<String> {

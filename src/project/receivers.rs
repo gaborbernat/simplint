@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::syntax::MOCK_CLASSES;
+use crate::syntax::{MOCK_CLASSES, last_dotted_segment};
 use crate::syntax::{
     alias_root_binding, instance_writes, is_classmethod, is_name, last_segment, module_statements, pattern_capture,
     receiver,
@@ -268,7 +268,7 @@ impl<'a> Collector<'a, '_> {
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => match self.receiver(value) {
                 Receiver::Mock => Receiver::Mock,
                 Receiver::Instance(class) | Receiver::Declared(class) | Receiver::Own(class) => {
-                    self.member(class.rsplit('.').next().unwrap_or_default(), attr.as_str())
+                    self.member(last_dotted_segment(&class), attr.as_str())
                 }
                 Receiver::Unknown => Receiver::Unknown,
             },
@@ -450,7 +450,7 @@ impl<'a> Collector<'a, '_> {
         // Qualifying keeps the last segment, except for a bare name bound by an import, as `from pickle import dumps as
         // write` makes `write` mean `pickle.dumps`. Other calls cannot be a pickle function, so they skip qualifying.
         let last = match written.segments() {
-            [name] => self.aliases.get(name).map_or(*name, |module| module.rsplit('.').next().unwrap_or_default()),
+            [name] => self.aliases.get(name).map_or(*name, |module| last_dotted_segment(module)),
             segments => segments.last().copied().unwrap_or_default(),
         };
         if !matches!(last, "dumps" | "dump" | "Pickler") {
@@ -642,7 +642,7 @@ fn assigned(value: &Expr) -> Receiver {
 // one- or two-letter capital is more likely a type variable such as `T` or `KT`. The name keeps its module, as
 // `models.Release`, so the import that binds the module qualifies it.
 fn class_name(written: &str) -> Option<String> {
-    let bare = written.rsplit('.').next().unwrap_or_default().trim_start_matches('_');
+    let bare = last_dotted_segment(written).trim_start_matches('_');
     let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())
         && (bare.chars().any(|character| character.is_ascii_lowercase()) || bare.len() >= 3);
     is_class.then(|| written.to_owned())

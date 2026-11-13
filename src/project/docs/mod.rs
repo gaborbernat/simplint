@@ -11,6 +11,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::project::cache;
+use crate::syntax::last_dotted_segment;
 pub use conf::AutoclassContent;
 use conf::Rendered;
 use walk::{is_configuration, is_foreign, pages, tree_key};
@@ -116,7 +117,7 @@ impl DocReferences {
                 return option.unwrap_or(docs.named);
             }
             let below = |outer: &str, inner: &str| outer.strip_suffix(inner).is_some_and(|rest| rest.ends_with('.'));
-            match docs.directives.simple.get(qualified.rsplit_once('.').map_or(qualified, |(_, name)| name)) {
+            match docs.directives.simple.get(last_dotted_segment(qualified)) {
                 Some(_) if namesake => AutoclassContent::Unknown,
                 Some(option) => option.unwrap_or(docs.named),
                 // A docs `sys.path` can name the module differently from its package path, so a directive whose

@@ -11,7 +11,9 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import, with_import};
 use crate::rules::{is_class_like, is_sphinx_conf, isort_key};
 use crate::semantic::Semantic;
-use crate::syntax::{alias_binding, from_imports, has_version_gate, last_segment, single_assignment};
+use crate::syntax::{
+    alias_binding, from_imports, has_version_gate, last_dotted_segment, last_segment, single_assignment,
+};
 
 use super::globals_writes::GlobalsWrites;
 use super::is_type_parameter_constructor;
@@ -145,7 +147,7 @@ fn is_type_alias(value: &Expr) -> bool {
 fn is_qualifier(annotation: &Expr) -> bool {
     if let Expr::StringLiteral(literal) = annotation {
         let base = literal.value.to_str().trim().split('[').next().unwrap_or_default();
-        return matches!(base.rsplit('.').next(), Some("Final" | "ClassVar" | "TypeAlias"));
+        return matches!(last_dotted_segment(base), "Final" | "ClassVar" | "TypeAlias");
     }
     let (base, slice) = match annotation {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => (value.as_ref(), Some(slice.as_ref())),
