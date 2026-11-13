@@ -1,9 +1,8 @@
-use ruff_python_ast::{self as ast, Comprehension, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Comprehension, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::logic::up_comprehension_unpacking::unpacks_only;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let generators: &[Comprehension] = match expr {
@@ -13,21 +12,17 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         Expr::DictComp(ast::ExprDictComp { generators, .. }) => generators,
         _ => return,
     };
-    let checker = walker.checker;
-    // From Python 3.15 up-comprehension-unpacking (SMP508) folds a nested `for` that only unpacks into the element.
-    if checker.target_version() >= PythonVersion::PY315 && unpacks_only(expr) {
-        return;
-    }
     let Some((range, message)) = excess(generators) else {
         return;
     };
-    checker.report(Rule::ComprehensionComplexity, range, message);
+    walker.checker.report(Rule::ComprehensionComplexity, range, message);
 }
 
 fn excess(generators: &[Comprehension]) -> Option<(TextRange, String)> {
-    if let [_, second, ..] = generators {
+    // Two loops read as one pairing; a third is where the reader loses track of which loop each name belongs to.
+    if let [_, _, third, ..] = generators {
         return Some((
-            second.range(),
+            third.range(),
             format!(
                 "Comprehension has {} `for` clauses; write the nested loop as `for` statements or a helper",
                 generators.len()

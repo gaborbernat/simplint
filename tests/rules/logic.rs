@@ -331,9 +331,6 @@ use crate::common::{self, check, read};
 #[test_case("dropped-exception-note", "dropped_exception_note.py", None ; "dropped_exception_note")]
 #[test_case("expression-complexity", "expression_complexity.py", None ; "expression_complexity")]
 #[test_case("comprehension-complexity", "comprehension_complexity.py", None ; "comprehension_complexity")]
-#[test_case(
-    "comprehension-complexity", "comprehension_complexity.py", Some("py315") ; "comprehension_complexity_python315"
-)]
 #[test_case("cached-generator", "cached_generator.py", None ; "cached_generator")]
 #[test_case("unawaited-coroutine", "unawaited_coroutine.py", None ; "unawaited_coroutine")]
 #[test_case("misplaced-arguments", "misplaced_arguments.py", None ; "misplaced_arguments")]
