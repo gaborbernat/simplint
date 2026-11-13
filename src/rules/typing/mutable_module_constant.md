@@ -130,6 +130,9 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
   PLUGINS.append("extra")
   ```
 
+- **A Sphinx `conf.py`**: Sphinx hands its settings to extensions, some of which change them, as
+  `sphinx-copybutton` updates `html_context`.
+
 - **A name assigned more than once**: it is a variable, not a constant.
 
   ```python ok

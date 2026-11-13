@@ -30,6 +30,7 @@ use crate::common;
 #[test_case("vars-call", "vars_call_bound.py", None ; "vars_call_shadowed")]
 #[test_case("vars-call", "vars_call_mapping.py", None ; "vars_call_mapping")]
 #[test_case("mutable-module-constant", "mutable_module_constant.py", None ; "mutable_module_constant")]
+#[test_case("mutable-module-constant", "docs/conf.py", None ; "mutable_module_constant_sphinx_conf")]
 #[test_case(
     "mutable-module-constant", "mutable_module_constant.py", Some("py315") ; "mutable_module_constant_python315"
 )]

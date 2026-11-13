@@ -10,14 +10,16 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import};
+use crate::rules::is_sphinx_conf;
 use crate::syntax::{last_segment, single_assignment};
 
 use super::globals_writes::GlobalsWrites;
 
 pub fn mutable_module_constant(checker: &Checker) {
     let project = checker.project();
-    // A star import or a computed read hands the module's names to code this rule cannot follow.
-    if project.is_star_imported() || project.is_computed_written() {
+    // A star import or a computed read hands the module's names to code this rule cannot follow, and Sphinx hands a
+    // configuration's to extensions that change them.
+    if project.is_star_imported() || project.is_computed_written() || is_sphinx_conf(checker) {
         return;
     }
     let globals_writes = OnceCell::new();
