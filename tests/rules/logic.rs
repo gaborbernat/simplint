@@ -66,6 +66,7 @@ use crate::common::{self, check, read};
 #[test_case("single-use-variable", "single_use_variable_walrus.py", None ; "single_use_variable_walrus")]
 #[test_case("single-use-variable", "single_use_variable_tstring.py", None ; "single_use_variable_tstring")]
 #[test_case("single-use-variable", "single_use_variable_format_spec.py", None ; "single_use_variable_format_spec")]
+#[test_case("single-use-variable", "single_use_variable_scopes.py", None ; "single_use_variable_scopes")]
 #[test_case("string-concatenation", "string_concatenation.py", None ; "string_concatenation")]
 #[test_case("string-concatenation", "string_concatenation_old.py", Some("py310") ; "string_concatenation_py310")]
 #[test_case("string-concatenation", "string_concatenation_types.py", None ; "string_concatenation_types")]

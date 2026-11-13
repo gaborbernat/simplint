@@ -55,7 +55,7 @@ block that mentions the name assigns it again without reading it.
 - **A `break` or `continue` between the two**: the loop may read the first value before the second assignment.
 
 - **A name a nested function, class or lambda mentions, or one `global` or `nonlocal` declares**: it may be read at any
-  time.
+  time. A nested function, lambda or comprehension that binds the name for itself reads its own variable, not this one.
 
   ```python ok
   from collections.abc import Callable

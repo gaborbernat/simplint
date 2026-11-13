@@ -9,7 +9,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 30:5 SMP536 The value assigned to `found` is replaced on line 30 before anything reads it
 35:5 SMP536 The value assigned to `found` is replaced on line 36 before anything reads it [fix: Remove the value that is never read]
 42:9 SMP536 The value assigned to `value` is replaced on line 43 before anything reads it [fix: Remove the value that is never read]
---- fixed (5 applied, 2 remaining) ---
+142:5 SMP536 The value assigned to `encoding` is replaced on line 143 before anything reads it [fix: Remove the value that is never read]
+--- fixed (6 applied, 2 remaining) ---
 from collections.abc import Callable
 
 
@@ -144,3 +145,23 @@ value = 1
 class Holder:
     size = 0
     size = 1
+
+
+def nested_binds_its_own(path: str) -> object:
+    encoding = path.upper()
+
+    def inner(line: str) -> str:
+        encoding = line.lower()
+        return encoding
+
+    return encoding, inner
+
+
+def nested_reads_outer(path: str) -> object:
+    encoding = None
+
+    def inner() -> object:
+        return encoding
+
+    encoding = path.upper()
+    return inner

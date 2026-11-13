@@ -136,3 +136,24 @@ value = 1
 class Holder:
     size = 0
     size = 1
+
+
+def nested_binds_its_own(path: str) -> object:
+    encoding = None
+    encoding = path.upper()
+
+    def inner(line: str) -> str:
+        encoding = line.lower()
+        return encoding
+
+    return encoding, inner
+
+
+def nested_reads_outer(path: str) -> object:
+    encoding = None
+
+    def inner() -> object:
+        return encoding
+
+    encoding = path.upper()
+    return inner

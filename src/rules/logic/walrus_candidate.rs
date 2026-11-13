@@ -10,7 +10,9 @@ use crate::layout::{fits_line, joined_width};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_deletion};
-use crate::rules::logic::inline::{LOCALS_READERS, declared_outer, for_each_scoped_body, inlined_text, leading_name};
+use crate::rules::logic::inline::{
+    InnerScopes, LOCALS_READERS, body_region, declared_outer, for_each_scoped_body, inlined_text, leading_name,
+};
 use crate::rules::logic::sole_name_target;
 use crate::syntax::{expr_mentions, has_version_gate, needs_parentheses};
 
@@ -91,10 +93,11 @@ fn candidate<'a>(
     }
     // Inlining deletes the binding, so any other reader of it, earlier in the scope (a closure, the previous loop
     // iteration), in another module, or through `global`/`nonlocal`, would lose it.
-    let (scope_range, shared) = match scope {
+    let (scope_range, own_region, shared) = match scope {
         Scope::Class => return None,
         Scope::Function(function) => (
             function.range(),
+            function.as_function_def_stmt().map(|definition| body_region(&definition.body)),
             function.as_function_def_stmt().is_some_and(|definition| {
                 lookups
                     .declared
@@ -104,17 +107,18 @@ fn candidate<'a>(
                     .contains(name)
             }),
         ),
-        Scope::Module => (checker.file_range(), checker.is_exported(name)),
+        Scope::Module => (checker.file_range(), None, checker.is_exported(name)),
     };
+    let reads = Reads { scope: scope_range, own: own_region };
     let mentions = lookups.mentions.get_or_init(|| Mentions::of(checker.body()));
     // `globals()` reads the module's names, so it keeps only a module-level name alive.
     if shared
         || LOCALS_READERS
             .into_iter()
             .chain(matches!(scope, Scope::Module).then_some("globals"))
-            .any(|reader| mentions.within(reader, scope_range))
-        || mentions.within(name, TextRange::new(scope_range.start(), assign.start()))
-        || mentions.within(name, TextRange::new(if_stmt.end(), scope_range.end()))
+            .any(|reader| mentions.within(reader, scope_range, &reads))
+        || mentions.within(name, TextRange::new(scope_range.start(), assign.start()), &reads)
+        || mentions.within(name, TextRange::new(if_stmt.end(), scope_range.end()), &reads)
     {
         return None;
     }
@@ -125,7 +129,7 @@ fn candidate<'a>(
         name,
         target: first.range,
         bare,
-        single_use: !mentions.within(name, TextRange::new(first.end(), if_stmt.end())),
+        single_use: !mentions.within(name, TextRange::new(first.end(), if_stmt.end()), &reads),
     })
 }
 
@@ -141,34 +145,65 @@ struct Candidate<'a> {
 
 // Where each name is mentioned in the module, so checking for a name inside a range is a lookup rather than a walk of
 // every statement before it.
-struct Mentions<'a>(FxHashMap<&'a str, Vec<TextRange>>);
+// Each mention with the region of the nested scope that binds the name for itself, if one does.
+#[derive(Default)]
+struct Mentions<'a> {
+    names: FxHashMap<&'a str, Vec<(TextRange, Option<TextRange>)>>,
+    inner: InnerScopes<'a>,
+}
+
+// The scope a candidate sits in, and its body's region, `None` for the module.
+struct Reads {
+    scope: TextRange,
+    own: Option<TextRange>,
+}
+
+impl Reads {
+    // A mention reads the scope's variable unless a scope nested in it binds the name for itself.
+    fn reads(&self, owner: Option<TextRange>) -> bool {
+        owner.is_none_or(|owner| Some(owner) == self.own || !self.scope.contains_range(owner))
+    }
+}
 
 impl<'a> Mentions<'a> {
     fn of(body: &'a [Stmt]) -> Self {
-        let mut mentions = Self(FxHashMap::default());
+        let mut mentions = Self::default();
         mentions.visit_body(body);
-        for ranges in mentions.0.values_mut() {
-            ranges.sort_unstable_by_key(Ranged::start);
+        for ranges in mentions.names.values_mut() {
+            ranges.sort_unstable_by_key(|(range, _)| range.start());
         }
         mentions
     }
 
-    // Names never overlap, so the first mention starting inside `range` is the only one that can decide it.
-    fn within(&self, name: &str, range: TextRange) -> bool {
-        self.0.get(name).is_some_and(|ranges| {
-            ranges
-                .get(ranges.partition_point(|mention| mention.start() < range.start()))
-                .is_some_and(|mention| mention.end() <= range.end())
+    fn within(&self, name: &str, range: TextRange, reads: &Reads) -> bool {
+        self.names.get(name).is_some_and(|mentions| {
+            mentions[mentions.partition_point(|(mention, _)| mention.start() < range.start())..]
+                .iter()
+                .take_while(|(mention, _)| mention.end() <= range.end())
+                .any(|(_, owner)| reads.reads(*owner))
         })
     }
 }
 
 impl<'a> Visitor<'a> for Mentions<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        let entered = self.inner.enter_stmt(stmt);
+        visitor::walk_stmt(self, stmt);
+        if entered {
+            self.inner.leave();
+        }
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Name(name) = expr {
-            self.0.entry(name.id.as_str()).or_default().push(name.range);
+            let owner = self.inner.owner(name.id.as_str(), name.range);
+            self.names.entry(name.id.as_str()).or_default().push((name.range, owner));
         }
+        let entered = self.inner.enter_expr(expr);
         visitor::walk_expr(self, expr);
+        if entered {
+            self.inner.leave();
+        }
     }
 }
 
