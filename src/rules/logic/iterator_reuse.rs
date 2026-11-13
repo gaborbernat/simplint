@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::flow::has_own_break;
-use crate::rules::logic::name_uses::{LocalScope, comprehension_generators};
+use crate::rules::logic::name_uses::LocalScope;
 
 // The builtins that return a one-pass iterator.
 const ITERATOR_BUILTINS: [&str; 5] = ["map", "filter", "zip", "reversed", "enumerate"];
@@ -130,6 +130,29 @@ impl<'a> Walk<'_, 'a> {
         }
     }
 
+    fn comprehension(&mut self, expr: &'a Expr, generators: &'a [ast::Comprehension], elements: [Option<&'a Expr>; 2]) {
+        // The first iterable is read once, where the comprehension runs; the rest run once per item.
+        if let Some(first) = generators.first() {
+            self.site(&first.iter, false);
+            self.visit_expr(&first.iter);
+        }
+        let id = expr.start().to_usize();
+        self.path.push(Branch { statement: id, arm: 0, is_loop: true, exits: false });
+        for (index, generator) in generators.iter().enumerate() {
+            if index > 0 {
+                self.site(&generator.iter, false);
+                self.visit_expr(&generator.iter);
+            }
+            for condition in &generator.ifs {
+                self.visit_expr(condition);
+            }
+        }
+        for element in elements.into_iter().flatten() {
+            self.visit_expr(element);
+        }
+        self.path.pop();
+    }
+
     fn site(&mut self, expr: &'a Expr, resumable: bool) {
         if let Expr::Name(name) = expr {
             self.sites.push(Site { name: name.id.as_str(), range: name.range, path: self.path.clone(), resumable });
@@ -225,37 +248,13 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
                 self.site(value, false);
                 walk_expr(self, expr);
             }
-            Expr::ListComp(_) | Expr::SetComp(_) | Expr::Generator(_) | Expr::DictComp(_) => {
-                let generators = comprehension_generators(expr);
-                // The first iterable is read once, where the comprehension runs; the rest run once per item.
-                if let Some(first) = generators.first() {
-                    self.site(&first.iter, false);
-                    self.visit_expr(&first.iter);
-                }
-                let id = expr.start().to_usize();
-                self.path.push(Branch { statement: id, arm: 0, is_loop: true, exits: false });
-                for (index, generator) in generators.iter().enumerate() {
-                    if index > 0 {
-                        self.site(&generator.iter, false);
-                        self.visit_expr(&generator.iter);
-                    }
-                    for condition in &generator.ifs {
-                        self.visit_expr(condition);
-                    }
-                }
-                match expr {
-                    Expr::ListComp(ast::ExprListComp { elt, .. })
-                    | Expr::SetComp(ast::ExprSetComp { elt, .. })
-                    | Expr::Generator(ast::ExprGenerator { elt, .. }) => self.visit_expr(elt),
-                    Expr::DictComp(ast::ExprDictComp { key, value, .. }) => {
-                        if let Some(key) = key {
-                            self.visit_expr(key);
-                        }
-                        self.visit_expr(value);
-                    }
-                    _ => {}
-                }
-                self.path.pop();
+            Expr::ListComp(ast::ExprListComp { elt, generators, .. })
+            | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
+            | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {
+                self.comprehension(expr, generators, [Some(elt), None]);
+            }
+            Expr::DictComp(ast::ExprDictComp { key, value, generators, .. }) => {
+                self.comprehension(expr, generators, [key.as_deref(), Some(value)]);
             }
             _ => walk_expr(self, expr),
         }

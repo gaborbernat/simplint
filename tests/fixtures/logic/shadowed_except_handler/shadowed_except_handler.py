@@ -91,3 +91,12 @@ def unknown(path, error):
         return None
     except error:
         return None
+
+
+def single_base(path):
+    try:
+        return read(path)
+    except LookupError:
+        return None
+    except (KeyError, IndexError):
+        return ""

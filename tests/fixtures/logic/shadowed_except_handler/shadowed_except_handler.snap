@@ -9,7 +9,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 44:47 SMP552 `socket.timeout` derives from `OSError`, which this clause also names, so it adds nothing [fix: Remove `socket.timeout`]
 55:12 SMP552 the handlers on lines 51, 53 catch a base of every class `(KeyError, FileNotFoundError)` names first, so this handler never runs
 64:9 SMP552 `IsADirectoryError` derives from `OSError`, which this clause also names, so it adds nothing
---- fixed (4 applied, 3 remaining) ---
+101:12 SMP552 the handler on line 99 catches a base of every class `(KeyError, IndexError)` names first, so this handler never runs
+--- fixed (4 applied, 4 remaining) ---
 __all__ = []
 
 import io
@@ -103,3 +104,12 @@ def unknown(path, error):
         return None
     except error:
         return None
+
+
+def single_base(path):
+    try:
+        return read(path)
+    except LookupError:
+        return None
+    except (KeyError, IndexError):
+        return ""

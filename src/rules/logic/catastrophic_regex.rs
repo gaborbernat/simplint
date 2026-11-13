@@ -71,14 +71,6 @@ impl Node {
             Node::Repeat { node, min, .. } => *min == 0 || node.is_optional(),
         }
     }
-
-    fn backtracks(&self) -> bool {
-        match self {
-            Node::Atom => false,
-            Node::Group { alternatives, atomic } => !atomic && alternatives.iter().flatten().any(Node::backtracks),
-            Node::Repeat { possessive, .. } => !possessive,
-        }
-    }
 }
 
 // The first repeat that the input can drive into exponential backtracking: an unbounded repeat of a group where one
@@ -108,9 +100,7 @@ fn splits(sequence: &[Node]) -> bool {
             Node::Group { alternatives, atomic: false } => alternatives.iter().any(|inner| splits(inner)),
             _ => false,
         };
-        unbounded
-            && sequence.iter().enumerate().all(|(other, node)| other == index || node.is_optional())
-            && (matches!(node, Node::Repeat { .. }) || node.backtracks())
+        unbounded && sequence.iter().enumerate().all(|(other, node)| other == index || node.is_optional())
     })
 }
 

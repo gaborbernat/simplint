@@ -1,5 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::comparable::ComparableExpr;
+use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_stdlib::keyword::is_keyword;
 use ruff_text_size::{Ranged, TextRange};
@@ -30,7 +31,7 @@ fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, scope: &LocalScope, n
     let Expr::Name(index) = loop_stmt.target.as_ref() else {
         return;
     };
-    let Some(sequence) = range_of_len(checker, &loop_stmt.iter) else {
+    let Some((sequence, name)) = range_of_len(checker, &loop_stmt.iter) else {
         return;
     };
     let body = TextRange::new(loop_stmt.body[0].start(), loop_stmt.body.last().map_or(loop_stmt.end(), Ranged::end));
@@ -50,8 +51,9 @@ fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, scope: &LocalScope, n
     }
     let sequence_text = checker.text(sequence);
     let uses = scope.uses();
-    let fix = item_name(checker, sequence, uses).and_then(|item| {
-        fixable(index, sequence, &reads, uses, nodes, body).then(|| {
+    let segments = name.segments();
+    let fix = item_name(checker, segments[segments.len() - 1], uses).and_then(|item| {
+        fixable(index, sequence, segments[0], &reads, uses, nodes, body).then(|| {
             let mut edits = vec![
                 Edit::range_replacement(item.clone(), index.range),
                 Edit::range_replacement(sequence_text.to_owned(), loop_stmt.iter.range()),
@@ -72,7 +74,7 @@ fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, scope: &LocalScope, n
 }
 
 // The `seq` of `range(len(seq))`, when it is a name or an attribute of one, which the loop can read again unchanged.
-fn range_of_len<'a>(checker: &Checker, iter: &'a Expr) -> Option<&'a Expr> {
+fn range_of_len<'a>(checker: &Checker, iter: &'a Expr) -> Option<(&'a Expr, UnqualifiedName<'a>)> {
     let semantic = checker.semantic();
     let range_call = iter.as_call_expr()?;
     if !semantic.is_builtin(&range_call.func, "range") || !range_call.arguments.keywords.is_empty() {
@@ -81,20 +83,11 @@ fn range_of_len<'a>(checker: &Checker, iter: &'a Expr) -> Option<&'a Expr> {
     let [Expr::Call(len_call)] = range_call.arguments.args.as_ref() else {
         return None;
     };
-    if !semantic.is_builtin(&len_call.func, "len") || !len_call.arguments.keywords.is_empty() {
-        return None;
-    }
-    let [sequence] = len_call.arguments.args.as_ref() else {
-        return None;
-    };
-    is_plain_reference(sequence).then_some(sequence)
-}
-
-fn is_plain_reference(expr: &Expr) -> bool {
-    match expr {
-        Expr::Name(_) => true,
-        Expr::Attribute(ast::ExprAttribute { value, .. }) => is_plain_reference(value),
-        _ => false,
+    match len_call.arguments.args.as_ref() {
+        [sequence] if semantic.is_builtin(&len_call.func, "len") && len_call.arguments.keywords.is_empty() => {
+            UnqualifiedName::from_expr(sequence).map(|name| (sequence, name))
+        }
+        _ => None,
     }
 }
 
@@ -107,6 +100,7 @@ fn is_index(slice: &Expr, index: &ast::ExprName) -> bool {
 fn fixable(
     index: &ast::ExprName,
     sequence: &Expr,
+    root: &str,
     reads: &[&ast::ExprSubscript],
     uses: &NameUses,
     nodes: &ScopeNodes,
@@ -114,7 +108,6 @@ fn fixable(
 ) -> bool {
     let name = index.id.as_str();
     let index_loads = uses.loads(name);
-    let root = root_name(sequence);
     uses.is_single_binding(name)
         && index_loads.len() == reads.len()
         && index_loads.iter().all(|load| reads.iter().any(|read| read.slice.range() == load.range))
@@ -135,21 +128,8 @@ fn fixable(
         })
 }
 
-fn root_name(expr: &Expr) -> &str {
-    match expr {
-        Expr::Attribute(ast::ExprAttribute { value, .. }) => root_name(value),
-        Expr::Name(name) => name.id.as_str(),
-        _ => "",
-    }
-}
-
 // The singular of the sequence's name, `items` giving `item`, when the scope does not use it yet.
-fn item_name(checker: &Checker, sequence: &Expr, uses: &NameUses) -> Option<String> {
-    let last = match sequence {
-        Expr::Attribute(attribute) => attribute.attr.as_str(),
-        Expr::Name(name) => name.id.as_str(),
-        _ => return None,
-    };
+fn item_name(checker: &Checker, last: &str, uses: &NameUses) -> Option<String> {
     let singular = last.strip_suffix('s')?.trim_start_matches('_');
     let free = !singular.is_empty()
         && !singular.ends_with('s')

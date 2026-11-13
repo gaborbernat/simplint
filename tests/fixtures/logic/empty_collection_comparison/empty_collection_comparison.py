@@ -9,8 +9,9 @@ def check(items, mapping, pair, value, flag):
     flags = [items == [], {} == mapping]
     either = flag or items == []
     typed = value == "" or value == [] or value is None
+    reversed_check = items == [] or None is items
     assert items == []
-    return label, flags, either, typed
+    return label, flags, either, typed, reversed_check
 
 
 def literal_both_sides():

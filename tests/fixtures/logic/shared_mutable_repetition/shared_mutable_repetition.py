@@ -13,6 +13,12 @@ def buckets(size):
     return rows
 
 
+def annotated(size):
+    grid = [[0] * size] * size
+    grid[0][0]: int = 1
+    return grid
+
+
 def extended(size):
     rows = [[]] * size
     rows[0] += [1]

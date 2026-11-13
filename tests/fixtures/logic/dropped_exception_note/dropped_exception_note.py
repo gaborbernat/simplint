@@ -41,3 +41,20 @@ def chained(path):
     except OSError as error:
         error.add_note(path)
         raise RuntimeError(path) from error
+
+
+class Holder:
+    error = ValueError("class body")
+    error.add_note("kept on the class")
+
+
+def declared(path):
+    global shared
+    shared = ValueError(path)
+    shared.add_note("read elsewhere")
+
+
+def yielded(path):
+    error = ValueError(path)
+    error.add_note("built here")
+    yield error

@@ -37,3 +37,8 @@ def rebound(work):
     start = time.time()
     work()
     return time.time() - start
+
+
+def since(record):
+    start = time.time()
+    return record.finished - start

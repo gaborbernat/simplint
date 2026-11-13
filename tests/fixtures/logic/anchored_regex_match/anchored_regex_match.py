@@ -8,11 +8,12 @@ def check(text):
     plain_string = re.match("\\d+\\Z", text)
     search = re.search(r"^\d+$", text)
     search_absolute = re.search(r"\A\d+\Z", text)
+    search_plain = re.search("\\A\\d+\\Z", text)
     grouped = re.match(r"(a|b)$", text)
     prefixed = re.match(r"^v\d+$", text)
     keywords = re.match(pattern=r"\d+$", string=text)
     imported = match(r"\d+$", text)
-    return dollar, absolute, plain_string, search, search_absolute, grouped, prefixed, keywords, imported
+    return dollar, absolute, plain_string, search, search_absolute, search_plain, grouped, prefixed, keywords, imported
 
 
 def not_anchored(text):

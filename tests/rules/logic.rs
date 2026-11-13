@@ -1498,6 +1498,22 @@ fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(body: &str, reported: usize) {
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
 }
 
+// SMP550 turns an end-anchored `re.match` into `re.fullmatch`, so with both rules selected SMP522 leaves it to SMP550
+// and renames only the other calls.
+#[test_case("return re.match(r\"a.$\", text)", 0, 1 ; "anchored")]
+#[test_case("return re.match(r\"a.\", text)", 1, 0 ; "open_end")]
+fn up_re_prefixmatch_leaves_anchored_calls_to_smp550(body: &str, renamed: usize, anchored: usize) {
+    let source = format!("import re\n\n\ndef check(text):\n    {body}\n");
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\nselect = []\n"),
+        ("module.py", &source),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522,SMP550", "--output-format", "json"]);
+    let counts = (stdout.matches("\"code\": \"SMP522\"").count(), stdout.matches("\"code\": \"SMP550\"").count());
+    assert_eq!(counts, (renamed, anchored), "{stdout}");
+}
+
 // Code outside a library may call the public functions and classes of its public modules without the argument, even
 // when every call in the run passes it. A private function there is still judged.
 #[test]

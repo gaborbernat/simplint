@@ -142,10 +142,8 @@ impl<'a> Visitor<'a> for DecoratorFacts<'_> {
 fn wraps_fix(checker: &Checker, wrapper: &ast::StmtFunctionDef, inner: &str) -> Option<ruff_diagnostics::Fix> {
     let source = checker.source;
     let line_start = source.line_start(wrapper.start());
+    // A `def` starts its line, so all before it is indentation.
     let indentation = &source[TextRange::new(line_start, wrapper.start())];
-    if !indentation.chars().all(char::is_whitespace) {
-        return None;
-    }
     let (spelling, import) = if checker.state().top_level_imports(checker).contains(&("functools", Some("wraps"))) {
         ("wraps", ensure_import(checker, "functools", Some("wraps"), wrapper.range())?)
     } else {

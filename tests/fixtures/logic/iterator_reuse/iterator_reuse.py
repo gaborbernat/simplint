@@ -75,3 +75,13 @@ def rebuilt_each_time(rows, names):
 def once(numbers):
     texts = map(str, numbers)
     return ",".join(texts)
+
+
+def reassigned(lines: Iterator[str]):
+    lines = list(lines)
+    return len(lines), sorted(lines)
+
+
+def keyed(names):
+    upper = (name.upper() for name in names)
+    return {name: list(upper) for name in names}

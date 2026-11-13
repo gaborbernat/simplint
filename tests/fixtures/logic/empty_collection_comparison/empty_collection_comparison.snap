@@ -9,12 +9,12 @@ expression: "lint_fixture(rule, fixture, target_version)"
 9:14 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead
 9:27 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is falsy instead
 10:22 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead
-25:12 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
-26:43 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is truthy instead [unsafe fix: Test the value's truth]
-27:17 SMP548 Comparing with an empty `()` builds a new object; test whether the value is truthy instead [unsafe fix: Test the value's truth]
-28:21 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
-30:22 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
-32:16 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+26:12 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+27:43 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is truthy instead [unsafe fix: Test the value's truth]
+28:17 SMP548 Comparing with an empty `()` builds a new object; test whether the value is truthy instead [unsafe fix: Test the value's truth]
+29:21 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+31:22 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
+33:16 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
 --- fixed (10 applied, 3 remaining) ---
 def check(items, mapping, pair, value, flag):
     if not items:
@@ -27,8 +27,9 @@ def check(items, mapping, pair, value, flag):
     flags = [items == [], {} == mapping]
     either = flag or items == []
     typed = value == "" or value == [] or value is None
+    reversed_check = items == [] or None is items
     assert items == []
-    return label, flags, either, typed
+    return label, flags, either, typed, reversed_check
 
 
 def literal_both_sides():

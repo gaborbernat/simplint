@@ -7,11 +7,12 @@ expression: "lint_fixture(rule, fixture, target_version)"
 8:20 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [fix: Use `re.fullmatch`]
 9:14 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
 10:23 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch` [fix: Use `re.fullmatch`]
-11:15 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
-12:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+11:20 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch` [fix: Use `re.fullmatch`]
+12:15 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
 13:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
-14:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch`
---- fixed (8 applied, 1 remaining) ---
+14:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
+15:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch`
+--- fixed (9 applied, 1 remaining) ---
 import re
 from re import match
 
@@ -22,11 +23,12 @@ def check(text):
     plain_string = re.fullmatch("\\d+", text)
     search = re.fullmatch(r"\d+", text)
     search_absolute = re.fullmatch(r"\d+", text)
+    search_plain = re.fullmatch("\\d+", text)
     grouped = re.fullmatch(r"(a|b)", text)
     prefixed = re.fullmatch(r"v\d+", text)
     keywords = re.fullmatch(pattern=r"\d+", string=text)
     imported = match(r"\d+$", text)
-    return dollar, absolute, plain_string, search, search_absolute, grouped, prefixed, keywords, imported
+    return dollar, absolute, plain_string, search, search_absolute, search_plain, grouped, prefixed, keywords, imported
 
 
 def not_anchored(text):
