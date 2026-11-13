@@ -292,8 +292,7 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Uses<'a, K, F> {
         let matches: &dyn Fn(&Expr) -> Option<K> = &self.matches;
         let mut inner = Uses { matches, annotated: true, source: self.source, found: Vec::new() };
         inner.visit_expr(parsed.expr());
-        let found = inner.found;
-        self.found.extend(found.into_iter().map(|(key, found)| (key, found.into_owned())));
+        self.found.extend(inner.found.into_iter().map(|(key, found)| (key, found.into_owned())));
     }
 
     fn skip_or_visit(&mut self, expr: &'a Expr) {
@@ -442,8 +441,7 @@ impl<'a> Visitor<'a> for Unparsed {
         strings.visit_expr(annotation);
         for literal in strings.found {
             for part in &literal.value {
-                let words = identifier_words(&part.value).filter(|word| !word.is_empty());
-                self.0.extend(words.map(str::to_owned));
+                self.0.extend(identifier_words(&part.value).filter(|word| !word.is_empty()).map(str::to_owned));
             }
         }
     }
@@ -459,10 +457,6 @@ fn comments_on_lines(source: &str, comments: &CommentRanges, call: &ast::ExprCal
 
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
-}
-
-fn subscripted(expr: &Expr) -> &Expr {
-    expr.as_subscript_expr().map_or(expr, |subscript| &subscript.value)
 }
 
 // The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
@@ -486,7 +480,8 @@ pub(crate) fn init_fields(
     }
     let mut fields: Vec<String> = Vec::new();
     for base in class.bases() {
-        match UnqualifiedName::from_expr(subscripted(base)).as_ref().map(UnqualifiedName::segments) {
+        let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
+        match UnqualifiedName::from_expr(base).as_ref().map(UnqualifiedName::segments) {
             Some([.., "Generic" | "ABC" | "object" | "Protocol"]) => {}
             Some([name]) if fields.is_empty() => fields = base_fields(name)?,
             _ => return None,
@@ -505,8 +500,7 @@ pub(crate) fn init_fields(
             }
             Declares::Field | Declares::InitVar => {}
         }
-        let value = &stmt.value;
-        let options = value.as_deref().and_then(|value| match value {
+        let options = stmt.value.as_deref().and_then(|value| match value {
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if UnqualifiedName::from_expr(func).is_some_and(|func| func.segments().last() == Some(&"field")) =>
             {
@@ -538,7 +532,6 @@ fn member_names(body: &[Stmt]) -> Members {
         .map(|function| function.name.to_string())
         .collect();
     let attributes = classes
-        .clone()
         .flat_map(|class| module_statements(&class.body).filter_map(Stmt::as_assign_stmt))
         .flat_map(|assign| assign.targets.iter().filter_map(Expr::as_name_expr))
         .map(|target| target.id.to_string())
@@ -641,20 +634,15 @@ impl RunCalls {
                         UseKind::Imported => imported.get(caller).is_some_and(|names| names.contains(written)),
                         UseKind::Call(shape) => {
                             if shape.positional > 0 {
-                                let site = CallSite {
-                                    caller: path.clone(),
-                                    start: span.0,
-                                    end: span.1,
-                                    digest: *digest,
-                                    comments: comments.clone(),
-                                };
-                                calls
-                                    .dataclass_calls
-                                    .entry(*file)
-                                    .or_default()
-                                    .entry(name.clone())
-                                    .or_default()
-                                    .push(site);
+                                calls.dataclass_calls.entry(*file).or_default().entry(name.clone()).or_default().push(
+                                    CallSite {
+                                        caller: path.clone(),
+                                        start: span.0,
+                                        end: span.1,
+                                        digest: *digest,
+                                        comments: comments.clone(),
+                                    },
+                                );
                             }
                             shape.positional > 0
                                 && fields.as_ref().is_none_or(|known| shape.positional as usize > known.len())

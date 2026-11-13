@@ -61,7 +61,7 @@ fn report<'a>(walker: &Walker<'_, 'a>, test: &'a Expr) {
 }
 
 fn takes_no_arguments(callee: &Callee) -> bool {
-    let Callee::Local { function, bound } = callee else {
+    let Some(function) = callee.function else {
         return false;
     };
     let parameters = &function.parameters;
@@ -69,7 +69,7 @@ fn takes_no_arguments(callee: &Callee) -> bool {
         .posonlyargs
         .iter()
         .chain(&parameters.args)
-        .skip(usize::from(*bound))
+        .skip(usize::from(callee.bound))
         .chain(&parameters.kwonlyargs)
         .all(|parameter| parameter.default.is_some())
 }

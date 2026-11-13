@@ -126,9 +126,8 @@ pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
         bindings.bind(name, None);
     }
     let mut constants = Constants::default();
-    let star = bindings.star;
     for (name, constant) in bindings.bound {
-        if star && !name.starts_with('_') {
+        if bindings.star && !name.starts_with('_') {
             continue;
         }
         match constant {
