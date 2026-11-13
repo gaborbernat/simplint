@@ -12,7 +12,8 @@ use crate::syntax::{for_each_body, for_each_child_body};
 
 pub(in crate::rules::logic) use fstring::{fstring_body_parts, requoted_text};
 pub(in crate::rules::logic) use literals::{is_constant, is_hashable};
-pub(in crate::rules::logic) use names::{LOCALS_READERS, Names};
+pub(crate) use names::LOCALS_READERS;
+pub(in crate::rules::logic) use names::Names;
 
 pub(super) fn for_each_scoped_body<'a, S: Copy>(
     body: &'a [Stmt],

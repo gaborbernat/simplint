@@ -1,10 +1,68 @@
-// The loads and stores of each name in one scope's body, for the rules that follow a local variable from its binding to
-// its reads without a type checker.
+// What a scope's body binds and reads, for the rules that follow a local variable from its binding to its reads without
+// a type checker. Control flow lives in `flow`.
+
+use std::cell::OnceCell;
 
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_pattern, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
+
+use crate::rules::logic::inline::Names;
+use crate::syntax::{Nesting, target_names};
+
+// The module and each function of a file, nested ones included, with what the local-variable rules read off each. A
+// rule asks only for the scopes its cheap syntactic trigger points at, and the first rule to ask builds the answer for
+// the others.
+pub(crate) struct LocalScopes<'a> {
+    scopes: Vec<LocalScope<'a>>,
+    functions: FxHashMap<TextSize, usize>,
+}
+
+impl<'a> LocalScopes<'a> {
+    pub(crate) fn of(body: &'a [Stmt], functions: &[&'a ast::StmtFunctionDef]) -> Self {
+        let scopes = std::iter::once(LocalScope::new(body, None))
+            .chain(functions.iter().map(|function| LocalScope::new(&function.body, Some(*function))))
+            .collect();
+        let functions = functions.iter().enumerate().map(|(index, function)| (function.start(), index + 1)).collect();
+        Self { scopes, functions }
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = &LocalScope<'a>> {
+        self.scopes.iter()
+    }
+
+    pub(super) fn function(&self, function: &ast::StmtFunctionDef) -> &LocalScope<'a> {
+        &self.scopes[self.functions[&function.start()]]
+    }
+}
+
+pub(super) struct LocalScope<'a> {
+    pub(super) body: &'a [Stmt],
+    // The function whose body this is, `None` for the module.
+    pub(super) function: Option<&'a ast::StmtFunctionDef>,
+    uses: OnceCell<NameUses<'a>>,
+    nodes: OnceCell<ScopeNodes<'a>>,
+    names: OnceCell<FunctionNames<'a>>,
+}
+
+impl<'a> LocalScope<'a> {
+    fn new(body: &'a [Stmt], function: Option<&'a ast::StmtFunctionDef>) -> Self {
+        Self { body, function, uses: OnceCell::new(), nodes: OnceCell::new(), names: OnceCell::new() }
+    }
+
+    pub(super) fn uses(&self) -> &NameUses<'a> {
+        self.uses.get_or_init(|| self.function.map_or_else(|| NameUses::of_body(self.body), NameUses::of_function))
+    }
+
+    pub(super) fn nodes(&self) -> &ScopeNodes<'a> {
+        self.nodes.get_or_init(|| ScopeNodes::of(self.body))
+    }
+
+    pub(super) fn names(&self) -> &FunctionNames<'a> {
+        self.names.get_or_init(|| FunctionNames::of(self.body))
+    }
+}
 
 #[derive(Default)]
 pub(super) struct NameUses<'a> {
@@ -168,15 +226,6 @@ impl<'a> Visitor<'a> for AllNames<'a> {
     }
 }
 
-// The scopes the rules read one at a time: the module body and each function body, nested ones included.
-pub(super) fn scopes<'a>(
-    body: &'a [Stmt],
-    functions: &[&'a ast::StmtFunctionDef],
-) -> impl Iterator<Item = (&'a [Stmt], NameUses<'a>)> {
-    std::iter::once((body, NameUses::of_body(body)))
-        .chain(functions.iter().map(|function| (function.body.as_slice(), NameUses::of_function(function))))
-}
-
 // Every statement and expression of one scope, outside the bodies of nested functions, classes and lambdas.
 #[derive(Default)]
 pub(super) struct ScopeNodes<'a> {
@@ -225,5 +274,67 @@ pub(super) fn comprehension_generators(expr: &Expr) -> &[ast::Comprehension] {
         | Expr::Generator(ast::ExprGenerator { generators, .. }) => generators,
         Expr::DictComp(ast::ExprDictComp { generators, .. }) => generators,
         _ => &[],
+    }
+}
+
+// What a scope's body binds and reads by name, with the nested scopes that may read a name at any time.
+pub(super) struct FunctionNames<'a> {
+    pub(super) names: Names<'a>,
+    // The nested functions, classes and lambdas.
+    pub(super) deferred: Nesting,
+    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
+}
+
+impl<'a> FunctionNames<'a> {
+    fn of(body: &'a [Stmt]) -> Self {
+        let mut walk = NestedScopes::default();
+        walk.visit_body(body);
+        Self { names: Names::of(body), deferred: Nesting::new(walk.deferred), comprehensions: walk.comprehensions }
+    }
+
+    // Whether the rule can follow the name: the function binds it only by assignment, reads no local by its text, and no
+    // nested function, class or lambda mentions it, since that may read it at any time.
+    pub(super) fn is_plain_local(&self, name: &str) -> bool {
+        let names = &self.names;
+        !names.reads_locals
+            && !names.declared_outer.contains(name)
+            && !names.rebound.contains(name)
+            && !names.string_reads.contains(name)
+            && self.mentions(name).all(|(range, _)| self.deferred.holders(range).next().is_none())
+    }
+
+    // The mentions of the function's own name, in source order, leaving out those of a comprehension that binds a name
+    // of the same spelling.
+    pub(super) fn mentions(&self, name: &str) -> impl Iterator<Item = (TextRange, ExprContext)> + Clone {
+        self.names.mentions.get(name).map_or(&[][..], Vec::as_slice).iter().copied().filter(move |(range, _)| {
+            !self.comprehensions.iter().any(|(scope, bound)| scope.contains_range(*range) && bound.contains(&name))
+        })
+    }
+}
+
+#[derive(Default)]
+struct NestedScopes<'a> {
+    deferred: Vec<TextRange>,
+    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
+}
+
+impl<'a> Visitor<'a> for NestedScopes<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+            self.deferred.push(stmt.range());
+        }
+        walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if expr.is_lambda_expr() {
+            self.deferred.push(expr.range());
+        }
+        let generators = comprehension_generators(expr);
+        if !generators.is_empty() {
+            let bound = generators.iter().flat_map(|generator| target_names(&generator.target)).collect();
+            self.comprehensions.push((expr.range(), bound));
+        }
+        walk_expr(self, expr);
     }
 }

@@ -6,20 +6,24 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::name_uses::{NameUses, ScopeNodes, scopes};
+use crate::rules::logic::name_uses::{LocalScope, NameUses, ScopeNodes};
 
 pub fn range_len_loop(checker: &Checker) {
-    for (body, uses) in scopes(checker.body(), checker.function_defs()) {
-        let nodes = ScopeNodes::of(body);
+    // A file that never names `range` has no loop to report.
+    if checker.state().unqualified_name_count(checker, "range") == 0 {
+        return;
+    }
+    for scope in checker.state().local_scopes(checker).iter() {
+        let nodes = scope.nodes();
         for stmt in &nodes.statements {
             if let Stmt::For(loop_stmt) = stmt {
-                check_loop(checker, loop_stmt, &uses, &nodes);
+                check_loop(checker, loop_stmt, scope, nodes);
             }
         }
     }
 }
 
-fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, uses: &NameUses, nodes: &ScopeNodes) {
+fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, scope: &LocalScope, nodes: &ScopeNodes) {
     if loop_stmt.is_async {
         return;
     }
@@ -45,6 +49,7 @@ fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, uses: &NameUses, node
         return;
     }
     let sequence_text = checker.text(sequence);
+    let uses = scope.uses();
     let fix = item_name(checker, sequence, uses).and_then(|item| {
         fixable(index, sequence, &reads, uses, nodes, body).then(|| {
             let mut edits = vec![

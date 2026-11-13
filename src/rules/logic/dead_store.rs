@@ -2,12 +2,12 @@ use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashMap;
+use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::flow::{FunctionNames, has_own_jump};
+use crate::rules::logic::flow::has_own_jump;
+use crate::rules::logic::name_uses::FunctionNames;
 use crate::rules::logic::inline::{for_each_scoped_body, is_constant};
 
 // The function a block belongs to, and whether a `try` or `with` of that function holds the block. There an exception
@@ -19,7 +19,7 @@ struct Place<'a> {
 }
 
 pub fn dead_store(checker: &Checker) {
-    let mut functions: FxHashMap<TextRange, FunctionNames> = FxHashMap::default();
+    let scopes = checker.state().local_scopes(checker);
     let start = Place { function: None, guarded: false };
     for_each_scoped_body(checker.body(), start, 0, &enter, &mut |body, place, _| {
         let Some(function) = place.function.filter(|_| !place.guarded) else {
@@ -29,7 +29,7 @@ pub fn dead_store(checker: &Checker) {
             let Some(first) = store(stmt) else {
                 continue;
             };
-            let names = functions.entry(function.range).or_insert_with(|| FunctionNames::of(&function.body));
+            let names = scopes.function(function).names();
             check_store(checker, names, &body[index + 1..], stmt, first);
         }
     });

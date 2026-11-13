@@ -9,27 +9,32 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::FunctionDef(function) = stmt else {
         return;
     };
-    if !yields(&function.body) {
-        return;
-    }
     let checker = walker.checker;
     let semantic = checker.semantic();
+    // Few functions are cached, so the decorators are read before the body is walked for a `yield`.
+    let caches: Vec<(&ast::Decorator, &str)> = function
+        .decorator_list
+        .iter()
+        .filter_map(|decorator| {
+            let callee = match &decorator.expression {
+                Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
+                expression => expression,
+            };
+            ["cache", "lru_cache", "cached_property"]
+                .into_iter()
+                .find(|name| semantic.resolves_to(callee, &["functools", name]))
+                .map(|name| (decorator, name))
+        })
+        .collect();
+    if caches.is_empty() || !yields(&function.body) {
+        return;
+    }
     let instance_method = matches!(walker.scopes().last(), Some(Scope::Class(_)))
         && !function.decorator_list.iter().any(|decorator| {
             semantic.is_builtin(&decorator.expression, "staticmethod")
                 || semantic.is_builtin(&decorator.expression, "classmethod")
         });
-    for decorator in &function.decorator_list {
-        let callee = match &decorator.expression {
-            Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-            expression => expression,
-        };
-        let Some(name) = ["cache", "lru_cache", "cached_property"]
-            .into_iter()
-            .find(|name| semantic.resolves_to(callee, &["functools", name]))
-        else {
-            continue;
-        };
+    for (decorator, name) in caches {
         // Ruff's cached-instance-method (B019) reports `cache` and `lru_cache` on an instance method.
         if instance_method && name != "cached_property" {
             continue;

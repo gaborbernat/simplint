@@ -2,7 +2,7 @@ use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use crate::layout::fits;
 use crate::lint::checker::Checker;
@@ -21,7 +21,7 @@ use ruff::{leads_if_test, raises_with_name, reports_default, returns_or_yields, 
 
 pub fn single_use_variable(checker: &Checker) {
     // A function's names are walked once, and only when one of its blocks assigns a single name.
-    let mut names: FxHashMap<TextRange, Names> = FxHashMap::default();
+    let scopes = checker.state().local_scopes(checker);
     // A call rebinds only a name some function declares `global` or `nonlocal`.
     let rebindable = declared_outer(checker.body());
     for_each_scoped_body(checker.body(), None, 0, &enter_function, &mut |body, function, depth| {
@@ -32,7 +32,7 @@ pub fn single_use_variable(checker: &Checker) {
             if let [Stmt::Assign(assign), next] = pair
                 && let Some(target) = sole_name_target(assign)
             {
-                let function_names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
+                let function_names = &scopes.function(function).names().names;
                 check_pair(checker, (function_names, &rebindable), (assign, target), next, &function.body, depth);
             }
         }

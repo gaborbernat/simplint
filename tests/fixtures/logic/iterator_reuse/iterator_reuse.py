@@ -49,6 +49,17 @@ def resumed(lines):
     return list(rows)
 
 
+def resumed_from_inner_else(lines, stops):
+    rows = map(str.strip, lines)
+    for row in rows:
+        for stop in stops:
+            if row == stop:
+                break
+        else:
+            break
+    return list(rows)
+
+
 def handed_over(numbers):
     texts = map(str, numbers)
     next(texts)

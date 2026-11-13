@@ -11,10 +11,11 @@ use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{definitions, names_are_followed, references_outside};
 use crate::rules::is_named_by_doctest;
+use crate::rules::logic::LOCALS_READERS;
 use crate::rules::public_api::Need;
 use crate::semantic::Evaluation;
 use crate::project::constructors::instance_attributes;
-use crate::syntax::{Visibility, identifier_words, module_statements};
+use crate::syntax::{Visibility, for_each_child_body, identifier_words, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
     nested_functions(checker);
@@ -273,18 +274,9 @@ fn reads_instance_whole(class: &ast::StmtClassDef) -> bool {
 // A function defined inside another function that the enclosing function never reads: it is never called, returned or
 // passed on. A `locals()` or `vars()` call, or a `global` or `nonlocal` statement naming it, can reach it by name.
 fn nested_functions(checker: &Checker) {
-    struct Outer<'c, 'a> {
-        checker: &'c Checker<'a>,
+    for function in checker.function_defs() {
+        report_nested(checker, function);
     }
-    impl<'a> Visitor<'a> for Outer<'_, 'a> {
-        fn visit_stmt(&mut self, stmt: &'a Stmt) {
-            if let Stmt::FunctionDef(function) = stmt {
-                report_nested(self.checker, function);
-            }
-            walk_stmt(self, stmt);
-        }
-    }
-    Outer { checker }.visit_body(checker.body());
 }
 
 fn report_nested(checker: &Checker, outer: &ast::StmtFunctionDef) {
@@ -294,9 +286,12 @@ fn report_nested(checker: &Checker, outer: &ast::StmtFunctionDef) {
         matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Pass(_))
             || stmt.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr())
     });
+    if holds_only_definitions || !defines_function(&outer.body) {
+        return;
+    }
     let mut scope = Scope::default();
     scope.visit_body(&outer.body);
-    if scope.dynamic || holds_only_definitions {
+    if scope.dynamic {
         return;
     }
     for inner in scope.functions {
@@ -310,6 +305,19 @@ fn report_nested(checker: &Checker, outer: &ast::StmtFunctionDef) {
             );
         }
     }
+}
+
+// Whether the body defines a function of its own, outside its nested functions and classes.
+fn defines_function(body: &[Stmt]) -> bool {
+    body.iter().any(|stmt| match stmt {
+        Stmt::FunctionDef(_) => true,
+        Stmt::ClassDef(_) => false,
+        _ => {
+            let mut found = false;
+            for_each_child_body(stmt, &mut |child| found |= defines_function(child));
+            found
+        }
+    })
 }
 
 // The direct nested functions of a function body, the names it loads anywhere, nested scopes included, and whether it
@@ -349,7 +357,7 @@ impl<'a> Visitor<'a> for Scope<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Name(name) = expr {
             if name.ctx.is_load() {
-                if matches!(name.id.as_str(), "locals" | "vars" | "eval" | "exec") {
+                if LOCALS_READERS.contains(&name.id.as_str()) {
                     self.dynamic = true;
                 }
                 self.loads.entry(name.id.as_str()).or_default().push(name.range);
