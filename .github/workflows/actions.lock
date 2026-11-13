@@ -12,10 +12,16 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'astral-sh/setup-uv@v10.3.3'
-        - 'dorny/paths-filter@v4.0.3'
         - 'pyo3/maturin-action@v1.51.0'
         - 'tox-dev/github-workflows@6.8.2'
     '.github/workflows/codeql.yaml': []
+    '.github/workflows/cross-compile.yaml':
+        - 'actions-rust-lang/setup-rust-toolchain@v2.0.1'
+        - 'actions/checkout@v7.0.1'
+        - 'astral-sh/setup-uv@v10.3.3'
+        - 'dorny/paths-filter@v4.0.3'
+        - 'pyo3/maturin-action@v1.51.0'
+        - 'tox-dev/github-workflows@6.8.2'
     '.github/workflows/links.yaml':
         - 'actions/checkout@v7.0.1'
         - 'actions/setup-node@v7.1.0'

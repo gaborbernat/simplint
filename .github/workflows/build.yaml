@@ -25,41 +25,8 @@ concurrency:
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 permissions: {}
 jobs:
-  changes:
-    name: 🧭 Detect changes
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    outputs:
-      run: ${{ github.event_name != 'pull_request' || steps.filter.outputs.run == 'true' }}
-    steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - name: 🧭 Detect changed paths
-        if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@v4.0.3
-        id: filter
-        with:
-          filters: |
-            run:
-              - 'src/**'
-              - 'tests/**'
-              - 'docs/**'
-              - 'tasks/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - 'rust-toolchain.toml'
-              - 'pyproject.toml'
-              - 'tox.toml'
-              - '.github/workflows/build.yaml'
-  # Pull requests and the merge queue only prove each target compiles and links, which the targets job does without
-  # LTO; the optimized wheels build where they ship or guard a release.
   build:
     name: 🏗️ Build distributions
-    needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' && github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
     uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@9389742ac547afdfd13f32ac3fbeeb7c286e88bc # 6.8.2
     with:
       package-name: simplint
@@ -71,49 +38,8 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-  targets:
-    name: 🏗️ cross-compile
-    needs: [changes, maturin]
-    if: ${{ needs.changes.outputs.run == 'true' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref == 'refs/heads/main') }}
-    runs-on: ${{ matrix.os }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - {os: ubuntu-26.04, target: aarch64-unknown-linux-gnu, manylinux: "2_28", args: --zig}
-          - {os: ubuntu-26.04, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, args: --zig}
-          - {os: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, args: --zig}
-          # zig cannot link riscv64 against glibc, so this target builds in maturin's cross container, whose root-owned
-          # target directory the cache cannot clean.
-          - {os: ubuntu-26.04, target: riscv64gc-unknown-linux-gnu, manylinux: "2_31", docker: true}
-          - {os: windows-11-arm, target: aarch64-pc-windows-msvc}
-          - {os: macos-26, target: x86_64-apple-darwin}
-    steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
-      - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
-        with:
-          target: ${{ matrix.target }}
-          cache: ${{ !matrix.docker }}
-          cache-key: ${{ matrix.target }}
-          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: 🏗️ Build the wheel without optimizations
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.target }}
-          args: --locked --profile dev --out dist --target-dir target ${{ matrix.args }}
-          manylinux: ${{ matrix.manylinux || 'auto' }}
-          sccache: false
   maturin:
     name: ⚙️ Read locked maturin version
-    needs: changes
-    if: ${{ needs.changes.outputs.run == 'true' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -143,8 +69,8 @@ jobs:
           printf 'version=v%s\n' "${version#maturin }" >>"$GITHUB_OUTPUT"
   pgo:
     name: 🏗️ PGO wheels
-    needs: [changes, maturin]
-    if: ${{ needs.changes.outputs.run == 'true' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) }}
+    needs: maturin
+    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo) }}
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read

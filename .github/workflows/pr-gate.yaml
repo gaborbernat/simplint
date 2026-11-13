@@ -11,7 +11,7 @@ concurrency:
 jobs:
   build:
     name: 🏗️ build
-    uses: $/.github/workflows/build.yaml
+    uses: $/.github/workflows/cross-compile.yaml
     permissions:
       contents: read
       pull-requests: read
