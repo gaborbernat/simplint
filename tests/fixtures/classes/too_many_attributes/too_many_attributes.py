@@ -121,3 +121,15 @@ def outer() -> None:
         unbound = 1
 
     inner()
+
+
+class RegistersSubclasses:
+    def __init_subclass__(cls) -> None:
+        cls.a = cls.b = cls.c = cls.d = cls.e = cls.f = cls.g = cls.h = cls.i = cls.j = cls.k = cls.l = cls.m = 0
+
+    def __class_getitem__(cls, item: object) -> object:
+        cls.n = 0
+        return cls
+
+    def __init__(self) -> None:
+        self.value = 0
