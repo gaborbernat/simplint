@@ -1,6 +1,7 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
@@ -126,7 +127,6 @@ fn removal(checker: &Checker, list: &AllList, unused: &FxHashSet<&str>) -> Optio
     let ranges: Vec<TextRange> = elements.iter().map(|element| list.element_range(checker, element)).collect();
     // A tuple left with one name needs a comma after it.
     let lone = open == "(" && kept == 1;
-    let source = checker.source;
     let mut edits = Vec::new();
     let mut index = 0;
     while index < elements.len() {
@@ -145,7 +145,7 @@ fn removal(checker: &Checker, list: &AllList, unused: &FxHashSet<&str>) -> Optio
             Edit::range_deletion(TextRange::new(ranges[first].start(), next.start()))
         } else {
             let range = TextRange::new(ranges[first - 1].end(), ranges[index - 1].end());
-            if lone && !followed_by_comma(source, range.end()) {
+            if lone && checker.next_significant_token(range.end()) != Some(TokenKind::Comma) {
                 Edit::range_replacement(",".to_owned(), range)
             } else {
                 Edit::range_deletion(range)
@@ -159,7 +159,7 @@ fn removal(checker: &Checker, list: &AllList, unused: &FxHashSet<&str>) -> Optio
     if lone
         && !elements.last().is_some_and(is_unused)
         && let Some(last) = ranges.last()
-        && !followed_by_comma(source, last.end())
+        && checker.next_significant_token(last.end()) != Some(TokenKind::Comma)
     {
         edits.push(Edit::insertion(",".to_owned(), last.end()));
     }
@@ -182,8 +182,4 @@ fn owns_comment(checker: &Checker, name: TextRange) -> bool {
     let alone = is_alone_on_line(checker, name);
     let before_comment = checker.text(TextRange::new(name.end(), comment.start())).trim();
     alone && matches!(before_comment, "" | ",")
-}
-
-fn followed_by_comma(source: &str, end: TextSize) -> bool {
-    source[end.to_usize()..].trim_start().starts_with(',')
 }

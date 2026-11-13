@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::parenthesize::parenthesized_range;
-use ruff_python_ast::token::TokenKind;
+use ruff_python_ast::token::{Token, TokenKind};
 use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
@@ -281,6 +281,16 @@ impl<'a> Checker<'a> {
 
     pub fn parenthesized_range(&self, expr: &Expr, parent: AnyNodeRef) -> TextRange {
         parenthesized_range(expr.into(), parent, self.comment_ranges(), self.source).unwrap_or_else(|| expr.range())
+    }
+
+    // The kind of the first token after `offset` that is neither a comment nor a line break inside brackets.
+    pub fn next_significant_token(&self, offset: TextSize) -> Option<TokenKind> {
+        self.parsed
+            .tokens()
+            .after(offset)
+            .iter()
+            .map(Token::kind)
+            .find(|kind| !matches!(kind, TokenKind::NonLogicalNewline | TokenKind::Comment))
     }
 
     pub fn comment_ranges(&self) -> &'a CommentRanges {

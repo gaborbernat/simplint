@@ -168,7 +168,7 @@ fn lines_insertion(checker: &Checker, all_list: &AllList, names: &[&str]) -> Opt
     {
         None => None,
         Some(",") => Some(false),
-        Some("") if closes_after(checker, tail_range) => Some(true),
+        Some("") if checker.next_significant_token(tail_range.end()) == Some(TokenKind::Rsqb) => Some(true),
         Some(_) => return None,
     };
     // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
@@ -203,16 +203,6 @@ fn lines_insertion(checker: &Checker, all_list: &AllList, names: &[&str]) -> Opt
         edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
     }
     fix_of(edits, Applicability::Safe)
-}
-
-fn closes_after(checker: &Checker, elt: impl Ranged) -> bool {
-    checker
-        .parsed
-        .tokens()
-        .after(elt.end())
-        .iter()
-        .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment))
-        .is_some_and(|token| token.kind() == TokenKind::Rsqb)
 }
 
 // Each name goes before the first listed name Ruff's RUF022 sorts after it, so a sorted `__all__` stays sorted.
