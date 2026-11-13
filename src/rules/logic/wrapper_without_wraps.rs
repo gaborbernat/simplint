@@ -47,9 +47,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     }
 }
 
-// The first parameter of the decorator that the wrapper calls with its own `*args` or `**kwargs` and nothing but its own
-// parameters, as `func(*args, **kwargs)` does. A call that adds or reshapes arguments makes an adapter with a signature
-// of its own, which `functools.wraps` would then misreport.
+// The first parameter of the decorator that the wrapper calls with its own `*args` or `**kwargs` and nothing but its
+// own parameters, as `func(*args, **kwargs)` does. A call that adds or reshapes arguments makes an adapter with a
+// signature of its own, which `functools.wraps` would then misreport.
 fn called_parameter<'a>(wrapper: &ast::StmtFunctionDef, parameters: &[&'a str]) -> Option<&'a str> {
     let mut calls = Calls { parameters, wrapper: &wrapper.parameters, called: None };
     calls.visit_body(&wrapper.body);
@@ -118,7 +118,10 @@ impl<'a> Visitor<'a> for DecoratorFacts<'_> {
         match expr {
             Expr::Call(ast::ExprCall { func, .. })
                 if matches!(func.as_ref(), Expr::Name(name) if name.id.as_str() == "update_wrapper")
-                    || matches!(func.as_ref(), Expr::Attribute(attribute) if attribute.attr.as_str() == "update_wrapper") =>
+                    || matches!(
+                        func.as_ref(),
+                        Expr::Attribute(attribute) if attribute.attr.as_str() == "update_wrapper"
+                    ) =>
             {
                 self.updated = true;
             }
@@ -136,7 +139,7 @@ impl<'a> Visitor<'a> for DecoratorFacts<'_> {
 
 // The decorator goes on its own line above the wrapper, at the wrapper's indentation, spelled the way the file already
 // imports `wraps`.
-fn wraps_fix(checker: &Checker, wrapper: &ast::StmtFunctionDef, wrapped: &str) -> Option<ruff_diagnostics::Fix> {
+fn wraps_fix(checker: &Checker, wrapper: &ast::StmtFunctionDef, inner: &str) -> Option<ruff_diagnostics::Fix> {
     let source = checker.source;
     let line_start = source.line_start(wrapper.start());
     let indentation = &source[TextRange::new(line_start, wrapper.start())];
@@ -149,6 +152,6 @@ fn wraps_fix(checker: &Checker, wrapper: &ast::StmtFunctionDef, wrapped: &str) -
         ("functools.wraps", ensure_import(checker, "functools", None, wrapper.range())?)
     };
     let eol = checker.line_ending();
-    let edit = Edit::insertion(format!("{indentation}@{spelling}({wrapped}){eol}"), line_start);
+    let edit = Edit::insertion(format!("{indentation}@{spelling}({inner}){eol}"), line_start);
     Some(with_import(edit, import, Applicability::Unsafe))
 }

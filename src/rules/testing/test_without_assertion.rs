@@ -61,10 +61,10 @@ pub fn test_without_assertion(checker: &Checker) {
             verdicts: &mut verdicts,
             cut: false,
             depth: 0,
-            checks: false,
+            checked: false,
         };
         finder.visit_body(&test.body);
-        if !finder.checks {
+        if !finder.checked {
             checker.report(
                 Rule::TestWithoutAssertion,
                 test.name.range(),
@@ -152,29 +152,29 @@ struct Checks<'a, 'b> {
     cut: bool,
     // How many helpers deep the walk is, 0 in the test itself.
     depth: usize,
-    checks: bool,
+    checked: bool,
 }
 
 impl<'b> Visitor<'b> for Checks<'_, 'b> {
     fn visit_stmt(&mut self, stmt: &'b Stmt) {
-        if self.checks {
+        if self.checked {
             return;
         }
         if matches!(stmt, Stmt::Assert(_) | Stmt::Raise(_)) {
-            self.checks = true;
+            self.checked = true;
             return;
         }
         visitor::walk_stmt(self, stmt);
     }
 
     fn visit_expr(&mut self, expr: &'b Expr) {
-        if self.checks {
+        if self.checked {
             return;
         }
         if let Expr::Call(call) = expr
             && self.call_checks(call)
         {
-            self.checks = true;
+            self.checked = true;
             return;
         }
         visitor::walk_expr(self, expr);
@@ -269,7 +269,7 @@ impl<'b> Checks<'_, 'b> {
         self.depth += 1;
         self.visit_body(body);
         self.depth -= 1;
-        let checks = std::mem::replace(&mut self.checks, false);
+        let checks = std::mem::replace(&mut self.checked, false);
         if !self.cut {
             self.verdicts.insert(key, checks);
         }

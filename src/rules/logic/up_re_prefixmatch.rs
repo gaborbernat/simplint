@@ -66,8 +66,8 @@ fn is_compared_to_none(parent: Option<&Expr>) -> bool {
         .is_some_and(|(_, op, right)| matches!(op, CmpOp::Is | CmpOp::IsNot) && right.is_none_literal_expr())
 }
 
-// SMP550 turns a call whose pattern is anchored at its end into `re.fullmatch`, a fix that conflicts with the rename, so
-// while it is selected it takes such a call.
+// SMP550 turns a call whose pattern is anchored at its end into `re.fullmatch`, a fix that conflicts with the rename,
+// so while it is selected it takes such a call.
 fn left_to_anchored_regex_match(walker: &Walker, expr: &Expr) -> bool {
     let checker = walker.checker;
     checker.settings.rules.contains(Rule::AnchoredRegexMatch)

@@ -47,11 +47,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         _ if !scopes.iter().any(|scope| matches!(scope, Scope::Class(_))) => {
             "a function outside a class has no `__class__` cell for `super()` to read"
         }
-        [.., Scope::Class(_), Scope::Function(_)] => return,
         [.., Scope::Function(_), Scope::Function(inner)] if !has_positional(&inner.parameters) => {
             "a nested function without parameters has no first argument for `super()` to bind"
         }
-        [.., Scope::Function(_), Scope::Function(_)] => return,
         [.., Scope::Class(_)] => "a class body has no instance for `super()` to bind",
         _ => return,
     };

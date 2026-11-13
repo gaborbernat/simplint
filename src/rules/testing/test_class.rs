@@ -30,8 +30,8 @@ pub fn test_class(checker: &Checker) {
         {
             continue;
         }
-        // A class another class extends or code refers to must stay a class. A string that names it, such as an expected
-        // `__qualname__` in an assertion, would no longer match the functions.
+        // A class another class extends or code refers to must stay a class. A string that names it, such as an
+        // expected `__qualname__` in an assertion, would no longer match the functions.
         let name = class.name.as_str();
         let project = checker.project();
         let referenced = !checker.semantic().references_to(name).is_empty()

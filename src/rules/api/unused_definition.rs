@@ -222,12 +222,12 @@ fn instance_attributes_of(
         })
         .collect();
     for (name, range) in instance_attributes(class) {
-        let unread = !members.contains(&name)
-            && !is_protocol_name(name)
-            && !(public_class && Visibility::of(name) == Visibility::Public)
-            && project.calls().attribute_loads(name) == 0
-            && project.string_word_count(name) == 0
-            && !computed_read_hides(checker, name, local_reads)
+        let unread = !(members.contains(&name)
+            || is_protocol_name(name)
+            || public_class && Visibility::of(name) == Visibility::Public
+            || project.calls().attribute_loads(name) != 0
+            || project.string_word_count(name) != 0
+            || computed_read_hides(checker, name, local_reads))
             && !project.is_referenced(name)
             && !is_in_strings(strings, name, TextRange::empty(range.start()));
         if unread {

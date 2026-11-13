@@ -215,8 +215,8 @@ impl<'a> Visitor<'a> for Changes<'_, '_> {
                     self.target(target, stmt.range());
                 }
             }
-            Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => self.target(target, stmt.range()),
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(_), .. }) => self.target(target, stmt.range()),
+            Stmt::AugAssign(ast::StmtAugAssign { target, .. })
+            | Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(_), .. }) => self.target(target, stmt.range()),
             Stmt::Delete(ast::StmtDelete { targets, .. }) => {
                 for target in targets {
                     if let Expr::Subscript(subscript) = target {

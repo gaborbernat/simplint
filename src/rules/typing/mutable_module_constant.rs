@@ -27,7 +27,7 @@ pub fn mutable_module_constant(checker: &Checker) {
             continue;
         };
         let name = target.id.as_str();
-        let declared_final = annotation.is_some_and(|annotation| final_type(annotation).is_some());
+        let declared_final = annotation.is_some_and(|annotation| !matches!(final_type(annotation), Final::No));
         if !(is_constant_name(name) || declared_final) || is_dunder(name) {
             continue;
         }
@@ -112,25 +112,37 @@ impl Kind {
     }
 }
 
-// The annotation inside `Final[...]`, or `Some(None)` for a bare `Final`; `None` when the annotation is not `Final`.
-fn final_type(annotation: &Expr) -> Option<Option<&Expr>> {
+enum Final<'a> {
+    No,
+    Bare,
+    Of(&'a Expr),
+}
+
+fn final_type(annotation: &Expr) -> Final<'_> {
     match annotation {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) if last_segment(value) == Some("Final") => {
-            Some(Some(slice))
+            Final::Of(slice)
         }
-        other if last_segment(other) == Some("Final") => Some(None),
-        _ => None,
+        other if last_segment(other) == Some("Final") => Final::Bare,
+        _ => Final::No,
     }
 }
 
 // Code this module cannot see, such as a caller of a function that returns a slice of the value, may still rely on the
-// list, set or dict API, so the fix is unsafe. An annotation the fix cannot follow, such as `typing.List[str]`, leaves it off.
+// list, set or dict API, so the fix is unsafe. An annotation the fix cannot follow, such as `typing.List[str]`, leaves
+// it off.
 fn fix(checker: &Checker, kind: Kind, value: &Expr, annotation: Option<&Expr>) -> Option<Fix> {
     let immutable = kind.immutable(checker.target_version());
     let mut edits = value_edits(checker, kind, value, immutable);
-    let declared = annotation.and_then(|annotation| final_type(annotation).unwrap_or(Some(annotation)));
-    if let Some(declared) = declared {
-        edits.extend(annotation_edit(checker, kind, declared, immutable)?);
+    let declared = annotation.and_then(|annotation| match final_type(annotation) {
+        Final::No => Some(annotation),
+        Final::Bare => None,
+        Final::Of(inner) => Some(inner),
+    });
+    if let Some(declared) = declared
+        && let Retype::Edit(edit) = annotation_edit(checker, kind, declared, immutable)?
+    {
+        edits.push(edit);
     }
     let mut edits = edits.into_iter();
     let first = edits.next()?;
@@ -172,9 +184,14 @@ fn value_edits(checker: &Checker, kind: Kind, value: &Expr, immutable: &str) -> 
     }
 }
 
-// The edit that retypes a declared `list[T]`, `set[T]` or `dict[K, V]`, bare or subscripted, or `Some(None)` for an
-// abstract annotation, such as `Sequence[str]`, that the immutable value already satisfies.
-fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &str) -> Option<Option<Edit>> {
+enum Retype {
+    // An abstract annotation, such as `Sequence[str]`, that the immutable value already satisfies.
+    Keep,
+    // The new spelling of a declared `list[T]`, `set[T]` or `dict[K, V]`, bare or subscripted.
+    Edit(Edit),
+}
+
+fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &str) -> Option<Retype> {
     let semantic = checker.semantic();
     let (base, slice) = match declared {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => (value.as_ref(), Some(slice.as_ref())),
@@ -183,7 +200,7 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
     if !semantic.is_builtin(base, kind.noun()) {
         // `typing.List` and its kin name the mutable type too, which the fix cannot follow.
         let typing = ["List", "Set", "Dict"].iter().any(|alias| semantic.match_typing_expr(base, alias));
-        return (!typing && !matches!(declared, Expr::StringLiteral(_))).then_some(None);
+        return (!typing && !matches!(declared, Expr::StringLiteral(_))).then_some(Retype::Keep);
     }
     let text = match (kind, slice) {
         (Kind::List, Some(slice)) => format!("tuple[{}, ...]", checker.text(slice.range())),
@@ -191,16 +208,16 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
         (Kind::List, None) => "tuple".to_owned(),
         (_, None) => immutable.to_owned(),
     };
-    Some(Some(Edit::range_replacement(text, declared.range())))
+    Some(Retype::Edit(Edit::range_replacement(text, declared.range())))
 }
 
-// Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method that leaves it as it
-// is, iterates it, tests it, compares it, or passes it to a built-in that copies or reads it. Anything else, such as
-// passing it to another function or returning it, may hand it to code that changes it.
+// Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method
+// that leaves it as it is, iterates it, tests it, compares it, or passes it to a built-in that copies or reads it.
+// Anything else, such as passing it to another function or returning it, may hand it to code that changes it.
 //
 // Some reads see the type itself, so the immutable value would change what they do: a list compares unequal to a tuple,
-// `+` mixes them only by raising, a `tuple` has no `copy`, an operator on a `frozenset` or a mapping view returns another
-// type than before, and `isinstance`, `type`, `repr`, `str` and `print` show the new type.
+// `+` mixes them only by raising, a `tuple` has no `copy`, an operator on a `frozenset` or a mapping view returns
+// another type than before, and `isinstance`, `type`, `repr`, `str` and `print` show the new type.
 struct Reads<'a> {
     names: FxHashMap<&'a str, Kind>,
     reading: FxHashSet<TextRange>,
@@ -327,7 +344,8 @@ impl<'a> Visitor<'a> for Reads<'a> {
                     self.escaped.insert(id.as_str());
                 }
             }
-            Expr::Subscript(ast::ExprSubscript { value, ctx: ExprContext::Load, .. }) => self.read(value),
+            Expr::Subscript(ast::ExprSubscript { value, ctx: ExprContext::Load, .. })
+            | Expr::Starred(ast::ExprStarred { value, .. }) => self.read(value),
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Load, .. }) if attr == "copy" => {
                 self.typed_read(value, &[Kind::List]);
             }
@@ -354,7 +372,6 @@ impl<'a> Visitor<'a> for Reads<'a> {
             Expr::BoolOp(ast::ExprBoolOp { values, .. }) => values.iter().for_each(|value| self.read(value)),
             Expr::UnaryOp(ast::ExprUnaryOp { operand, .. }) => self.read(operand),
             Expr::If(ast::ExprIf { test, .. }) => self.read(test),
-            Expr::Starred(ast::ExprStarred { value, .. }) => self.read(value),
             Expr::Dict(ast::ExprDict { items, .. }) => {
                 items.iter().filter(|item| item.key.is_none()).for_each(|item| self.read(&item.value));
             }

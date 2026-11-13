@@ -98,7 +98,7 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
     if !(fixture || function.name.as_str().starts_with("test")) || tests_legacypath(checker) {
         return;
     }
-    for parameter in function.parameters.iter() {
+    for parameter in &function.parameters {
         let name = parameter.name().as_str();
         if let Some((_, replacement)) = LEGACY_FIXTURES.iter().find(|(legacy, _)| *legacy == name) {
             checker.report(

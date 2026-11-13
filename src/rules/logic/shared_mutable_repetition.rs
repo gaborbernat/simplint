@@ -58,8 +58,11 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         _ => unreachable!("matched as a list or tuple display above"),
     };
     // Zero or one copy shares nothing.
-    if matches!(count, Expr::NumberLiteral(ast::ExprNumberLiteral { value: Number::Int(int), .. }) if int.as_u8().is_some_and(|copies| copies <= 1))
-    {
+    if matches!(
+        count,
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: Number::Int(int), .. })
+            if int.as_u8().is_some_and(|copies| copies <= 1)
+    ) {
         return;
     }
     let Some(element) = elements.iter().find(|element| is_mutable(checker, element)) else {
@@ -96,7 +99,11 @@ struct Mutation<'t> {
 impl Mutation<'_> {
     // `target[i]`, an element of the repetition.
     fn is_element(&self, expr: &Expr) -> bool {
-        matches!(expr, Expr::Subscript(ast::ExprSubscript { value, .. }) if ComparableExpr::from(value.as_ref()) == self.target)
+        matches!(
+            expr,
+            Expr::Subscript(ast::ExprSubscript { value, .. })
+                if ComparableExpr::from(value.as_ref()) == self.target
+        )
     }
 
     // `target[i][j]` or `target[i].name`, a part of an element.

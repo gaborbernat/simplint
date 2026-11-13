@@ -528,9 +528,9 @@ fn class_tuples<'f>(
         .collect()
 }
 
-// The files each runtime import statement runs, with the statement's range, and the modules whose import runs one. A `from` import reads each name as a
-// submodule when one exists, and from the module otherwise, as Python does. An import a version check keeps to Pythons
-// older than the project's target never runs.
+// The files each runtime import statement runs, with the statement's range, and the modules whose import runs one. A
+// `from` import reads each name as a submodule when one exists, and from the module otherwise, as Python does. An
+// import a version check keeps to Pythons older than the project's target never runs.
 fn runtime_targets<'f>(
     sites: &'f [ImportSite],
     python_version: PythonVersion,

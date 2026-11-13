@@ -48,9 +48,9 @@ enum Anchor {
     Absolute,
 }
 
-// A `re.match`, `re.prefixmatch` or `re.search` call with a literal pattern that only matches the whole string: anchored
-// at its end, and for `re.search` at its start too, without flags, an inline flag or a top-level alternation, which
-// would make an anchor apply to one branch only or to each line.
+// A `re.match`, `re.prefixmatch` or `re.search` call with a literal pattern that only matches the whole string:
+// anchored at its end, and for `re.search` at its start too, without flags, an inline flag or a top-level alternation,
+// which would make an anchor apply to one branch only or to each line.
 pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> Option<Anchored<'a>> {
     if call.arguments.len() != 2 || call.arguments.find_argument_value("string", 1).is_none() {
         return None;

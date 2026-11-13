@@ -1,7 +1,8 @@
 use super::stdlib_submodules::{LATEST_MINOR, STDLIB_SUBMODULES};
 use crate::syntax::{is_stdlib_root, top_level};
 
-// A module the standard library ships on some supported Python, since a version check may pick it, as `tomllib` on 3.11.
+// A module the standard library ships on some supported Python, since a version check may pick it, as `tomllib` on
+// 3.11.
 pub(super) fn ships_on_some_version(module: &str) -> bool {
     (7..=LATEST_MINOR).any(|minor| is_stdlib_root(minor, module))
 }

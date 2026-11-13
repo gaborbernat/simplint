@@ -314,8 +314,8 @@ fn lazy_module_offers_what_it_defines() {
     );
 }
 
-// A test that reads `__all__` by its name, off a module it imports at run time as a test of every module does, may check
-// that it is a tuple, so the tuple is reported without a fix.
+// A test that reads `__all__` by its name, off a module it imports at run time as a test of every module does, may
+// check that it is a tuple, so the tuple is reported without a fix.
 #[test_case("tests/test_all.py", false ; "read_by_a_test")]
 #[test_case("tools/all.py", true ; "read_outside_the_tests")]
 fn tuple_all_a_test_reads_keeps_its_type(reader: &str, fixed: bool) {

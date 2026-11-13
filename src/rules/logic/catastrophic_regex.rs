@@ -181,13 +181,12 @@ impl<'p> Parser<'p> {
                 self.index += rest.iter().position(|&byte| byte == b')')? + 1;
                 Some(Node::Group { alternatives: vec![Vec::new()], atomic: true })
             }
-            [b'(', b'?', b'(', ..] => None,
+            [b'(', b'?', b'(', ..] | [b')', ..] => None,
             [b'(', b'?', b'P', b'=', ..] => {
                 self.index += rest.iter().position(|&byte| byte == b')')? + 1;
                 Some(Node::Atom)
             }
             [b'(', ..] => self.group(rest),
-            [b')', ..] => None,
             _ => {
                 self.index += 1;
                 Some(Node::Atom)

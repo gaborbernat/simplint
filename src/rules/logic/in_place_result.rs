@@ -42,8 +42,10 @@ fn is_result_used(walker: &Walker, expr: &Expr) -> bool {
         Some(Expr::Call(_) | Expr::Named(_) | Expr::Compare(_)) => true,
         Some(_) => false,
         None => match walker.statement() {
-            Some(Stmt::Assign(ast::StmtAssign { value, .. })) => value.range() == expr.range(),
-            Some(Stmt::AnnAssign(ast::StmtAnnAssign { value: Some(value), .. })) => value.range() == expr.range(),
+            Some(
+                Stmt::Assign(ast::StmtAssign { value, .. })
+                | Stmt::AnnAssign(ast::StmtAnnAssign { value: Some(value), .. }),
+            ) => value.range() == expr.range(),
             Some(Stmt::Return(ast::StmtReturn { value: Some(value), .. })) => {
                 value.range() == expr.range()
                     && !matches!(walker.scopes().last(), Some(Scope::Function(function)) if function.body.len() == 1)

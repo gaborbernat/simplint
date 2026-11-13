@@ -167,7 +167,7 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
                 self.visit_expr(iter);
                 self.visit_expr(target);
                 let id = stmt.start().to_usize();
-                self.arm(id, 0, true, body, |walk, body| walk.visit_body(body));
+                self.arm(id, 0, true, body, ruff_python_ast::visitor::Visitor::visit_body);
                 self.visit_body(orelse);
             }
             Stmt::While(ast::StmtWhile { test, body, orelse, .. }) => {
@@ -181,27 +181,27 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 self.visit_expr(test);
                 let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body, |walk, body| walk.visit_body(body));
+                self.arm(id, 0, false, body, ruff_python_ast::visitor::Visitor::visit_body);
                 for (index, clause) in elif_else_clauses.iter().enumerate() {
                     if let Some(test) = &clause.test {
                         self.visit_expr(test);
                     }
-                    self.arm(id, index + 1, false, &clause.body, |walk, body| walk.visit_body(body));
+                    self.arm(id, index + 1, false, &clause.body, ruff_python_ast::visitor::Visitor::visit_body);
                 }
             }
             Stmt::Match(ast::StmtMatch { subject, cases, .. }) => {
                 self.visit_expr(subject);
                 let id = stmt.start().to_usize();
                 for (index, case) in cases.iter().enumerate() {
-                    self.arm(id, index, false, &case.body, |walk, body| walk.visit_body(body));
+                    self.arm(id, index, false, &case.body, ruff_python_ast::visitor::Visitor::visit_body);
                 }
             }
             Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
                 let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body, |walk, body| walk.visit_body(body));
+                self.arm(id, 0, false, body, ruff_python_ast::visitor::Visitor::visit_body);
                 for (index, handler) in handlers.iter().enumerate() {
                     let ast::ExceptHandler::ExceptHandler(handler) = handler;
-                    self.arm(id, index + 1, false, &handler.body, |walk, body| walk.visit_body(body));
+                    self.arm(id, index + 1, false, &handler.body, ruff_python_ast::visitor::Visitor::visit_body);
                 }
                 self.visit_body(orelse);
                 self.visit_body(finalbody);

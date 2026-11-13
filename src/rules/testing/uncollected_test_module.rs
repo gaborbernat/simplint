@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -8,7 +10,7 @@ use crate::syntax::{docstring, is_main_guard};
 
 pub fn uncollected_test_module(checker: &Checker) {
     let file_name = checker.file_name();
-    if !checker.is_test_module() || matches!(file_name, "conftest.py" | "__init__.py") || !file_name.ends_with(".py") {
+    if !checker.is_test_module() || matches!(file_name, "conftest.py" | "__init__.py") || !is_python(file_name) {
         return;
     }
     let pytest = &checker.settings.project.pytest;
@@ -48,5 +50,10 @@ fn has_collected_sibling(checker: &Checker, pytest: &PytestConfig) -> bool {
         .project()
         .directory_modules()
         .iter()
-        .any(|name| name.ends_with(".py") && name != "conftest.py" && pytest.collects(name))
+        .any(|name| is_python(name) && name != "conftest.py" && pytest.collects(name))
+}
+
+// Python imports a module only from a lowercase `.py` file, whatever the file system's case rules.
+fn is_python(name: &str) -> bool {
+    Path::new(name).extension().is_some_and(|extension| extension == "py")
 }

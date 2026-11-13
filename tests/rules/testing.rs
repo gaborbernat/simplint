@@ -80,10 +80,16 @@ use crate::common;
     "up_pytest_deprecated_api_called_setup"
 )]
 #[test_case(
-    "up-pytest-deprecated-api", "tests/test_up_pytest_deprecated_api_nose_module.py", None ; "up_pytest_deprecated_api_nose_module"
+    "up-pytest-deprecated-api",
+    "tests/test_up_pytest_deprecated_api_nose_module.py",
+    None ;
+    "up_pytest_deprecated_api_nose_module"
 )]
 #[test_case(
-    "up-pytest-deprecated-api", "tests/test_up_pytest_deprecated_api_nose_class.py", None ; "up_pytest_deprecated_api_nose_class"
+    "up-pytest-deprecated-api",
+    "tests/test_up_pytest_deprecated_api_nose_class.py",
+    None ;
+    "up_pytest_deprecated_api_nose_class"
 )]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));

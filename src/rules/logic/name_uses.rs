@@ -77,7 +77,7 @@ impl<'a> NameUses<'a> {
     // The uses in a function: its parameters bind their names before the body runs.
     pub(super) fn of_function(function: &'a ast::StmtFunctionDef) -> Self {
         let mut uses = Self::default();
-        for parameter in function.parameters.iter() {
+        for parameter in &function.parameters {
             uses.stores.entry(parameter.name().as_str()).or_default().push(parameter.name().range());
         }
         uses.visit_body(&function.body);
@@ -203,8 +203,8 @@ impl<'a> Visitor<'a> for AllNames<'a> {
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
         match pattern {
             Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-            | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. }) => self.0.push(name.as_str()),
-            Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => self.0.push(name.as_str()),
+            | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
+            | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => self.0.push(name.as_str()),
             _ => {}
         }
         walk_pattern(self, pattern);
@@ -292,8 +292,8 @@ impl<'a> FunctionNames<'a> {
         Self { names: Names::of(body), deferred: Nesting::new(walk.deferred), comprehensions: walk.comprehensions }
     }
 
-    // Whether the rule can follow the name: the function binds it only by assignment, reads no local by its text, and no
-    // nested function, class or lambda mentions it, since that may read it at any time.
+    // Whether the rule can follow the name: the function binds it only by assignment, reads no local by its text, and
+    // no nested function, class or lambda mentions it, since that may read it at any time.
     pub(super) fn is_plain_local(&self, name: &str) -> bool {
         let names = &self.names;
         !names.reads_locals

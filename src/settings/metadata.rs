@@ -37,8 +37,8 @@ impl ProjectMetadata {
         self.dependencies.contains(&top_level(module).to_ascii_lowercase())
     }
 
-    // Whether a requirement or an extra may install the module. Reporting the module as undeclared relies on the answer,
-    // so any likely match counts.
+    // Whether a requirement or an extra may install the module. Reporting the module as undeclared relies on the
+    // answer, so any likely match counts.
     pub(crate) fn may_install(&self, module: &str) -> bool {
         may_provide(&self.runtime, module)
     }

@@ -10,8 +10,8 @@ use crate::rules::exception_classes::{ClassKey, derives_from_base_exception, lin
 const REBUILDERS: [&str; 4] = ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__"];
 
 // `pickle` and `copy` rebuild an exception by calling its class with its `args`, which `BaseException.__init__` sets to
-// the arguments it receives. A subclass whose `__init__` passes its parent fewer or more positional values than it takes
-// itself cannot be rebuilt from them.
+// the arguments it receives. A subclass whose `__init__` passes its parent fewer or more positional values than it
+// takes itself cannot be rebuilt from them.
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::ClassDef(class) = stmt else {
         return;

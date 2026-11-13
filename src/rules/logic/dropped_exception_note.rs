@@ -7,8 +7,8 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::rules::exception_classes::{derives_from_base_exception, lineage};
 
-// An exception caught by name, given a note in its handler, and then neither raised again nor read. The handler swallows
-// it, so the note reaches no one.
+// An exception caught by name, given a note in its handler, and then neither raised again nor read. The handler
+// swallows it, so the note reaches no one.
 pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
     let ast::ExceptHandler::ExceptHandler(handler) = handler;
     let Some(name) = handler.name.as_ref() else {
@@ -21,8 +21,8 @@ pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptH
     report(walker.checker, &uses.notes, name.as_str());
 }
 
-// An exception built into a local name, given a note, and then neither raised, returned nor passed anywhere: the note is
-// written to an object nothing reads.
+// An exception built into a local name, given a note, and then neither raised, returned nor passed anywhere: the note
+// is written to an object nothing reads.
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
         return;

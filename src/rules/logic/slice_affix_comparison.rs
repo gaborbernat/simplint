@@ -17,9 +17,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let (CmpOp::Eq | CmpOp::NotEq) = op else {
         return;
     };
-    let (subscript, literal) = match (left, right) {
-        (Expr::Subscript(subscript), literal) | (literal, Expr::Subscript(subscript)) => (subscript, literal),
-        _ => return,
+    let ((Expr::Subscript(subscript), literal) | (literal, Expr::Subscript(subscript))) = (left, right) else {
+        return;
     };
     let Some(length) = literal_length(literal) else {
         return;
