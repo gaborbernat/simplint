@@ -63,8 +63,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
 }
 
+// A lambda is one expression, so like a comprehension it keeps its parameters next to every use.
 pub fn scope<'a>(walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-    parameters(walker, scope, |_| false, check);
+    if !matches!(scope, Scope::Lambda(_)) {
+        parameters(walker, scope, |_| false, check);
+    }
 }
 
 pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {

@@ -14,7 +14,6 @@ expression: "lint_fixture(rule, fixture, target_version)"
 17:29 SMP101 Single-letter name `h`; use a descriptive name
 19:9 SMP101 Single-letter name `n`; use a descriptive name
 22:22 SMP101 Single-letter name `c`; use a descriptive name
-24:18 SMP101 Single-letter name `z`; use a descriptive name
 29:7 SMP101 Single-letter name `C`; use a descriptive name
 35:23 SMP101 Single-letter name `r`; use a descriptive name
 52:27 SMP101 Single-letter name `r`; use a descriptive name
