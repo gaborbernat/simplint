@@ -11,7 +11,7 @@ use ruff_python_parser::parse_expression;
 use ruff_python_stdlib::typing::{is_literal_member, is_pep_593_generic_member, is_standard_library_generic_member};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 // Ranges that nest or are disjoint, such as the scopes of a file, so that the ranges holding another range are found
 // by a search instead of a scan.
@@ -178,10 +178,12 @@ pub fn dataclass_decorator<'a>(
         .map(|decorator| &decorator.expression)
 }
 
-// An attribute a method writes on its instance through its receiver, with the statement that writes it, the one after
-// it in the same body, and whether the write is an `object.__setattr__` call, which a frozen dataclass makes.
+// An attribute a method writes on its instance through its receiver, with the range that names it, the statement that
+// writes it, the one after it in the same body, and whether the write is an `object.__setattr__` call, which a frozen
+// dataclass makes.
 pub struct InstanceWrite<'a> {
     pub attr: &'a str,
+    pub range: TextRange,
     pub stmt: &'a Stmt,
     pub next: Option<&'a Stmt>,
     pub method: &'a ast::StmtFunctionDef,
@@ -199,20 +201,38 @@ pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
         for_each_body_outside_classes(&method.body, &mut |body| {
             for (index, stmt) in body.iter().enumerate() {
                 let next = body.get(index + 1);
-                if let Some(attr) = set_through_object(stmt, receiver) {
-                    writes.push(InstanceWrite { attr, stmt, next, method, through_object: true });
+                if let Some(name) = set_through_object(stmt, receiver) {
+                    let (attr, range) = (name.value.to_str(), name.range);
+                    writes.push(InstanceWrite { attr, range, stmt, next, method, through_object: true });
                 }
                 for target in write_targets(stmt) {
                     if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
                         && is_name(value, receiver)
                     {
-                        writes.push(InstanceWrite { attr: attr.as_str(), stmt, next, method, through_object: false });
+                        let (range, attr) = (attr.range, attr.as_str());
+                        writes.push(InstanceWrite { attr, range, stmt, next, method, through_object: false });
                     }
                 }
             }
         });
     }
     writes
+}
+
+// The attributes a class's instance methods assign on their instance, each with its first assignment in the source.
+pub fn instance_attributes(class: &ast::StmtClassDef) -> Vec<(&str, TextRange)> {
+    let mut first: FxHashMap<&str, TextRange> = FxHashMap::default();
+    for write in instance_writes(class) {
+        if !write.through_object && !is_classmethod(write.method) && !matches!(write.stmt, Stmt::Delete(_)) {
+            let range = first.entry(write.attr).or_insert(write.range);
+            if write.range.start() < range.start() {
+                *range = write.range;
+            }
+        }
+    }
+    let mut attributes: Vec<(&str, TextRange)> = first.into_iter().collect();
+    attributes.sort_unstable_by_key(|(_, range)| range.start());
+    attributes
 }
 
 // The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
@@ -261,7 +281,7 @@ fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'
 
 // The attribute an `object.__setattr__(receiver, "name", value)` call sets, which a frozen dataclass uses to set its
 // own attributes.
-fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
+fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a ast::ExprStringLiteral> {
     let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
     let attribute = call.func.as_attribute_expr()?;
     let is_object = is_name(&attribute.value, "object");
@@ -269,7 +289,7 @@ fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
         [Expr::Name(target), Expr::StringLiteral(name), ..]
             if is_object && attribute.attr.as_str() == "__setattr__" && target.id.as_str() == receiver =>
         {
-            Some(name.value.to_str())
+            Some(name)
         }
         _ => None,
     }
