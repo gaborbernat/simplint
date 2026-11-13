@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
-use anyhow::{Context, Result};
 use itertools::Itertools;
 use serde::Deserialize;
 
@@ -148,8 +147,11 @@ impl ProjectMetadata {
 
     pub(super) fn add_tool_references(&mut self, pyproject: &toml::Table) {
         if let Some(dynamic) = tool_value(pyproject, &["setuptools", "dynamic"]).and_then(toml::Value::as_table) {
-            self.entry_points
-                .extend(dynamic.values().filter_map(|value| value.get("attr")?.as_str().and_then(dotted_attribute)));
+            self.entry_points.extend(
+                dynamic
+                    .values()
+                    .filter_map(|value| value.get("attr").and_then(toml::Value::as_str).and_then(dotted_attribute)),
+            );
         }
         if let Some(classes) = tool_value(pyproject, &["setuptools", "cmdclass"]).and_then(toml::Value::as_table) {
             self.entry_points.extend(classes.values().filter_map(toml::Value::as_str).filter_map(dotted_attribute));
@@ -206,8 +208,7 @@ pub(super) fn tool_value<'a>(pyproject: &'a toml::Table, path: &[&str]) -> Optio
 }
 
 fn dotted_attribute(value: &str) -> Option<String> {
-    let (module, attribute) = value.rsplit_once('.')?;
-    Some(format!("{module}:{attribute}"))
+    value.rsplit_once('.').map(|(module, attribute)| format!("{module}:{attribute}"))
 }
 
 fn strings(value: Option<&toml::Value>) -> Vec<String> {
@@ -239,7 +240,9 @@ impl BuildConfiguration {
         if let Some(file) = hatch_file {
             overlay(&mut hatch, file);
         }
-        let system_value = |key: &str| pyproject.get("build-system")?.as_table()?.get(key);
+        let system_value = |key: &str| {
+            pyproject.get("build-system").and_then(toml::Value::as_table).and_then(|system| system.get(key))
+        };
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],
@@ -333,12 +336,13 @@ impl CoveragePlugins {
 
 // The files hatchling loads as its custom build and metadata hooks, each `path` relative to the project's directory.
 // hatchling calls the class that subclasses its hook interface in such a file, so no import reaches it.
-pub(super) fn hatch_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<PathBuf>> {
-    build.hatch_hooks.iter().map(|path| Ok(normalized(&absolute(&root.join(path))?))).collect()
+pub(super) fn hatch_hooks(root: &Path, build: &BuildConfiguration) -> Vec<PathBuf> {
+    build.hatch_hooks.iter().map(|path| normalized(&absolute(&root.join(path)))).collect()
 }
 
-fn absolute(path: &Path) -> Result<PathBuf> {
-    std::path::absolute(path).with_context(|| format!("Failed to resolve {}", path.display()))
+// Resolving fails only for an empty path, and a path joined to the project's directory never is one.
+fn absolute(path: &Path) -> PathBuf {
+    std::path::absolute(path).expect("a path under the project directory is not empty")
 }
 
 // The path hatchling makes of a hook's `path`, which `os.path.normpath` collapses: each `..` drops the component before
@@ -356,15 +360,15 @@ fn normalized(path: &Path) -> PathBuf {
 
 // The file and names of the build backend, each name paired with the file that defines it. A backend written as
 // `module:object` is the object the frontend calls the hooks on, so only the object's name counts.
-pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<(PathBuf, String)>> {
+pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Vec<(PathBuf, String)> {
     let Some(backend) = build.backend.as_deref() else {
-        return Ok(Vec::new());
+        return Vec::new();
     };
     let mut hooks = Vec::new();
     if backend == "pdm.backend" {
         let file = root.join(build.pdm_hook.as_deref().unwrap_or("pdm_build.py"));
         if file.is_file() {
-            let file = absolute(&file)?;
+            let file = absolute(&file);
             hooks.extend(
                 [
                     "pdm_build_hook_enabled",
@@ -392,9 +396,9 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
         .flat_map(|directory| [directory.join(format!("{relative}.py")), directory.join(&relative).join("__init__.py")])
         .find(|path| path.is_file())
     else {
-        return Ok(hooks);
+        return hooks;
     };
-    let file = absolute(&file)?;
+    let file = absolute(&file);
     // The PEP 517 and PEP 660 hooks a build frontend calls by name, which no import of the project reaches.
     let names: Vec<String> = match object {
         Some(object) => vec![object.split('.').next().unwrap_or_default().trim().to_owned()],
@@ -412,5 +416,5 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
         .into(),
     };
     hooks.extend(names.into_iter().map(|name| (file.clone(), name)));
-    Ok(hooks)
+    hooks
 }

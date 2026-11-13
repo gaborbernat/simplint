@@ -43,19 +43,20 @@ pub(crate) struct SettingsResolver {
 }
 
 impl SettingsResolver {
-    pub(crate) fn new(config_file: Option<&Path>, isolated: bool, overrides: Overrides) -> Result<Self> {
-        let cwd = std::env::current_dir()?;
+    pub(crate) fn new(cwd: &Path, config_file: Option<&Path>, isolated: bool, overrides: Overrides) -> Result<Self> {
         // A relative `--config` would anchor per-file ignore patterns at an empty directory.
-        let config_file = config_file.map(std::path::absolute).transpose()?;
+        let config_file = config_file.map(|config| {
+            std::path::absolute(cwd.join(config)).expect("a path under the working directory is not empty")
+        });
         let (root, pyproject) = match config_file.as_deref() {
-            _ if isolated => (cwd.as_path(), None),
+            _ if isolated => (cwd, None),
             Some(config) => (
-                config.parent().unwrap_or(&cwd),
+                config.parent().unwrap_or(cwd),
                 Some(config).filter(|config| config.file_name().is_some_and(|name| name == "pyproject.toml")),
             ),
             None => {
-                let discovery = Discovery::Hierarchical { run_root: cwd.clone(), projects: Mutex::default() };
-                let root = discovery.settings(&cwd, &overrides)?;
+                let discovery = Discovery::Hierarchical { run_root: cwd.to_path_buf(), projects: Mutex::default() };
+                let root = discovery.settings(cwd, &overrides)?;
                 discovery.set_main(&root.root);
                 return Ok(Self { root, overrides, discovery });
             }
@@ -66,6 +67,8 @@ impl SettingsResolver {
         let fixed = Arc::new(Settings::resolve(root, None, table, table, &overrides, isolated)?);
         let mut projects = Projects { main: Some(fixed.root.clone()), ..Projects::default() };
         projects.resolved.insert((fixed.root.clone(), fixed.metadata_path.clone()), Arc::clone(&fixed));
+        // A nested project reads its settings from the same file, which needs no second read.
+        projects.pyprojects.extend(pyproject.map(|(path, table)| (path.to_path_buf(), table)));
         let discovery = Discovery::Fixed { settings: Arc::clone(&fixed), projects: Mutex::new(projects), isolated };
         Ok(Self { root: fixed, overrides, discovery })
     }
@@ -102,7 +105,7 @@ impl Discovery {
     // are cached by the directory a lookup starts from, and by the root and metadata file they resolve to, since files
     // of one root can have different metadata.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
-        let absolute = std::path::absolute(path)?;
+        let absolute = std::path::absolute(path).expect("a checked path is not empty");
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
         let mut projects = self.projects().lock().expect("no worker panics while resolving settings");
         if let Some(settings) = projects.settings.get(start) {
@@ -137,9 +140,6 @@ impl Discovery {
         let settings = if let Some(settings) = projects.resolved.get(&key) {
             Arc::clone(settings)
         } else {
-            for file in settings_file.iter().chain(&metadata_file) {
-                projects.table(file)?;
-            }
             let configuration = settings_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
             let metadata = metadata_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
             let mut resolved =
@@ -377,8 +377,8 @@ impl Settings {
             metadata_path: metadata_path.map(Path::to_path_buf),
             project_dir: project_dir.to_path_buf(),
             // `backend-path` is relative to the `pyproject.toml` that declares the backend.
-            build_hooks: build_hooks(project_dir, &build)?,
-            hatch_hooks: hatch_hooks(project_dir, &build)?,
+            build_hooks: build_hooks(project_dir, &build),
+            hatch_hooks: hatch_hooks(project_dir, &build),
             coverage,
             pytest,
             metadata,
@@ -548,7 +548,7 @@ fn config_has_flake8_lazy(path: &Path) -> Result<bool> {
             .and_then(toml::Value::as_array)
             .into_iter()
             .flatten()
-            .filter_map(|repo| repo.get("hooks")?.as_array())
+            .filter_map(|repo| repo.get("hooks").and_then(toml::Value::as_array))
             .flatten()
             .any(|hook| hook.get("id").and_then(toml::Value::as_str) == Some("flake8-lazy")));
     }
@@ -675,8 +675,11 @@ impl PerFileIgnore {
         let basename = source.pattern.trim_start_matches('!');
         let anchored = GlobPath::normalize(basename, &source.base);
         Ok(Self {
-            absolute: Glob::new(&anchored.to_string_lossy())?.compile_matcher(),
             basename: Glob::new(basename)?.compile_matcher(),
+            // `normalize` escapes the directory it anchors at, so only the pattern can make the glob invalid.
+            absolute: Glob::new(&anchored.to_string_lossy())
+                .expect("a valid pattern stays valid anchored")
+                .compile_matcher(),
             pattern: format!("{}{}", if negated { "!" } else { "" }, anchored.to_string_lossy()),
             negated,
             rules: source

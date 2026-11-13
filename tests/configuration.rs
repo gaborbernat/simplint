@@ -268,6 +268,45 @@ fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
 }
 
 #[test]
+fn invalid_config_file_fails() {
+    let root = project(&[("pyproject.toml", "[project\n"), ("module.py", CLEAN_MODULE)]);
+    let (code, _, stderr) = check(root.path(), &["--config", "pyproject.toml"]);
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
+}
+
+#[test]
+fn invalid_nested_pyproject_under_a_config_file_fails() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint]\n"),
+        ("tests/sub/pyproject.toml", "[project\n"),
+        ("tests/sub/test_module.py", CLEAN_MODULE),
+    ]);
+    let (code, _, stderr) = check(root.path(), &["--config", "pyproject.toml"]);
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
+}
+
+#[test]
+fn per_file_ignore_with_an_invalid_glob_fails() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"[a\" = [\"SMP101\"] }\n"),
+        ("module.py", CLEAN_MODULE),
+    ]);
+    let (code, _, stderr) = check(root.path(), &[]);
+    assert_eq!((code, stderr.contains("error")), (2, true), "{stderr}");
+}
+
+// The directory a pattern is anchored at is escaped, so its glob characters match themselves.
+#[test]
+fn per_file_ignore_under_a_directory_named_as_a_glob_applies() {
+    let root = project(&[
+        ("we[ird/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"module.py\" = [\"SMP101\"] }\n"),
+        ("we[ird/module.py", "x = 1\n"),
+    ]);
+    let (code, stdout, _) = common::check_in(root.path(), &root.path().join("we[ird"), &["--select", "SMP101"]);
+    assert_eq!((code, stdout), (0, PASSED.to_owned()));
+}
+
+#[test]
 fn relative_config_anchors_per_file_ignores_at_its_directory() {
     let root = project(&[
         ("sub/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP101\"] }\n"),
