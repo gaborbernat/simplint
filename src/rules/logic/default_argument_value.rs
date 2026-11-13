@@ -20,7 +20,10 @@ pub(crate) fn default_argument_value(checker: &Checker) {
         .filter_map(Stmt::as_function_def_stmt)
         .filter(|function| {
             resolvable(checker, function)
-                && function.parameters.iter_non_variadic_params().any(|param| param.default.as_deref().is_some_and(is_literal))
+                && function
+                    .parameters
+                    .iter_non_variadic_params()
+                    .any(|param| param.default.as_deref().is_some_and(is_literal))
         })
         .flat_map(|function| {
             semantic.references_to(function.name.as_str()).iter().map(move |reference| (reference.range, function))
@@ -38,7 +41,8 @@ pub(crate) fn default_argument_value(checker: &Checker) {
     let mut sites: FxHashMap<&str, Option<CallSites>> = FxHashMap::default();
     for (call, function) in calls.found {
         let arguments = &call.arguments;
-        if arguments.args.iter().any(Expr::is_starred_expr) || arguments.keywords.iter().any(|keyword| keyword.arg.is_none())
+        if arguments.args.iter().any(Expr::is_starred_expr)
+            || arguments.keywords.iter().any(|keyword| keyword.arg.is_none())
         {
             continue;
         }
@@ -49,7 +53,8 @@ pub(crate) fn default_argument_value(checker: &Checker) {
             if all.as_ref().is_some_and(|all| always_passes(all, &function.parameters, param, 0)) {
                 continue;
             }
-            let fix = argument_removal(checker, call, range).map(|removed| Fix::safe_edit(Edit::range_deletion(removed)));
+            let fix =
+                argument_removal(checker, call, range).map(|removed| Fix::safe_edit(Edit::range_deletion(removed)));
             let param = param.parameter.name.as_str();
             checker.report_fix(
                 Rule::DefaultArgumentValue,
@@ -96,7 +101,10 @@ fn passed_defaults<'a>(
 }
 
 fn is_default(param: &ast::ParameterWithDefault, argument: &Expr) -> bool {
-    param.default.as_deref().is_some_and(|default| is_literal(default) && ComparableExpr::from(default) == ComparableExpr::from(argument))
+    param
+        .default
+        .as_deref()
+        .is_some_and(|default| is_literal(default) && ComparableExpr::from(default) == ComparableExpr::from(argument))
 }
 
 // A literal evaluates to an equal value at each call, so passing it again matches the default. A name or a call may
@@ -109,7 +117,9 @@ fn is_literal(expr: &Expr) -> bool {
         | Expr::StringLiteral(_)
         | Expr::BytesLiteral(_)
         | Expr::EllipsisLiteral(_) => true,
-        Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::USub | UnaryOp::UAdd, operand, .. }) => operand.is_number_literal_expr(),
+        Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::USub | UnaryOp::UAdd, operand, .. }) => {
+            operand.is_number_literal_expr()
+        }
         _ => false,
     }
 }

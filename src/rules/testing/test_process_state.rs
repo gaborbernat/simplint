@@ -119,7 +119,9 @@ fn functions<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
                 functions.push(function);
             }
             Stmt::ClassDef(class)
-                if is_test_class(checker, class) && !defines_teardown(&class.body) && !uses_fixtures(&class.decorator_list) =>
+                if is_test_class(checker, class)
+                    && !defines_teardown(&class.body)
+                    && !uses_fixtures(&class.decorator_list) =>
             {
                 functions.extend(
                     class
@@ -157,7 +159,9 @@ fn is_pytestmark_usefixtures(stmt: &Stmt) -> bool {
     };
     targets.iter().any(|target| crate::syntax::is_name(target, "pytestmark"))
         && match &**value {
-            Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(is_usefixtures),
+            Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => {
+                elts.iter().any(is_usefixtures)
+            }
             other => is_usefixtures(other),
         }
 }
@@ -311,7 +315,12 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
             // `original = module.attribute` keeps the value a test puts back.
             if let Expr::Attribute(attribute) = &**value
                 && let Expr::Name(name) = &*attribute.value
-                && self.checker.semantic().resolved_bindings(name).iter().all(|binding| matches!(binding_referent(binding), Referent::Module))
+                && self
+                    .checker
+                    .semantic()
+                    .resolved_bindings(name)
+                    .iter()
+                    .all(|binding| matches!(binding_referent(binding), Referent::Module))
             {
                 self.saved.insert(State::ModuleAttribute);
             }
@@ -335,7 +344,9 @@ impl Saves<'_, '_> {
             Expr::Subscript(subscript) if subscript.slice.is_slice_expr() => &*subscript.value,
             Expr::Call(call) => match &*call.func {
                 Expr::Attribute(attribute) if attribute.attr.as_str() == "copy" => &*attribute.value,
-                func if self.checker.semantic().is_builtin(func, "list") || self.checker.semantic().is_builtin(func, "dict") => {
+                func if self.checker.semantic().is_builtin(func, "list")
+                    || self.checker.semantic().is_builtin(func, "dict") =>
+                {
                     call.arguments.args.first()?
                 }
                 _ => return None,

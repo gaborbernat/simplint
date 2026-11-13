@@ -4,9 +4,9 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::flow::{first_exit, has_own_break};
+use crate::rules::logic::inline::{enter_function, for_each_scoped_body};
 use crate::rules::logic::name_uses::FunctionNames;
 use crate::syntax::target_names;
-use crate::rules::logic::inline::{enter_function, for_each_scoped_body};
 
 pub fn loop_variable_after_loop(checker: &Checker) {
     let scopes = checker.state().local_scopes(checker);

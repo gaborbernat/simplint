@@ -74,7 +74,9 @@ fn collected_tests<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
         match stmt {
             ast::Stmt::FunctionDef(function) if is_test(function) => tests.push(function),
             ast::Stmt::ClassDef(class) if is_test_class(checker, class) => {
-                tests.extend(class.body.iter().filter_map(ast::Stmt::as_function_def_stmt).filter(|method| is_test(method)));
+                tests.extend(
+                    class.body.iter().filter_map(ast::Stmt::as_function_def_stmt).filter(|method| is_test(method)),
+                );
             }
             _ => {}
         }

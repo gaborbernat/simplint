@@ -29,11 +29,15 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
     let checker = walker.checker;
     let text = checker.parenthesized_text(value, compare.into());
-    let wrapped = if needs_parentheses(value) && !text.starts_with('(') { format!("({text})") } else { text.to_owned() };
+    let wrapped =
+        if needs_parentheses(value) && !text.starts_with('(') { format!("({text})") } else { text.to_owned() };
     // `not value == []` negates twice, so the `not` goes too, unless its result is kept as a `bool`.
-    let negated = walker.expressions().iter().rev().nth(1).filter(|parent| {
-        matches!(parent, Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::Not, .. }))
-    });
+    let negated = walker
+        .expressions()
+        .iter()
+        .rev()
+        .nth(1)
+        .filter(|parent| matches!(parent, Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::Not, .. })));
     let fix = walker.is_boolean_test(0).then(|| {
         let (replacement, range) = match (op, negated) {
             (CmpOp::Eq, Some(parent)) if walker.is_boolean_test(1) => (wrapped, parent.range()),

@@ -1,8 +1,8 @@
 use ruff_text_size::TextRange;
 
-use crate::rules::imports::stdlib::ships_on_some_version;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::imports::stdlib::ships_on_some_version;
 use crate::settings::{Settings, canonical_name, may_provide};
 
 // The project has no Python file of its own for `pyproject.toml`, so the `__init__.py` of its first top-level package

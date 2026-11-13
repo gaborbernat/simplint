@@ -26,10 +26,9 @@ fn is_iterator_annotation(checker: &Checker, annotation: &Expr) -> bool {
         _ => annotation,
     };
     let semantic = checker.semantic();
-    ["Iterator", "Generator"].into_iter().any(|name| {
-        semantic.match_typing_expr(base, name)
-            || semantic.resolves_to(base, &["collections", "abc", name])
-    })
+    ["Iterator", "Generator"]
+        .into_iter()
+        .any(|name| semantic.match_typing_expr(base, name) || semantic.resolves_to(base, &["collections", "abc", name]))
 }
 
 fn check_scope<'a>(checker: &Checker<'a>, scope: &LocalScope<'a>) {
@@ -38,7 +37,8 @@ fn check_scope<'a>(checker: &Checker<'a>, scope: &LocalScope<'a>) {
     let parameters = scope.function.into_iter().flat_map(|function| function.parameters.iter()).filter(|parameter| {
         parameter.annotation().is_some_and(|annotation| is_iterator_annotation(checker, annotation))
     });
-    let mut bindings = parameters.map(|parameter| (parameter.name().as_str(), Vec::new())).chain(walk.bindings).peekable();
+    let mut bindings =
+        parameters.map(|parameter| (parameter.name().as_str(), Vec::new())).chain(walk.bindings).peekable();
     if bindings.peek().is_none() {
         return;
     }
@@ -123,7 +123,9 @@ impl<'a> Walk<'_, 'a> {
     fn is_iterator_value(&self, value: &Expr) -> bool {
         match value {
             Expr::Generator(_) => true,
-            Expr::Call(call) => ITERATOR_BUILTINS.iter().any(|name| self.checker.semantic().is_builtin(&call.func, name)),
+            Expr::Call(call) => {
+                ITERATOR_BUILTINS.iter().any(|name| self.checker.semantic().is_builtin(&call.func, name))
+            }
             _ => false,
         }
     }
@@ -212,8 +214,8 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
         match expr {
             Expr::Lambda(_) => {}
             Expr::Call(call) => {
-                let consumes = CONSUMERS.iter().any(|name| self.checker.semantic().is_builtin(&call.func, name))
-                    || is_join(call);
+                let consumes =
+                    CONSUMERS.iter().any(|name| self.checker.semantic().is_builtin(&call.func, name)) || is_join(call);
                 if consumes && let [argument] = call.arguments.args.as_ref() {
                     self.site(argument, false);
                 }

@@ -98,7 +98,10 @@ fn class_of<'a>(checker: &Checker<'a>, test: &ast::StmtFunctionDef) -> Option<&'
 }
 
 // `function` when it is a method of `class`, whose calls through its receiver reach the other methods.
-fn method_in<'a>(class: Option<&'a ast::StmtClassDef>, function: &'a ast::StmtFunctionDef) -> Option<&'a ast::StmtFunctionDef> {
+fn method_in<'a>(
+    class: Option<&'a ast::StmtClassDef>,
+    function: &'a ast::StmtFunctionDef,
+) -> Option<&'a ast::StmtFunctionDef> {
     class?.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, function))
 }
 
@@ -236,7 +239,8 @@ impl<'b> Checks<'_, 'b> {
                     if method.is_some_and(|(method, _)| receiver(method) == Some(root)) {
                         // A method the class defines is followed; an inherited one may assert, as a base test class's
                         // helpers do.
-                        return local_function(semantic, func, method).is_none_or(|(method, _)| self.follows_function(method));
+                        return local_function(semantic, func, method)
+                            .is_none_or(|(method, _)| self.follows_function(method));
                     }
                 }
                 false

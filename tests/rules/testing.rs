@@ -270,7 +270,10 @@ fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "src/value.py", 0 ; "outside_testpaths")]
 #[test_case("pyproject.toml", "", "src/check_value.py", 0 ; "default_python_files")]
 fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &str, reports: usize) {
-    let pyproject = format!("[project]\nname = \"example\"\nversion = \"1\"\n\n{}", if file == "pyproject.toml" { configuration } else { "" });
+    let pyproject = format!(
+        "[project]\nname = \"example\"\nversion = \"1\"\n\n{}",
+        if file == "pyproject.toml" { configuration } else { "" }
+    );
     let mut files = vec![("pyproject.toml", pyproject.as_str()), (module, "def test_value() -> int:\n    return 1\n")];
     if file != "pyproject.toml" {
         files.push((file, configuration));

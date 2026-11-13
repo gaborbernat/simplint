@@ -54,14 +54,11 @@ fn check_scope(checker: &Checker, scope: &LocalScope) {
     }
     let operands: FxHashSet<TextRange> =
         subtractions.iter().flat_map(|bin_op| [bin_op.left.range(), bin_op.right.range()]).collect();
-    let involved: Vec<&(&str, &ast::ExprCall)> = clocks
-        .iter()
-        .filter(|(name, _)| subtractions.iter().any(|bin_op| mentions(bin_op, name)))
-        .collect();
+    let involved: Vec<&(&str, &ast::ExprCall)> =
+        clocks.iter().filter(|(name, _)| subtractions.iter().any(|bin_op| mentions(bin_op, name))).collect();
     let uses = scope.uses();
-    let only_durations = involved
-        .iter()
-        .all(|(name, _)| uses.loads(name).iter().all(|load| operands.contains(&load.range)));
+    let only_durations =
+        involved.iter().all(|(name, _)| uses.loads(name).iter().all(|load| operands.contains(&load.range)));
     let reports = subtractions
         .iter()
         .map(|bin_op| {

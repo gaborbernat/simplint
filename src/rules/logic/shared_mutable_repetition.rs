@@ -113,13 +113,17 @@ impl Mutation<'_> {
 impl<'a> Visitor<'a> for Mutation<'_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         self.found |= match stmt {
-            Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().any(|target| self.is_inside_element(target)),
+            Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+                targets.iter().any(|target| self.is_inside_element(target))
+            }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => self.is_inside_element(target),
             // `grid[i] += [x]` extends the shared list in place.
             Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => {
                 self.is_inside_element(target) || self.is_element(target)
             }
-            Stmt::Delete(ast::StmtDelete { targets, .. }) => targets.iter().any(|target| self.is_inside_element(target)),
+            Stmt::Delete(ast::StmtDelete { targets, .. }) => {
+                targets.iter().any(|target| self.is_inside_element(target))
+            }
             _ => false,
         };
         if !self.found {
@@ -163,10 +167,7 @@ fn comprehension(checker: &Checker, repetition: &Expr, sequence: &Expr, count: &
     if checker.semantic().is_bound("range") || checker.identifier_count_in(element.range(), "_") > 0 {
         return None;
     }
-    let replacement = format!(
-        "[{} for _ in range({})]",
-        checker.parenthesized_text(element, sequence.into()),
-        checker.text(count)
-    );
+    let replacement =
+        format!("[{} for _ in range({})]", checker.parenthesized_text(element, sequence.into()), checker.text(count));
     Some(Fix::unsafe_edit(Edit::range_replacement(replacement, repetition.range())))
 }

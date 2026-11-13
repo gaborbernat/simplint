@@ -41,7 +41,8 @@ pub(super) fn run_import_kinds(
         let is_class = classes.contains(&key);
         names.entry(*importer).or_default().insert(binding.bound.clone(), is_class);
         // A module that defines the name twice, as on both sides of a version check, gives no single signature.
-        let mut shapes = modules.get(&key.0).into_iter().flat_map(|module| &module.signatures).filter(|s| s.name == key.1);
+        let mut shapes =
+            modules.get(&key.0).into_iter().flat_map(|module| &module.signatures).filter(|s| s.name == key.1);
         let found = shapes.next().filter(|first| shapes.all(|other| other == *first));
         if let Some(signature) = found.filter(|_| !is_class) {
             signatures.entry(*importer).or_default().insert(binding.bound.clone(), signature.clone());

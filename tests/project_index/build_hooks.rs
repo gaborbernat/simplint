@@ -519,8 +519,5 @@ fn startup_pth_reads_are_production_use(pth: &str, stdout: &str) {
         ("pkg/hook.py", HOOK_PROJECT),
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }

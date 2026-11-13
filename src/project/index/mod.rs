@@ -184,7 +184,8 @@ impl Project {
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
         let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
-        let dependency_hosts: FxHashSet<FileId> = inputs.dependency_hosts.iter().filter_map(|path| ids_of.get(path)).collect();
+        let dependency_hosts: FxHashSet<FileId> =
+            inputs.dependency_hosts.iter().filter_map(|path| ids_of.get(path)).collect();
         let imported_modules: FxHashSet<String> = indexed
             .iter()
             .filter(|(id, _)| !dependency_hosts.is_empty() && !test_modules.contains(id))

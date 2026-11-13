@@ -510,8 +510,9 @@ impl<'a> FactVisitor<'a> {
             && self.parts.has(Parts::IMPORTED_MODULES)
         {
             self.imported_modules.insert(module.to_owned());
-            self.imported_modules
-                .extend(names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| format!("{module}.{}", alias.name)));
+            self.imported_modules.extend(
+                names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| format!("{module}.{}", alias.name)),
+            );
         }
         if let Some(resolved) = resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned) {
             if names.iter().any(|alias| alias.name.as_str() == "*") {

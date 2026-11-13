@@ -295,12 +295,16 @@ fn report_nested(checker: &Checker, outer: &ast::StmtFunctionDef) {
     }
     for inner in scope.functions {
         let name = inner.name.as_str();
-        let read = scope.loads.get(name).is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
+        let read =
+            scope.loads.get(name).is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
         if inner.decorator_list.is_empty() && !read && !scope.declared.contains(&name) && name != "_" {
             checker.report(
                 Rule::UnusedDefinition,
                 inner.name.range(),
-                format!("`{}.{name}` is defined inside `{}` but never called or read; remove it", outer.name, outer.name),
+                format!(
+                    "`{}.{name}` is defined inside `{}` but never called or read; remove it",
+                    outer.name, outer.name
+                ),
             );
         }
     }

@@ -54,10 +54,7 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
             "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A `.pth` file that is not UTF-8 is skipped with a warning, as an unreadable Python file is, so the names it would

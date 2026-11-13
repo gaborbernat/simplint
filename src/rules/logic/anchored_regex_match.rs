@@ -108,7 +108,9 @@ fn trailing_anchor(value: &str) -> Option<Anchor> {
                 if chars.peek() == Some(&'?') {
                     let mut ahead = chars.clone();
                     ahead.next();
-                    if ahead.peek().is_some_and(|&flag| u8::try_from(flag).is_ok_and(|flag| INLINE_FLAGS.contains(&flag)))
+                    if ahead
+                        .peek()
+                        .is_some_and(|&flag| u8::try_from(flag).is_ok_and(|flag| INLINE_FLAGS.contains(&flag)))
                     {
                         return None;
                     }
@@ -133,11 +135,8 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     let literal = checker.text(anchored.pattern);
     let quote_start = literal.find(['"', '\''])?;
     let prefix = &literal[..quote_start];
-    let quote = if literal[quote_start..].starts_with("\"\"\"") || literal[quote_start..].starts_with("'''") {
-        3
-    } else {
-        1
-    };
+    let quote =
+        if literal[quote_start..].starts_with("\"\"\"") || literal[quote_start..].starts_with("'''") { 3 } else { 1 };
     let body = TextRange::new(
         anchored.pattern.start() + TextSize::try_from(quote_start + quote).ok()?,
         anchored.pattern.end() - TextSize::try_from(quote).ok()?,

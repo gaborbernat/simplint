@@ -82,7 +82,9 @@ fn check_assign<'a>(
         if range == target.range {
             continue;
         }
-        if range.start() < assign.end() || !block.contains_range(range) || scope.deferred.holders(range).next().is_some()
+        if range.start() < assign.end()
+            || !block.contains_range(range)
+            || scope.deferred.holders(range).next().is_some()
         {
             return;
         }

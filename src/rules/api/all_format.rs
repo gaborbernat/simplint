@@ -101,7 +101,13 @@ pub fn all_format(checker: &Checker) {
         } else {
             "`__all__` is a tuple; make it a list"
         };
-        checker.report_fix(Rule::AllFormat, value.range(), message, listable.then_some(fix), "Convert `__all__` to a list");
+        checker.report_fix(
+            Rule::AllFormat,
+            value.range(),
+            message,
+            listable.then_some(fix),
+            "Convert `__all__` to a list",
+        );
     }
 }
 

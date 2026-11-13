@@ -47,7 +47,10 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 fn repeated_tests(walker: &Walker, if_stmt: &ast::StmtIf) {
     let mut branches = vec![(&*if_stmt.test, if_stmt.body.as_slice())];
     branches.extend(
-        if_stmt.elif_else_clauses.iter().filter_map(|clause| clause.test.as_ref().map(|test| (test, clause.body.as_slice()))),
+        if_stmt
+            .elif_else_clauses
+            .iter()
+            .filter_map(|clause| clause.test.as_ref().map(|test| (test, clause.body.as_slice()))),
     );
     if branches.iter().any(|(test, _)| any_over_expr(test, &has_effect)) {
         return;

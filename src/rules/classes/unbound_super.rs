@@ -77,6 +77,8 @@ fn report(walker: &Walker, expr: &Expr, reason: &str) {
     walker.checker.report(
         Rule::UnboundSuper,
         expr.range(),
-        format!("`super()` without arguments fails here: {reason}; pass the class and instance, or call it in the method"),
+        format!(
+            "`super()` without arguments fails here: {reason}; pass the class and instance, or call it in the method"
+        ),
     );
 }

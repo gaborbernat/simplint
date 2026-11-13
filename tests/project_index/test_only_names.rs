@@ -67,10 +67,7 @@ fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service:
             "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A function that imports a module and only calls one of its functions loads no name as a value, so the module's other
@@ -149,10 +146,7 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
             \"a:True\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP410"]).1,
-        stdout.replace("app/", &native("app/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP410"]).1, stdout.replace("app/", &native("app/")));
 }
 
 // The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production
@@ -177,10 +171,7 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
         ("pkg/service.py", service),
         ("tests/test_fast.py", "from pkg.fast import LIMIT\n\n\ndef test_limit() -> None:\n    assert LIMIT == 1\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP401"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant

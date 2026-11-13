@@ -31,11 +31,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     // Any class may answer `==` with a `str`, as pyasn1's character types do, without having `startswith`.
     let text = Kinds::new(walker, expr.range()).is_text(value);
     let checker = walker.checker;
-    let receiver = if needs_parentheses(value) {
-        format!("({})", checker.text(value))
-    } else {
-        checker.text(value).to_owned()
-    };
+    let receiver =
+        if needs_parentheses(value) { format!("({})", checker.text(value)) } else { checker.text(value).to_owned() };
     let call = format!("{receiver}.{method}({})", checker.text(literal));
     let replacement = if op == CmpOp::Eq { call } else { format!("not {call}") };
     checker.report_fix(

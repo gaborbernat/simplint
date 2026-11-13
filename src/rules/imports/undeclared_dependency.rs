@@ -42,7 +42,9 @@ pub fn undeclared_dependency(checker: &Checker) {
         checker.report(
             Rule::UndeclaredDependency,
             range,
-            format!("`{root}` is imported, but no requirement or extra of the project installs it; declare its distribution"),
+            format!(
+                "`{root}` is imported, but no requirement or extra of the project installs it; declare its distribution"
+            ),
         );
     }
 }
@@ -104,5 +106,8 @@ fn is_environment(expr: &Expr) -> bool {
     let Some(module) = value.as_name_expr().map(|name| name.id.as_str()) else {
         return false;
     };
-    matches!((module, attr.as_str()), ("sys", "version_info" | "platform" | "implementation") | ("os", "name") | ("platform", _))
+    matches!(
+        (module, attr.as_str()),
+        ("sys", "version_info" | "platform" | "implementation") | ("os", "name") | ("platform", _)
+    )
 }

@@ -448,7 +448,10 @@ fn namesake_call_that_drops_its_value_counts_its_arguments() {
             "def validate(*, top: str | None = None, full: bool = False) -> None:\n    print(top, full)\n\n\n\
              validate(top=\"1\", full=True)\n",
         ),
-        ("tests/test_changelog.py", "from changelog import validate\n\n\ndef test_validate() -> None:\n    validate(top=\"1\")\n"),
+        (
+            "tests/test_changelog.py",
+            "from changelog import validate\n\n\ndef test_validate() -> None:\n    validate(top=\"1\")\n",
+        ),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP410,SMP506"]).1,

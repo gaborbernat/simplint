@@ -27,14 +27,14 @@ pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source,
 pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
-use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
-pub(crate) use crate::settings::metadata::may_provide;
-pub(crate) use crate::settings::pytest::PytestConfig;
 pub(crate) use crate::settings::metadata::canonical_name;
+pub(crate) use crate::settings::metadata::may_provide;
+use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
 use crate::settings::options::{
     ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
     SelectorLayer,
 };
+pub(crate) use crate::settings::pytest::PytestConfig;
 
 // Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
 // a `pyproject.toml`, and otherwise the `pyproject.toml`s closest to each file.
@@ -315,9 +315,8 @@ impl Settings {
         let project_dir = metadata_path.and_then(Path::parent).unwrap_or(root);
         let pytest = PytestConfig::of(&[root, project_dir], pyproject);
         metadata.entry_points.extend(pytest.plugins.iter().cloned());
-        let coverage = pyproject.map_or_else(CoveragePlugins::default, |table| {
-            CoveragePlugins::of(table, project_dir, &pytest.pythonpath)
-        });
+        let coverage = pyproject
+            .map_or_else(CoveragePlugins::default, |table| CoveragePlugins::of(table, project_dir, &pytest.pythonpath));
         // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
         let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = resolve_rules(

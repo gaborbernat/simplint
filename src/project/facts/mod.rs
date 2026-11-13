@@ -184,7 +184,11 @@ impl FileFacts {
             class_tuples: visitor.class_tuples,
             classes,
             functions: module_functions(&parsed.syntax().body),
-            signatures: if parts.has(Parts::SIGNATURES) { module_signatures(&parsed.syntax().body) } else { Vec::new() },
+            signatures: if parts.has(Parts::SIGNATURES) {
+                module_signatures(&parsed.syntax().body)
+            } else {
+                Vec::new()
+            },
             plain_modules: visitor.plain_modules,
             imported_modules: visitor.imported_modules.into_iter().collect(),
             interface: interface(&parsed.syntax().body),

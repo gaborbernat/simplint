@@ -307,7 +307,11 @@ impl CoveragePlugins {
         }
         let search_paths = std::iter::once(project_dir.to_path_buf())
             .chain(pythonpath.iter().cloned())
-            .chain(strings(lookup(&["ty", "environment", "extra-paths"])).into_iter().map(|directory| project_dir.join(directory)))
+            .chain(
+                strings(lookup(&["ty", "environment", "extra-paths"]))
+                    .into_iter()
+                    .map(|directory| project_dir.join(directory)),
+            )
             .map(|path| path.components().collect::<PathBuf>())
             // A configured directory a source distribution leaves out would fail the whole search path.
             .filter(|path| path.is_dir())

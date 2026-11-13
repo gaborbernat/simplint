@@ -74,9 +74,10 @@ impl PytestConfig {
     // Whether a run of pytest without arguments collects tests from the file: its name matches `python_files`, under
     // one of the `testpaths` when the configuration sets them.
     pub(crate) fn collects_path(&self, path: &Path) -> bool {
-        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| {
-            self.collected.as_ref().is_some_and(|set| set.is_match(name))
-        }) && (self.testpaths.is_empty() || self.testpaths.iter().any(|directory| path.starts_with(directory)))
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| self.collected.as_ref().is_some_and(|set| set.is_match(name)))
+            && (self.testpaths.is_empty() || self.testpaths.iter().any(|directory| path.starts_with(directory)))
     }
 
     pub(crate) fn python_files(&self) -> &[String] {
@@ -102,7 +103,8 @@ fn read(directory: &Path, pyproject: Option<&toml::Table>) -> Option<PytestConfi
             let options = std::fs::read_to_string(path).map_or_else(
                 |_| Options::default(),
                 |text| {
-                    from_ini(&text, "pytest").unwrap_or_else(|| Options { markers: Some(BTreeSet::new()), ..Options::default() })
+                    from_ini(&text, "pytest")
+                        .unwrap_or_else(|| Options { markers: Some(BTreeSet::new()), ..Options::default() })
                 },
             );
             return Some(PytestConfig::with(directory, options));
@@ -126,7 +128,9 @@ fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
     let strings = |key: &str| -> Option<Vec<String>> {
         match options.get(key)? {
             toml::Value::String(text) => Some(text.split_whitespace().map(str::to_owned).collect()),
-            toml::Value::Array(items) => Some(items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect()),
+            toml::Value::Array(items) => {
+                Some(items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect())
+            }
             _ => None,
         }
     };
@@ -135,7 +139,9 @@ fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
         Some(toml::Value::Array(items)) => {
             items.iter().map(|item| item.as_str().map(marker_name)).collect::<Option<BTreeSet<_>>>()
         }
-        Some(toml::Value::String(text)) => Some(text.lines().map(marker_name).filter(|name| !name.is_empty()).collect()),
+        Some(toml::Value::String(text)) => {
+            Some(text.lines().map(marker_name).filter(|name| !name.is_empty()).collect())
+        }
         Some(_) => None,
     };
     Some(Options {

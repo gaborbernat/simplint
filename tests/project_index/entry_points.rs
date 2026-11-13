@@ -78,10 +78,7 @@ fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str
         ("pkg/__init__.py", ""),
         ("pkg/plugin.py", source),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", rule]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", rule]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A `from __future__` import binds a compiler flag that the host of a bare module entry point never reads, so it is no
@@ -148,10 +145,7 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/plugin.py", UNUSED_PLUGIN),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402,SMP409"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402,SMP409"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A bare package entry point is its `__init__.py`, whose imports from a private module are public API the way a
@@ -171,10 +165,7 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
         ("pkg/__init__.py", "from pkg._core import plugin_hook\n"),
         ("pkg/_core.py", "def plugin_hook() -> None:\n    print()\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP903"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP903"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // The `__all__` of a public module of a library is the interface its users import, so no module of the run needs to
@@ -195,10 +186,7 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
         ("pkg/__init__.py", "\"\"\"Package.\"\"\"\n"),
         (module, "class Oops(Exception): ...\n\n\n__all__ = [\"Oops\"]\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("pkg/", &native("pkg/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
@@ -225,10 +213,7 @@ fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
         ("app/config.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
         ("cli.py", consumer),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("app/", &native("app/"))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("app/", &native("app/")));
 }
 
 // Only a production file's star import binds the submodules a package's `__all__` lists, so a test's star import of the

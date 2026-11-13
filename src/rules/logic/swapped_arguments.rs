@@ -1,6 +1,6 @@
 use ruff_python_ast::{self as ast, Expr};
-use rustc_hash::FxHashSet;
 use ruff_text_size::Ranged;
+use rustc_hash::FxHashSet;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;

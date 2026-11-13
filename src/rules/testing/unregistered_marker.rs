@@ -6,7 +6,8 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
 // The marks pytest registers itself.
-const BUILTIN: &[&str] = &["skip", "skipif", "xfail", "parametrize", "usefixtures", "filterwarnings", "tryfirst", "trylast"];
+const BUILTIN: &[&str] =
+    &["skip", "skipif", "xfail", "parametrize", "usefixtures", "filterwarnings", "tryfirst", "trylast"];
 // Marks that common plugins register when they load, so the project's configuration never lists them.
 const PLUGIN: &[&str] = &[
     "anyio",

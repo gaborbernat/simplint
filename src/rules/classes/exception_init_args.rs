@@ -33,7 +33,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     if !is_exception || rebuilt {
         return;
     }
-    let Some(init) = class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|def| def.name.as_str() == "__init__")
+    let Some(init) =
+        class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|def| def.name.as_str() == "__init__")
     else {
         return;
     };

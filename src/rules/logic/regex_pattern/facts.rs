@@ -462,7 +462,6 @@ impl<'a> Walk<'_, 'a> {
             _ => Context::Other,
         }
     }
-
 }
 
 impl<'a> Facts<'a> {

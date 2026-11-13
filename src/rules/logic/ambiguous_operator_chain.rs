@@ -38,10 +38,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 }
 
 fn is_bare_bitwise(walker: &Walker, compare: &ast::ExprCompare, operand: &Expr) -> bool {
-    matches!(
-        operand,
-        Expr::BinOp(ast::ExprBinOp { op: Operator::BitAnd | Operator::BitOr | Operator::BitXor, .. })
-    ) && walker.checker.parenthesized_range(operand, compare.into()) == operand.range()
+    matches!(operand, Expr::BinOp(ast::ExprBinOp { op: Operator::BitAnd | Operator::BitOr | Operator::BitXor, .. }))
+        && walker.checker.parenthesized_range(operand, compare.into()) == operand.range()
 }
 
 // `a < b <= c`, `a == b == c`, `a == b != c` and `a is b is None` read as written. A chain that turns around, such as

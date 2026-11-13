@@ -7,8 +7,8 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::flow::has_own_jump;
-use crate::rules::logic::name_uses::FunctionNames;
 use crate::rules::logic::inline::{for_each_scoped_body, is_constant};
+use crate::rules::logic::name_uses::FunctionNames;
 
 // The function a block belongs to, and whether a `try` or `with` of that function holds the block. There an exception
 // raised between two assignments may go on to a handler, a `finally` or past the `with`, where the first value is read.

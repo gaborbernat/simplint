@@ -83,7 +83,10 @@ impl Calls<'_, '_, '_> {
         };
         let vararg = self.wrapper.vararg.as_deref();
         let kwarg = self.wrapper.kwarg.as_deref();
-        let spreads = arguments.args.iter().any(|arg| arg.as_starred_expr().is_some_and(|starred| variadic(&starred.value, vararg)))
+        let spreads = arguments
+            .args
+            .iter()
+            .any(|arg| arg.as_starred_expr().is_some_and(|starred| variadic(&starred.value, vararg)))
             || arguments.keywords.iter().any(|keyword| keyword.arg.is_none() && variadic(&keyword.value, kwarg));
         spreads
             && arguments.args.iter().all(|arg| own(arg.as_starred_expr().map_or(arg, |starred| &starred.value)))
