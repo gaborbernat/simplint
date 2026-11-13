@@ -313,3 +313,22 @@ fn lazy_module_offers_what_it_defines() {
         )
     );
 }
+
+// A test that reads `__all__` by its name, off a module it imports at run time as a test of every module does, may check
+// that it is a tuple, so the tuple is reported without a fix.
+#[test_case("tests/test_all.py", false ; "read_by_a_test")]
+#[test_case("tools/all.py", true ; "read_outside_the_tests")]
+fn tuple_all_a_test_reads_keeps_its_type(reader: &str, fixed: bool) {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\n"),
+        ("demo/__init__.py", "def run() -> None:\n    pass\n\n\n__all__ = (\n    \"run\",\n)\n"),
+        (
+            reader,
+            "from importlib import import_module\n\n\ndef test_all() -> None:\n    \
+             assert isinstance(getattr(import_module(\"demo\"), \"__all__\"), tuple)\n",
+        ),
+    ]);
+    let stdout = check(root.path(), &["--select", "SMP405"]).1;
+    assert!(stdout.contains("`__all__` is a tuple"), "{stdout}");
+    assert_eq!(stdout.contains("1 unsafe fix available"), fixed, "{stdout}");
+}

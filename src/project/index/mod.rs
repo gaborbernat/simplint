@@ -204,7 +204,7 @@ impl Project {
                     || runtime_cycles(runtime, &test_modules),
                     || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements, distribution_roots),
                 );
-                (cycles, duplicates, RunReads::collect(&indexed))
+                (cycles, duplicates, RunReads::collect(&indexed, &test_modules))
             },
             || {
                 // A dotted path that may reach any module of a package could come from any file, so it counts as used

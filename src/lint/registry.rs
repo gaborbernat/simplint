@@ -292,7 +292,7 @@ rules! {
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
-    AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Always, api::all_format { module }),
+    AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Always, api::all_format { module } reads [cross_file, STRING_WORDS]),
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
     InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file]),
     TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),

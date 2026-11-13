@@ -12,6 +12,9 @@ use crate::rules::api::{AllList, exploded};
 use crate::syntax::{AllBinding, all_binding, module_statements};
 
 pub fn all_format(checker: &Checker) {
+    // A test that reads `__all__`, by importing it or by its name, may check that it is a tuple, so a tuple stays one.
+    let project = checker.project();
+    let listable = !project.is_all_read() && !project.tests_read_all();
     for stmt in checker.body() {
         let Some(AllBinding { value: Some(value), operator }) = all_binding(stmt) else {
             continue;
@@ -31,7 +34,7 @@ pub fn all_format(checker: &Checker) {
                     Rule::AllFormat,
                     value.range(),
                     "`__all__` is a tuple; make it a list",
-                    Some(Fix::unsafe_edit(Edit::range_replacement("[]".to_owned(), value.range()))),
+                    listable.then(|| Fix::unsafe_edit(Edit::range_replacement("[]".to_owned(), value.range()))),
                     "Convert `__all__` to a list",
                 );
             }
@@ -98,7 +101,7 @@ pub fn all_format(checker: &Checker) {
         } else {
             "`__all__` is a tuple; make it a list"
         };
-        checker.report_fix(Rule::AllFormat, value.range(), message, Some(fix), "Convert `__all__` to a list");
+        checker.report_fix(Rule::AllFormat, value.range(), message, listable.then_some(fix), "Convert `__all__` to a list");
     }
 }
 
