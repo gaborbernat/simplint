@@ -22,7 +22,7 @@ pub(crate) const CLOSERS: &str = concat!(
     "\u{2e20}\u{201a}\u{201e}",
 );
 
-pub(crate) const DELIMITERS: &str = concat!(
+const DELIMITERS: &str = concat!(
     "\u{5c}-/:\u{58a}\u{a1}\u{b7}\u{bf}\u{37e}\u{387}\u{55a}-\u{55f}\u{589}\u{5be}\u{5c0}\u{5c3}\u{5c6}\u{5f3}\u{5f4}\u{609}\u{60a}\u{60c}\u{60d}",
     "\u{61b}\u{61e}\u{61f}\u{66a}-\u{66d}\u{6d4}\u{700}-\u{70d}\u{7f7}-\u{7f9}\u{830}-\u{83e}\u{964}\u{965}\u{970}\u{df4}\u{e4f}\u{e5a}\u{e5b}\u{f04}",
     "-\u{f12}\u{f85}\u{fd0}-\u{fd4}\u{104a}-\u{104f}\u{10fb}\u{1361}-\u{1368}\u{1400}\u{166d}\u{166e}\u{16eb}-\u{16ed}\u{1735}\u{1736}\u{17d4}-\u{17d6}",
@@ -36,10 +36,10 @@ pub(crate) const DELIMITERS: &str = concat!(
     "\u{110bc}\u{110be}-\u{110c1}\u{12470}-\u{12473}",
 );
 
-pub(crate) const CLOSING_DELIMITERS: &str = "\u{5c}\u{5c}.,;!?";
+const CLOSING_DELIMITERS: &str = "\u{5c}\u{5c}.,;!?";
 
 // The pairs of quotation marks that close each other beyond the one at the same index of `OPENERS` and `CLOSERS`.
-pub(crate) const QUOTE_PAIRS: [(char, &str); 8] = [
+const QUOTE_PAIRS: [(char, &str); 8] = [
     ('\u{bb}', "\u{bb}"),
     ('\u{2018}', "\u{201a}"),
     ('\u{2019}', "\u{2019}"),
@@ -56,10 +56,24 @@ pub(crate) fn match_chars(opener: char, closer: char) -> bool {
         || QUOTE_PAIRS.iter().any(|(open, closers)| *open == opener && closers.contains(closer))
 }
 
-pub(crate) static OPENER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(OPENERS));
-pub(crate) static CLOSER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSERS));
-pub(crate) static DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(DELIMITERS));
-pub(crate) static CLOSING_DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSING_DELIMITERS));
+// Whether a start-string may follow `before`: whitespace, an opening bracket or quote, or a delimiter.
+pub(crate) fn starts_after(before: char) -> bool {
+    before.is_whitespace() || OPENER_CHARS.contains(&before) || DELIMITER_CHARS.contains(&before)
+}
+
+// Whether an end-string may precede `after`: whitespace, a closing bracket or quote, or a delimiter.
+pub(crate) fn ends_before(after: char) -> bool {
+    after.is_whitespace()
+        || after == '\0'
+        || CLOSER_CHARS.contains(&after)
+        || DELIMITER_CHARS.contains(&after)
+        || CLOSING_DELIMITER_CHARS.contains(&after)
+}
+
+static OPENER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(OPENERS));
+static CLOSER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSERS));
+static DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(DELIMITERS));
+static CLOSING_DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSING_DELIMITERS));
 
 // The characters a regular expression character class matches: `\x` stands for `x`, and `a-b` for the characters from
 // `a` through `b`, as docutils' classes use both.

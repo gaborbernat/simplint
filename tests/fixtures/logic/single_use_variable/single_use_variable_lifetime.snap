@@ -2,16 +2,22 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-11:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
-17:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
-23:5 SMP504 `reply` is used once, right below; inline its value [fix: Inline `reply`]
-40:5 SMP504 `stream` is used once, right below; inline its value [fix: Inline `stream`]
-41:5 SMP504 `items` is used once, right below; inline its value [fix: Inline `items`]
-58:5 SMP504 `scratch` is used once, right below; inline its value [unsafe fix: Inline `scratch`]
-59:5 SMP504 `name` is used once, right below; inline its value [fix: Inline `name`]
-64:5 SMP504 `scratch` is used once, right below; inline its value [fix: Inline `scratch`]
-69:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
---- fixed (9 applied, 0 remaining) ---
+15:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
+21:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
+27:5 SMP504 `reply` is used once, right below; inline its value [fix: Inline `reply`]
+44:5 SMP504 `stream` is used once, right below; inline its value [fix: Inline `stream`]
+45:5 SMP504 `items` is used once, right below; inline its value [fix: Inline `items`]
+62:5 SMP504 `scratch` is used once, right below; inline its value [unsafe fix: Inline `scratch`]
+63:5 SMP504 `name` is used once, right below; inline its value [fix: Inline `name`]
+68:5 SMP504 `scratch` is used once, right below; inline its value [fix: Inline `scratch`]
+73:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
+79:5 SMP504 `target` is used once, right below; inline its value [fix: Inline `target`]
+105:5 SMP504 `positive` is used once, right below; inline its value [fix: Inline `positive`]
+--- fixed (11 applied, 0 remaining) ---
+import weakref
+from weakref import WeakMethod
+
+
 def produce(rows: list[int]):
     try:
         yield rows[0]
@@ -73,3 +79,33 @@ def method_on_temporary() -> str:
 
 def part_of_literal() -> str:
     return ("scratch", 1)[0]
+
+
+def weak_target(scratch: Scratch) -> int:
+    reference = weakref.ref(scratch)
+    print(reference())
+    return weakref.getweakrefcount(scratch)
+
+
+def weak_method(scratch: Scratch) -> object:
+    method = WeakMethod(scratch.describe)
+    return method()
+
+
+def weak_reference_type(scratch: Scratch) -> object:
+    reference = weakref.ReferenceType(scratch)
+    return reference()
+
+
+def weak_proxy_type(scratch: Scratch) -> object:
+    proxy = weakref.ProxyType(scratch)
+    return proxy.describe()
+
+
+def described_each(items: list[Scratch]) -> bool:
+    described = [item.describe() for item in items]
+    return any(described)
+
+
+def positive_each(items: list[int]) -> bool:
+    return all([item > 0 for item in items])

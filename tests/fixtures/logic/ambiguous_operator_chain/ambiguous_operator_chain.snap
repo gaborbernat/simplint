@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:9 SMP541 This chain mixes `==`, `in`, and Python joins each pair with `and`, which reads as one comparison
+4:9 SMP541 This chain mixes `in`, `in`, and Python joins each pair with `and`, which reads as one comparison
+5:9 SMP541 This chain mixes `<`, `is`, and Python joins each pair with `and`, which reads as one comparison
+6:9 SMP541 This chain mixes `<`, `>`, and Python joins each pair with `and`, which reads as one comparison
+7:9 SMP541 This chain mixes `==`, `is`, and Python joins each pair with `and`, which reads as one comparison
+8:9 SMP541 This chain mixes `!=`, `!=`, and Python joins each pair with `and`, which reads as one comparison
+9:9 SMP541 `1 & frame.b` binds tighter than the comparisons around it, so this compares against it as one value
+10:9 SMP541 This chain mixes `>`, `<`, and Python joins each pair with `and`, which reads as one comparison

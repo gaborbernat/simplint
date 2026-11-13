@@ -14,11 +14,11 @@ use crate::syntax::{ExprCollector, for_each_body, is_name};
 const TEXT_METHODS: [&str; 5] = ["startswith", "endswith", "find", "index", "count"];
 
 pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-    let checker = walker.checker;
     let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name: Some(name), body, .. }) = handler
     else {
         return;
     };
+    let checker = walker.checker;
     // Tests may assert on the messages they expect.
     if checker.is_test_module() {
         return;
@@ -66,6 +66,40 @@ impl<'a> Visitor<'a> for Asserts {
     }
 }
 
+// A comparison is left alone when each of its other operands is the text of an exception too, since two exceptions
+// differ by wording only.
+fn by_text(checker: &Checker, bound: &Identifier, expr: &Expr) -> Option<TextRange> {
+    let found = match expr {
+        Expr::Compare(ast::ExprCompare { operands, .. }) => {
+            operands.iter().any(|operand| is_message(checker, operand, bound))
+                && operands.iter().any(|operand| {
+                    !is_message(checker, operand, bound)
+                        && !text_name(operand).is_some_and(|name| is_exception_name(checker, name))
+                })
+        }
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            let text_method = func.as_attribute_expr().is_some_and(|attribute| {
+                TEXT_METHODS.contains(&attribute.attr.as_str())
+                    && str_arg(&attribute.value).is_some_and(|name| is_bound_name(checker, name, bound))
+            });
+            let pattern_search = ["search", "match", "fullmatch"]
+                .into_iter()
+                .any(|function| checker.semantic().resolves_to(func, &["re", function]))
+                && arguments
+                    .args
+                    .iter()
+                    .any(|argument| str_arg(argument).is_some_and(|name| is_bound_name(checker, name, bound)));
+            text_method || pattern_search
+        }
+        _ => false,
+    };
+    found.then(|| expr.range())
+}
+
+fn is_message(checker: &Checker, expr: &Expr, bound: &Identifier) -> bool {
+    text_name(expr).is_some_and(|name| is_bound_name(checker, name, bound))
+}
+
 fn text_name(expr: &Expr) -> Option<&ast::ExprName> {
     match expr {
         Expr::Call(_) => str_arg(expr),
@@ -97,10 +131,6 @@ fn is_bound_name(checker: &Checker, name: &ast::ExprName, bound: &Identifier) ->
         return name.id.as_str() == bound.as_str();
     }
     bindings.iter().any(|binding| binding.range == bound.range())
-}
-
-fn is_message(checker: &Checker, expr: &Expr, bound: &Identifier) -> bool {
-    text_name(expr).is_some_and(|name| is_bound_name(checker, name, bound))
 }
 
 fn is_exception_name(checker: &Checker, name: &ast::ExprName) -> bool {
@@ -175,34 +205,4 @@ fn is_exception_class_name(checker: &Checker, expr: &Expr, resolved: bool, seen:
             class.bases().iter().any(|base| is_exception_class_name(checker, base, true, seen))
         })
     })
-}
-
-// A comparison is left alone when each of its other operands is the text of an exception too, since two exceptions
-// differ by wording only.
-fn by_text(checker: &Checker, bound: &Identifier, expr: &Expr) -> Option<TextRange> {
-    let found = match expr {
-        Expr::Compare(ast::ExprCompare { operands, .. }) => {
-            operands.iter().any(|operand| is_message(checker, operand, bound))
-                && operands.iter().any(|operand| {
-                    !is_message(checker, operand, bound)
-                        && !text_name(operand).is_some_and(|name| is_exception_name(checker, name))
-                })
-        }
-        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
-            let text_method = func.as_attribute_expr().is_some_and(|attribute| {
-                TEXT_METHODS.contains(&attribute.attr.as_str())
-                    && str_arg(&attribute.value).is_some_and(|name| is_bound_name(checker, name, bound))
-            });
-            let pattern_search = ["search", "match", "fullmatch"]
-                .into_iter()
-                .any(|function| checker.semantic().resolves_to(func, &["re", function]))
-                && arguments
-                    .args
-                    .iter()
-                    .any(|argument| str_arg(argument).is_some_and(|name| is_bound_name(checker, name, bound)));
-            text_method || pattern_search
-        }
-        _ => false,
-    };
-    found.then(|| expr.range())
 }

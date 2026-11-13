@@ -55,3 +55,8 @@ def kept_split_in_field(items: list[str]) -> str:
 
 def joined_operand(items: list[str]) -> str:
     return f"{(len(items) + 1) * 2} items"
+
+
+def chosen(flag: bool) -> str:
+    choice = "a" if flag else "b"
+    return f"[{choice * 2}]"

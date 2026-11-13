@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
@@ -18,8 +19,8 @@ use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
 use crate::syntax::{
-    ExprCollector, alias_binding, attribute_call, dataclass_decorator, identifier_words, keyword_is_true, last_segment,
-    module_statements,
+    DataclassField, Declares, ExprCollector, alias_binding, attribute_call, dataclass_decorator, dataclass_fields,
+    identifier_words, instance_attributes, keyword_is_true, last_segment, module_statements,
 };
 
 // What `dataclass-kw-only` needs to rewrite positional calls of a dataclass: the dataclasses declared without
@@ -96,9 +97,10 @@ impl Constructors {
     ) -> Self {
         let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
         let mut uses = Uses::new(|expr: &Expr| {
-            let full = qualify(expr)?;
+            let written = UnqualifiedName::from_expr(expr)?;
+            let full = qualified(written.segments(), aliases)?;
             let (module, member) = full.rsplit_once('.')?;
-            Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
+            Some((module.to_owned(), member.to_owned(), written.segments().join(".")))
         })
         .with_source(source);
         uses.visit_body(body);
@@ -292,8 +294,7 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Uses<'a, K, F> {
         let matches: &dyn Fn(&Expr) -> Option<K> = &self.matches;
         let mut inner = Uses { matches, annotated: true, source: self.source, found: Vec::new() };
         inner.visit_expr(parsed.expr());
-        let found = inner.found;
-        self.found.extend(found.into_iter().map(|(key, found)| (key, found.into_owned())));
+        self.found.extend(inner.found.into_iter().map(|(key, found)| (key, found.into_owned())));
     }
 
     fn skip_or_visit(&mut self, expr: &'a Expr) {
@@ -442,8 +443,7 @@ impl<'a> Visitor<'a> for Unparsed {
         strings.visit_expr(annotation);
         for literal in strings.found {
             for part in &literal.value {
-                let words = identifier_words(&part.value).filter(|word| !word.is_empty());
-                self.0.extend(words.map(str::to_owned));
+                self.0.extend(identifier_words(&part.value).filter(|word| !word.is_empty()).map(str::to_owned));
             }
         }
     }
@@ -459,10 +459,6 @@ fn comments_on_lines(source: &str, comments: &CommentRanges, call: &ast::ExprCal
 
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
-}
-
-fn subscripted(expr: &Expr) -> &Expr {
-    expr.as_subscript_expr().map_or(expr, |subscript| &subscript.value)
 }
 
 // The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
@@ -486,7 +482,7 @@ pub(crate) fn init_fields(
     }
     let mut fields: Vec<String> = Vec::new();
     for base in class.bases() {
-        match UnqualifiedName::from_expr(subscripted(base)).as_ref().map(UnqualifiedName::segments) {
+        match UnqualifiedName::from_expr(map_subscript(base)).as_ref().map(UnqualifiedName::segments) {
             Some([.., "Generic" | "ABC" | "object" | "Protocol"]) => {}
             Some([name]) if fields.is_empty() => fields = base_fields(name)?,
             _ => return None,
@@ -495,29 +491,17 @@ pub(crate) fn init_fields(
     let keyword_only = keyword_is_true(decorator, "kw_only");
     let mut rest_keyword_only = false;
     let mut seen: FxHashSet<String> = fields.iter().cloned().collect();
-    let declared = class.body.iter().filter_map(|stmt| {
-        let field = stmt.as_ann_assign_stmt()?;
-        Some((field.target.as_name_expr()?.id.as_str(), field))
-    });
-    for (name, ast::StmtAnnAssign { annotation, value, .. }) in declared {
-        if let Some(text) = annotation.as_string_literal_expr().map(|literal| literal.value.to_str()) {
-            if text.contains("ClassVar") || text.contains("KW_ONLY") {
-                return None;
+    for DataclassField { name, stmt, kind } in dataclass_fields(&class.body) {
+        match kind {
+            Declares::ClassVar | Declares::KwOnly if stmt.annotation.is_string_literal_expr() => return None,
+            Declares::ClassVar => continue,
+            Declares::KwOnly => {
+                rest_keyword_only = true;
+                continue;
             }
-        } else {
-            match UnqualifiedName::from_expr(subscripted(annotation))
-                .as_ref()
-                .and_then(|name| name.segments().last().copied())
-            {
-                Some("ClassVar") => continue,
-                Some("KW_ONLY") => {
-                    rest_keyword_only = true;
-                    continue;
-                }
-                _ => {}
-            }
+            Declares::Field | Declares::InitVar => {}
         }
-        let options = value.as_deref().and_then(|value| match value {
+        let options = stmt.value.as_deref().and_then(|value| match value {
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if UnqualifiedName::from_expr(func).is_some_and(|func| func.segments().last() == Some(&"field")) =>
             {
@@ -552,6 +536,11 @@ fn member_names(body: &[Stmt]) -> Members {
         .flat_map(|class| module_statements(&class.body).filter_map(Stmt::as_assign_stmt))
         .flat_map(|assign| assign.targets.iter().filter_map(Expr::as_name_expr))
         .map(|target| target.id.to_string())
+        .chain(
+            module_statements(body)
+                .filter_map(Stmt::as_class_def_stmt)
+                .flat_map(|class| instance_attributes(class).into_iter().map(|(name, _)| name.to_owned())),
+        )
         .collect();
     Members { methods, attributes }
 }
@@ -646,22 +635,18 @@ impl RunCalls {
                         UseKind::Imported => imported.get(caller).is_some_and(|names| names.contains(written)),
                         UseKind::Call(shape) => {
                             if shape.positional > 0 {
-                                let site = CallSite {
-                                    caller: path.clone(),
-                                    start: span.0,
-                                    end: span.1,
-                                    digest: *digest,
-                                    comments: comments.clone(),
-                                };
-                                calls
-                                    .dataclass_calls
-                                    .entry(*file)
-                                    .or_default()
-                                    .entry(name.clone())
-                                    .or_default()
-                                    .push(site);
+                                calls.dataclass_calls.entry(*file).or_default().entry(name.clone()).or_default().push(
+                                    CallSite {
+                                        caller: path.clone(),
+                                        start: span.0,
+                                        end: span.1,
+                                        digest: *digest,
+                                        comments: comments.clone(),
+                                    },
+                                );
                             }
-                            shape.positional > 0 && fields.as_ref().is_none_or(|f| shape.positional as usize > f.len())
+                            shape.positional > 0
+                                && fields.as_ref().is_none_or(|known| shape.positional as usize > known.len())
                         }
                         UseKind::Opaque => true,
                     };
@@ -690,14 +675,14 @@ impl RunCalls {
         self.method_loads.insert(file, loads);
     }
 
-    pub(super) fn file(&self, id: Option<FileId>) -> FileCalls<'_> {
+    pub(super) fn file(&self, id: FileId) -> FileCalls<'_> {
         FileCalls {
-            opaque: id.and_then(|id| self.opaque.get(&id)),
-            star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-            dataclass_calls: id.and_then(|id| self.dataclass_calls.get(&id)),
-            functions: id.and_then(|id| self.functions.get(&id)),
-            method_loads: id.and_then(|id| self.method_loads.get(&id)),
-            test_support: id.is_some_and(|id| self.test_support.contains(&id)),
+            opaque: self.opaque.get(&id),
+            star_imported: self.star_imported.contains(&id),
+            dataclass_calls: self.dataclass_calls.get(&id),
+            functions: self.functions.get(&id),
+            method_loads: self.method_loads.get(&id),
+            test_support: self.test_support.contains(&id),
         }
     }
 
@@ -823,5 +808,24 @@ impl CacheKey for FileCalls<'_> {
         self.functions.cache_key(state);
         self.method_loads.cache_key(state);
         self.test_support.cache_key(state);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+    use test_case::test_case;
+
+    use super::init_fields;
+
+    // A flag that is not a literal leaves open whether `__init__` takes the field, and by position.
+    #[test_case("field(init=flag)", None ; "computed_init")]
+    #[test_case("field(kw_only=flag)", None ; "computed_kw_only")]
+    #[test_case("field(init=True)", Some(&["x"]) ; "literal_init")]
+    fn init_fields_reads_field_flags(value: &str, expected: Option<&[&str]>) {
+        let parsed = parse_module(&format!("@dataclass\nclass Point:\n    x: int = {value}\n")).expect("parses");
+        let class = parsed.syntax().body[0].as_class_def_stmt().expect("the module is one class");
+        let expected = expected.map(|names| names.iter().map(ToString::to_string).collect());
+        assert_eq!(init_fields(class, &class.decorator_list[0].expression, &|_: &str| None), expected);
     }
 }

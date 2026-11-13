@@ -147,3 +147,13 @@ def not_constant(value: int) -> None:
 def commented_tuple(value: int) -> None:
     assert (value,  # keep the message
             "value is set")
+
+
+def evaluated(value: int) -> None:
+    assert 3 * "a"
+    assert "x %-5s" % (value,)
+    assert -"a"
+    assert True and value
+    assert "a" * None
+    assert "a" - 1
+    assert 1 - "a"

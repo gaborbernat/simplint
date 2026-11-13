@@ -5,7 +5,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 18:31 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 18:45 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 18:62 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
---- fixed (3 applied, 0 remaining) ---
+25:12 SMP503 Build text with an f-string instead of `+`
+--- fixed (3 applied, 1 remaining) ---
 class Markup(str):
     def __add__(self, other: str) -> "Markup":
         return Markup(str.__add__(self, other.replace("<", "&lt;")))
@@ -24,3 +25,10 @@ ESCAPED = named + "<i>"
 
 def wrap(text: str) -> list[str]:
     return [Label("x") + "!", f"<b>{text}", f"{text!s}!", f"<b><i>{text}"]
+
+
+def shadowed() -> str:
+    class Label:
+        text = "x"
+
+    return "name: " + Label().text

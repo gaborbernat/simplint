@@ -1,0 +1,122 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:1 SMP605 `SUFFIXES` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `SUFFIXES` a `tuple`]
+7:1 SMP605 `ONE` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `ONE` a `tuple`]
+8:1 SMP605 `ONE_COMMA` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `ONE_COMMA` a `tuple`]
+9:1 SMP605 `SQUARES` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `SQUARES` a `tuple`]
+10:1 SMP605 `LETTERS` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `LETTERS` a `frozenset`]
+11:1 SMP605 `EVENS` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `EVENS` a `frozenset`]
+12:1 SMP605 `CODES` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `CODES` a `MappingProxyType`]
+13:1 SMP605 `INVERSE` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `INVERSE` a `MappingProxyType`]
+14:1 SMP605 `FROM_CALL` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `FROM_CALL` a `tuple`]
+15:1 SMP605 `SET_CALL` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_CALL` a `frozenset`]
+16:1 SMP605 `DICT_CALL` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `DICT_CALL` a `MappingProxyType`]
+17:1 SMP605 `_PRIVATE` is a list that nothing changes; make it a `tuple`
+18:1 SMP605 `lower` is a list that nothing changes; make it a `tuple`
+19:1 SMP605 `TYPED` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `TYPED` a `tuple`]
+20:1 SMP605 `TYPED_BARE` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `TYPED_BARE` a `tuple`]
+21:1 SMP605 `SET_BARE` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_BARE` a `frozenset`]
+22:1 SMP605 `FINAL_TYPED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `FINAL_TYPED` a `frozenset`]
+23:1 SMP605 `FINAL_DICT` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `FINAL_DICT` a `MappingProxyType`]
+24:1 SMP605 `ABSTRACT` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `ABSTRACT` a `tuple`]
+25:1 SMP605 `MAPPING` is a dict that nothing changes; make it a `MappingProxyType` [unsafe fix: Make `MAPPING` a `MappingProxyType`]
+26:1 SMP605 `TYPING_LIST` is a list that nothing changes; make it a `tuple`
+27:1 SMP605 `QUOTED` is a list that nothing changes; make it a `tuple`
+41:1 SMP605 `COMPARED` is a list that nothing changes; make it a `tuple`
+42:1 SMP605 `ORDERED` is a list that nothing changes; make it a `tuple`
+43:1 SMP605 `MEMBER_OF` is a list that nothing changes; make it a `tuple`
+44:1 SMP605 `CONTAINER` is a list that nothing changes; make it a `tuple` [unsafe fix: Make `CONTAINER` a `tuple`]
+45:1 SMP605 `SET_COMPARED` is a set that nothing changes; make it a `frozenset` [unsafe fix: Make `SET_COMPARED` a `frozenset`]
+46:1 SMP605 `COMBINED` is a set that nothing changes; make it a `frozenset`
+47:1 SMP605 `COPIED` is a list that nothing changes; make it a `tuple`
+48:1 SMP605 `SHOWN` is a dict that nothing changes; make it a `MappingProxyType`
+49:1 SMP605 `CHECKED` is a list that nothing changes; make it a `tuple`
+--- fixed (20 applied, 11 remaining) ---
+import os
+import types
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
+from typing import Final, List
+
+SUFFIXES = (".py", ".pyi")
+ONE = ("only",)
+ONE_COMMA = ("only",)
+SQUARES = tuple(value * value for value in range(10))
+LETTERS = frozenset({"a", "b"})
+EVENS = frozenset({value for value in range(10) if value % 2 == 0})
+CODES = MappingProxyType({"ok": 200})
+INVERSE = MappingProxyType({code: name for name, code in CODES.items()})
+FROM_CALL = tuple(os.sep)
+SET_CALL = frozenset("abc")
+DICT_CALL = MappingProxyType(dict(a=1))
+_PRIVATE = ["x"]
+lower: Final = ["y"]
+TYPED: tuple[str, ...] = ("z",)
+TYPED_BARE: tuple = ("z",)
+SET_BARE: frozenset = frozenset({"z"})
+FINAL_TYPED: Final[frozenset[int]] = frozenset({1})
+FINAL_DICT: Final[MappingProxyType[str, int]] = MappingProxyType({"a": 1})
+ABSTRACT: Sequence[str] = ("a",)
+MAPPING: Mapping[str, int] = MappingProxyType({"a": 1})
+TYPING_LIST: List[str] = ["a"]
+QUOTED: "list[str]" = ["a"]
+
+CHANGED = []
+SUBSCRIPT_WRITTEN = {}
+DELETED = {"a": 1}
+RETURNED = ["a"]
+PASSED = ["a"]
+REBOUND = ["a"]
+REBOUND = ["b"]
+AUGMENTED = ["a"]
+lowercase = ["a"]
+__all__ = ["reader"]
+TUPLE = ("a",)
+OTHER_CALL = sorted("abc")
+COMPARED = ["a"]
+ORDERED = ["a"]
+MEMBER_OF = ["a"]
+CONTAINER = ("a",)
+SET_COMPARED = frozenset({"a"})
+COMBINED = {"a"}
+COPIED = ["a"]
+SHOWN = {"a": 1}
+CHECKED = ["a"]
+
+
+def reader(key: str) -> object:
+    for suffix in SUFFIXES:
+        print(suffix)
+    if ONE and len(ONE_COMMA) > 0:
+        zip(SQUARES[0], [*LETTERS], {**CODES}, INVERSE.get(1))
+    while key in EVENS:
+        break
+    assert FROM_CALL
+    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE, SET_BARE)
+    zip({item for item in FINAL_TYPED if item in FINAL_DICT}, ABSTRACT, MAPPING, TYPING_LIST, QUOTED)
+    zip(",".join(SUFFIXES), not TYPED, CODES.keys() | {"x"})
+    CHANGED.append(key)
+    SUBSCRIPT_WRITTEN[key] = 1
+    del DELETED["a"]
+    PASSED.sort()
+    zip(lowercase, TUPLE, OTHER_CALL, REBOUND)
+    return RETURNED
+
+
+def extend() -> None:
+    global AUGMENTED
+    AUGMENTED += ["b"]
+
+
+def shadow() -> list[str]:
+    LOCAL_ONLY = ["a"]
+    return LOCAL_ONLY
+
+
+def typed(key: str) -> bool:
+    zip(COMPARED == [key], ORDERED < [key], MEMBER_OF in [[key]], SET_COMPARED == {key}, COMBINED | {key})
+    zip(COPIED.copy(), isinstance(CHECKED, list))
+    print(SHOWN)
+    return key in CONTAINER

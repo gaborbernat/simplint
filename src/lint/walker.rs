@@ -4,6 +4,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::{self, RuleSet};
+use crate::syntax::is_comprehension_condition;
 
 // One walk over the module drives the node rules, as Ruff's `Checker` drives its own: each node goes to the handlers
 // its kind has among the enabled rules, which read where the node sits from the walker instead of walking again.
@@ -70,6 +71,49 @@ impl<'c, 'a> Walker<'c, 'a> {
 
     pub fn expressions(&self) -> &[&'a Expr] {
         &self.expressions
+    }
+
+    // Whether the expression `up` levels above the current one is tested only for its truth, as Ruff's checker marks a
+    // boolean test: the test of an `if`, `elif`, `while`, `assert`, conditional expression, match guard or
+    // comprehension `if`, the operand of `not` or `bool()`, or an operand of `and` or `or` in such a test.
+    pub fn is_boolean_test(&self, up: usize) -> bool {
+        let index = self.expressions.len() - up - 1;
+        let mut child = self.expressions[index];
+        for &parent in self.expressions[..index].iter().rev() {
+            let is_child = |candidate: &Expr| std::ptr::eq(candidate, child);
+            match parent {
+                Expr::BoolOp(_) => child = parent,
+                Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::Not, .. }) => return true,
+                Expr::If(ast::ExprIf { test, .. }) => return is_child(test),
+                Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                    let semantic = self.checker.semantic();
+                    return arguments.args.first().is_some_and(is_child)
+                        && (semantic.is_builtin(func, "bool") || semantic.resolves_to(func, &["builtins", "bool"]));
+                }
+                Expr::ListComp(ast::ExprListComp { generators, .. })
+                | Expr::SetComp(ast::ExprSetComp { generators, .. })
+                | Expr::Generator(ast::ExprGenerator { generators, .. }) => {
+                    return is_comprehension_condition(generators, child);
+                }
+                Expr::DictComp(ast::ExprDictComp { generators, .. }) => {
+                    return is_comprehension_condition(generators, child);
+                }
+                _ => return false,
+            }
+        }
+        let is_child = |candidate: &Expr| std::ptr::eq(candidate, child);
+        match self.statement() {
+            Some(Stmt::If(ast::StmtIf { test, elif_else_clauses, .. })) => {
+                is_child(test) || elif_else_clauses.iter().any(|clause| clause.test.as_ref().is_some_and(is_child))
+            }
+            Some(Stmt::While(ast::StmtWhile { test, .. }) | Stmt::Assert(ast::StmtAssert { test, .. })) => {
+                is_child(test)
+            }
+            Some(Stmt::Match(ast::StmtMatch { cases, .. })) => {
+                cases.iter().any(|case| case.guard.as_deref().is_some_and(is_child))
+            }
+            _ => false,
+        }
     }
 
     pub fn scopes(&self) -> &[Scope<'a>] {

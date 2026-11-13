@@ -1,5 +1,4 @@
-Flags functions and classes that do not sit directly below their first user. With each helper following the code that
-calls it, the file reads top-down, from the entry point into the details.
+Flags functions and classes that do not sit directly below their first user.
 
 ## Why is this bad?
 

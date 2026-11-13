@@ -1,10 +1,11 @@
 // Ports of the `ruff` crate's informational subcommands, which it keeps private, over simplint's rules and options.
-use std::io::{self, BufWriter, Write};
+use std::io::Write;
 use std::path::Path;
 
 use anyhow::Result;
 use clap::ArgAction;
 use colored::Colorize;
+use itertools::Itertools;
 use ruff::args::HelpFormat;
 use ruff_cache::CACHE_DIR_NAME;
 use ruff_linter::FixAvailability;
@@ -14,6 +15,7 @@ use ruff_options_metadata::{OptionEntry, OptionSet, OptionsMetadata};
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::cli::write_flushed;
 use crate::lint::examples::{Block, Example, Examples, Fence, Role, parse};
 use crate::lint::registry::{GROUPS, Rule};
 use crate::project::cache;
@@ -50,17 +52,14 @@ pub(crate) fn linter(format: HelpFormat) -> Result<()> {
 }
 
 fn print<T: HelpOutput>(output: &T, format: HelpFormat) -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    match format {
-        HelpFormat::Text => output.write_text(&mut stdout)?,
+    let text = match format {
+        HelpFormat::Text => output.text(),
         HelpFormat::Json => {
-            serde_json::to_writer_pretty(&mut stdout, output)?;
-            if T::JSON_NEWLINE {
-                writeln!(stdout)?;
-            }
+            let json = serde_json::to_string_pretty(output).expect("help output serializes to JSON");
+            if T::JSON_NEWLINE { json + "\n" } else { json }
         }
-    }
-    stdout.flush()?;
+    };
+    write_flushed(&mut std::io::stdout().lock(), [text])?;
     Ok(())
 }
 
@@ -68,24 +67,61 @@ trait HelpOutput: Serialize {
     // Ruff ends some JSON outputs with a newline and others not.
     const JSON_NEWLINE: bool;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()>;
+    fn text(&self) -> String;
 }
 
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
 // generated from the definition the binary parses with.
 pub(crate) fn cli_schema(command: &clap::Command) -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    writeln!(stdout, "{}", serde_json::to_string_pretty(&command_schema(command))?)?;
-    stdout.flush()?;
+    write_json(&command_schema(command))
+}
+
+fn command_schema(command: &clap::Command) -> serde_json::Value {
+    let arguments: Vec<serde_json::Value> = command
+        .get_arguments()
+        .filter(|argument| !matches!(argument.get_action(), ArgAction::Help | ArgAction::Version))
+        .map(|argument| {
+            serde_json::json!({
+                "id": argument.get_id().as_str(),
+                "long": argument.get_long(),
+                "short": argument.get_short(),
+                "help": argument.get_help().map(ToString::to_string),
+                "flag": matches!(argument.get_action(), ArgAction::SetTrue),
+                "multiple": argument.get_num_args().is_some_and(|range| range.max_values() > 1),
+                "delimiter": argument.get_value_delimiter(),
+                "default": argument
+                    .get_default_values()
+                    .iter()
+                    .map(|value| value.to_string_lossy())
+                    .collect::<Vec<_>>(),
+                "choices": argument
+                    .get_possible_values()
+                    .iter()
+                    .map(|value| value.get_name().to_owned())
+                    .collect::<Vec<_>>(),
+                "value_name": argument.get_value_names().and_then(|names| names.first()).map(ToString::to_string),
+            })
+        })
+        .collect();
+    let subcommands: Vec<serde_json::Value> =
+        command.get_subcommands().filter(|subcommand| !subcommand.is_hide_set()).map(command_schema).collect();
+    serde_json::json!({
+        "name": command.get_name(),
+        "about": command.get_about().map(ToString::to_string),
+        "arguments": arguments,
+        "subcommands": subcommands,
+    })
+}
+
+fn write_json(value: &impl Serialize) -> Result<()> {
+    let json = serde_json::to_string_pretty(value).expect("a schema serializes to JSON");
+    write_flushed(&mut std::io::stdout().lock(), [json, "\n".to_owned()])?;
     Ok(())
 }
 
 // The JSON Schema of `[tool.simplint]`, committed as `simplint.schema.json` and checked by `tests/docs_data.rs`.
 pub fn config_schema() -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    writeln!(stdout, "{}", serde_json::to_string_pretty(&crate::settings::config_schema())?)?;
-    stdout.flush()?;
-    Ok(())
+    write_json(&crate::settings::config_schema())
 }
 
 // Ruff's `VersionInfo`. simplint records no commit, which Ruff reports as `null` when built outside a git checkout.
@@ -98,8 +134,8 @@ struct VersionInfo {
 impl HelpOutput for VersionInfo {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "simplint {}", self.version)
+    fn text(&self) -> String {
+        format!("simplint {}\n", self.version)
     }
 }
 
@@ -136,9 +172,8 @@ impl Explanation {
         }
     }
 
-    // Ruff's `format_rule_text`. A terminal cannot draw the documentation's mermaid diagrams, so their source is left
-    // out.
-    fn text(&self) -> String {
+    // Ruff's `format_rule_text`.
+    fn explanation_text(&self) -> String {
         let mut output = format!("# {} ({})\n\n", self.name, self.code);
         if !matches!(self.fix_availability, FixAvailability::None) {
             output.push_str(&self.fix);
@@ -218,6 +253,15 @@ fn shown_fences(example: &Example) -> impl Iterator<Item = Shown<'_>> {
     config.into_iter().chain(blocks)
 }
 
+fn example_label(role: Role) -> Option<&'static str> {
+    match role {
+        Role::Report => Some("Reported:"),
+        Role::Ok => Some("Not reported:"),
+        Role::Fixed => Some("After the fix:"),
+        Role::Context => None,
+    }
+}
+
 fn block_comment(block: &Block) -> Option<String> {
     let mut parts = Vec::new();
     if block.named {
@@ -248,31 +292,21 @@ fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
     kept.extend([lines[shown.fence.end_line - 1], "\n"]);
 }
 
-fn example_label(role: Role) -> Option<&'static str> {
-    match role {
-        Role::Report => Some("Reported:"),
-        Role::Ok => Some("Not reported:"),
-        Role::Fixed => Some("After the fix:"),
-        Role::Context => None,
-    }
-}
-
 impl HelpOutput for Explanation {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        writeln!(writer, "{}", self.text())
+    fn text(&self) -> String {
+        format!("{}\n", self.explanation_text())
     }
 }
 
 impl HelpOutput for Vec<Explanation> {
     const JSON_NEWLINE: bool = false;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for explanation in self {
-            writeln!(writer, "{}\n", explanation.text())?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |explanation, f| f(&format_args!("{}\n\n", explanation.explanation_text())))
+            .to_string()
     }
 }
 
@@ -310,16 +344,17 @@ impl RuleEntry {
 impl HelpOutput for Vec<RuleEntry> {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for entry in self {
-            let fix = match entry.fix {
-                FixAvailability::Always => " (fix)",
-                FixAvailability::Sometimes => " (fix sometimes)",
-                FixAvailability::None => "",
-            };
-            writeln!(writer, "{} {}{fix}", entry.code, entry.name)?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |entry, f| {
+                let fix = match entry.fix {
+                    FixAvailability::Always => " (fix)",
+                    FixAvailability::Sometimes => " (fix sometimes)",
+                    FixAvailability::None => "",
+                };
+                f(&format_args!("{} {}{fix}\n", entry.code, entry.name))
+            })
+            .to_string()
     }
 }
 
@@ -333,10 +368,10 @@ enum ConfigOutput {
 impl HelpOutput for ConfigOutput {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
+    fn text(&self) -> String {
         match self {
-            Self::All(metadata) => writeln!(writer, "{metadata}"),
-            Self::Entry(entry) => write!(writer, "{entry}"),
+            Self::All(metadata) => format!("{metadata}\n"),
+            Self::Entry(entry) => entry.to_string(),
         }
     }
 }
@@ -350,54 +385,15 @@ struct LinterInfo {
 impl HelpOutput for Vec<LinterInfo> {
     const JSON_NEWLINE: bool = true;
 
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for LinterInfo { name, codes } in self {
-            writeln!(writer, "{name}: {}", codes.join(", "))?;
-        }
-        Ok(())
+    fn text(&self) -> String {
+        self.iter()
+            .format_with("", |LinterInfo { name, codes }, f| f(&format_args!("{name}: {}\n", codes.join(", "))))
+            .to_string()
     }
-}
-
-fn command_schema(command: &clap::Command) -> serde_json::Value {
-    let arguments: Vec<serde_json::Value> = command
-        .get_arguments()
-        .filter(|argument| !matches!(argument.get_action(), ArgAction::Help | ArgAction::Version))
-        .map(|argument| {
-            serde_json::json!({
-                "id": argument.get_id().as_str(),
-                "long": argument.get_long(),
-                "short": argument.get_short(),
-                "help": argument.get_help().map(ToString::to_string),
-                "flag": matches!(argument.get_action(), ArgAction::SetTrue),
-                "multiple": argument.get_num_args().is_some_and(|range| range.max_values() > 1),
-                "delimiter": argument.get_value_delimiter(),
-                "default": argument
-                    .get_default_values()
-                    .iter()
-                    .map(|value| value.to_string_lossy())
-                    .collect::<Vec<_>>(),
-                "choices": argument
-                    .get_possible_values()
-                    .iter()
-                    .map(|value| value.get_name().to_owned())
-                    .collect::<Vec<_>>(),
-                "value_name": argument.get_value_names().and_then(|names| names.first()).map(ToString::to_string),
-            })
-        })
-        .collect();
-    let subcommands: Vec<serde_json::Value> =
-        command.get_subcommands().filter(|subcommand| !subcommand.is_hide_set()).map(command_schema).collect();
-    serde_json::json!({
-        "name": command.get_name(),
-        "about": command.get_about().map(ToString::to_string),
-        "arguments": arguments,
-        "subcommands": subcommands,
-    })
 }
 
 // Ruff's `clean`, for simplint's directory in each Ruff cache directory, which leaves Ruff's own cache alone.
 pub(crate) fn clean(level: LogLevel) -> Result<()> {
-    let mut stderr = BufWriter::new(std::io::stderr().lock());
     for entry in WalkDir::new(std::env::current_dir()?)
         .into_iter()
         .filter_map(Result::ok)
@@ -407,12 +403,11 @@ pub(crate) fn clean(level: LogLevel) -> Result<()> {
         let cache = cache::directory(&ruff_cache);
         if is_real_dir(&ruff_cache) && is_real_dir(&cache) {
             if level >= LogLevel::Default {
-                writeln!(stderr, "Removing cache at: {}", relativize_path(&cache).bold())?;
+                writeln!(std::io::stderr(), "Removing cache at: {}", relativize_path(&cache).bold())?;
             }
             std::fs::remove_dir_all(&cache)?;
         }
     }
-    stderr.flush()?;
     Ok(())
 }
 

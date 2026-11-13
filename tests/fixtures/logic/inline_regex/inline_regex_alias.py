@@ -63,3 +63,27 @@ def explain(text):
     explanation = re.sub(r"a\d", "b", text)
     explanation = re.sub(r"c\d", "d", explanation)
     return explanation
+
+
+def bound_in_a_block(text, flag):
+    if flag:
+        scan = re.compile(r"n")
+        return scan.match(text)
+    return None
+
+
+def read_in_a_template(text):
+    scan = re.compile(r"m")
+    return t"{scan}", text
+
+
+def other_nonlocal(text):
+    scan = re.compile(r"o")
+    count = 0
+
+    def bump():
+        nonlocal count
+        count += 1
+
+    bump()
+    return scan.match(text), count

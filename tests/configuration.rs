@@ -268,6 +268,45 @@ fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
 }
 
 #[test]
+fn invalid_config_file_fails() {
+    let root = project(&[("pyproject.toml", "[project\n"), ("module.py", CLEAN_MODULE)]);
+    let (code, _, stderr) = check(root.path(), &["--config", "pyproject.toml"]);
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
+}
+
+#[test]
+fn invalid_nested_pyproject_under_a_config_file_fails() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint]\n"),
+        ("tests/sub/pyproject.toml", "[project\n"),
+        ("tests/sub/test_module.py", CLEAN_MODULE),
+    ]);
+    let (code, _, stderr) = check(root.path(), &["--config", "pyproject.toml"]);
+    assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
+}
+
+// A pattern that is valid as a file name may not be once anchored, as resolving `..` cuts the alternation in two.
+#[test_case("[a" ; "invalid")]
+#[test_case("{a,b/../c}.py" ; "invalid_once_anchored")]
+fn per_file_ignore_with_an_invalid_glob_fails(pattern: &str) {
+    let configuration = format!("[tool.simplint]\nper-file-ignores = {{ \"{pattern}\" = [\"SMP101\"] }}\n");
+    let root = project(&[("pyproject.toml", configuration.as_str()), ("module.py", CLEAN_MODULE)]);
+    let (code, _, stderr) = check(root.path(), &[]);
+    assert_eq!((code, stderr.contains("error")), (2, true), "{stderr}");
+}
+
+// The directory a pattern is anchored at is escaped, so its glob characters match themselves.
+#[test]
+fn per_file_ignore_under_a_directory_named_as_a_glob_applies() {
+    let root = project(&[
+        ("we[ird/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"module.py\" = [\"SMP101\"] }\n"),
+        ("we[ird/module.py", "x = 1\n"),
+    ]);
+    let (code, stdout, _) = common::check_in(root.path(), &root.path().join("we[ird"), &["--select", "SMP101"]);
+    assert_eq!((code, stdout), (0, PASSED.to_owned()));
+}
+
+#[test]
 fn relative_config_anchors_per_file_ignores_at_its_directory() {
     let root = project(&[
         ("sub/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP101\"] }\n"),
@@ -948,7 +987,9 @@ max-cognitive-complexity = 15
                  20\nlinter.logic.max_tuple_elements = \
                  3\n\
                  linter.logic.max_cognitive_complexity = \
-                 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = \
+                 15\nlinter.logic.min_duplicate_statements = 6\n\
+                 linter.logic.max_expression_complexity = 8\n\
+                 linter.classes.max_instance_attributes = 12\nlinter.project_kind = \
                  library\n\
                  linter.api_packages = [\n\t\"app\",\n]\n\
                  linter.docstring_style = rst\n"
@@ -975,7 +1016,18 @@ fn show_settings_without_files_fails() {
     assert_eq!((code, stderr.contains("No files found under the given path")), (2, true));
 }
 
+// A nested configuration Ruff cannot load fails both listings; one only simplint reads fails only the settings.
+#[test_case("[tool.ruff]\nextend = \"missing.toml\"\n", "--show-settings", "missing.toml" ; "settings_ruff")]
+#[test_case("[tool.ruff]\nextend = \"missing.toml\"\n", "--show-files", "missing.toml" ; "files_ruff")]
+#[test_case("[tool.simplint]\nselect = 1\n", "--show-settings", "tool.simplint.select" ; "settings_simplint")]
+fn showing_fails_on_a_broken_nested_configuration(configuration: &str, flag: &str, cause: &str) {
+    let root = project(&[("sub/pyproject.toml", configuration), ("sub/module.py", "VALUE = 1\n")]);
+    let (code, _, stderr) = check(root.path(), &[flag, "sub/module.py"]);
+    assert_eq!((code, stderr.contains(cause)), (2, true), "{stderr}");
+}
+
 #[test_case("[build-system]\nrequires = []\n", &[], "library" ; "build_system")]
+#[test_case("build-system = \"setuptools\"\n", &[], "library" ; "build_system_not_a_table")]
 #[test_case("", &[("setup.py", "")], "library" ; "setup_py")]
 #[test_case("", &[("setup.cfg", "")], "library" ; "setup_cfg")]
 #[test_case("[project]\nname = \"tool\"\n", &[], "application" ; "nothing_installs_it")]
@@ -1002,6 +1054,20 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
     let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
     let stdout = check(root.path(), &["--show-settings"]).1;
     assert_eq!(shown_setting(&stdout, "linter.project_kind", "\n"), format!("linter.project_kind = {kind}"));
+}
+
+// setuptools names an entry point as a dotted `attr` string; a `file` source, a value that is no string and a name
+// without a module name none.
+#[test]
+fn setuptools_tables_name_entry_points_by_dotted_attribute() {
+    let pyproject = "[tool.setuptools.dynamic]\nversion = { attr = \"pkg.__version__\" }\nreadme = { file = \
+                     [\"README.md\"] }\nlicense = { attr = 1 }\ndescription = { attr = \"nodot\" }\n\
+                     [tool.setuptools.cmdclass]\nbuild_py = \"pkg.build.Command\"\nsdist = \"nodot\"\n";
+    let root = project(&[("pyproject.toml", pyproject), ("module.py", "")]);
+    let stdout = check(root.path(), &["--show-settings"]).1;
+    let mut shown: Vec<&str> = shown_setting(&stdout, "linter.entry_points", "]\n").lines().skip(1).collect();
+    shown.sort_unstable();
+    assert_eq!(shown, ["\t\"pkg.build:Command\",", "\t\"pkg:__version__\","]);
 }
 
 // What `--show-settings` prints for one setting, from its name up to the next setting.

@@ -9,6 +9,7 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
 #[test_case("missing-from-all", "_missing_from_all_multiline.py" ; "missing_from_all_multiline")]
 #[test_case("missing-from-all", "_missing_from_all_noall.py" ; "missing_from_all_creates_all")]
 #[test_case("missing-from-all", "_missing_from_all_guard.py" ; "missing_from_all_above_main_guard")]
+#[test_case("missing-from-all", "_missing_from_all_noall_no_eol.py" ; "missing_from_all_creates_all_without_final_newline")]
 #[test_case("missing-from-all", "_missing_from_all_bare.py" ; "missing_from_all_bare_tuple")]
 #[test_case("missing-from-all", "_missing_from_all_sorted.py" ; "missing_from_all_sorted_insertion")]
 #[test_case("missing-from-all", "_missing_from_all_reexport.py" ; "missing_from_all_reexported_all")]
@@ -37,6 +38,7 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
 #[test_case("unused-export", "_exporting/unused_export_comment.py" ; "unused_export_comment")]
 #[test_case("unused-export", "_exporting/unused_export_extend.py" ; "unused_export_extended")]
 #[test_case("unused-export", "_exporting/unused_export_call.py" ; "unused_export_extend_call")]
+#[test_case("unused-export", "_exporting/unused_export_append.py" ; "unused_export_appended_only")]
 #[test_case("unused-export", "_exporting/sub/__init__.py" ; "unused_export_init_module")]
 #[test_case("unused-export", "_exporting/unused_export_double.py" ; "unused_export_double_import")]
 #[test_case("unused-export", "_exporting/unused_export_comment_all.py" ; "unused_export_comment_all")]
@@ -129,6 +131,8 @@ const LIBRARY: &str = "[tool.simplint]\nproject-kind = \"library\"\n";
 #[test_case("test-only-code", "test_tonly_builders.py" ; "test_only_code_test_module")]
 #[test_case("unused-definition", "_unused_definition.py" ; "unused_definition")]
 #[test_case("unused-definition", "_unused_definition_used.py" ; "unused_definition_imported")]
+#[test_case("unused-definition", "_unused_definition_members.py" ; "unused_definition_members")]
+#[test_case("unused-definition", "_unused_definition_whole.py" ; "unused_definition_whole_dict")]
 #[test_case("unused-definition", "tests/test_udef_helpers.py" ; "unused_definition_test_module")]
 #[test_case("test-only-parameter", "_test_only_parameter.py" ; "test_only_parameter")]
 #[test_case("test-only-parameter", "_test_only_parameter_injected.py" ; "test_only_parameter_injected")]
@@ -182,6 +186,15 @@ fn rule(rule: &str, fixture: &str) {
     "import app.sinks\n\n\ndef send(address: str, sink=app.sinks.Sink()) -> None:\n    sink.notify(address)\n",
     "send(\"a@b.c\", sink=print)", 1 ; "instance_of_a_class_in_a_nested_module_stays_reported"
 )]
+#[test_case(
+    "import os\n\n\ndef send(address: str, sink=os.getcwd) -> None:\n    print(address, sink())\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "function_of_a_module_outside_the_run_stays_reported"
+)]
+#[test_case(
+    "import os\n\nimport app.enums\n\n\ndef send(address: str, sink=os.getcwd) -> None:\n    \
+        print(address, app.enums.Mode, sink())\n",
+    "send(\"a@b.c\", sink=print)", 1 ; "function_of_a_module_outside_the_run_beside_a_run_module_stays_reported"
+)]
 fn test_only_parameter_exempts_only_collaborators(module: &str, test_call: &str, reported: usize) {
     assert_eq!(test_only_parameter_reports(module, test_call), reported);
 }
@@ -229,9 +242,15 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
-    assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
-    assert!(!stdout.contains("roots/test-example"), "{stdout}");
+    assert_eq!(
+        (
+            common::reports(&stdout, "SMP407").len(),
+            stdout.contains("tests/__init__.py"),
+            stdout.contains("roots/test-example")
+        ),
+        (1, false, false),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -253,8 +272,7 @@ fn missing_from_all_allows_main_modules() {
         ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
-    assert_eq!(common::reports(&stdout, "SMP401").len(), 1, "{stdout}");
-    assert!(stdout.contains("module.py"), "{stdout}");
+    assert_eq!((common::reports(&stdout, "SMP401").len(), stdout.contains("module.py")), (1, true), "{stdout}");
 }
 
 #[test]
@@ -397,8 +415,11 @@ fn missing_from_all_leaves_out_names_bound_only_for_type_checkers() {
         ("use.py", "from mod import Locked, Both, use\n\nprint(Locked, Both, use)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP401"]);
-    assert!(stdout.contains("`Both` is imported by other modules"), "{stdout}");
-    assert!(!stdout.contains("`Locked`"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`Both` is imported by other modules"), stdout.contains("`Locked`")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -422,9 +443,15 @@ fn all_format_follows_skip_magic_trailing_comma() {
 #[test]
 fn unused_definition_reports_public_names_nothing_reads() {
     let reported = unused_definitions("return None");
-    assert!(reported.contains("`helper` is never used"), "{reported}");
-    assert!(reported.contains("`Client.send` is never called"), "{reported}");
-    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+    assert_eq!(
+        (
+            reported.contains("`helper` is never used"),
+            reported.contains("`Client.send` is never called"),
+            reported.contains("`Client.LIMIT` is never read")
+        ),
+        (true, true, true),
+        "{reported}"
+    );
 }
 
 #[test_case("getattr(obj, name)" ; "computed_getattr")]
@@ -439,9 +466,15 @@ fn unused_definition_keeps_public_names_under_computed_reads(read: &str) {
 #[test]
 fn unused_definition_keeps_only_the_member_a_literal_getattr_names() {
     let reported = unused_definitions("return getattr(obj, \"send\")");
-    assert!(!reported.contains("`Client.send`"), "{reported}");
-    assert!(reported.contains("`helper` is never used"), "{reported}");
-    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+    assert_eq!(
+        (
+            reported.contains("`Client.send`"),
+            reported.contains("`helper` is never used"),
+            reported.contains("`Client.LIMIT` is never read")
+        ),
+        (false, true, true),
+        "{reported}"
+    );
 }
 
 // The diagnostics of a project whose `read` returns `body`, with `main` reading the class and calling `read`, so
@@ -465,6 +498,8 @@ fn unused_definitions(body: &str) -> String {
 #[test_case("f'_handle_{kind}'", false, false ; "other_file_matching_fstring_prefix")]
 #[test_case("f'{kind}_handle'", false, true ; "other_file_fstring_without_prefix")]
 #[test_case("'_visit_' + kind", false, true ; "other_file_other_prefix")]
+#[test_case("kind + '_handle_'", false, true ; "other_file_computed_left_operand")]
+#[test_case("f''", false, true ; "other_file_empty_fstring")]
 fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_file: bool, reported: bool) {
     let (core, other) = handler_and_dispatch(name, same_file);
     let root = common::project(&[
@@ -1026,8 +1061,11 @@ fn public_module_names_are_not_renamed_by_fixes() {
         "__all__ = [\"_limit\", \"level\"]\n\n_limit = 3\n\"\"\"Limit.\"\"\"\n\nlevel = 4\n\"\"\"Level.\"\"\"\n";
     let root = common::project(&[("pyproject.toml", LIBRARY), ("lib/__init__.py", ""), ("lib/api.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP404,SMP102"]);
-    assert_eq!(common::read(root.path(), "lib/api.py"), source);
-    assert!(stdout.contains("SMP102") && stdout.contains("SMP404"), "{stdout}");
+    assert_eq!(
+        (common::read(root.path(), "lib/api.py"), stdout.contains("SMP102") && stdout.contains("SMP404")),
+        (source.to_owned(), true),
+        "{stdout}"
+    );
 }
 
 // An import of a name the run cannot resolve, such as a stdlib one, says nothing about the names of the project, so a
@@ -1043,8 +1081,7 @@ fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
         ),
         ("app/other.py", "from itertools import count\n\nprint(count)\n"),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP102,SMP404"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP102,SMP404");
 }
 
 // A name an unresolved import may read keeps its report, and only the rename is withheld.
@@ -1057,8 +1094,7 @@ fn unresolved_import_keeps_the_report_but_withholds_the_rename() {
         ("app/other.py", "from json import loads\n\nprint(loads)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP403"]);
-    assert!(stdout.contains("`loads` is not in `__all__`"), "{stdout}");
-    assert!(!stdout.contains("[fix"), "{stdout}");
+    assert_eq!((stdout.contains("`loads` is not in `__all__`"), stdout.contains("[fix")), (true, false), "{stdout}");
 }
 
 // A doctest that imports a name from its module reads it, so the name is neither reported as private nor as unused.
@@ -1075,8 +1111,7 @@ fn doctest_import_counts_as_a_read_of_the_name() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404,SMP409"]);
-    assert!(!stdout.contains("`LIMIT`"), "{stdout}");
-    assert!(!stdout.contains("`helper`"), "{stdout}");
+    assert_eq!((stdout.contains("`LIMIT`"), stdout.contains("`helper`")), (false, false), "{stdout}");
 }
 
 // A documented function is public to SMP408 too, so a test module that calls it does not make it test-only code.
@@ -1093,8 +1128,7 @@ fn documented_function_is_not_test_only_code() {
             "from app.mod import helper\n\n\ndef test_helper() -> None:\n    assert helper(2) == 2\n",
         ),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP408"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP408");
 }
 
 // A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
@@ -1107,8 +1141,11 @@ fn listed_private_name_is_renamed_by_hand_in_public_library_modules() {
         ("lib/api.py", "__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert!(stdout.contains("`_LIMIT` is in `__all__`; rename it to `LIMIT` by hand"), "{stdout}");
-    assert!(!stdout.contains("[fix"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`_LIMIT` is in `__all__`; rename it to `LIMIT` by hand"), stdout.contains("[fix")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 // A doctest's relative import reads the name as a relative import of the code does, so the name stays used.
@@ -1120,6 +1157,5 @@ fn doctest_relative_import_counts_as_a_read_of_the_name() {
         ("app/mod.py", "LIMIT = 3\n\n\n__all__ = []\n"),
         ("app/cli.py", "def run() -> None:\n    \"\"\"Run.\n\n    >>> from .mod import LIMIT\n    \"\"\"\n"),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP404");
 }

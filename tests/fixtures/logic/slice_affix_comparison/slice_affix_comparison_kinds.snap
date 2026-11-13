@@ -1,0 +1,195 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+53:9 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+54:8 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+55:9 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+56:11 SMP549 Comparing a slice with a literal of its length is `startswith`
+57:9 SMP549 Comparing a slice with a literal of its length is `startswith`
+58:9 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+59:9 SMP549 Comparing a slice with a literal of its length is `startswith`
+60:8 SMP549 Comparing a slice with a literal of its length is `startswith`
+68:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+69:20 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+70:11 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+74:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+75:13 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+76:11 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+77:14 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+78:14 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+79:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+80:14 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+81:16 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+82:17 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+83:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+93:12 SMP549 Comparing a slice with a literal of its length is `startswith`
+93:32 SMP549 Comparing a slice with a literal of its length is `startswith`
+93:51 SMP549 Comparing a slice with a literal of its length is `startswith`
+93:70 SMP549 Comparing a slice with a literal of its length is `startswith`
+93:89 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+104:13 SMP549 Comparing a slice with a literal of its length is `startswith`
+104:32 SMP549 Comparing a slice with a literal of its length is `startswith`
+104:52 SMP549 Comparing a slice with a literal of its length is `startswith`
+105:19 SMP549 Comparing a slice with a literal of its length is `startswith`
+105:41 SMP549 Comparing a slice with a literal of its length is `startswith`
+105:61 SMP549 Comparing a slice with a literal of its length is `startswith`
+112:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+120:12 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+137:12 SMP549 Comparing a slice with a literal of its length is `startswith`
+137:35 SMP549 Comparing a slice with a literal of its length is `startswith`
+146:16 SMP549 Comparing a slice with a literal of its length is `startswith`
+152:23 SMP549 Comparing a slice with a literal of its length is `startswith` [unsafe fix: Use `startswith`]
+--- fixed (21 applied, 17 remaining) ---
+import collections.abc
+import getpass
+import pathlib
+import secrets
+import shlex
+import socket
+import sys
+import textwrap
+import typing
+from os import environ
+from typing import Annotated, Any, final, override
+
+import typing_extensions
+
+
+class Base:
+    def name(self) -> str:
+        return "base"
+
+    def plain(self) -> str:
+        return "base"
+
+
+class Box(Base):
+    label: str
+
+    @override
+    def name(self) -> str:
+        return "box"
+
+    @typing_extensions.override
+    def plain(self) -> str:
+        return "box"
+
+    def untyped(self):
+        return "box"
+
+    def ratio(self) -> float:
+        return 1.0
+
+
+@final
+class Tag:
+    title = "tag"
+
+
+class Twice:
+    def __init__(self) -> None:
+        self.title: str = "a"
+        self.title: str = "b"
+
+
+LABEL = Box().label.startswith("ab")
+NAME = Box().name().startswith("ab")
+PLAIN = Box().plain().startswith("ab")
+UNTYPED = Box().untyped()[:2] == "ab"
+TITLE = Tag().title[:2] == "ab"
+TWICE = Twice().title.startswith("ab")
+RATIO = Box().ratio()[:2] == "ab"
+PAIR = (Box() + Box())[:2] == "ab"
+
+
+class Declared:
+    def __init__(self) -> None:
+        self.title: str
+
+
+DECLARED = Declared().title.startswith("ab")
+MODULE_ATTRIBUTE = sys.version.startswith("ab")
+ENVIRON = environ.get("HOME", "ab").startswith("ab")
+
+
+def library_calls(items):
+    user = getpass.getuser().startswith("ab")
+    hexed = secrets.token_hex().startswith("ab")
+    url = secrets.token_urlsafe().startswith("ab")
+    joined = shlex.join(items).startswith("ab")
+    quoted = shlex.quote(items).startswith("ab")
+    host = socket.gethostname().startswith("ab")
+    filled = textwrap.fill(items).startswith("ab")
+    indented = textwrap.indent(items, " ").startswith("ab")
+    shortened = textwrap.shorten(items, 9).startswith("ab")
+    home = pathlib.Path.home().name.startswith("ab")
+    return user, hexed, url, joined, quoted, host, filled, indented, shortened, home
+
+
+def values(base, unknown):
+    merged = {**base}
+    mixed = {"a": unknown()}
+    keyed = {unknown(): "a"}
+    added = "a" + unknown()
+    both = "a" + "b"
+    return merged[:2] == "ab", mixed[:2] == "ab", keyed[:2] == "ab", added[:2] == "ab", both.startswith("ab")
+
+
+def annotations(
+    empty: Annotated[()],
+    nested: unknown.Generic[str],
+    sequence: collections.abc.Sequence[str],
+    anything: Any,
+    module: typing.Sequence,
+    typed: typing.Sequence[str],
+):
+    first = empty[:2] == "ab", nested[:2] == "ab", sequence[:2] == "ab"
+    return first, anything[:2] == "ab", module[:2] == "ab", typed[:2] == "ab"
+
+
+def declared_twice(flag):
+    text: str = "a"
+    if flag:
+        text: str = "b"
+    return text.startswith("ab")
+
+
+def cycle(flag):
+    first = "a"
+    second = first
+    if flag:
+        first = second
+    return first.startswith("ab")
+
+
+def bindings(pair, items):
+    [head, tail] = pair
+    start, (inner, start) = pair
+    try:
+        pass
+    except ValueError:
+        pass
+
+    def inner_function():
+        nonlocal head
+        head = "x"
+
+    inner_function()
+    words = (lambda: tail)()
+    return words[:2] == "ab", any(item[:2] == "ab" for item in items), start, inner
+
+
+def declares_nonlocal():
+    shared = "a"
+
+    def rebind():
+        nonlocal shared
+        shared = "b"
+        return shared[:2] == "ab"
+
+    return rebind()
+
+
+VERSION = sys.version
+STARTS_WITH = lambda: VERSION.startswith("ab")  # noqa: E731

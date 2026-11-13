@@ -10,7 +10,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 69:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 79:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 84:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
---- fixed (3 applied, 5 remaining) ---
+89:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
+--- fixed (4 applied, 5 remaining) ---
 from dataclasses import InitVar, dataclass
 from typing import Any, ClassVar
 
@@ -97,3 +98,9 @@ class DefaultOptions:
 @dataclass(frozen=True)
 class PlainRuntime:
     text: str
+
+
+@dataclass(frozen=True)
+class Labelled:
+    name: str = ""
+    PlainRuntime.label: str = ""

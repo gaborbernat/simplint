@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
@@ -78,10 +78,53 @@ fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str
         ("pkg/__init__.py", ""),
         ("pkg/plugin.py", source),
     ]);
+    assert_eq!(check(root.path(), &["--select", rule]).1, stdout.replace("pkg/", &native("pkg/")));
+}
+
+// A target that is no module name, a standard library module or a namespace package names no file of the run, so the
+// plugin's hook stays internal.
+#[test_case("pkg..plugin" ; "invalid_module_name")]
+#[test_case("json" ; "standard_library")]
+#[test_case("space" ; "namespace_package")]
+fn entry_point_without_a_run_file_names_nothing(target: &str) {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            &format!(
+                "[project]\nname = \"pkg\"\nentry-points.pytest11.demo = \"{target}\"\n[build-system]\nrequires = []\n"
+            ),
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/plugin.py", DOCSTRINGED_PLUGIN),
+        ("space/module.py", ""),
+    ]);
     assert_eq!(
-        check(root.path(), &["--select", rule]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        check(root.path(), &["--select", "SMP901"]).1,
+        native(
+            "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and types document \
+             it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
     );
+}
+
+// A project directory whose name is not UTF-8 is no search path, so its entry points name nothing.
+#[cfg(unix)]
+#[test]
+fn entry_point_of_a_project_whose_directory_is_not_utf8_names_nothing() {
+    use std::ffi::OsStr;
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    let directory = Path::new(OsStr::from_bytes(b"pr\xffoject"));
+    let pyproject =
+        "[project]\nname = \"pkg\"\nentry-points.pytest11.demo = \"pkg.plugin\"\n[build-system]\nrequires = []\n";
+    let root = project(&[
+        (directory.join("pyproject.toml"), pyproject),
+        (directory.join("pkg/__init__.py"), ""),
+        (directory.join("pkg/plugin.py"), DOCSTRINGED_PLUGIN),
+    ]);
+    let (code, stdout, stderr) = check(root.path(), &["--select", "SMP901"]);
+    assert_eq!(common::reports(&stdout, "SMP901").len(), 1, "{code} {stdout} {stderr}");
 }
 
 // A `from __future__` import binds a compiler flag that the host of a bare module entry point never reads, so it is no
@@ -100,7 +143,7 @@ fn bare_module_future_import_is_not_public_api() {
             pytest_addoption(parser: object) -> None:\n    \"\"\"Register the flag.\"\"\"\n    print(parser)\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let imported = project(&[
         (
             "pyproject.toml",
@@ -148,10 +191,7 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/plugin.py", UNUSED_PLUGIN),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402,SMP409"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402,SMP409"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A bare package entry point is its `__init__.py`, whose imports from a private module are public API the way a
@@ -171,10 +211,7 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
         ("pkg/__init__.py", "from pkg._core import plugin_hook\n"),
         ("pkg/_core.py", "def plugin_hook() -> None:\n    print()\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP903"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP903"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // The `__all__` of a public module of a library is the interface its users import, so no module of the run needs to
@@ -195,10 +232,7 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
         ("pkg/__init__.py", "\"\"\"Package.\"\"\"\n"),
         (module, "class Oops(Exception): ...\n\n\n__all__ = [\"Oops\"]\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
@@ -225,10 +259,7 @@ fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
         ("app/config.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
         ("cli.py", consumer),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("app/", &native("app/")));
 }
 
 // Only a production file's star import binds the submodules a package's `__all__` lists, so a test's star import of the
@@ -245,9 +276,8 @@ fn star_import_in_a_test_exempts_no_submodule_name() {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other \
-        modules \
-         use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
-            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+         modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+            .replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -282,7 +312,7 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
         ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
         ("b.py", consumer),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP402");
     let unread = project(&[
         ("pyproject.toml", DEMO),
         ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
@@ -382,7 +412,7 @@ fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP402");
     let unused = project(&[
         ("pyproject.toml", LIBRARY),
         ("pkg/__init__.py", ""),

@@ -168,11 +168,12 @@ fn parse_attributes<'a>(words: &[&'a str], line: usize) -> Result<Attributes<'a>
     let mut parsed = Attributes { file: None, executable: false, select: Vec::new() };
     let mut names = HashSet::new();
     for &word in words {
-        let name = word.split_once('=').map_or(word, |(name, _)| name);
+        let pair = word.split_once('=');
+        let name = pair.map_or(word, |(name, _)| name);
         if !names.insert(name) {
             return Err(format!("line {line}: repeated attribute `{name}`"));
         }
-        match word.split_once('=') {
+        match pair {
             None if word == "executable" => parsed.executable = true,
             Some(("file", file)) => parsed.file = Some(file),
             Some(("select", codes)) => parsed.select = select_codes(codes, line)?,

@@ -24,7 +24,7 @@ pub use files::FileId;
 pub use resolve::ImportResolver;
 pub use search::SearchRoots;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -33,7 +33,7 @@ use ruff_text_size::TextRange;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
-use crate::project::facts::{Channel, Channels, ImportBinding};
+use crate::project::facts::{Channel, Channels, ImportBinding, Signature};
 use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
 
@@ -48,7 +48,7 @@ use self::enums::enum_classes;
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
-use self::prefixes::{PrefixSiblings, prefix_siblings};
+use self::prefixes::{PrefixSiblings, prefix_siblings, test_directory_modules};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
@@ -75,13 +75,23 @@ pub struct Project {
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
     pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
     pub(super) run_members: FxHashMap<FileId, Members>,
+    pub(super) run_signatures: FxHashMap<FileId, FxHashMap<String, Signature>>,
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    // The files that run when a top-level package of the run is imported or one of its entry points runs.
+    pub(super) package_loaded: FxHashSet<FileId>,
+    // The modules whose runtime import in each file reaches a file of the run.
+    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<String>>,
+    // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
+    pub(super) imported_modules: FxHashSet<String>,
+    pub(super) dependency_hosts: FxHashSet<FileId>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
     pub(super) prefix_siblings: FxHashMap<FileId, PrefixSiblings>,
+    pub(super) test_directory_modules: FxHashMap<PathBuf, Vec<String>>,
     // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -102,6 +112,8 @@ pub struct IndexInputs<'a> {
     pub roles: &'a FxHashMap<&'a Path, ModuleRole>,
     pub test_modules: &'a FxHashSet<&'a Path>,
     pub distribution_roots: &'a FxHashMap<&'a Path, &'a Path>,
+    // The files `unused-dependency` reports in, the only ones the index tells which modules the project imports.
+    pub dependency_hosts: &'a FxHashSet<&'a Path>,
     pub docs: &'a DocReferences,
     pub duplicate_statements: Option<usize>,
     pub probed: Option<u64>,
@@ -116,6 +128,9 @@ pub struct External {
     pub opaque: FxHashSet<String>,
     pub computed: ComputedReads,
 }
+
+// A file that does not parse or cannot be read has no module facts, so it binds no module of the run.
+static NO_MODULES: FxHashMap<String, FileId> = FxHashMap::with_hasher(FxBuildHasher);
 
 impl Project {
     #[expect(clippy::too_many_lines, reason = "the stages of the index pipeline share the gathered inputs")]
@@ -171,15 +186,29 @@ impl Project {
         }
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
+        let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
+        let dependency_hosts: FxHashSet<FileId> =
+            inputs.dependency_hosts.iter().filter_map(|path| ids_of.get(path)).collect();
+        let imported_modules: FxHashSet<String> = indexed
+            .iter()
+            .filter(|(id, _)| !dependency_hosts.is_empty() && !test_modules.contains(id))
+            .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
+            .collect();
+        let resolved_imports: FxHashMap<FileId, FxHashSet<String>> = resolver
+            .modules
+            .iter()
+            .filter(|(_, module)| !module.runtime_modules.is_empty())
+            .map(|(file, module)| (*file, module.runtime_modules.iter().cloned().collect()))
+            .collect();
         // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
         // steps, so they are worked out alongside them.
-        let (aside, ()) = rayon::join(
+        let ((cycle_reports, duplicate_reports, reads), ()) = rayon::join(
             || {
                 let (cycles, duplicates) = rayon::join(
                     || runtime_cycles(runtime, &test_modules),
                     || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements, distribution_roots),
                 );
-                (cycles, duplicates, RunReads::collect(&indexed))
+                (cycles, duplicates, RunReads::collect(&indexed, &test_modules))
             },
             || {
                 // A dotted path that may reach any module of a package could come from any file, so it counts as used
@@ -197,7 +226,6 @@ impl Project {
                 uses.reexport(&stars, &sources);
             },
         );
-        let (cycle_reports, duplicate_reports, reads) = aside;
         let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files, &production);
         let mut wide = run_names(&indexed, &test_modules, reads, opaque_names, &external.assigned);
@@ -209,7 +237,7 @@ impl Project {
         wide.opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
-        let RunImports { names: run_imports, modules: run_modules, members: run_members } =
+        let RunImports { names: run_imports, modules: run_modules, members: run_members, signatures: run_signatures } =
             run_import_kinds(&resolver.modules, &bindings, &reexports);
         let (
             ((uncaught_exceptions, exception_types), module_uses),
@@ -262,6 +290,7 @@ impl Project {
             },
         );
         let inherited = inherit::inherited_api(&library_api, &library_reached, &graph, &reexports);
+        let overridden = inherit::overridden_methods(&graph, &reexports);
         let enum_types = enum_classes(&graph, &reexports, &bindings);
         calls.set_test_support(test_support);
         Self {
@@ -283,14 +312,21 @@ impl Project {
             run_imports,
             run_modules,
             run_members,
+            run_signatures,
             api_reached,
             library_reached,
             inherited,
+            overridden,
+            package_loaded,
+            resolved_imports,
+            imported_modules,
+            dependency_hosts,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
             duplicates: duplicate_reports,
             prefix_siblings: prefix_siblings(&indexed, &resolver.files),
+            test_directory_modules: test_directory_modules(&indexed, &test_modules, &resolver.files),
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
             computed_writes,
@@ -308,37 +344,50 @@ impl Project {
 
     // Looked up once, so rules asking about many names do not normalize and hash the path each time.
     pub fn file(&self, path: &Path) -> FileIndex<'_> {
-        let id = self.files.get(path);
+        // The roles intern every file of the run, and only those are linted.
+        let id = self.files.get(path).expect("the run interns every file it lints");
         FileIndex {
             project: self,
-            source: entry(&self.sources, id).copied(),
+            source: self.sources.get(&id).copied(),
             answers: FileAnswers {
-                imported: entry(&self.imported, id),
-                entry_only: entry(&self.entry_only, id),
-                referenced: entry(&self.referenced, id),
-                star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-                package_star_imported: id.is_some_and(|id| self.package_star_imported.contains(&id)),
-                star_source: id.is_some_and(|id| self.star_sources.contains(&id)),
-                computed_written: id.is_some_and(|id| self.computed_writes.contains(&id)),
-                written: id.and_then(|id| self.written.get(&id)),
-                role: entry(&self.roles, id).copied().unwrap_or_default(),
-                library_api: entry(&self.library_api, id),
-                modules: entry(&self.module_uses, id).map_or(&[], Vec::as_slice),
-                test_only: entry(&self.test_only, id),
-                loaded_as_value: id.is_some_and(|id| self.loaded_as_value.contains(&id)),
-                read_whole: id.is_some_and(|id| self.read_whole.contains(&id)),
-                uncaught_exceptions: entry(&self.uncaught_exceptions, id),
-                exception_types: entry(&self.exception_types, id),
-                enum_types: entry(&self.enum_types, id),
-                hook_classes: entry(&self.hook_classes, id),
-                run_imports: entry(&self.run_imports, id),
-                run_modules: RunModules { modules: entry(&self.run_modules, id), members: &self.run_members },
-                api_reached: entry(&self.api_reached, id),
-                library_reached: entry(&self.library_reached, id),
-                inherited: entry(&self.inherited, id),
-                cycle: entry(&self.cycles, id),
-                duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
-                prefix_siblings: entry(&self.prefix_siblings, id),
+                imported: self.imported.get(&id),
+                entry_only: self.entry_only.get(&id),
+                referenced: self.referenced.get(&id),
+                star_imported: self.star_imported.contains(&id),
+                package_star_imported: self.package_star_imported.contains(&id),
+                star_source: self.star_sources.contains(&id),
+                computed_written: self.computed_writes.contains(&id),
+                written: self.written.get(&id),
+                role: self.roles[&id],
+                library_api: self.library_api.get(&id),
+                modules: self.module_uses.get(&id).map_or(&[], Vec::as_slice),
+                test_only: self.test_only.get(&id),
+                loaded_as_value: self.loaded_as_value.contains(&id),
+                read_whole: self.read_whole.contains(&id),
+                uncaught_exceptions: self.uncaught_exceptions.get(&id),
+                exception_types: self.exception_types.get(&id),
+                enum_types: self.enum_types.get(&id),
+                hook_classes: self.hook_classes.get(&id),
+                run_imports: self.run_imports.get(&id),
+                run_modules: RunModules {
+                    modules: self.run_modules.get(&id).unwrap_or(&NO_MODULES),
+                    members: &self.run_members,
+                },
+                run_signatures: self.run_signatures.get(&id),
+                api_reached: self.api_reached.get(&id),
+                library_reached: self.library_reached.get(&id),
+                inherited: self.inherited.get(&id),
+                overridden: self.overridden.get(&id),
+                package_loaded: self.package_loaded.contains(&id),
+                resolved_imports: self.resolved_imports.get(&id),
+                imported_modules: self.dependency_hosts.contains(&id).then_some(&self.imported_modules),
+                cycle: self.cycles.get(&id),
+                duplicates: self.duplicates.get(&id).map_or(&[], Vec::as_slice),
+                prefix_siblings: self.prefix_siblings.get(&id),
+                directory_modules: path
+                    .parent()
+                    .and_then(|directory| self.test_directory_modules.get(directory))
+                    .map_or(&[], Vec::as_slice),
                 calls: self.calls.file(id),
                 reads: &self.wide.reads,
                 computed_reads: &self.wide.computed_reads,
@@ -351,9 +400,10 @@ fn interned_inputs(
     resolver: &mut ImportResolver,
     inputs: &IndexInputs,
 ) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
-    let test_modules = inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect();
-    let roles = inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect();
-    (test_modules, roles)
+    (
+        inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect(),
+        inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect(),
+    )
 }
 
 fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
@@ -430,7 +480,6 @@ impl<'r> Gathered<'r> {
             for (file, names) in &module.written {
                 gathered.written.entry(*file).or_default().extend(names.iter().cloned());
             }
-            let uses = module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect();
             let production = production.contains(&id);
             if production {
                 gathered.read_whole.extend(module.values.iter().copied());
@@ -440,7 +489,7 @@ impl<'r> Gathered<'r> {
                 path: resolver.files.path(id).to_path_buf(),
                 digest: facts.source_digest,
                 production,
-                modules: uses,
+                modules: module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect(),
             });
             gathered.bindings.extend(module.bindings.iter().map(|(source, binding)| (id, *source, binding)));
             let origin = if test_modules.contains(&id) { Origin::Test } else { Origin::Other };
@@ -533,6 +582,43 @@ fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHas
         .collect()
 }
 
+// The files a top-level package's `__init__.py` or `__main__.py` runs through runtime imports, itself included: the
+// modules an install loads on its own, apart from the plugins other tools load, the integrations users import by choice
+// and the scripts a checkout runs.
+fn package_loaded(
+    runtime: &RuntimeGraph,
+    indexed: &[(FileId, &FileFacts)],
+    files: &FileIds,
+    test_modules: &FxHashSet<FileId>,
+) -> FxHashSet<FileId> {
+    let inits: FxHashSet<&Path> = indexed
+        .iter()
+        .map(|(id, _)| files.path(*id))
+        .filter(|path| path.file_name().is_some_and(|name| name == "__init__.py"))
+        .filter_map(Path::parent)
+        .collect();
+    let mut pending: Vec<FileId> = indexed
+        .iter()
+        .filter(|(id, _)| !test_modules.contains(id))
+        .filter(|(id, _)| {
+            let path = files.path(*id);
+            match path.file_name().and_then(|name| name.to_str()) {
+                Some("__main__.py") => true,
+                Some("__init__.py") => path.parent().and_then(Path::parent).is_none_or(|outer| !inits.contains(outer)),
+                _ => false,
+            }
+        })
+        .map(|(id, _)| *id)
+        .collect();
+    let mut loaded = FxHashSet::default();
+    while let Some(file) = pending.pop() {
+        if loaded.insert(file) {
+            pending.extend(runtime.get(&file).into_iter().flatten().map(|(target, _)| *target));
+        }
+    }
+    loaded
+}
+
 // The cycles of the runtime imports outside test modules, which import each other as fixtures and deliberately close
 // cycles when they test the import system.
 fn runtime_cycles(mut runtime: RuntimeGraph, test_modules: &FxHashSet<FileId>) -> FxHashMap<FileId, Cycle> {
@@ -618,10 +704,6 @@ fn only_tests(
             (file, names.collect())
         })
         .collect()
-}
-
-fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
-    map.get(&id?)
 }
 
 fn range_key(range: TextRange, state: &mut CacheKeyHasher) {

@@ -89,15 +89,14 @@ pub(super) fn reorder_fix(
     Some(Fix::applicable_edit(edit, if moved_unsafe { Applicability::Unsafe } else { Applicability::Safe }))
 }
 
-// Decorators with no effect of their own, so moving a decorated method past another only changes the order of
-// evaluations that cannot be observed.
-const PURE_DECORATORS: [&str; 8] =
-    ["property", "cached_property", "classmethod", "staticmethod", "overload", "setter", "getter", "deleter"];
-
 // Whether moving a definition is unsafe, `None` for a statement that is not one. A function moves safely when its
 // decorators are all pure, such as `@property`, and its defaults call nothing; a class never does. A call decorator
 // such as `@cache()` has no last name here, so it counts as impure.
 pub(super) fn moves_definition_unsafely(stmt: &Stmt) -> Option<bool> {
+    // Decorators with no effect of their own, so moving a decorated method past another only changes the order of
+    // evaluations that cannot be observed.
+    const PURE_DECORATORS: [&str; 8] =
+        ["property", "cached_property", "classmethod", "staticmethod", "overload", "setter", "getter", "deleter"];
     match stmt {
         Stmt::FunctionDef(function) => Some(
             function.decorator_list.iter().any(|decorator| {

@@ -188,15 +188,10 @@ fn unspecced_members<'a>(semantic: &Semantic, class: &'a ast::StmtClassDef) -> F
             .body
             .iter()
             .filter_map(Stmt::as_function_def_stmt)
-            .filter(|method| method.decorator_list.iter().any(|decorator| is_property(semantic, decorator)))
+            .filter(|method| semantic.decorated_by(&method.decorator_list, Semantic::PROPERTY))
             .map(|method| method.name.as_str()),
     );
     members
-}
-
-fn is_property(semantic: &Semantic, decorator: &ast::Decorator) -> bool {
-    semantic.is_builtin(&decorator.expression, "property")
-        || semantic.resolves_to(&decorator.expression, &["functools", "cached_property"])
 }
 
 struct MemberRead<'a, 'm> {

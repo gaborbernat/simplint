@@ -11,6 +11,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::project::cache;
+use crate::syntax::last_dotted_segment;
 pub use conf::AutoclassContent;
 use conf::Rendered;
 use walk::{is_configuration, is_foreign, pages, tree_key};
@@ -67,9 +68,11 @@ impl DocReferences {
         cache_dir: Option<&Path>,
     ) -> Self {
         let mut references = Self::default();
+        let global = ignore::gitignore::gitconfig_excludes_path();
         for (root, settings) in roots {
-            let cache =
-                cache_dir.map(|cache_dir| (cache::documentation_file(cache_dir, root), tree_key(root, settings, main)));
+            let cache = cache_dir.map(|cache_dir| {
+                (cache::documentation_file(cache_dir, root), tree_key(root, settings, main, global.as_deref()))
+            });
             if let Some(cached) = cache.as_ref().and_then(|(path, key)| Self::cached(path, *key)) {
                 references.extend(cached);
                 continue;
@@ -116,7 +119,7 @@ impl DocReferences {
                 return option.unwrap_or(docs.named);
             }
             let below = |outer: &str, inner: &str| outer.strip_suffix(inner).is_some_and(|rest| rest.ends_with('.'));
-            match docs.directives.simple.get(qualified.rsplit_once('.').map_or(qualified, |(_, name)| name)) {
+            match docs.directives.simple.get(last_dotted_segment(qualified)) {
                 Some(_) if namesake => AutoclassContent::Unknown,
                 Some(option) => option.unwrap_or(docs.named),
                 // A docs `sys.path` can name the module differently from its package path, so a directive whose
@@ -162,14 +165,12 @@ fn configuration(root: &Path, path: &Path) -> Option<Rendered> {
     if is_foreign(root, path) {
         return None;
     }
-    let directory = path.parent()?;
-    let has_index = INDEXES.iter().any(|index| directory.join(index).is_file());
     let text = fs::metadata(path)
         .ok()
         .filter(|metadata| metadata.len() <= 8 << 20)
         .and_then(|_| fs::read_to_string(path).ok());
     match text {
-        Some(text) => conf::class_doc_from(&text, has_index),
+        Some(text) => conf::class_doc_from(&text, INDEXES.iter().any(|index| path.with_file_name(index).is_file())),
         None => Some(Rendered::UNKNOWN),
     }
 }
@@ -204,5 +205,35 @@ impl CacheKey for DocReferences {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+    use test_case::test_case;
+
+    use super::DocReferences;
+
+    #[test]
+    fn page_that_is_not_utf8_documents_nothing() {
+        let directory = TempDir::new().expect("create a temporary directory");
+        let root = directory.path().join("docs");
+        fs::create_dir(&root).expect("create the docs directory");
+        fs::write(root.join("api.rst"), ".. autofunction:: pkg.documented\n").expect("write a page");
+        fs::write(root.join("broken.rst"), b".. autofunction:: pkg.hidden\n\xff\n").expect("write a page");
+        let settings = ruff_workspace::Settings::default();
+        let references = DocReferences::collect([(root.as_path(), &settings)], &root, None);
+        assert!(references.covers("pkg.documented", true) && !references.covers("pkg.hidden", true));
+    }
+
+    #[test_case("mod.Class.method", true ; "module_under_the_scope_package")]
+    #[test_case("other.Class.method", false ; "other_module")]
+    fn scope_under_an_unknown_package_covers_its_members(qualified: &str, covered: bool) {
+        let mut references = DocReferences::default();
+        references.add_scope("pkg.mod.Class.".to_owned());
+        assert_eq!(references.covers(qualified, false), covered);
     }
 }

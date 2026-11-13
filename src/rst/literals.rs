@@ -1,5 +1,6 @@
 use super::blocks::Classified;
-use super::punctuation::{CLOSER_CHARS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, match_chars};
+use super::lines::leading_whitespace;
+use super::punctuation::{ends_before, match_chars, starts_after};
 
 // What is wrong with an inline literal or a backtick run, and so what the rule says.
 #[derive(Debug, PartialEq, Eq)]
@@ -75,7 +76,6 @@ impl Fences {
         let Some((char, run, rest)) = fence(text) else {
             return;
         };
-        let start = at + (text.len() - text.trim_start().len());
         let line = at..at + text.len();
         if let Some((open_char, open_run)) = self.open {
             if rest.is_empty() && char == open_char && run >= open_run {
@@ -94,6 +94,7 @@ impl Fences {
             }
             return;
         }
+        let start = at + leading_whitespace(text).len();
         if rest.is_empty() {
             self.pending = Some((char, run, start, line));
         } else {
@@ -117,8 +118,8 @@ fn fence(text: &str) -> Option<(char, usize, &str)> {
 // The findings of one paragraph: the literals docutils cannot close, and backtick runs that pair up wrongly. A literal
 // that is a mismatch is reported as one, not also as unclosed.
 fn paragraph_findings(units: &[(char, usize)]) -> Vec<Finding> {
-    let mismatches = mismatches(units);
     let mut found = open_literals(units);
+    let mismatches = mismatches(units);
     found.retain(|finding| {
         finding.cause != Cause::Unclosed || !mismatches.iter().any(|mismatch| mismatch.at == finding.at)
     });
@@ -195,7 +196,7 @@ fn open_literals(units: &[(char, usize)]) -> Vec<Finding> {
 fn start_at(units: &[(char, usize)], index: usize, segment: usize) -> Option<usize> {
     let double = units.get(index + 1).is_some_and(|&(next, _)| next == '`');
     let after = index + 1 + usize::from(double);
-    let prefixed = index == segment || units[index - 1].0.is_whitespace() || starts_after(units[index - 1].0);
+    let prefixed = index == segment || starts_after(units[index - 1].0);
     let spaced = units.get(after).is_some_and(|&(next, _)| next.is_whitespace());
     (prefixed && !spaced).then_some(after)
 }
@@ -260,7 +261,7 @@ fn backtick_runs(units: &[(char, usize)]) -> Vec<(usize, usize)> {
 
 // Whether the backticks at `start` can open markup: whitespace or punctuation before them, and no space after.
 fn opens_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
-    let prefixed = start == 0 || units[start - 1].0.is_whitespace() || starts_after(units[start - 1].0);
+    let prefixed = start == 0 || starts_after(units[start - 1].0);
     prefixed && units.get(start + len).is_some_and(|&(next, _)| !next.is_whitespace())
 }
 
@@ -275,9 +276,11 @@ fn closes_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
 
 // The backtick runs that pair up wrongly within a paragraph, found by reading the runs in order: an opening run is
 // closed by the next run that can close it. A run of one backtick closed by two is a mismatch, and so is a run of two
-// closed by one. A literal may hold a single backtick, so a run of two closed by one is left alone only when no other
-// run of two stands between it and the first pair of double backticks after it. A closing run followed by a role's
-// colon is left to the role rules.
+// closed by one.
+//
+// A literal may hold a single backtick, so a run of two closed by one is left alone only when no other run of two
+// stands between it and the first pair of double backticks after it. A closing run followed by a role's colon is left
+// to the role rules.
 fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
     let runs = backtick_runs(units);
     let mut found = Vec::new();
@@ -308,8 +311,7 @@ fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
             open = Some((opened_at, opened));
             continue;
         }
-        let reportable = units.get(start + len).is_none_or(|&(next, _)| next != ':');
-        if reportable {
+        if units.get(start + len).is_none_or(|&(next, _)| next != ':') {
             found.push(Finding { at: units[opened_at].1, len: opened, cause: Cause::Mismatch { opened, closed: len } });
         }
     }
@@ -317,18 +319,7 @@ fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
 }
 
 fn ends_at(units: &[(char, usize)], index: usize) -> bool {
-    units.get(index).is_none_or(|&(char, _)| {
-        char.is_whitespace()
-            || char == '\0'
-            || CLOSER_CHARS.contains(&char)
-            || DELIMITER_CHARS.contains(&char)
-            || CLOSING_DELIMITER_CHARS.contains(&char)
-    })
-}
-
-// Whether a start-string may follow `char`, besides whitespace: an opening bracket or quote, or a delimiter.
-fn starts_after(char: char) -> bool {
-    OPENER_CHARS.contains(&char) || DELIMITER_CHARS.contains(&char)
+    units.get(index).is_none_or(|&(char, _)| ends_before(char))
 }
 
 #[cfg(test)]
@@ -351,6 +342,7 @@ mod tests {
     #[test_case("Use x``y`` here.", &[] ; "start_preceded_by_letter")]
     #[test_case("Use \\``x here.", &[] ; "escaped_start")]
     #[test_case("Use ```` here.", &[4] ; "four_backticks")]
+    #[test_case("Use ````", &[4, 6] ; "four_backticks_at_the_end_of_text_open_twice")]
     #[test_case("Python ``list``s are lists.", &[7] ; "end_followed_by_letter_is_unclosed")]
     #[test_case("Say \"``\" here.", &[] ; "quoted_start")]
     #[test_case("Use ``", &[] ; "start_at_the_end_of_text")]
@@ -392,6 +384,8 @@ mod tests {
     #[test_case("Summary.\n\n~~~\ncode\n~~~\n", &["10 fence"] ; "tilde_fence")]
     #[test_case("Summary.\n\n~~~~~~~~\nTitle\n", &[] ; "bare_fence_without_a_closer_is_a_section_underline")]
     #[test_case("Summary.\n\n```python\ncode\n", &["10 fence"] ; "info_string_fence_without_a_closer")]
+    #[test_case("Summary.\n\n```python\n~~~\n```\n", &["10 fence"] ; "other_fence_inside_a_fence_does_not_close_it")]
+    #[test_case("Summary.\n\nSee ``a`:sub: here.\n", &["14 unclosed"] ; "single_backtick_before_a_role_suffix_is_no_mismatch")]
     #[test_case("Summary.\n\n```\n\ncode\n```\n", &["10 unclosed", "20 unclosed"] ; "closer_in_another_paragraph_does_not_pair")]
     #[test_case("Summary.\n\nCall `'AF_INET``, here.\n", &["15 mismatch 1 2"] ; "one_backtick_closed_by_two")]
     #[test_case("Summary.\n\nSee ``user_agent_appid` here.\n", &["14 mismatch 2 1"] ; "two_backticks_closed_by_one")]

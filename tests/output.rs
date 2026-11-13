@@ -91,6 +91,15 @@ fn check_output_file_receives_the_report() {
         ((1, String::new(), String::new()), format!("module.py:1:1: {SINGLE_X}\nFound 1 error.\n"))
     );
 }
+// The report cannot go into a directory, nor below a file.
+#[test_case("out", "Is a directory" ; "directory")]
+#[test_case("module.py/report.txt", "File exists" ; "below_a_file")]
+fn check_fails_when_the_output_file_cannot_be_created(output_file: &str, cause: &str) {
+    let root = project(&[("module.py", "x = 1\n"), ("out/keep.txt", "")]);
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101", "--output-file", output_file]);
+    assert_eq!((code, stderr.contains(cause)), (2, true), "{stderr}");
+}
+
 #[test]
 fn output_file_is_never_colored() {
     let root = project(&[("module.py", "x = 1\n")]);

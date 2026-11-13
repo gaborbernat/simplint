@@ -1,4 +1,3 @@
-use rustc_hash::FxHashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -11,6 +10,7 @@ use ruff_python_ast::token::{Token, TokenKind, Tokens};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use crate::fix::apply::{FixResult, fix_ruff_file};
 use crate::fix::{add_fixes, errors};
@@ -87,4 +87,54 @@ fn split_import_lines(source: &str, tokens: &Tokens) -> String {
     }
     split.push_str(&source[copied.to_usize()..]);
     split
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use ruff_db::diagnostic::Diagnostic;
+    use ruff_diagnostics::{Edit, Fix};
+    use ruff_linter::registry::Rule as RuffRule;
+    use ruff_linter::{IOError, Violation};
+    use ruff_source_file::SourceFileBuilder;
+    use ruff_text_size::{TextRange, TextSize};
+    use rustc_hash::FxHashSet;
+    use test_case::test_case;
+
+    use super::lint_fix;
+    use crate::lint::ruff::{Checked, Findings};
+
+    // A check that offers one fix, inserting `inserted` at the start, on `start` alone, so the loop stops once it
+    // applied.
+    fn checker(start: &'static str, inserted: &'static str) -> impl Fn(&str) -> Arc<Checked> {
+        move |source| {
+            let mut diagnostics = Vec::new();
+            if source == start {
+                let file = SourceFileBuilder::new("module.py", source).finish();
+                let mut diagnostic: Diagnostic =
+                    IOError { message: String::new() }.into_diagnostic(TextRange::default(), &file);
+                diagnostic.set_fix(Fix::safe_edit(Edit::insertion(inserted.to_owned(), TextSize::new(0))));
+                diagnostics.push(diagnostic);
+            }
+            let parses = ruff_python_parser::parse_module(source).is_ok();
+            Arc::new(Checked { diagnostics, parses, findings: Findings::default() })
+        }
+    }
+
+    // A fix that breaks code that parsed is a bug in Ruff, so the cleanup gives up; code that did not parse is fixed on.
+    #[test_case("x = 1\n", "(", None ; "breaking_valid_code_fails")]
+    #[test_case("x = (\n", "y", Some("yx = (\n") ; "invalid_code_is_fixed_on")]
+    fn lint_fix_fails_only_when_a_fix_breaks_valid_code(
+        start: &'static str,
+        inserted: &'static str,
+        fixed: Option<&str>,
+    ) {
+        let introduced: FxHashSet<&'static str> = FxHashSet::from_iter([RuffRule::IOError.name().as_str()]);
+
+        let result = lint_fix(Path::new("module.py"), start, &introduced, checker(start, inserted));
+
+        assert_eq!(result.ok().as_deref(), fixed);
+    }
 }

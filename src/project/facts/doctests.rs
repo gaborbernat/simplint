@@ -40,7 +40,7 @@ fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
     let (module, names) = code.trim_start().strip_prefix("from ")?.split_once(" import ")?;
     let module = module.trim();
     let name = module.trim_start_matches('.');
-    let level = u32::try_from(module.len() - name.len()).ok()?;
+    let level = u32::try_from(module.len() - name.len()).expect("a doctest line has fewer dots than a u32 holds");
     let names = names
         .trim()
         .trim_start_matches('(')
@@ -50,4 +50,18 @@ fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
         .filter(|name| *name != "*" && is_identifier(name))
         .collect();
     Some((level, name, names))
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::from_import;
+
+    #[test_case("from ..pkg import (a, b as c)", Some((2, "pkg", &["a", "b"])) ; "relative_import")]
+    #[test_case("from pkg", None ; "unfinished_import")]
+    #[test_case("import pkg", None ; "plain_import")]
+    fn from_import_reads_a_doctest_line(code: &str, expected: Option<(u32, &str, &[&str])>) {
+        assert_eq!(from_import(code), expected.map(|(level, name, names)| (level, name, names.to_vec())));
+    }
 }

@@ -1,14 +1,23 @@
+pub(crate) mod async_sync_dunder;
+pub(crate) mod broken_decorator_stack;
 mod dataclass_frozen;
 mod dataclass_hazards;
 mod dataclass_kw_only;
 mod dataclass_slots;
+pub(crate) mod exception_init_args;
 mod indistinct_error_class;
+mod missing_override;
+pub(crate) mod rejected_operand;
+mod too_many_attributes;
+pub(crate) mod unbound_super;
 
 pub(crate) use dataclass_frozen::dataclass_frozen;
 pub(crate) use dataclass_hazards::expected_to_raise_classes;
 pub(crate) use dataclass_kw_only::dataclass_kw_only;
 pub(crate) use dataclass_slots::dataclass_slots;
 pub(crate) use indistinct_error_class::indistinct_error_class;
+pub(crate) use missing_override::missing_override;
+pub(crate) use too_many_attributes::too_many_attributes;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::visitor::Visitor;

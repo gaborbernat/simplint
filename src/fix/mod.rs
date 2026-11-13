@@ -88,26 +88,18 @@ impl<'l, 'a> Fixer<'l, 'a> {
             let (result, run_withdrawn) = self.run(&current, std::mem::take(&mut withdrawn.fixes))?;
             withdrawn = run_withdrawn;
             add_fixes(&mut fixed, &result.fixed);
+            // A later run only finds work in fixes of a rule an earlier run withdrew whole. Such a fix that gives Ruff
+            // work again has its rule withdrawn again, which leaves the source as it was, so the runs end without a
+            // bound of their own; each run's fix and cleanup loops have theirs.
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
                 break result;
             }
-            errors::ensure_converging(seen.len(), &result.diagnostics)?;
             current.clone_from(&result.transformed);
         };
         result.fixed = fixed;
         let (mut result, withdrawn) = self.unless_unchanged(source, result, withdrawn);
         Self::withdraw(&result.transformed, &mut result.diagnostics, &withdrawn);
         Ok((result, withdrawn))
-    }
-
-    // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
-    pub fn withdraw(source: &str, diagnostics: &mut [Diagnostic], withdrawn: &Withdrawn) {
-        let held = withdrawn.held_back(source, diagnostics);
-        for (diagnostic, held) in diagnostics.iter_mut().zip(held) {
-            if held {
-                diagnostic.remove_fix();
-            }
-        }
     }
 
     fn run(&self, source: &str, fixes: FxHashSet<FixKey>) -> Result<(FixerResult, Withdrawn), FixBug> {
@@ -161,6 +153,16 @@ impl<'l, 'a> Fixer<'l, 'a> {
         (FixerResult { diagnostics, transformed: source.to_owned(), fixed: FixTable::default() }, withdrawn)
     }
 
+    // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
+    pub fn withdraw(source: &str, diagnostics: &mut [Diagnostic], withdrawn: &Withdrawn) {
+        let held = withdrawn.held_back(source, diagnostics);
+        for (diagnostic, held) in diagnostics.iter_mut().zip(held) {
+            if held {
+                diagnostic.remove_fix();
+            }
+        }
+    }
+
     // Withdraws the fixes of `rule` that `linted` reports, keeping each group of them whose result leaves no more Ruff
     // work than the result without it. `None` when none is withdrawn, as when the rule's fixes come from a later pass,
     // so the caller withdraws the whole rule instead, as it does when withholding them hits a bug in another fix.
@@ -197,7 +199,9 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn fixing_rules(fixes: &FixTable) -> impl Iterator<Item = Rule> {
-        fixes.iter().filter_map(|(_, code, _)| Rule::from_code(code?.as_str()))
+        fixes.iter().map(|(_, code, _)| {
+            code.and_then(|code| Rule::from_code(code.as_str())).expect("a simplint fix comes from a simplint rule")
+        })
     }
 
     fn reapplies(&self, source: &str) -> Result<bool, FixBug> {
@@ -440,7 +444,7 @@ fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
         .iter()
         .enumerate()
         .filter(|(_, diagnostic)| diagnostic.fix().is_some())
-        .filter_map(|(index, diagnostic)| Some((index, rule_of(diagnostic)?)))
+        .map(|(index, diagnostic)| (index, rule_of(diagnostic).expect("a simplint fix comes from a simplint rule")))
         .collect();
     reports.sort_by_key(|&(index, _)| diagnostics[index].range().map(TextRange::start));
     let mut occurrences = FxHashMap::<(Rule, &str, &str), usize>::default();
@@ -473,7 +477,9 @@ struct Settled {
 
 // The admission bisection meets a new source at each step, so an unbounded memo would hold every intermediate lint and
 // Ruff check. A map already holding this many entries is cleared before its next insert, which only costs recomputing.
-const ENTRIES: usize = 128;
+// A settle meets two sources a round, its fixes' and Ruff's cleanup's, so this holds every source of one that runs until
+// it fails to converge.
+const ENTRIES: usize = 256;
 
 // Results keyed by what they were computed from. The lock is not held while computing, so parallel candidates do not
 // wait on each other; two that need the same key at once both compute it.
@@ -543,22 +549,48 @@ struct Linted<'s> {
 
 #[cfg(test)]
 mod tests {
-    use ruff_db::diagnostic::{Diagnostic, Span};
+    use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
+    use ruff_diagnostics::{Edit, Fix};
+    use ruff_linter::linter::FixTable;
+    use ruff_linter::settings::flags;
+    use ruff_linter::settings::types::UnsafeFixes;
     use ruff_python_ast::{PySourceType, PythonVersion};
     use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, parse_unchecked};
     use ruff_source_file::SourceFileBuilder;
-    use ruff_text_size::TextRange;
+    use ruff_text_size::{TextRange, TextSize};
     use test_case::test_case;
 
-    use ruff_linter::linter::FixTable;
-
     use super::{
-        Candidate, FixBug, FixKey, FixerResult, Settled, VersionCounts, Withdrawn, check_syntax, earlier_unless_beaten,
-        version_counts,
+        Candidate, ENTRIES, FixBug, FixKey, Fixer, FixerResult, Memo, Settled, Sources, VersionCounts, Withdrawn,
+        check_syntax, earlier_unless_beaten, version_counts,
     };
+    use crate::lint::Lint;
     use crate::lint::registry::{Rule, RuleSet};
+    use crate::run::with_linter;
 
     const NESTED_QUOTE: &str = "print(f\"{x[\"a\"]}\")\n";
+
+    // A full memo starts over, so the entry past its bound is the only one it holds and an earlier one is computed again.
+    #[test]
+    fn full_memo_starts_over() {
+        let memo = Memo::default();
+        for key in 0..=ENTRIES {
+            memo.keep(key, key);
+        }
+        let held = memo.entries().len();
+        assert_eq!((held, memo.get_or(0, || usize::MAX)), (1, usize::MAX));
+    }
+
+    // Full of sources, the interner starts over, so a source met before is held anew rather than shared.
+    #[test]
+    fn full_interner_starts_over() {
+        let sources = Sources::default();
+        let first = sources.intern("0");
+        for source in 1..=ENTRIES {
+            sources.intern(&source.to_string());
+        }
+        assert!(!std::sync::Arc::ptr_eq(&first, &sources.intern("0")));
+    }
 
     #[test_case(
         "x = 1\n",
@@ -638,5 +670,122 @@ mod tests {
             text: "lock = build()".to_owned(),
             occurrence,
         }
+    }
+
+    const SOURCE: &str = "x = 1\n";
+
+    // Reports of simplint rules by source, standing in for the module's own wherever a source has an entry.
+    type Reports = Vec<(String, Vec<Diagnostic>)>;
+
+    // A fix that breaks the syntax, or that keeps finding work, ends the loop with its bug wherever it shows: on the
+    // first pass, in every withdrawal candidate, or on the pass after Ruff's cleanup.
+    #[test_case(broken_on_the_first_pass, "Fix introduced a syntax error" ; "broken_on_the_first_pass")]
+    #[test_case(endless, "Failed to converge" ; "endless")]
+    #[test_case(endless_cleanup, "Failed to converge" ; "endless_cleanup")]
+    #[test_case(broken_alone, "Fix introduced a syntax error" ; "broken_alone")]
+    #[test_case(broken_after_the_cleanup, "Fix introduced a syntax error" ; "broken_after_the_cleanup")]
+    fn fix_with_a_bug_fails_the_file(reports: fn() -> Reports, bug: &str) {
+        assert_eq!(fix(&reports()).err().map(|error| error.to_string()).as_deref(), Some(bug));
+    }
+
+    // A withdrawal candidate whose fixes hit a bug is dropped, and the one left keeps the source as it was.
+    #[test_case(reapplied_broken ; "result_reapplies_a_broken_fix")]
+    #[test_case(broken_once_withheld ; "later_fix_broken_once_the_first_are_withheld")]
+    fn candidate_with_a_bug_is_dropped(reports: fn() -> Reports) {
+        let (result, _) = fix(&reports()).expect("a candidate without a bug settles");
+        assert_eq!((result.transformed.as_str(), result.fixed.is_empty()), (SOURCE, true));
+    }
+
+    // Only Ruff's `F` and `E7` rules run besides the injected reports, which give them work: an undefined name, an
+    // unused import, an ambiguous variable name.
+    fn fix(reports: &Reports) -> anyhow::Result<(FixerResult, Withdrawn)> {
+        let args = ["--select", "SMP001", "--config", "lint.select = [\"F\", \"E7\"]"];
+        with_linter(SOURCE, &args, |linter, path| {
+            let fixer = Fixer::new(linter, path, UnsafeFixes::Enabled, flags::Noqa::Enabled);
+            for (source, diagnostics) in reports {
+                let lint = Lint { diagnostics: diagnostics.clone(), unsupported: Vec::new(), noqa_rows: Vec::new() };
+                fixer.lints.keep(fixer.sources.intern(source), lint);
+            }
+            fixer.fix(SOURCE)
+        })
+    }
+
+    fn broken_on_the_first_pass() -> Reports {
+        vec![(SOURCE.to_owned(), vec![inserting(Rule::ALL[0], SOURCE, 6, "(")])]
+    }
+
+    fn endless() -> Reports {
+        (1..=101)
+            .map(|count| {
+                let source = SOURCE.repeat(count);
+                let report = inserting(Rule::ALL[0], &source, source.len(), SOURCE);
+                (source, vec![report])
+            })
+            .collect()
+    }
+
+    // Each fix imports a module the cleanup drops again, leaving one more line, so the fixes and cleanups never settle.
+    fn endless_cleanup() -> Reports {
+        (1..100)
+            .map(|count| {
+                let source = SOURCE.repeat(count);
+                let report = inserting(Rule::ALL[0], &source, source.len(), &format!("import os\n{SOURCE}"));
+                (source, vec![report])
+            })
+            .collect()
+    }
+
+    // Each fix breaks the syntax without the other.
+    fn broken_alone() -> Reports {
+        let reports = vec![inserting(Rule::ALL[0], SOURCE, 4, "("), inserting(Rule::ALL[1], SOURCE, 5, ", y)")];
+        vec![(SOURCE.to_owned(), reports)]
+    }
+
+    fn broken_after_the_cleanup() -> Reports {
+        let cleaned = "z = 2\nx = 1\n";
+        vec![
+            (SOURCE.to_owned(), vec![inserting(Rule::ALL[0], SOURCE, 0, "import os\nz = 2\n")]),
+            (cleaned.to_owned(), vec![inserting(Rule::ALL[0], cleaned, cleaned.len(), "(")]),
+        ]
+    }
+
+    // Withdrawing the first rule leaves the second rule's result, which then offers a broken fix of the first.
+    fn reapplied_broken() -> Reports {
+        let second = "z = 2\nx = 1\n";
+        vec![
+            (
+                SOURCE.to_owned(),
+                vec![inserting(Rule::ALL[0], SOURCE, 6, "print(y)\n"), inserting(Rule::ALL[1], SOURCE, 0, "z = 2\n")],
+            ),
+            (second.to_owned(), vec![inserting(Rule::ALL[0], second, second.len(), "(")]),
+        ]
+    }
+
+    // Both rules give Ruff work, so withdrawing the first, which ties with the second and comes first, leaves less, and
+    // its fixes are withheld one by one; that lets its later fix, which breaks the syntax, apply.
+    fn broken_once_withheld() -> Reports {
+        let second = "l = 2\nx = 1\n";
+        vec![
+            (
+                SOURCE.to_owned(),
+                vec![inserting(Rule::ALL[0], SOURCE, 6, "print(y)\n"), inserting(Rule::ALL[1], SOURCE, 0, "l = 2\n")],
+            ),
+            (second.to_owned(), vec![inserting(Rule::ALL[0], second, second.len(), "(")]),
+        ]
+    }
+
+    // A report of `rule` whose fix inserts `content` at `at` of `source`.
+    fn inserting(rule: Rule, source: &str, at: usize, content: &str) -> Diagnostic {
+        let file = SourceFileBuilder::new("module.py", source).finish();
+        let start = TextSize::try_from(at).expect("a short source");
+        let mut diagnostic = Diagnostic::new(
+            DiagnosticId::Lint(LintName::of(rule.name())),
+            Severity::Error,
+            format!("insert {content:?} at {at}"),
+        );
+        diagnostic.annotate(Annotation::primary(Span::from(file).with_range(TextRange::empty(start))));
+        diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
+        diagnostic.set_fix(Fix::safe_edit(Edit::insertion(content.to_owned(), start)));
+        diagnostic
     }
 }

@@ -29,6 +29,11 @@ use crate::common;
 #[test_case("vars-call", "vars_call.py", None ; "vars_call")]
 #[test_case("vars-call", "vars_call_bound.py", None ; "vars_call_shadowed")]
 #[test_case("vars-call", "vars_call_mapping.py", None ; "vars_call_mapping")]
+#[test_case("mutable-module-constant", "mutable_module_constant.py", None ; "mutable_module_constant")]
+#[test_case("mutable-module-constant", "docs/conf.py", None ; "mutable_module_constant_sphinx_conf")]
+#[test_case(
+    "mutable-module-constant", "mutable_module_constant.py", Some("py315") ; "mutable_module_constant_python315"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -82,8 +87,11 @@ fn missing_final_fixes_a_parenthesized_name_only_when_annotated(source: &str, fi
     let root = common::project(&[("module.py", &format!("{source}OTHER = 4\n\nprint(LIMIT, OTHER)\n"))]);
     common::fix_unsafe(root.path(), "SMP601");
     let fixed = common::read(root.path(), "module.py");
-    assert!(fixed.contains("OTHER: Final[int] = 4"), "{fixed}");
-    assert_eq!(fixed.contains("(LIMIT): Final[int] = 3"), fixable, "{fixed}");
+    assert_eq!(
+        (fixed.contains("OTHER: Final[int] = 4"), fixed.contains("(LIMIT): Final[int] = 3")),
+        (true, fixable),
+        "{fixed}"
+    );
 }
 
 #[test_case("assert inspect.signature(callback)", 0 ; "inspected_not_called")]
@@ -222,6 +230,47 @@ fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, re
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
     let reports = common::reports(&stdout, "SMP602");
-    assert_eq!(reports.len(), reported, "{stdout}");
-    assert!(reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:"))), "{stdout}");
+    assert_eq!(
+        (reports.len(), reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:")))),
+        (reported, true),
+        "{stdout}"
+    );
+}
+
+// Another module may change a constant through its import, or every name through a star import, out of this module's
+// sight.
+#[test_case("from app.settings import PLUGINS\n\nPLUGINS.append(\"extra\")\n", 0 ; "imported_by_name")]
+#[test_case("from app import settings\n\nsettings.PLUGINS.append(\"extra\")\n", 0 ; "read_through_the_module")]
+#[test_case("from app.settings import *\n", 0 ; "star_imported")]
+#[test_case("import sys\n\nfrom app import settings\n\nsetattr(settings, sys.argv[1], [])\n", 0 ; "computed_write")]
+#[test_case("import app.settings\n", 1 ; "module_imported_only")]
+fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, reports: usize) {
+    let root = common::project(&[
+        ("app/__init__.py", ""),
+        ("app/settings.py", "PLUGINS = [\"core\"]\n\n\ndef plugins() -> int:\n    return len(PLUGINS)\n"),
+        ("app/main.py", main),
+    ]);
+    common::assert_report_count(root.path(), "SMP605", reports);
+}
+
+// The fix wraps a dict in `types.MappingProxyType`, which it cannot import over a name the module already binds.
+#[test]
+fn mutable_module_constant_leaves_a_dict_whose_wrapper_name_is_taken() {
+    let root = common::project(&[(
+        "settings.py",
+        "MappingProxyType = dict\nLIMITS = {\"a\": 1}\n\n\ndef limit(name: str) -> int:\n    if name == \"b\":\n        \
+         return 0\n    elif name in LIMITS:\n        return LIMITS[name]\n    else:\n        return -1\n",
+    )]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--target-version", "py314", "--select", "SMP605"]).1;
+    assert!(stdout.contains("SMP605") && !stdout.contains("SMP605 [*]"), "{stdout}");
+}
+
+// A function may rebind the constant through `globals()`, where no statement names it.
+#[test]
+fn mutable_module_constant_skips_a_constant_written_through_globals() {
+    let root = common::project(&[(
+        "settings.py",
+        "PLUGINS = [\"core\"]\n\n\ndef reset() -> None:\n    globals()[\"PLUGINS\"] = []\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP605", 0);
 }

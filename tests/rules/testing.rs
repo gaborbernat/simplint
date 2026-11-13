@@ -18,6 +18,7 @@ use crate::common;
 #[test_case("parametrize-without-id", "tests/test_parametrize_ids_list.py", None ; "parametrize_ids_list")]
 #[test_case("conditional-in-test", "tests/test_conditional_in_test.py", None ; "conditional_in_test")]
 #[test_case("conditional-in-test", "multiline_module_docstring_ok.py", None ; "conditional_in_test_regular_module")]
+#[test_case("conditional-in-test", "tests/test_conditional_unpacked.py", Some("py315") ; "conditional_in_test_unpacked")]
 #[test_case("constant-assert", "constant_assert.py", None ; "constant_assert")]
 #[test_case("constant-assert", "constant_assert_all_rebound.py", None ; "constant_assert_all_rebound")]
 #[test_case("constant-assert", "constant_assert_ruff_overlap.py", None ; "constant_assert_ruff_overlap")]
@@ -67,6 +68,37 @@ use crate::common;
 )]
 #[test_case("unused-fixture", "tests/test_ufix_requests.py", None ; "unused_fixture")]
 #[test_case("unused-fixture", "tests/conftest.py", None ; "unused_fixture_conftest")]
+#[test_case("test-process-state", "tests/test_process_state.py", None ; "test_process_state")]
+#[test_case("test-process-state", "tests/test_process_state_teardown_module.py", None ; "test_process_state_teardown")]
+#[test_case("test-process-state", "tests/test_process_state_pytestmark.py", None ; "test_process_state_pytestmark")]
+#[test_case("test-process-state", "tests/test_process_state_pytestmark_tuple.py", None ; "test_process_state_pytestmark_tuple")]
+#[test_case(
+    "test-process-state",
+    "tests/test_process_state_pytestmark_single.py",
+    None ;
+    "test_process_state_pytestmark_single"
+)]
+#[test_case("test-return-value", "tests/test_return_value.py", None ; "test_return_value")]
+#[test_case("test-without-assertion", "tests/test_without_assertion.py", None ; "test_without_assertion")]
+#[test_case("up-pytest-deprecated-api", "tests/test_up_pytest_deprecated_api.py", None ; "up_pytest_deprecated_api")]
+#[test_case(
+    "up-pytest-deprecated-api",
+    "tests/test_up_pytest_deprecated_api_called_setup.py",
+    None ;
+    "up_pytest_deprecated_api_called_setup"
+)]
+#[test_case(
+    "up-pytest-deprecated-api",
+    "tests/test_up_pytest_deprecated_api_nose_module.py",
+    None ;
+    "up_pytest_deprecated_api_nose_module"
+)]
+#[test_case(
+    "up-pytest-deprecated-api",
+    "tests/test_up_pytest_deprecated_api_nose_class.py",
+    None ;
+    "up_pytest_deprecated_api_nose_class"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -127,6 +159,22 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
+// A plugin outside the tests registers fixtures pytest resolves, so a fixture it requests is used, whether the plugin's
+// decorator is called or not.
+#[test_case("@pytest.fixture" ; "bare")]
+#[test_case("@pytest.fixture(scope=\"session\")" ; "called")]
+fn unused_fixture_counts_requests_of_plugin_fixtures(decorator: &str) {
+    let fixture = "import pytest\n\n\n@pytest.fixture\ndef base() -> str:\n    return \"value\"\n";
+    let plugin = format!("import pytest\n\n\n{decorator}\ndef app(base: str) -> str:\n    return base\n");
+    let root = common::project(&[
+        ("tests/conftest.py", fixture),
+        ("src/example/plugin.py", &plugin),
+        ("tests/test_app.py", "def test_app(app: str) -> None:\n    assert app\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP815"]);
+    assert!(!stdout.contains("`base`"), "{stdout}");
+}
+
 // Ruff's PGH005 reports a non-existent mock method in the test of an assert and in a statement of its own, and PGH005
 // offers no fix. SMP814 leaves a name it has no fix for to Ruff, and reports the names it can fix, whether or not the
 // project selects PGH005.
@@ -182,4 +230,135 @@ fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
     let source = format!("import asyncio\n\n\nasync def test_busy(done):\n    {body}\n");
     let root = common::project(&[("test_busy.py", &source)]);
     common::assert_report_count(root.path(), "SMP808", reports);
+}
+
+const MARKED: &str =
+    "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.skip\ndef test_marked() -> None:\n    assert True\n";
+
+// pytest knows the marks the configuration registers, its own, and the ones common plugins register; without a
+// configuration the registered marks are unknown.
+#[test_case("[tool.pytest.ini_options]\nmarkers = [\"slow: slow tests\"]\n", MARKED, 0 ; "registered")]
+#[test_case("[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "unregistered")]
+#[test_case("[tool.pytest]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "native_table")]
+#[test_case("", MARKED, 0 ; "no_configuration")]
+#[test_case("[tool.pytest.ini_options]\nmarkers = \"\"\"\nfast: fast tests\n\n\"\"\"\n", MARKED, 1 ; "string_markers")]
+#[test_case("[tool.pytest.ini_options]\nmarkers = 1\n", MARKED, 0 ; "malformed_markers")]
+#[test_case(
+    "[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n",
+    "import pytest\n\n\n@pytest.mark.timeout(5)\ndef test_marked() -> None:\n    assert True\n",
+    0 ;
+    "plugin_mark"
+)]
+#[test_case(
+    "[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n",
+    "import pytest\n\nSLOW = pytest.mark.slow\n\n\n@pytest.mark.slow\ndef test_marked() -> None:\n    assert True\n",
+    0 ;
+    "bound_mark"
+)]
+fn unregistered_marker_reads_pytest_configuration(configuration: &str, test: &str, reports: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[project]\nname = \"example\"\nversion = \"1\"\n\n{configuration}")),
+        ("tests/test_marks.py", test),
+    ]);
+    common::assert_report_count(root.path(), "SMP820", reports);
+}
+
+#[test_case("pytest.ini", "[pytest]\nmarkers =\n    slow: slow tests\n" ; "pytest_ini")]
+#[test_case(".pytest.ini", "[pytest]\nmarkers =\n    slow\n" ; "hidden_pytest_ini")]
+#[test_case("tox.ini", "[pytest]\nmarkers =\n    slow: slow tests\n" ; "tox_ini")]
+#[test_case("setup.cfg", "[tool:pytest]\nmarkers =\n    slow: slow tests\n" ; "setup_cfg")]
+#[test_case("pytest.ini", "# shared settings\n\n[pytest]\n; registered marks\nmarkers =\n    slow: slow tests\n" ; "comments")]
+fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
+        (file, configuration),
+        (
+            "tests/test_marks.py",
+            "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.fast\ndef test_marked() -> None:\n    assert True\n",
+        ),
+    ]);
+    common::assert_report_count(root.path(), "SMP820", 1);
+}
+
+// pytest fails on a `pytest.ini` it cannot decode, so which marks it registers is unknown.
+#[test]
+fn unregistered_marker_leaves_an_unreadable_pytest_ini() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
+        ("tests/test_marks.py", MARKED),
+    ]);
+    std::fs::write(root.path().join("pytest.ini"), b"[pytest]\nmarkers =\n    \xff\n").expect("write pytest.ini");
+    common::assert_report_count(root.path(), "SMP820", 0);
+}
+
+// A module pytest collects by its `python_files`, under its `testpaths` when set, is a test module like `test_*.py`.
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"check_*.py\"\n", "src/check_value.py", 1 ; "python_files")]
+#[test_case("pytest.ini", "[pytest]\npython_files = check_*.py\n", "src/check_value.py", 1 ; "pytest_ini")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "suite/value.py", 1 ; "under_testpaths")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "src/value.py", 0 ; "outside_testpaths")]
+#[test_case("pyproject.toml", "", "src/check_value.py", 0 ; "default_python_files")]
+#[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = 1\n", "src/check_value.py", 0 ; "malformed_python_files")]
+fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &str, reports: usize) {
+    let pyproject = format!(
+        "[project]\nname = \"example\"\nversion = \"1\"\n\n{}",
+        if file == "pyproject.toml" { configuration } else { "" }
+    );
+    let mut files = vec![("pyproject.toml", pyproject.as_str()), (module, "def test_value() -> int:\n    return 1\n")];
+    if file != "pyproject.toml" {
+        files.push((file, configuration));
+    }
+    let root = common::project(&files);
+    common::assert_report_count(root.path(), "SMP817", reports);
+}
+
+// A `python_files` pattern too large to compile matches no file, so pytest collects nothing and no test rule applies.
+#[test]
+fn uncompilable_python_files_collect_nothing() {
+    let pyproject = format!(
+        "[project]\nname = \"example\"\nversion = \"1\"\n\n[tool.pytest.ini_options]\npython_files = \"{}\"\n",
+        "?".repeat(1 << 20)
+    );
+    let root = common::project(&[
+        ("pyproject.toml", pyproject.as_str()),
+        ("tests/test_value.py", "def test_value() -> int:\n    return 1\n"),
+    ]);
+    common::assert_report_count(root.path(), "SMP817", 0);
+}
+
+const CHECKED: &str = "def test_value() -> None:\n    assert True\n";
+
+// pytest collects `test_*.py` and `*_test.py` unless `python_files` says otherwise; a module it skips on purpose is
+// left alone.
+#[test_case("", "tests/check_value.py", CHECKED, 1 ; "default_patterns")]
+#[test_case("", "tests/value_test.py", CHECKED, 0 ; "suffix_pattern")]
+#[test_case("[tool.pytest.ini_options]\npython_files = [\"check_*.py\", \"test_*.py\"]\n", "tests/check_value.py", CHECKED, 0 ; "configured")]
+#[test_case("[tool.pytest.ini_options]\npython_files = \"check_*.py\"\n", "tests/test_value.py", CHECKED, 0 ; "no_sibling_collected")]
+#[test_case(
+    "",
+    "tests/check_value.py",
+    "def test_value() -> None:\n    assert True\n\n\nif __name__ == \"__main__\":\n    test_value()\n",
+    0 ;
+    "main_guard"
+)]
+#[test_case("", "tests/check_value.py", "\"\"\"Run with `pytest tests/check_value.py`.\"\"\"\n\n\ndef test_value() -> None:\n    assert True\n", 0 ; "docstring_names_file")]
+#[test_case("", "tests/check_value.py", "def helper() -> None:\n    assert True\n", 0 ; "no_tests")]
+#[test_case("", "tests/conftest.py", CHECKED, 0 ; "conftest")]
+fn uncollected_test_module_follows_python_files(configuration: &str, module: &str, source: &str, reports: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[project]\nname = \"example\"\nversion = \"1\"\n\n{configuration}")),
+        ("tests/test_other.py", CHECKED),
+        (module, source),
+    ]);
+    common::assert_report_count(root.path(), "SMP821", reports);
+}
+
+#[test_case("tests/test_runner.py", "from check_value import test_value\n" ; "imported_test")]
+#[test_case("tests/test_runner.py", "def test_runs(pytester) -> None:\n    pytester.copy_example(\"check_value.py\")\n" ; "named_as_data")]
+fn uncollected_test_module_used_elsewhere(other: &str, source: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
+        (other, source),
+        ("tests/check_value.py", CHECKED),
+    ]);
+    common::assert_report_count(root.path(), "SMP821", 0);
 }

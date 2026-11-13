@@ -79,10 +79,6 @@ fn literal(value: &Expr) -> Option<&str> {
     value.as_string_literal_expr().map(|literal| literal.value.to_str())
 }
 
-fn is_name(func: &Expr, names: [&str; 4]) -> bool {
-    func.as_name_expr().is_some_and(|name| names.contains(&name.id.as_str()))
-}
-
 // The names a configuration binds that the rules read. A top-level assignment of the option in a form read statically
 // is recorded; any other way of binding one of the names, nested in a block, through an import, a star import, `exec`,
 // or a mutation such as `globals()[...]`, makes its value unknown, since Sphinx may then render either docstring.
@@ -133,24 +129,22 @@ impl<'a> Scan<'a> {
                 }
                 _ => false,
             },
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(value), .. })
-                if target.as_name_expr().is_some_and(|name| tracked(name.id.as_str()).is_some()) =>
-            {
-                if let Some(name) = target.as_name_expr() {
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(value), .. }) => match target.as_ref() {
+                Expr::Name(name) if tracked(name.id.as_str()).is_some() => {
                     self.record(name.id.as_str(), value);
+                    self.visit_expr(value);
+                    true
                 }
-                self.visit_expr(value);
-                true
-            }
+                _ => false,
+            },
             _ => false,
         }
     }
 
     fn record(&mut self, name: &str, value: &'a Expr) {
-        if let Some(name) = tracked(name) {
-            self.bound.insert(name);
-            self.values.insert(name, value);
-        }
+        let name = tracked(name).expect("only a tracked name is recorded");
+        self.bound.insert(name);
+        self.values.insert(name, value);
     }
 
     fn bind(&mut self, name: &str) {
@@ -258,11 +252,27 @@ impl<'a> Visitor<'a> for Scan<'a> {
             }) => {
                 self.mutate(value);
             }
-            Expr::Call(ast::ExprCall { func, .. }) if is_name(func, ["exec", "globals", "locals", "vars"]) => {
+            Expr::Call(ast::ExprCall { func, .. })
+                if func
+                    .as_name_expr()
+                    .is_some_and(|name| matches!(name.id.as_str(), "exec" | "globals" | "locals" | "vars")) =>
+            {
                 self.bind_all();
             }
             _ => {}
         }
         visitor::walk_expr(self, expr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AutoclassContent, Rendered, class_doc_from};
+
+    // An imported `extensions` makes the file a Sphinx configuration without changing which docstring it renders.
+    #[test]
+    fn imported_extensions_mark_a_configuration() {
+        let class = Rendered { default: AutoclassContent::Class, named: AutoclassContent::Class };
+        assert_eq!(class_doc_from("from shared import extensions\n", false), Some(class));
     }
 }

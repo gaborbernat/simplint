@@ -23,6 +23,8 @@ def load(path):
         print(f"failed: {exc}")
         if exc.errno == 2:
             return None
+        if exc.filename[0] == "/":
+            return None
         raise
 
 

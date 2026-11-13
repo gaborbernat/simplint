@@ -6,7 +6,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
-use crate::project::facts::{PYTEST_PLUGINS_REQUEST, source_digest};
+use crate::project::facts::{PYTEST_PLUGINS_REQUEST, Signature, source_digest};
 use crate::project::receivers::UNRESOLVED_CLASS;
 use crate::project::{AutoclassContent, FileFacts};
 use crate::settings::ModuleRole;
@@ -15,9 +15,9 @@ use crate::syntax::Visibility;
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
 use super::prefixes::PrefixSiblings;
-use super::reach::unqualified;
 use super::run_imports::Members;
 use super::{FileId, FileIds, Project, RunReads};
+use crate::syntax::last_dotted_segment;
 
 #[derive(PartialEq)]
 pub struct ModuleUse {
@@ -81,7 +81,7 @@ pub struct FileIndex<'a> {
 // two answers are compared or hashed, which is far less often than the answers are read.
 #[derive(Clone, Copy)]
 pub(super) struct RunModules<'a> {
-    pub(super) modules: Option<&'a FxHashMap<String, FileId>>,
+    pub(super) modules: &'a FxHashMap<String, FileId>,
     pub(super) members: &'a FxHashMap<FileId, Members>,
 }
 
@@ -92,9 +92,8 @@ impl PartialEq for RunModules<'_> {
 }
 
 impl<'a> RunModules<'a> {
-    fn by_alias(&self) -> Option<BTreeMap<&'a str, &'a Members>> {
-        self.modules
-            .map(|modules| modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect())
+    fn by_alias(&self) -> BTreeMap<&'a str, &'a Members> {
+        self.modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect()
     }
 }
 
@@ -124,12 +123,18 @@ pub(super) struct FileAnswers<'a> {
     pub(super) hook_classes: Option<&'a FxHashSet<String>>,
     pub(super) run_imports: Option<&'a FxHashMap<String, bool>>,
     pub(super) run_modules: RunModules<'a>,
+    pub(super) run_signatures: Option<&'a FxHashMap<String, Signature>>,
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
+    pub(super) overridden: Option<&'a FxHashMap<String, FxHashSet<String>>>,
+    pub(super) package_loaded: bool,
+    pub(super) resolved_imports: Option<&'a FxHashSet<String>>,
+    pub(super) imported_modules: Option<&'a FxHashSet<String>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
     pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
+    pub(super) directory_modules: &'a [String],
     pub(super) calls: FileCalls<'a>,
     pub(super) reads: &'a RunReads,
     pub(super) computed_reads: &'a ComputedReads,
@@ -166,12 +171,18 @@ impl CacheKey for FileIndex<'_> {
             hook_classes,
             run_imports,
             run_modules,
+            run_signatures,
             api_reached,
             library_reached,
             inherited,
+            overridden,
+            package_loaded,
+            resolved_imports,
+            imported_modules,
             cycle,
             duplicates,
             prefix_siblings,
+            directory_modules,
             calls,
             reads: _,
             computed_reads: _,
@@ -200,15 +211,21 @@ impl CacheKey for FileIndex<'_> {
         hook_classes.cache_key(state);
         run_imports.cache_key(state);
         run_modules.by_alias().cache_key(state);
+        run_signatures.cache_key(state);
         api_reached.cache_key(state);
         library_reached.cache_key(state);
         inherited.cache_key(state);
+        overridden.cache_key(state);
+        package_loaded.cache_key(state);
+        resolved_imports.cache_key(state);
+        imported_modules.cache_key(state);
         cycle.is_some().cache_key(state);
         if let Some(cycle) = cycle {
             cycle.cache_key_with(&self.project.files, state);
         }
         duplicates.cache_key(state);
         prefix_siblings.cache_key(state);
+        directory_modules.cache_key(state);
         calls.cache_key(state);
     }
 }
@@ -249,6 +266,11 @@ impl<'a> FileIndex<'a> {
         self.answers.prefix_siblings.copied()
     }
 
+    // The file names of the run beside this test module.
+    pub fn directory_modules(&self) -> &'a [String] {
+        self.answers.directory_modules
+    }
+
     pub fn is_uncaught_exception(&self, name: &str) -> bool {
         self.answers.uncaught_exceptions.is_some_and(|names| names.contains(name))
     }
@@ -262,7 +284,7 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn is_run_module_enum(&self, module: &str, name: &str) -> bool {
-        let Some(target) = self.answers.run_modules.modules.and_then(|modules| modules.get(module)) else {
+        let Some(target) = self.answers.run_modules.modules.get(module) else {
             return false;
         };
         self.project.enum_types.get(target).is_some_and(|names| names.contains(name))
@@ -276,8 +298,13 @@ impl<'a> FileIndex<'a> {
         self.answers.run_imports.and_then(|names| names.get(name).copied())
     }
 
+    // The signature of a function of the run that the file imports under `name`.
+    pub fn imported_signature(&self, name: &str) -> Option<&'a Signature> {
+        self.answers.run_signatures.and_then(|signatures| signatures.get(name))
+    }
+
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {
-        let target = self.answers.run_modules.modules?.get(module)?;
+        let target = self.answers.run_modules.modules.get(module)?;
         self.answers.run_modules.members[target].get(name).copied()
     }
 
@@ -288,6 +315,26 @@ impl<'a> FileIndex<'a> {
     // Users reach the member through the public class that inherits it, so it is part of the API.
     pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
         self.answers.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
+    }
+
+    // A class of the run up the class's bases defines the method too, so the class overrides it.
+    pub fn is_override(&self, class: &str, method: &str) -> bool {
+        self.answers.overridden.and_then(|classes| classes.get(class)).is_some_and(|methods| methods.contains(method))
+    }
+
+    // Importing a top-level package of the run, or running an entry point, runs this file.
+    pub fn is_package_loaded(&self) -> bool {
+        self.answers.package_loaded
+    }
+
+    // A runtime import of `module` reaches a file of the run.
+    pub fn imports_run_file(&self, module: &str) -> bool {
+        self.answers.resolved_imports.is_some_and(|modules| modules.contains(module))
+    }
+
+    // The modules the run's files outside the tests import, given only to the file `unused-dependency` reports in.
+    pub fn imported_modules(&self) -> Option<&'a FxHashSet<String>> {
+        self.answers.imported_modules
     }
 
     // A call through a value loaded from the file reaches its names, and no import shows that.
@@ -356,6 +403,10 @@ impl<'a> FileIndex<'a> {
         self.is_referenced(name) || self.is_api_reached(name)
     }
 
+    pub fn tests_read_all(&self) -> bool {
+        self.project.wide.reads.tests_read_all
+    }
+
     pub fn is_all_read(&self) -> bool {
         self.is_imported("__all__") || self.answers.referenced.is_some_and(|names| names.contains("__all__"))
     }
@@ -396,8 +447,12 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn class_doc_from(&self, root: &Path, qualified: &str) -> Option<AutoclassContent> {
-        let namesake = self.project.wide.class_namesakes.contains(unqualified(qualified));
+        let namesake = self.project.wide.class_namesakes.contains(last_dotted_segment(qualified));
         self.project.docs.class_doc_from(root, qualified, namesake)
+    }
+
+    pub fn is_mark_bound(&self, name: &str) -> bool {
+        self.project.wide.bound_marks.contains(name)
     }
 
     pub fn is_fixture_requested(&self, name: &str) -> bool {
@@ -436,7 +491,7 @@ impl<'a> FileIndex<'a> {
         let writes = &self.project.wide.writes;
         let own =
             usize::from(writes.on_class.contains_key(class)) + usize::from(writes.unslottable_bases.contains(class));
-        writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
+        writes.namesakes.get(last_dotted_segment(class)).is_some_and(|count| *count > own)
     }
 
     // Storing `__dict__` fails on a frozen instance, unlike reading it through `vars(obj)`.
@@ -483,16 +538,19 @@ pub(super) fn module_uses(
         let Some(facts) = sources.get(&target) else {
             continue;
         };
-        let patched = referenced.get(&target).cloned().unwrap_or_default();
-        let rebound = facts.global_names.iter().cloned().collect();
-        let defined = facts.defined.iter().cloned().collect();
-        let computed_written = computed_writes.contains(&target);
-        let top_level_package = !module.contains('.') && files.path(target).ends_with("__init__.py");
-        let cyclic =
-            cycles.get(&importer).zip(cycles.get(&target)).is_some_and(|(from, to)| from.component == to.component);
-        let module =
-            ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package, cyclic };
-        uses.entry(importer).or_default().push(module);
+        uses.entry(importer).or_default().push(ModuleUse {
+            bound,
+            patched: referenced.get(&target).cloned().unwrap_or_default(),
+            defined: facts.defined.iter().cloned().collect(),
+            rebound: facts.global_names.iter().cloned().collect(),
+            computed_written: computed_writes.contains(&target),
+            top_level_package: !module.contains('.') && files.path(target).ends_with("__init__.py"),
+            cyclic: cycles
+                .get(&importer)
+                .zip(cycles.get(&target))
+                .is_some_and(|(from, to)| from.component == to.component),
+            module,
+        });
     }
     uses
 }

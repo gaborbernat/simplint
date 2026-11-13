@@ -76,3 +76,24 @@ impl DocReferences {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use super::DocReferences;
+
+    #[test]
+    fn corrupt_cache_is_a_miss() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let path = root.path().join("docs");
+        std::fs::write(&path, [0xff; 64]).expect("write the cache");
+        assert!(DocReferences::cached(&path, 0).is_none());
+    }
+
+    #[test]
+    fn missing_cache_is_a_miss() {
+        let root = TempDir::new().expect("create a temporary directory");
+        assert!(DocReferences::cached(&root.path().join("docs"), 0).is_none());
+    }
+}

@@ -1,0 +1,101 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP538 This list comprehension is built only for the calls in it; write a `for` loop [unsafe fix: Write a `for` loop]
+6:5 SMP538 This set comprehension is built only for the calls in it; write a `for` loop [unsafe fix: Write a `for` loop]
+10:5 SMP538 This dict comprehension is built only for the calls in it; write a `for` loop
+14:5 SMP538 This list comprehension is built only for the calls in it; write a `for` loop [unsafe fix: Write a `for` loop]
+18:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+22:5 SMP538 This `or` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+26:5 SMP538 This `or` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+30:5 SMP538 This `or` is used as a statement to decide whether to run its last part; write an `if` [unsafe fix: Write an `if`]
+34:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+38:5 SMP538 This `or` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+42:5 SMP538 This list comprehension is built only for the calls in it; write a `for` loop
+46:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if`
+50:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if`
+56:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
+67:5 SMP538 This list comprehension is built only for the calls in it; write a `for` loop [unsafe fix: Write a `for` loop]
+--- fixed (11 applied, 4 remaining) ---
+def comprehension(users: list[str]) -> None:
+    for user in users:
+        print(user)
+
+
+def filtered(groups: list[list[str]]) -> None:
+    for group in groups:
+        if group:
+            for user in group:
+                if user:
+                    print(user)
+
+
+def keyed(users: list[str]) -> None:
+    {user: print(user) for user in users}
+
+
+async def awaited(tasks: list) -> None:
+    for task in tasks:
+        await task
+
+
+def conjunction(verbose: bool) -> None:
+    if verbose:
+        print("sent")
+
+
+def disjunction(made: bool) -> None:
+    if not made:
+        print("missing")
+
+
+def negated_group(made: bool, ready: bool) -> None:
+    if not (made and ready):
+        print("missing")
+
+
+def three(made: bool, ready: bool) -> None:
+    if not (made or ready):
+        print("missing")
+
+
+def chained(made: bool, ready: bool) -> None:
+    if made and ready:
+        print("ready")
+
+
+def compared(made: int) -> None:
+    if not (made == 1):
+        print("missing")
+
+
+def comprehension_same_line(users: list[str]) -> None:
+    [print(user) for user in users]; print("x")
+
+
+def same_line(made: bool) -> None:
+    made and print("x"); print("y")
+
+
+def commented(made: bool) -> None:
+    made and print(  # why
+        "x"
+    )
+
+
+def generator(made: bool):
+    if made:
+        (yield 1)
+
+
+def pure(values: list[int], flag: bool) -> None:
+    print([value for value in values])
+    result = flag and print("x")
+    print(result)
+    print("x") and flag
+
+
+async def drained(stream) -> None:
+    async for item in stream:
+        print(item)

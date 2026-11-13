@@ -220,13 +220,12 @@ fn owners(length: usize, uses: &DefinitionUses) -> Vec<Option<usize>> {
     // A chain that ends is never dropped, and nothing on it is either, so only the chains that loop are checked.
     let mut finite: Vec<bool> = owners.iter().map(Option::is_none).collect();
     let mut ends: Vec<usize> = (0..length).filter(|index| finite[*index]).collect();
+    // An index has one owner, so the walk reaches each child once.
     while let Some(index) = ends.pop() {
         for &child in &children[index] {
-            if !finite[child] {
-                finite[child] = true;
-                ends.push(child);
-            }
+            finite[child] = true;
         }
+        ends.extend_from_slice(&children[index]);
     }
     // Walking each chain from its own index is quadratic in a long chain of helpers, so a dropped index marks the
     // indices whose chain runs into it instead, and an index is dropped when its owner is not marked.

@@ -45,17 +45,21 @@ fn repeated_block_names_three_files_one_place_each() {
         ("h.py", longer.as_str()),
     ]);
     let stdout = check(root.path(), &["--select", "SMP530"]).1;
-    assert!(stdout.contains(
-        "b.py:2:5: SMP530 These statements repeat in `a.py:2`, `c.py:2`, `d.py:2`, and 4 more; move them into one \
-        definition \
-         the modules share\n"
-    ));
-    assert!(stdout.contains(
-        "g.py:2:5: SMP530 These statements repeat in `a.py:2`, `b.py:2`, `c.py:2`, and 4 more; move them into one \
-        definition \
-         the modules share\n"
-    ));
-    assert!(!stdout.contains("h.py:5"), "{stdout}");
+    assert_eq!(
+        (
+            stdout.contains(
+                "b.py:2:5: SMP530 These statements repeat in `a.py:2`, `c.py:2`, `d.py:2`, and 4 more; move them into \
+                 one definition the modules share\n"
+            ),
+            stdout.contains(
+                "g.py:2:5: SMP530 These statements repeat in `a.py:2`, `b.py:2`, `c.py:2`, and 4 more; move them into \
+                 one definition the modules share\n"
+            ),
+            stdout.contains("h.py:5")
+        ),
+        (true, true, false),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -77,14 +81,15 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
 }
 
 // Test directories of a project are projects of their own, each repeating the code of the others by design, so their
-// copies are not compared with one another, nor with the main project.
+// copies are not compared with one another, nor with the main project, and neither are separate distributions.
 #[test_case(
     &[
         ("roots/test-a/conf.py", ""),
         ("roots/test-a/parser.py", REPEATED),
         ("roots/test-b/conf.py", ""),
         ("roots/test-b/parser.py", REPEATED),
-    ]
+    ],
+    &[]
     ; "nested_test_projects"
 )]
 #[test_case(
@@ -92,41 +97,43 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
         ("pkg/parser.py", REPEATED),
         ("roots/test-a/conf.py", ""),
         ("roots/test-a/parser.py", REPEATED),
-    ]
-    ; "main_project"
+    ],
+    &[]
+    ; "nested_and_main_project"
 )]
-fn nested_test_projects_are_not_compared(files: &[(&str, &str)]) {
-    assert_eq!(duplicate_code_reports(files), Vec::<String>::new());
-    assert_eq!(
-        duplicate_code_reports(&[("roots/test-a/parser.py", REPEATED), ("roots/test-a/other.py", REPEATED)]),
-        ["roots/test-a/other.py", "roots/test-a/parser.py"]
-    );
-}
-
-fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {
-    let root = project(files);
-    let stdout = check(root.path(), &["--select", "SMP530"]).1;
-    let mut reported: Vec<String> = common::reports(&stdout, "SMP530")
-        .into_iter()
-        .filter_map(|line| line.split(':').next())
-        .map(|path| path.replace(std::path::MAIN_SEPARATOR, "/"))
-        .collect();
-    reported.sort_unstable();
-    reported
-}
-
-#[test]
-fn repeats_within_one_nested_test_project_are_reported() {
-    assert_eq!(
-        duplicate_code_reports(&[
-            ("roots/test-a/conf.py", ""),
-            ("roots/test-a/parser.py", REPEATED),
-            ("roots/test-a/other.py", REPEATED),
-            ("roots/test-b/conf.py", ""),
-            ("roots/test-b/parser.py", REPEATED),
-        ]),
-        ["roots/test-a/other.py", "roots/test-a/parser.py"]
-    );
+#[test_case(
+    &[
+        ("roots/test-a/conf.py", ""),
+        ("roots/test-a/parser.py", REPEATED),
+        ("roots/test-a/other.py", REPEATED),
+        ("roots/test-b/conf.py", ""),
+        ("roots/test-b/parser.py", REPEATED),
+    ],
+    &["roots/test-a/other.py", "roots/test-a/parser.py"]
+    ; "within_one_nested_test_project"
+)]
+#[test_case(
+    &[
+        ("pkg/parser.py", REPEATED),
+        ("roots/fixtures/conf.py", ""),
+        ("roots/fixtures/parser.py", REPEATED),
+    ],
+    &["pkg/parser.py", "roots/fixtures/parser.py"]
+    ; "marked_directory_without_a_test_name"
+)]
+#[test_case(
+    &[
+        ("first/pyproject.toml", "[project]\nname = \"first\"\n"),
+        ("first/src/first/a.py", REPEATED),
+        ("first/src/first/b.py", REPEATED),
+        ("second/pyproject.toml", "[project]\nname = \"second\"\n"),
+        ("second/src/second/c.py", REPEATED),
+    ],
+    &["first/src/first/a.py", "first/src/first/b.py"]
+    ; "separate_distributions"
+)]
+fn repeats_are_compared_within_one_project(files: &[(&str, &str)], expected: &[&str]) {
+    assert_eq!(duplicate_code_reports(files), expected);
 }
 
 #[test_case("conf.py", "" ; "sphinx_conf")]
@@ -145,30 +152,9 @@ fn each_project_marker_makes_a_nested_test_project(marker: &str, content: &str) 
     );
 }
 
-#[test]
-fn marked_directory_without_a_test_name_is_the_main_project() {
-    assert_eq!(
-        duplicate_code_reports(&[
-            ("pkg/parser.py", REPEATED),
-            ("roots/fixtures/conf.py", ""),
-            ("roots/fixtures/parser.py", REPEATED),
-        ]),
-        ["pkg/parser.py", "roots/fixtures/parser.py"]
-    );
-}
-
-#[test]
-fn separate_distributions_are_not_compared_for_duplicate_code() {
-    assert_eq!(
-        duplicate_code_reports(&[
-            ("first/pyproject.toml", "[project]\nname = \"first\"\n"),
-            ("first/src/first/a.py", REPEATED),
-            ("first/src/first/b.py", REPEATED),
-            ("second/pyproject.toml", "[project]\nname = \"second\"\n"),
-            ("second/src/second/c.py", REPEATED),
-        ]),
-        ["first/src/first/a.py", "first/src/first/b.py"]
-    );
+fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {
+    let root = project(files);
+    common::report_paths(&check(root.path(), &["--select", "SMP530"]).1, "SMP530")
 }
 
 // The same statements under a different `if` are no repeat: the nesting of the code differs, though its text does not.
@@ -242,7 +228,7 @@ fn name_reached_only_from_another_project_is_unused(first: &str, second: &str, e
         (&format!("{second}/use.py"), "import support\n\n\ndef run(widget):\n    widget.helper()\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
-    let reported: Vec<&str> = stdout.lines().filter(|line| line.contains(" SMP409 ")).collect();
+    let reported = common::reports(&stdout, "SMP409");
     let expected: Vec<String> = expected.iter().map(|line| common::native(line)).collect();
     assert_eq!(reported, expected.iter().map(String::as_str).collect::<Vec<_>>());
 }

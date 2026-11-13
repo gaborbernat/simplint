@@ -645,19 +645,11 @@ class Release:
 
 ### Instances of the class
 
-An object is **known to be of the class** when it is:
-
-- `self` in a method of the class
-- a name bound to a call of the class, through its module as `models.Release(...)` too
-- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
-- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
-
-An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,
-`MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.
-
-Any other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An
-unannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `slots=True` is
-still offered, and that write fails at runtime once the fix is applied.
+[dataclass-frozen](SMP701.html) lists, under Instances of the class, which objects are known to be of the class and
+which mocks never count; this rule uses the same list. Any other object is unknown, so a write through it counts only
+when it names a field or a `ClassVar` attribute. An unannotated parameter such as `result` below is unknown: its write
+to `log` is not tied to `Result`, so `slots=True` is still offered, and that write fails at runtime once the fix is
+applied.
 
 ```python report file=app/models.py
 from dataclasses import dataclass

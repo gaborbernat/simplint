@@ -3041,6 +3041,7 @@ dependencies = [
  "insta",
  "itertools 0.15.0",
  "jiff",
+ "libc",
  "log",
  "memchr",
  "mimalloc",

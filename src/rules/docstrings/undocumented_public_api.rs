@@ -1,5 +1,6 @@
 use ruff_linter::fs::relativize_path;
 use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -7,7 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::{is_documented_variable, ruff_ignores_function};
 use crate::rules::public_api::{ApiItem, ApiKind};
-use crate::syntax::{alias_binding, docstring, for_each_child_body, is_name};
+use crate::syntax::{alias_binding, docstring, is_name, scope_statements, top_level};
 
 pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
@@ -63,7 +64,7 @@ impl<'a> RuffPublic<'a> {
     fn of(checker: &Checker<'a>) -> Self {
         let mut exports: Option<FxHashSet<&'a str>> = None;
         let mut typing_aliases = FxHashMap::default();
-        for stmt in Self::module_scope(checker.body()) {
+        for stmt in scope_statements(checker.body()) {
             match stmt {
                 Stmt::ImportFrom(ast::StmtImportFrom { module, names, level: 0, .. })
                     if module
@@ -90,21 +91,6 @@ impl<'a> RuffPublic<'a> {
             }
         }
         Self { module_public: Self::module_public(checker), exports, typing_aliases }
-    }
-
-    // Skips the bodies of functions and classes, which bind names in their own scope.
-    fn module_scope(body: &[Stmt]) -> Vec<&Stmt> {
-        fn collect<'a>(body: &'a [Stmt], found: &mut Vec<&'a Stmt>) {
-            for stmt in body {
-                found.push(stmt);
-                if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-                    for_each_child_body(stmt, &mut |child| collect(child, found));
-                }
-            }
-        }
-        let mut found = Vec::new();
-        collect(body, &mut found);
-        found
     }
 
     // A binding without a value still makes the exports present, and lists nothing.
@@ -147,8 +133,7 @@ impl<'a> RuffPublic<'a> {
     }
 
     fn is_sequence_builtin(func: &Expr) -> bool {
-        let func = func.as_subscript_expr().map_or(func, |subscript| subscript.value.as_ref());
-        func.as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "list" | "tuple"))
+        map_subscript(func).as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "list" | "tuple"))
     }
 
     fn string_value(expr: &Expr) -> Option<&str> {
@@ -177,7 +162,7 @@ impl<'a> RuffPublic<'a> {
             return None;
         }
         // A dotted name is a member, whose visibility follows the class it sits in, so only the outermost name matters.
-        let top = item.name.split_once('.').map_or(item.name.as_str(), |(top, _)| top);
+        let top = top_level(&item.name);
         if top.starts_with('_') || self.exports.as_ref().is_some_and(|names| !names.contains(top)) {
             return None;
         }

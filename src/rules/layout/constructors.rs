@@ -3,7 +3,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::FxHashSet;
 
 use super::definition_time::bound_names;
-use crate::syntax::{ReturnVisitor, decorator_names, first_positional};
+use crate::syntax::{ReturnVisitor, first_positional, is_classmethod};
 
 // The classmethods that are alternative constructors: those that return a call of the receiver, as `return cls(...)`
 // does, or that annotate their return as `Self` or the class, and those that return the call of another alternative
@@ -15,7 +15,7 @@ pub(super) fn alternative_constructors(class: &ast::StmtClassDef) -> FxHashSet<&
     let mut delegates: Vec<(&str, Vec<&str>)> = Vec::new();
     for stmt in &class.body {
         let Stmt::FunctionDef(function) = stmt else { continue };
-        if !decorator_names(&function.decorator_list).contains(&"classmethod") {
+        if !is_classmethod(function) {
             continue;
         }
         let Some(receiver) = first_positional(&function.parameters) else { continue };

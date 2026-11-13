@@ -38,7 +38,9 @@ _NAME: Final[re.Pattern[str]] = re.compile(
 class Inventory:
     def __init__(self, content: bytes) -> None:
         data = InventoryFile.loads(content, uri=_DOCS).data
-        self.uris: set[str] = {item.uri for role in data.values() for item in role.values()}
+        self.uris: set[str] = set()
+        for entries in data.values():
+            self.uris.update(item.uri for item in entries.values())
         # The first role listed wins, so an exception or class is not linked as the function of the same name.
         self.names: dict[str, tuple[str, str]] = {}
         linked_roles: tuple[str, ...] = (
@@ -125,7 +127,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     with urllib.request.urlopen(f"{_DOCS}/objects.inv") as response:
         inventory = Inventory(response.read())
     problems: list[str] = []
-    for path in sorted(file for root in args.paths for file in (root.rglob("*.md") if root.is_dir() else [root])):
+    files: list[Path] = []
+    for root in args.paths:
+        files.extend(root.rglob("*.md") if root.is_dir() else [root])
+    for path in sorted(files):
         text = path.read_text(encoding="utf-8")
         relinked, unknown = relink(text, inventory)
         problems.extend(f"{path}: {uri} is not in the Python inventory" for uri in unknown)

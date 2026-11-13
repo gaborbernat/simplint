@@ -7,7 +7,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallSites, Use};
 use crate::rules::call_sites::{
-    add_use, is_closed_class, method_candidate, method_uses, module_candidate, module_uses, self_only_uses,
+    add_use, always_passes, is_closed_class, method_candidate, method_uses, module_sites, module_uses, self_only_uses,
 };
 
 pub(crate) fn unused_default(checker: &Checker) {
@@ -33,15 +33,9 @@ pub(crate) fn unused_default(checker: &Checker) {
 
 // A module-level function, called by the other files of the run through its module and in this file by its name.
 fn module_function(checker: &Checker, function: &ast::StmtFunctionDef, functions: &FxHashMap<&str, Vec<Use>>) {
-    let name = function.name.as_str();
-    if !module_candidate(checker, function) {
-        return;
+    if let Some(sites) = module_sites(checker, function, functions) {
+        report(checker, function, &sites, None);
     }
-    let mut sites = checker.project().calls().call_sites(name).cloned().unwrap_or_default();
-    for found in functions.get(name).into_iter().flatten() {
-        add_use(&mut sites, found);
-    }
-    report(checker, function, &sites, None);
 }
 
 // A method of a module-level class without bases, called through `self` in its class. Another file's `obj.name` read
@@ -70,9 +64,6 @@ fn method_of(
 // The receiver of a method is not a parameter of its calls, so a method's calls skip the first positional parameter.
 // PT028 reports the defaults of a pytest test with a display-only fix, so one this rule cannot fix is left to it there.
 fn report(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites, class: Option<&ast::StmtClassDef>) {
-    if sites.opaque || sites.shapes.is_empty() || sites.shapes.iter().any(|shape| shape.unpacks_mapping) {
-        return;
-    }
     let name = function.name.as_str();
     let pytest_test = name.starts_with("test")
         && class.is_none_or(|class| {
@@ -86,13 +77,9 @@ fn report(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites,
     let parameters = &function.parameters;
     let skip = usize::from(class.is_some());
     let mut defaulted_before = false;
-    for (index, param) in parameters.posonlyargs.iter().chain(&parameters.args).enumerate().skip(skip) {
+    for param in parameters.posonlyargs.iter().chain(&parameters.args).skip(skip) {
         if let Some(default) = param.default.as_deref()
-            && sites.shapes.iter().all(|shape| {
-                index - skip < shape.positional as usize
-                    || (index >= parameters.posonlyargs.len()
-                        && shape.keywords.iter().any(|keyword| keyword == param_name(param)))
-            })
+            && always_passes(sites, parameters, param, skip)
         {
             // Dropping a default after another defaulted parameter leaves one without a default after it, which
             // breaks the signature, so only defaults with no defaulted parameter before them are offered a fix.
@@ -102,15 +89,11 @@ fn report(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites,
     }
     for param in &parameters.kwonlyargs {
         if let Some(default) = param.default.as_deref()
-            && sites.shapes.iter().all(|shape| shape.keywords.iter().any(|keyword| keyword == param_name(param)))
+            && always_passes(sites, parameters, param, skip)
         {
             report_default(checker, name, param, default, true, pytest_test);
         }
     }
-}
-
-fn param_name(param: &ast::ParameterWithDefault) -> &str {
-    param.parameter.name.as_str()
 }
 
 fn report_default(
@@ -123,11 +106,6 @@ fn report_default(
 ) {
     let parameter = &param.parameter;
     let range = checker.parenthesized_range(default, param.into());
-    let message = format!(
-        "Every call to `{function}` passes `{}`; drop its default `{}`",
-        param_name(param),
-        checker.text(range)
-    );
     let start = match parameter.annotation.as_deref() {
         Some(annotation) => checker.parenthesized_range(annotation, parameter.into()).end(),
         None => parameter.name.range.end(),
@@ -138,11 +116,7 @@ fn report_default(
     if fix.is_none() && pytest_test {
         return;
     }
-    checker.report_fix(
-        Rule::UnusedDefault,
-        range,
-        message,
-        fix,
-        format!("Remove the default of `{}`", param_name(param)),
-    );
+    let message =
+        format!("Every call to `{function}` passes `{}`; drop its default `{}`", parameter.name, checker.text(range));
+    checker.report_fix(Rule::UnusedDefault, range, message, fix, format!("Remove the default of `{}`", parameter.name));
 }

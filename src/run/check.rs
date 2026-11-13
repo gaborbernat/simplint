@@ -35,7 +35,7 @@ pub(crate) fn add_suppressions(
     let (counts, missing) = for_each_file(
         files,
         resolved,
-        &Plumbing::plain(Ending::Drop, &Overlay::default()),
+        &Plumbing::plain(Ending::Drop, &Overlay::default(), &resolved.cwd),
         |DiscoveredFile { path, linter, .. }| {
             let source = match std::fs::read_to_string(path) {
                 Ok(source) => source,
@@ -91,14 +91,14 @@ pub(crate) fn check_files(
         let base = fingerprints.base(&file.identity());
         cache.reused(file.path, key, base, full)
     };
-    let reuse =
-        mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
+    let reuse = mode.fix.is_generate().then_some(&reuse as &Reuse<'_, Diagnostics>);
     let plumbing = Plumbing {
         cache_dir: resolved.cache_dir.as_deref().filter(|_| usage.enabled),
         rewrote: (!mode.fix.is_generate()).then_some(&rewrote),
         reuse,
         ending,
         overlay: &overlay,
+        cwd: &resolved.cwd,
     };
     let (results, missing) = for_each_file(files, resolved, &plumbing, |file| {
         let lint = |settled| lint_path(file.path, &file.linter, mode, settled, &overlay);
@@ -127,28 +127,38 @@ fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> 
 // the file it stands for would be, so its settings, package and search roots come from that file's absolute path. A
 // name the file filters leave out reports nothing, and with `--fix` its source goes out unchanged, as Ruff writes it.
 pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: &Mode) -> Result<StdinLint> {
-    let ruff = &resolved.pyproject_config.settings;
-    let absolute = std::path::absolute(path)?;
+    let absolute = std::path::absolute(path).expect("clap rejects an empty `--stdin-filename`");
     if !lints_stdin(&absolute, resolved)? {
         return Ok(StdinLint {
             diagnostics: Diagnostics::default(),
             output: mode.fix.is_apply().then(|| source.to_owned()),
         });
     }
-    let settings = resolved.settings_resolver.for_file(&absolute)?;
+    lint_alone(&absolute, source, resolved, |file| lint_stdin(path, source, &file.linter, mode))
+}
+
+// A file linted on its own, against an index of that file alone, as standard input is.
+fn lint_alone<T: Send>(
+    absolute: &Path,
+    source: &str,
+    resolved: &Resolved,
+    work: impl Fn(&DiscoveredFile) -> T + Sync,
+) -> Result<T> {
+    let ruff = &resolved.pyproject_config.settings;
+    let settings = resolved.settings_resolver.for_file(absolute)?;
     let package = absolute
         .parent()
         .and_then(|parent| detect_package_root(parent, &ruff.linter.namespace_packages))
         .map(PackageRoot::root);
     let roots = SearchRoots::new(ruff, package);
-    let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
+    let files = [RunFile::new(absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     let linted: Vec<&RunFile> = files.iter().collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
         .remove(&files[0].nested)
         .unwrap_or_default();
     let facts =
-        FileFacts::collect(&absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
+        FileFacts::collect(absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
     let mut passes = index_and_lint(
         &files,
         (parts, &ProjectInputs::of(&files, &roots), &roots.startup_names()),
@@ -157,10 +167,38 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         &docs,
         &External::default(),
         &[None],
-        &Plumbing::plain(Ending::Drop, &Overlay::default()),
-        &|file| lint_stdin(path, source, &file.linter, mode),
+        &Plumbing::plain(Ending::Drop, &Overlay::default(), &resolved.cwd),
+        &work,
     )?;
-    Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
+    Ok(passes.pop().and_then(|mut file| file.pop()).expect("the file is linted once"))
+}
+
+// Hands `work` the linter of a module of `source` in a project of its own, set up by the `check` arguments `args`, for
+// tests of what runs on a linter.
+#[cfg(test)]
+pub(crate) fn with_linter<T: Send>(
+    source: &str,
+    args: &[&str],
+    work: impl Fn(&crate::lint::Linter, &Path) -> T + Sync,
+) -> T {
+    let directory = tempfile::TempDir::new().expect("temporary directory");
+    let path = directory.path().join("module.py");
+    let resolved = resolved_of(&[&["--isolated", "--no-cache"], args].concat());
+    lint_alone(&path, source, &resolved, |file| work(&file.linter, &path)).expect("the module lints")
+}
+
+// The settings the `check` arguments `args` resolve to.
+#[cfg(test)]
+fn resolved_of(args: &[&str]) -> Resolved {
+    use clap::{Args, FromArgMatches};
+
+    use crate::cli::args::{CheckCommand, GlobalConfigArgs};
+
+    let matches = GlobalConfigArgs::augment_args(CheckCommand::augment_args(clap::Command::new("check")))
+        .get_matches_from([&["check"], args].concat());
+    let check = CheckCommand::from_arg_matches(&matches).expect("the check arguments parse");
+    let global_options = GlobalConfigArgs::from_arg_matches(&matches).expect("the global arguments parse");
+    Resolved::new(&check, &global_options).expect("the settings resolve")
 }
 
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
@@ -207,32 +245,33 @@ fn for_each_file<T: Send>(
     if let Some(cache_dir) = plumbing.cache_dir {
         cache::prepare(cache_dir);
     }
-    // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
-    // which on a warm run is most of what comes before the index.
-    let passes = std::thread::scope(|scope| {
-        let docs =
-            scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, plumbing.cache_dir));
-        let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-        index_cached(&indexed, parts, (&roots, &packages), joined, plumbing, work)
-    })?;
+    let docs = || documentation(&linted, &resolved.settings_resolver.root.root, rules, plumbing.cache_dir);
+    let passes = index_cached(&indexed, parts, (&roots, &packages), docs, plumbing, work)?;
     Ok((passes, missing))
 }
 
 // The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts
 // of the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
-// documentation names once the walk that runs alongside is done.
+// documentation names. The documentation walk reads files of its own, so it runs while the caches open.
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
     parts: Parts,
     (roots, packages): (&SearchRoots, &FxHashMap<&'f Path, Option<PackageRoot<'f>>>),
-    docs: impl FnOnce() -> Documentation,
+    docs: impl FnOnce() -> Documentation + Send,
     plumbing: &Plumbing<'_, T>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
-    let caches = plumbing.cache_dir.map(|cache_dir| {
-        Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
-    });
-    let docs = docs();
+    let (caches, docs) = rayon::join(
+        || {
+            plumbing.cache_dir.map(|cache_dir| {
+                Caches::open(
+                    cache_dir,
+                    packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)),
+                )
+            })
+        },
+        docs,
+    );
     let startup = roots.startup_names();
     let groups: Vec<&[RunFile]> = indexed.chunk_by(|left, right| left.nested == right.nested).collect();
     let inputs: Vec<ProjectInputs> = groups.iter().map(|group| ProjectInputs::of(group, roots)).collect();
@@ -252,8 +291,8 @@ fn index_cached<'f, T: Send>(
                 .iter()
                 .zip(keys)
                 .map(|(file, key)| {
-                    let root = file.package.map(PackageRoot::path).or_else(|| file.path.parent())?;
-                    Some((views.get(root)?, (*key)?))
+                    let parent = file.path.parent().expect("a discovered file lies in a directory");
+                    Some((&views[file.package.map_or(parent, PackageRoot::path)], (*key)?))
                 })
                 .collect()
         },
@@ -347,11 +386,12 @@ pub(super) struct Plumbing<'a, T> {
     pub(super) reuse: Option<&'a Reuse<'a, T>>,
     pub(super) ending: Ending,
     pub(super) overlay: &'a Overlay,
+    pub(super) cwd: &'a Path,
 }
 
 impl<'a, T> Plumbing<'a, T> {
-    pub(super) fn plain(ending: Ending, overlay: &'a Overlay) -> Self {
-        Self { cache_dir: None, rewrote: None, reuse: None, ending, overlay }
+    pub(super) fn plain(ending: Ending, overlay: &'a Overlay, cwd: &'a Path) -> Self {
+        Self { cache_dir: None, rewrote: None, reuse: None, ending, overlay, cwd }
     }
 }
 
@@ -360,3 +400,36 @@ type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
 
 // Whether a pass rewrote a file, which a later round has to index again.
 type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::{Ending, Overlay, Plumbing, for_each_file, resolved_of};
+
+    // A file another process removes once a round rewrote it has no key to cache its next pass under and no facts to
+    // index again, so the rounds go on without them.
+    #[test]
+    fn file_removed_once_rewritten_is_left_out_of_the_next_round() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let module = root.path().join("module.py");
+        fs::write(&module, "x = 1\n").expect("write the module");
+        let cache_dir = root.path().join("cache");
+        let cache_arg = cache_dir.to_string_lossy();
+        let resolved = resolved_of(&["--isolated", "--cache-dir", &cache_arg]);
+        let overlay = Overlay::default();
+        let rewrote = |removed: &bool| *removed;
+        let plumbing = Plumbing {
+            cache_dir: Some(&cache_dir),
+            rewrote: Some(&rewrote),
+            ..Plumbing::plain(Ending::Drop, &overlay, &resolved.cwd)
+        };
+        let (passes, missing) = for_each_file(std::slice::from_ref(&module), &resolved, &plumbing, |file| {
+            fs::remove_file(file.path).is_ok()
+        })
+        .expect("the run goes on");
+        assert_eq!((passes, missing.is_empty(), module.exists()), (Some(vec![vec![true]]), true, false));
+    }
+}

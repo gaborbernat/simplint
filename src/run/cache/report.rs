@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 use ruff_db::diagnostic::{
-    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity, UnifiedFile,
+    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity,
 };
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_linter::registry::Rule as RuffRule;
@@ -27,7 +27,9 @@ pub(super) struct Findings {
 impl Findings {
     // The `full` text is kept beside the entry, so a run that shows other output never reads it.
     pub(super) fn diagnostics(archived: &ArchivedFindings, path: &Path) -> Option<Diagnostics> {
-        let reports: Vec<Report> = rkyv::deserialize::<_, rkyv::rancor::Error>(&archived.reports).ok()?;
+        // The archive was validated as it was read, and its plain fields always deserialize.
+        let reports: Vec<Report> =
+            rkyv::deserialize::<_, rkyv::rancor::Error>(&archived.reports).expect("a validated archive deserializes");
         // A file that cannot be read has no source to read back, and its report is built from none.
         let source = if reports.iter().all(|report| matches!(report.kind, ReportKind::IoError)) {
             String::new()
@@ -71,11 +73,11 @@ struct StoredRelated {
 }
 
 impl StoredRelated {
-    // The location a secondary annotation names, or `None` when it is not one the checker set: a file its source
-    // cannot be read back from, or one without a message.
+    // The location a secondary annotation names, or `None` when it is not one the checker set: one without a range or
+    // a message.
     fn of(annotation: &Annotation) -> Option<Self> {
         let span = annotation.get_span();
-        let UnifiedFile::Ruff(file) = span.file() else { return None };
+        let file = span.as_ruff_file().expect("simplint annotates Ruff source files");
         let range = span.range()?;
         Some(Self {
             path: file.name().to_owned(),
@@ -99,19 +101,16 @@ impl Report {
     fn of(diagnostic: &Diagnostic, noqa_row: Option<TextSize>) -> Option<Self> {
         let primary = diagnostic.annotations().first()?;
         let range = primary.get_span().range()?;
-        let unruled = |kind| {
-            Some(Self {
-                kind,
+        if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
+            return Some(Self {
+                kind: ReportKind::IoError,
                 message: diagnostic.headline_message().to_owned(),
                 start: range.start().to_u32(),
                 end: range.end().to_u32(),
                 help: Vec::new(),
                 fix: None,
                 related: Vec::new(),
-            })
-        };
-        if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
-            return unruled(ReportKind::IoError);
+            });
         }
         let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
         let related: Vec<StoredRelated> =
@@ -312,13 +311,13 @@ impl Settled {
 
 pub(super) fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
     Withdrawn {
-        rules: RuleSet::from_rules(settled.rules.iter().filter_map(|code| Rule::from_code(code.as_str()))),
+        rules: RuleSet::from_rules(settled.rules.iter().filter_map(|code| rule_by_code(code.as_str()))),
         fixes: settled
             .fixes
             .iter()
             .filter_map(|fix| {
                 Some(FixKey {
-                    rule: Rule::from_code(fix.rule.as_str())?,
+                    rule: rule_by_code(fix.rule.as_str())?,
                     message: fix.message.as_str().to_owned(),
                     text: fix.text.as_str().to_owned(),
                     occurrence: fix.occurrence.to_native() as usize,
@@ -331,12 +330,22 @@ pub(super) fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
 #[cfg(test)]
 mod tests {
     use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
+    use ruff_source_file::SourceFileBuilder;
     use ruff_text_size::{TextRange, TextSize};
     use test_case::test_case;
 
-    use ruff_source_file::SourceFileBuilder;
+    use std::path::Path;
 
-    use super::{Report, ReportKind, StoredApplicability, StoredEdit, StoredFix, StoredIsolation};
+    use ruff_db::diagnostic::{
+        Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnostic,
+        SubDiagnosticSeverity,
+    };
+
+    use super::{
+        ArchivedFindings, ArchivedSettled, Findings, Report, ReportKind, Settled, StoredApplicability, StoredEdit,
+        StoredFix, StoredIsolation, StoredRelated, WithdrawnFix, withdrawn,
+    };
+    use crate::lint::registry::Rule;
 
     const SOURCE_LENGTH: usize = 30;
 
@@ -412,6 +421,166 @@ mod tests {
         assert_eq!(
             round_trip(&fix).map(|fix| (fix.applicability(), fix.isolation())),
             Some((Applicability::Unsafe, IsolationLevel::NonOverlapping))
+        );
+    }
+
+    // A report as the checker builds it, which `of` stores, changed by `change`.
+    fn stored(change: impl FnOnce(&mut Diagnostic, &mut Option<TextSize>)) -> Option<Report> {
+        let rule = Rule::SingleLetterName;
+        let file = SourceFileBuilder::new("module.py", "x = 1\n").finish();
+        let mut diagnostic =
+            Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, "Single-letter name");
+        diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range(0, 1))));
+        diagnostic.annotate(Annotation::secondary(Span::from(file).with_range(range(4, 5))).message("value"));
+        diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
+        diagnostic.set_documentation_url(Some(rule.url()));
+        let mut noqa_row = Some(TextSize::new(0));
+        change(&mut diagnostic, &mut noqa_row);
+        Report::of(&diagnostic, noqa_row)
+    }
+
+    #[test]
+    fn report_the_checker_builds_is_stored() {
+        assert!(stored(|_, _| ()).is_some());
+    }
+
+    fn annotations(diagnostic: &mut Diagnostic, annotations: impl IntoIterator<Item = Annotation>) {
+        let mut rebuilt = Diagnostic::new(diagnostic.id(), diagnostic.severity(), diagnostic.headline_message());
+        for annotation in annotations {
+            rebuilt.annotate(annotation);
+        }
+        rebuilt.set_secondary_code(diagnostic.secondary_code().expect("the checker codes every report").clone());
+        rebuilt.set_documentation_url(diagnostic.documentation_url().map(str::to_owned));
+        *diagnostic = rebuilt;
+    }
+
+    fn module_span() -> Span {
+        Span::from(SourceFileBuilder::new("module.py", "x = 1\n").finish())
+    }
+
+    #[test_case(|diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| annotations(diagnostic, []) ; "no_annotation")]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            annotations(diagnostic, [Annotation::primary(module_span())]);
+        } ; "primary_without_range"
+    )]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            annotations(diagnostic, [
+                Annotation::primary(module_span().with_range(range(0, 1))),
+                Annotation::secondary(module_span()).message("value"),
+            ]);
+        } ; "related_without_range"
+    )]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            annotations(diagnostic, [
+                Annotation::primary(module_span().with_range(range(0, 1))),
+                Annotation::secondary(module_span().with_range(range(4, 5))),
+            ]);
+        } ; "related_without_message"
+    )]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            *diagnostic = Diagnostic::new(diagnostic.id(), diagnostic.severity(), "Single-letter name");
+            diagnostic.annotate(Annotation::primary(module_span().with_range(range(0, 1))));
+        } ; "no_code"
+    )]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            diagnostic.set_secondary_code(SecondaryCode::new("SMP999".to_owned()));
+        } ; "unknown_code"
+    )]
+    #[test_case(
+        |diagnostic: &mut Diagnostic, _: &mut Option<TextSize>| {
+            diagnostic.sub(SubDiagnostic::new(SubDiagnosticSeverity::Info, "note"));
+        } ; "info_note"
+    )]
+    #[test_case(|_: &mut Diagnostic, noqa_row: &mut Option<TextSize>| *noqa_row = None ; "no_suppression_line")]
+    fn report_the_checker_does_not_build_is_not_stored(change: fn(&mut Diagnostic, &mut Option<TextSize>)) {
+        assert!(stored(change).is_none());
+    }
+
+    fn report(code: &str, related: Vec<StoredRelated>, fix: Option<StoredFix>) -> Report {
+        Report {
+            kind: ReportKind::Rule { code: code.to_owned(), noqa_offset: 0 },
+            message: "Single-letter name".to_owned(),
+            start: 0,
+            end: 1,
+            help: Vec::new(),
+            fix,
+            related,
+        }
+    }
+
+    fn related(path: &Path, end: u32) -> Vec<StoredRelated> {
+        vec![StoredRelated { path: path.to_string_lossy().into_owned(), start: 0, end, message: "value".to_owned() }]
+    }
+
+    #[test]
+    fn report_whose_rule_or_locations_are_gone_is_not_restored() {
+        let file = SourceFileBuilder::new("module.py", "x = 1\n").finish();
+        let other = tempfile::NamedTempFile::new().expect("temporary file");
+        std::fs::write(other.path(), "y = 2\n").expect("write");
+        let outside = StoredFix {
+            applicability: StoredApplicability::Safe,
+            isolation: StoredIsolation::NonOverlapping,
+            edits: vec![StoredEdit { start: 0, end: 99, content: None }],
+        };
+        let restored = [
+            report("SMP101", related(other.path(), 5), None),
+            report("SMP999", Vec::new(), None),
+            report("SMP101", related(&other.path().with_extension("gone"), 5), None),
+            report("SMP101", related(other.path(), 99), None),
+            report("SMP101", Vec::new(), Some(outside)),
+        ]
+        .map(|report| report.diagnostic(&file).is_some());
+        assert_eq!(restored, [true, false, false, false, false]);
+    }
+
+    fn findings(reports: Vec<Report>, path: &Path) -> bool {
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&Findings { fingerprint: 0, reports }).expect("serialize");
+        let archived = rkyv::access::<ArchivedFindings, rkyv::rancor::Error>(&bytes).expect("access");
+        Findings::diagnostics(archived, path).is_some()
+    }
+
+    #[test]
+    fn findings_of_a_file_that_cannot_be_read_back_are_not_restored() {
+        let file = tempfile::NamedTempFile::new().expect("temporary file");
+        std::fs::write(file.path(), "x = 1\n").expect("write");
+        let gone = file.path().with_extension("gone");
+        let outside = Report { start: 0, end: 99, ..report("SMP101", Vec::new(), None) };
+        assert_eq!(
+            [
+                findings(vec![report("SMP101", Vec::new(), None)], file.path()),
+                findings(vec![report("SMP101", Vec::new(), None)], &gone),
+                findings(vec![outside], file.path()),
+            ],
+            [true, false, false]
+        );
+    }
+
+    #[test]
+    fn withdrawn_fixes_of_rules_that_are_gone_are_dropped() {
+        let fix = |rule: &str| WithdrawnFix {
+            rule: rule.to_owned(),
+            message: "message".to_owned(),
+            text: "text".to_owned(),
+            occurrence: 0,
+        };
+        let settled = Settled {
+            fingerprint: 0,
+            rules: vec!["SMP101".to_owned(), "SMP999".to_owned()],
+            fixes: vec![fix("SMP101"), fix("SMP999")],
+        };
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&settled).expect("serialize");
+        let withdrawn = withdrawn(rkyv::access::<ArchivedSettled, rkyv::rancor::Error>(&bytes).expect("access"));
+        assert_eq!(
+            (
+                withdrawn.rules.iter().map(Rule::code).collect::<Vec<_>>(),
+                withdrawn.fixes.iter().map(|key| key.rule.code()).collect::<Vec<_>>()
+            ),
+            (vec!["SMP101"], vec!["SMP101"])
         );
     }
 }

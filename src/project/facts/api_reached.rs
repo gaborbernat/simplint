@@ -22,7 +22,7 @@ fn definition(stmt: &Stmt) -> Option<Definition> {
         Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
             let mut refs = type_param_names(type_params.as_deref());
             refs.extend(names_in(value));
-            (name.as_name_expr()?.id.as_str(), true, refs)
+            (name.as_name_expr().expect("a type alias names a variable").id.as_str(), true, refs)
         }
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. })
             if last_segment(annotation) == Some("TypeAlias") =>
@@ -137,5 +137,23 @@ impl<'a> Closure<'a> {
             reached.extend(seen.into_iter().filter(|name| *name != root));
         }
         reached.into_iter().map(str::to_owned).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+    use test_case::test_case;
+
+    use super::interface;
+
+    #[test_case("Alias = int\n", &["Alias"] ; "assigned_name")]
+    #[test_case("obj.Alias = int\n", &[] ; "assigned_attribute")]
+    #[test_case("obj.Alias: TypeAlias = int\n", &[] ; "annotated_attribute")]
+    fn only_a_name_defines_an_alias(source: &str, expected: &[&str]) {
+        let parsed = parse_module(source).expect("parses");
+        let names: Vec<String> =
+            interface(&parsed.syntax().body).into_iter().map(|definition| definition.name).collect();
+        assert_eq!(names, expected);
     }
 }

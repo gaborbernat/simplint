@@ -46,3 +46,4 @@ def twenty_ninth() -> None:
 
 # A reason after `type: ignore` leaves PGH003 silent, so SMP004 still reports it.
 THIRTIETH = 30  # type: ignore because the stub is wrong
+TWENTY_NINTH = 29  # ruffian noqa

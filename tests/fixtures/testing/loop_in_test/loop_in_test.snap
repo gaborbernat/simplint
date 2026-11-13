@@ -23,3 +23,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 269:9 SMP813 Loop with assertions in a test; parameterize the cases instead
 273:9 SMP813 Loop with assertions in a test; parameterize the cases instead
 287:9 SMP813 Loop with assertions in a test; parameterize the cases instead
+311:5 SMP813 Loop with assertions in a test; parameterize the cases instead

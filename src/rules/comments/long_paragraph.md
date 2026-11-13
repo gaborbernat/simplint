@@ -1,5 +1,4 @@
-Flags comment paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and gets
-skimmed.
+Flags comment paragraphs longer than 100 words by default.
 
 ## Why is this bad?
 

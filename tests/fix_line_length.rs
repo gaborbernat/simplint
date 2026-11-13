@@ -227,18 +227,19 @@ fn split_operation_starts_with_its_operator(limit: usize, source: &str, (code, s
 }
 
 // Comments and pragmas that keep their lines whatever the layout: a comment of one word, one after strings joined
-// without an operator, and a pragma after a value too long even in parentheses of its own.
+// without an operator, a pragma after a value too long even in parentheses of its own, and suppression comments that
+// open no region.
 #[test]
 fn fix_is_kept_when_comments_and_pragmas_keep_their_lines() {
-    let source = "names = [\n    #tight\n    \"a\" \"b\"  # joined\n]\n\
-                  VALUE = (\"a long string value that cannot fit\")  # \
-                  noqa: E501\nprint(names, VALUE)\n";
+    let source = "names = [\n    #tight\n    \"a\" \"b\"  # joined\n]\n# fmt: on\n# fmt: skip\n\
+                  VALUE = (\"a long string value that cannot fit\")  # noqa: E501\n\
+                  NUMBER = 1234567890123456789012345678901234567890  # noqa: E501\nprint(names, VALUE, NUMBER)\n";
     assert_eq!(
         fixed(40, source, "SMP404"),
         (
             0,
-            "Found 2 errors (2 fixed, 0 remaining).\n".to_owned(),
-            source.replace("names", "_names").replace("VALUE", "_VALUE")
+            "Found 3 errors (3 fixed, 0 remaining).\n".to_owned(),
+            source.replace("names", "_names").replace("VALUE", "_VALUE").replace("NUMBER", "_NUMBER")
         )
     );
 }

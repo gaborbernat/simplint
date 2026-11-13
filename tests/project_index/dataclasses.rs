@@ -36,6 +36,20 @@ fn dataclass_kw_only_leaves_cross_file_calls_to_the_class_report(caller: &str) {
     );
 }
 
+// A field option the rule cannot read leaves the order of the `__init__` parameters unknown, so a positional call
+// keeps the class reported, and nothing is rewritten.
+#[test_case("init" ; "init")]
+#[test_case("kw_only" ; "kw_only")]
+fn dataclass_kw_only_with_a_computed_field_option_is_not_fixed(option: &str) {
+    let models = format!(
+        "from dataclasses import dataclass, field\n\nFLAG = True\n\n\n@dataclass\nclass Partition:\n    topic: str\n    \
+         number: int = field({option}=FLAG, default=0)\n"
+    );
+    let root = project(&[("models.py", &models), ("caller.py", "from models import Partition\n\nPartition(\"a\")\n")]);
+    let first = check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1;
+    assert_eq!((first.contains("Found 1 error.\n"), common::read(root.path(), "models.py") == models), (true, true));
+}
+
 // The report names the positional calls of another file as related locations, in full output, and says they need
 // converting by hand, since no fix reaches them.
 #[test]
@@ -86,10 +100,12 @@ fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
 fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     let root = project(&[("models.py", &format!("{PARTITION}\nPartition(\"a\", 1)\n"))]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1,
-        common::ONE_FIXED
+        (
+            check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1,
+            common::read(root.path(), "models.py").lines().last().map(str::to_owned)
+        ),
+        (common::ONE_FIXED.to_owned(), Some("Partition(topic=\"a\", number=1)".to_owned()))
     );
-    assert_eq!(common::read(root.path(), "models.py").lines().last(), Some("Partition(topic=\"a\", number=1)"));
 }
 
 // A suppression on the class definition silences the report, and with it the positional calls it names elsewhere.
@@ -101,7 +117,7 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
         ("models.py", &format!("__all__ = []\n\n{models}")),
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP703"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP703");
     let unsuppressed = project(&[
         ("pyproject.toml", DEMO_BUILD),
         ("models.py", &format!("__all__ = []\n\n{PARTITION}")),
@@ -156,8 +172,11 @@ fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &st
     // A library's public class is not reported at all; an internal one is, with no fix while a caller is in another
     // file.
     let stdout = check(root.path(), &["--select", "SMP703"]).1;
-    assert_eq!(stdout.contains("Found 1 error."), reported, "{stdout}");
-    assert_eq!(common::read(root.path(), "caller.py"), caller);
+    assert_eq!(
+        (stdout.contains("Found 1 error."), common::read(root.path(), "caller.py")),
+        (reported, caller.to_owned()),
+        "{stdout}"
+    );
 }
 
 #[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
@@ -212,7 +231,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP901"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP901");
     let unread =
         project(&[("pkg/__init__.py", ""), ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n")]);
     assert!(check(unread.path(), &["--select", "SMP901"]).1.contains("SMP901"));
@@ -263,6 +282,10 @@ fn relative_import_from_namespace_package_counts_as_imported() {
 )]
 #[test_case("def test_app(mod: ModuleType) -> None:\n    assert mod.client\n" ; "module_type_parameter")]
 #[test_case(
+    "import types\n\n\ndef test_app(mod: types.ModuleType) -> None:\n    assert mod.client\n" ;
+    "qualified_module_type_parameter"
+)]
+#[test_case(
     concat!(
         "def test_app(mod: ModuleType) -> None:\n",
         "    assert getattr(mod, \"client\")\n",
@@ -281,6 +304,28 @@ fn relative_import_from_namespace_package_counts_as_imported() {
         "    alias.client = None\n"
     ) ; "fixture_alias"
 )]
+#[test_case(
+    concat!(
+        "@pytest.fixture\n",
+        "def loaded():\n",
+        "    return importlib.import_module(f\"docs.{_NAME}\")\n",
+        "\n",
+        "\n",
+        "def test_app(loaded) -> None:\n",
+        "    loaded.client = None\n"
+    ) ; "bare_fixture"
+)]
+#[test_case(
+    concat!(
+        "@pytest.fixture(name=_NAME)\n",
+        "def loaded():\n",
+        "    return importlib.import_module(f\"docs.{_NAME}\")\n",
+        "\n",
+        "\n",
+        "def test_app(loaded) -> None:\n",
+        "    loaded.client = None\n"
+    ) ; "fixture_named_by_a_variable"
+)]
 fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),
@@ -291,8 +336,7 @@ fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

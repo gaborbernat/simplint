@@ -46,18 +46,23 @@ fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
     let source = "x = 1  # simplint: ignore[SMP101, imprecise-annotation, SMP999] # external name\n";
     let root = common::project(&[("module.py", source)]);
     let (code, stdout, _) = common::check(root.path(), &["--select", "SMP008"]);
-    assert_eq!((code, stdout.contains("Numeric simplint ignore; use rule names")), (1, true));
     common::check(root.path(), &["--select", "SMP008", "--fix"]);
     assert_eq!(
-        common::read(root.path(), "module.py"),
-        "x = 1  # simplint: ignore[single-letter-name, imprecise-annotation, SMP999] # external name\n"
+        (code, stdout.contains("Numeric simplint ignore; use rule names"), common::read(root.path(), "module.py")),
+        (
+            1,
+            true,
+            "x = 1  # simplint: ignore[single-letter-name, imprecise-annotation, SMP999] # external name\n".to_owned()
+        )
     );
 }
 
-#[test]
-fn named_ignore_needs_no_migration() {
-    let root = common::project(&[("module.py", "x = 1  # simplint: ignore[single-letter-name] # external name\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, common::PASSED);
+#[test_case("x = 1  # simplint: ignore[single-letter-name] # external name\n" ; "named")]
+#[test_case("x = 1  # simplint: disable[SMP101]\n" ; "other_action")]
+#[test_case("x = 1  # simplint: ignore[SMP101\n" ; "unclosed_selector_list")]
+fn ignore_without_numeric_selectors_needs_no_migration(source: &str) {
+    let root = common::project(&[("module.py", source)]);
+    common::assert_clean(root.path(), "SMP008");
 }
 
 // Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them whether or not the project
@@ -125,7 +130,7 @@ fn blanket_ignore_is_left_to_ruff_blanket_rules(source: &str, code: &str, fragme
 #[test_case("A = 1  # type: ignore [attr-defined]\n" ; "type_ignore_codes")]
 fn named_type_ignore_after_spaces_is_not_blanket(source: &str) {
     let root = common::project(&[("module.py", source)]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP004"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP004");
 }
 
 #[test]
@@ -135,31 +140,39 @@ fn unused_ignore_reports_and_fixes_each_selector() {
         "x = 1  # simplint: ignore[SMP101, SMP602]  # needed for x\nvalue = 2  # simplint: ignore[SMP602]  # stale\n",
     )]);
     let (status, output, _) = common::check(root.path(), &["--select", "SMP101,SMP009"]);
-    assert_eq!(status, 1);
-    assert_eq!(output.matches(" SMP009 ").count(), 1);
-    assert!(output.contains("2 unused simplint ignore selectors"), "{output}");
-    assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
+    let fixed = common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0;
     assert_eq!(
-        common::read(root.path(), "module.py"),
-        "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2  # stale\n"
+        (
+            status,
+            output.matches(" SMP009 ").count(),
+            output.contains("2 unused simplint ignore selectors"),
+            fixed,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, 1, true, 0, "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2  # stale\n".to_owned())
     );
 }
 
 #[test_case(
-    "[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n",
-    true ;
+    "[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n" ;
     "local_limit_blocks_report"
 )]
-#[test_case("[tool.ruff.lint]\nselect = []\n", true ; "comment_keeps_report_silent")]
-fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
+#[test_case("[tool.ruff.lint]\nselect = []\n" ; "comment_keeps_report_silent")]
+fn unused_ignore_rechecks_comment_sensitive_rules(config: &str) {
     let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> \
         str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
     let root = common::project(&[("pyproject.toml", config), ("module.py", source)]);
     let (status, output, _) = common::check(root.path(), &["--select", "SMP202,SMP009"]);
-    assert_eq!(output.contains("unused simplint ignore selector"), removed, "{output}");
-    assert_eq!(status == 1, removed);
     common::check(root.path(), &["--select", "SMP202,SMP009", "--fix"]);
-    assert_eq!(common::read(root.path(), "module.py").contains("simplint: ignore"), !removed);
+    assert_eq!(
+        (
+            status,
+            output.contains("unused simplint ignore selector"),
+            common::read(root.path(), "module.py").contains("simplint: ignore"),
+        ),
+        (1, true, false),
+        "{output}"
+    );
 }
 
 #[test]
@@ -175,37 +188,40 @@ fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
     assert_eq!(common::read(root.path(), "module.py"), format!("{needed}\n\nvalue = 2\nother = 3\n"));
 }
 
+// An indentation as wide as the comment limit leaves no room for the text, so the string is reported without a fix.
+#[test]
+fn string_statement_comment_without_room_has_no_fix() {
+    let source = "def run() -> None:\n    start()\n    \"\"\"Wait.\"\"\"\n    wait()\n";
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff.lint.pycodestyle]\nmax-doc-length = 4\n"),
+        ("module.py", source),
+    ]);
+    let (status, output, _) = common::check(root.path(), &["--no-cache", "--select", "SMP006", "--fix"]);
+    assert_eq!(
+        (status, output.contains("SMP006"), common::read(root.path(), "module.py")),
+        (1, true, source.to_owned()),
+        "{output}"
+    );
+}
+
 #[test]
 fn unused_ignore_keeps_required_selectors() {
     let source = "x = 1  # simplint: ignore[SMP101]  # short fixture name\n";
     let root = common::project(&[("module.py", source)]);
     assert_eq!(
-        common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]),
-        (0, common::PASSED.to_owned(), String::new())
+        (common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]), common::read(root.path(), "module.py")),
+        ((0, common::PASSED.to_owned(), String::new()), source.to_owned())
     );
-    assert_eq!(common::read(root.path(), "module.py"), source);
-}
-
-#[test]
-fn unused_ignore_preserves_crlf() {
-    let root = common::project(&[("module.py", "value = 1  # simplint: ignore[SMP101]\r\nnext_value = 2\r\n")]);
-    common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
-    assert_eq!(common::read(root.path(), "module.py"), "value = 1\r\nnext_value = 2\r\n");
 }
 
 #[test]
 fn unused_ignore_drops_standalone_directive_without_hiding_later_reports() {
     let root = common::project(&[("module.py", "# simplint: ignore[SMP602]  # stale\nx = 1\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 1);
-    assert_eq!(common::read(root.path(), "module.py"), "# stale\nx = 1\n");
-    assert_eq!(common::check(root.path(), &["--select", "SMP101"]).0, 1);
-}
-
-#[test]
-fn unused_ignore_removes_a_selector_already_covered_by_noqa() {
-    let root = common::project(&[("module.py", "x = 1  # noqa: SMP101  # simplint: ignore[SMP101]\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
-    assert_eq!(common::read(root.path(), "module.py"), "x = 1  # noqa: SMP101\n");
+    let fixed = common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0;
+    assert_eq!(
+        (fixed, common::read(root.path(), "module.py"), common::check(root.path(), &["--select", "SMP101"]).0),
+        (1, "# stale\nx = 1\n".to_owned(), 1)
+    );
 }
 
 #[test_case(
@@ -233,27 +249,101 @@ fn unused_ignore_removes_a_selector_already_covered_by_noqa() {
     "def f():\n    return 1\n" ;
     "standalone_directive_leaves_no_line"
 )]
+#[test_case("value = 1  # simplint: ignore[SMP101]\r\nnext_value = 2\r\n", "value = 1\r\nnext_value = 2\r\n" ; "crlf")]
+#[test_case(
+    "x = 1  # noqa: E501\nvalue = 2  # simplint: ignore[SMP101]\n",
+    "x = 1  # noqa: E501\nvalue = 2\n" ;
+    "report_under_another_noqa"
+)]
 fn unused_ignore_removes_only_the_directive_and_its_reason(source: &str, expected: &str) {
     let root = common::project(&[("module.py", source)]);
     common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
     assert_eq!(common::read(root.path(), "module.py"), expected);
 }
 
+#[test_case(
+    "SMP101,SMP009",
+    "x = 1  # noqa: SMP101  # simplint: ignore[SMP101]\n",
+    "x = 1  # noqa: SMP101\n" ;
+    "selector_already_covered_by_noqa"
+)]
+#[test_case("SMP008,SMP009", "value = 1  # simplint: ignore[SMP602]\n", "value = 1\n" ; "after_numeric_ignore_fix")]
+#[test_case(
+    "SMP009",
+    "name = 'é'  # simplint: ignore[SMP101, SMP602]\n",
+    "name = 'é'\n" ;
+    "multiple_selectors_after_unicode"
+)]
+#[test_case(
+    "SMP101,SMP602,SMP009",
+    "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  \
+     # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
+    "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n" ;
+    "separators_around_a_stale_selector"
+)]
+#[test_case(
+    "SMP101,SMP009",
+    "# ruff: noqa: SMP101\nx = 1  # simplint: ignore[SMP101]\n",
+    "# ruff: noqa: SMP101\nx = 1\n" ;
+    "under_file_level_suppression"
+)]
+fn unused_ignore_fixes_every_stale_selector(select: &str, source: &str, expected: &str) {
+    let root = common::project(&[("module.py", source)]);
+    assert_eq!(
+        (common::check(root.path(), &["--select", select, "--fix"]).0, common::read(root.path(), "module.py")),
+        (0, expected.to_owned())
+    );
+}
+
+// The numeric selector the removal shifts is reported where it was, so the report is no new one.
+#[test]
+fn unused_ignore_keeps_the_numeric_report_of_a_selector_it_shifts() {
+    let root = common::project(&[("module.py", "x = 1  # simplint: ignore[SMP602, SMP101]\n")]);
+    assert_eq!(
+        (
+            common::check(root.path(), &["--select", "SMP008,SMP009,SMP101", "--unfixable", "SMP008", "--fix"]).0,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, "x = 1  # simplint: ignore[SMP101]\n".to_owned())
+    );
+}
+
+// Removing the selectors on both sides rewrites the whole list, so the numeric report starts inside the rewrite.
+#[test]
+fn unused_ignore_keeps_the_numeric_report_inside_the_rewritten_list() {
+    let root = common::project(&[(
+        "module.py",
+        "x = 1  # simplint: ignore[imprecise-annotation, SMP101, callable-ellipsis]\n",
+    )]);
+    assert_eq!(
+        (
+            common::check(root.path(), &["--select", "SMP008,SMP009,SMP101", "--unfixable", "SMP008", "--fix"]).0,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, "x = 1  # simplint: ignore[SMP101]\n".to_owned())
+    );
+}
+
 #[test]
 fn unused_ignore_honors_unfixable() {
     let source = "value = 1  # simplint: ignore[SMP101]\n";
     let root = common::project(&[("module.py", source)]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP009", "--unfixable", "SMP009", "--fix"]).0, 1);
-    assert_eq!(common::read(root.path(), "module.py"), source);
+    assert_eq!(
+        (
+            common::check(root.path(), &["--select", "SMP009", "--unfixable", "SMP009", "--fix"]).0,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, source.to_owned())
+    );
 }
 
 #[test]
 fn unused_ignore_is_opt_in() {
     let root = common::project(&[("module.py", "value = 1  # simplint: ignore[SMP101]\n")]);
-    assert!(!common::check(root.path(), &[]).1.contains("SMP009"));
-    assert!(common::check(root.path(), &["--extend-select", "SMP009"]).1.contains("SMP009"));
+    let default = common::check(root.path(), &[]).1.contains("SMP009");
+    let selected = common::check(root.path(), &["--extend-select", "SMP009"]).1.contains("SMP009");
     common::check(root.path(), &["--extend-select", "SMP009", "--fix"]);
-    assert_eq!(common::read(root.path(), "module.py"), "value = 1\n");
+    assert_eq!((default, selected, common::read(root.path(), "module.py")), (false, true, "value = 1\n".to_owned()));
 }
 
 #[test]
@@ -261,16 +351,11 @@ fn unused_ignore_fix_appears_in_diff() {
     let source = "value = 1  # simplint: ignore[SMP101]\n";
     let root = common::project(&[("module.py", source)]);
     let (status, output, _) = common::check(root.path(), &["--select", "SMP009", "--diff"]);
-    assert_eq!(status, 1);
-    assert!(output.contains("+value = 1\n"), "{output}");
-    assert_eq!(common::read(root.path(), "module.py"), source);
-}
-
-#[test]
-fn unused_ignore_follows_numeric_ignore_fix() {
-    let root = common::project(&[("module.py", "value = 1  # simplint: ignore[SMP602]\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP008,SMP009", "--fix"]).0, 0);
-    assert_eq!(common::read(root.path(), "module.py"), "value = 1\n");
+    assert_eq!(
+        (status, output.contains("+value = 1\n"), common::read(root.path(), "module.py")),
+        (1, true, source.to_owned()),
+        "{output}"
+    );
 }
 
 #[test]
@@ -280,36 +365,10 @@ fn unused_ignore_fixes_many_comments_in_one_pass() {
         source
     });
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP009", "--fix"]).0, 0);
-    assert_eq!(common::read(root.path(), "module.py"), source.replace("  # simplint: ignore[SMP101]", ""));
-}
-
-#[test]
-fn unused_ignore_removes_multiple_selectors_after_unicode() {
-    let root = common::project(&[("module.py", "name = 'é'  # simplint: ignore[SMP101, SMP602]\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP009", "--fix"]).0, 0);
-    assert_eq!(common::read(root.path(), "module.py"), "name = 'é'\n");
-}
-
-#[test]
-fn unused_ignore_rewrites_separators_around_a_stale_selector() {
-    let root = common::project(&[(
-        "module.py",
-        "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  \
-         # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
-    )]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP602,SMP009", "--fix"]).0, 0);
     assert_eq!(
-        common::read(root.path(), "module.py"),
-        "from typing import Any\n\n\ndef x(value: list[Any]) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n"
+        (common::check(root.path(), &["--select", "SMP009", "--fix"]).0, common::read(root.path(), "module.py")),
+        (0, source.replace("  # simplint: ignore[SMP101]", ""))
     );
-}
-
-#[test]
-fn unused_ignore_handles_file_level_suppression() {
-    let root = common::project(&[("module.py", "# ruff: noqa: SMP101\nx = 1  # simplint: ignore[SMP101]\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
-    assert_eq!(common::read(root.path(), "module.py"), "# ruff: noqa: SMP101\nx = 1\n");
 }
 
 // SMP008 reports on the codes each removal edits, which leaves the stale numeric selectors no less unused.

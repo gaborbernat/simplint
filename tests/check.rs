@@ -261,8 +261,10 @@ fn unparsed_file_beside_a_report_leaves_that_report_and_status_1() {
 fn fix_leaves_an_unparsed_file_as_it_is() {
     let root = project(&[("broken.py", "def broken(:\n")]);
     let (code, stdout, stderr) = check(root.path(), &["--fix", "--select", "SMP101"]);
-    assert_eq!((code, stdout, stderr), (0, PASSED.to_owned(), UNPARSED.to_owned()));
-    assert_eq!(read(root.path(), "broken.py"), "def broken(:\n");
+    assert_eq!(
+        ((code, stdout, stderr), read(root.path(), "broken.py")),
+        ((0, PASSED.to_owned(), UNPARSED.to_owned()), "def broken(:\n".to_owned())
+    );
 }
 
 #[test]
@@ -298,12 +300,14 @@ fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
     );
 }
 
+// A path the run cannot read is a warning, not the `E902` of a missing one, whether the walk reaches it or the run names it.
 #[cfg(unix)]
-#[test]
-fn check_warns_about_unreadable_directories() {
+#[test_case(&["--select", "SMP101"] ; "walked")]
+#[test_case(&["--select", "SMP101", "locked/module.py", "module.py"] ; "named")]
+fn check_warns_about_unreadable_directories(args: &[&str]) {
     let root = project(&[("locked/module.py", "x = 1\n"), ("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("locked"), 0o000);
-    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    let (code, _, stderr) = check(root.path(), args);
     common::set_mode(&root.path().join("locked"), 0o755);
     assert_eq!((code, stderr.starts_with("warning: Encountered error:")), (0, true));
 }

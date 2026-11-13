@@ -12,6 +12,7 @@ use super::conflicts::{self, Scope};
 use super::digest::probed_layout_key;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::{DocReferences, Parts, SearchRoots};
+use crate::rules::imports::is_dependency_host;
 use crate::run::cache::FileIdentity;
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -26,6 +27,7 @@ pub(super) struct ProjectInputs<'f> {
     pub(super) roles: FxHashMap<&'f Path, ModuleRole>,
     pub(super) test_modules: FxHashSet<&'f Path>,
     pub(super) distribution_roots: FxHashMap<&'f Path, &'f Path>,
+    pub(super) dependency_hosts: FxHashSet<&'f Path>,
 }
 
 impl<'f> ProjectInputs<'f> {
@@ -37,40 +39,15 @@ impl<'f> ProjectInputs<'f> {
             .unique_by(|settings| std::ptr::from_ref(*settings))
             .collect();
         Self {
-            entry_points: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings.metadata.entry_points.iter().map(|entry| (settings.project_dir.clone(), entry.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
+            entry_points: by_project(&settings, |settings| &settings.metadata.entry_points),
             build_hooks: settings
                 .iter()
                 .flat_map(|settings| settings.build_hooks.iter().cloned())
                 .sorted_unstable()
                 .dedup()
                 .collect(),
-            coverage_plugins: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings.coverage.modules.iter().map(|module| (settings.project_dir.clone(), module.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
-            coverage_paths: settings
-                .iter()
-                .flat_map(|settings| {
-                    settings
-                        .coverage
-                        .search_paths
-                        .iter()
-                        .map(|directory| (settings.project_dir.clone(), directory.clone()))
-                })
-                .sorted_unstable()
-                .dedup()
-                .collect(),
+            coverage_plugins: by_project(&settings, |settings| &settings.coverage.modules),
+            coverage_paths: by_project(&settings, |settings| &settings.coverage.search_paths),
             duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
             probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
@@ -83,8 +60,26 @@ impl<'f> ProjectInputs<'f> {
                 .iter()
                 .map(|file| (file.absolute.as_path(), file.settings.project.project_dir.as_path()))
                 .collect(),
+            dependency_hosts: linted
+                .iter()
+                .filter(|file| {
+                    file.settings.rules.contains(Rule::UnusedDependency)
+                        && is_dependency_host(file.settings.project, file.module_path.as_deref(), file.settings.is_test)
+                })
+                .map(|file| file.absolute.as_path())
+                .collect(),
         }
     }
+}
+
+// Each project's items paired with its directory, so two projects naming the same item keep both.
+fn by_project<T: Clone + Ord>(settings: &[&Settings], items: impl Fn(&Settings) -> &Vec<T>) -> Vec<(PathBuf, T)> {
+    settings
+        .iter()
+        .flat_map(|settings| items(settings).iter().map(|item| (settings.project_dir.clone(), item.clone())))
+        .sorted_unstable()
+        .dedup()
+        .collect()
 }
 
 // The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index
@@ -105,10 +100,14 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
         .par_iter()
         .map(|file| {
             let settings = file.settings.project;
-            let module_paths = file.module_path.iter().cloned().chain(roots.module_paths(file.path)).collect_vec();
             let is_test = file.settings.is_test;
-            let roles: Vec<ModuleRole> =
-                module_paths.iter().map(|module_path| settings.api.role(Some(module_path), is_test)).collect();
+            let roles: Vec<ModuleRole> = file
+                .module_path
+                .iter()
+                .cloned()
+                .chain(roots.module_paths(file.path))
+                .map(|module_path| settings.api.role(Some(&module_path), is_test))
+                .collect();
             let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
             (file.absolute.as_path(), role.unwrap_or_else(|| settings.api.role(None, is_test)))
         })
@@ -161,11 +160,11 @@ impl<'a> RunFile<'a> {
         // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
         let sibling_init =
             settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
-        let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
         let nested = settings.project.nested.then(|| settings.project.root.clone());
         Self {
             path,
-            absolute,
+            // Ruff's walk and `check_stdin` hand over absolute paths, which only need normalizing.
+            absolute: std::path::absolute(path).expect("a run's file paths are absolute"),
             settings,
             ruff,
             ruff_config,

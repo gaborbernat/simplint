@@ -44,17 +44,16 @@ pub(crate) fn with_import(edit: Edit, import: Import, applicability: Applicabili
 // after it.
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Option<Edit> {
     let body = checker.body();
-    let source = checker.source;
     let eol = checker.line_ending();
     let text = match member {
         Some(member) => format!("from {module} import {member}{eol}"),
         None => format!("import {module}{eol}"),
     };
-    let key = (member.is_some(), module.to_ascii_lowercase());
     let preamble = preamble_len(body);
-    let block = body[preamble..].iter().take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)));
     let minor = checker.target_version().minor;
-    let stdlib: Vec<(&Stmt, (bool, String))> = block
+    let stdlib: Vec<(&Stmt, (bool, String))> = body[preamble..]
+        .iter()
+        .take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)))
         .filter_map(|stmt| match stmt {
             Stmt::Import(ast::StmtImport { names, .. }) => names
                 .iter()
@@ -66,9 +65,11 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
             _ => None,
         })
         .collect();
+    let key = (member.is_some(), module.to_ascii_lowercase());
     let (line, insertion) = if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
         (above_comments(checker, next), text)
     } else if let Some((last, _)) = stdlib.last() {
+        let source = checker.source;
         let line_end = source.full_line_end(last.end());
         let rest = source[TextRange::new(last.end(), line_end)].trim();
         // Code after the import on its line would run before the new import lands below it.

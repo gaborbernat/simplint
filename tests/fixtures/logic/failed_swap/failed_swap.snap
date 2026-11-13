@@ -1,0 +1,45 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP542 `second` is assigned back from the value it just received, so both hold the old `second` [unsafe fix: Swap both in one tuple assignment]
+8:5 SMP542 `node.right` is assigned back from the value it just received, so both hold the old `node.right` [unsafe fix: Swap both in one tuple assignment]
+13:5 SMP542 `second` is assigned back from the value it just received, so both hold the old `second`
+20:5 SMP542 `total += total + ...` applies `total` twice; `total += ...` applies it once
+21:5 SMP542 `total -= total - ...` applies `total` twice; `total -= ...` applies it once
+--- fixed (2 applied, 3 remaining) ---
+def flip(first, second):
+    first, second = second, first
+    return first, second
+
+
+def flip_attributes(node):
+    node.left, node.right = node.right, node.left
+
+
+def commented(first, second):
+    first = second
+    # keep the old value
+    second = first
+    return first, second
+
+
+def grow(total, delta, rate, other):
+    total += total + delta
+    total -= total - delta - rate
+    total += total * rate
+    total += other + total
+    total += delta
+    return total
+
+
+def same(value):
+    value = value
+    value = value
+    return value
+
+
+def calls(source):
+    first = source.read()
+    source.read = first
+    return first

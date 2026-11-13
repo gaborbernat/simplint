@@ -1,6 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use ruff_diagnostics::Applicability;
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 
@@ -8,7 +9,7 @@ use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
 use crate::rules::testing::recognize::is_raises_or_assert_raises;
-use crate::syntax::{is_classmethod, is_name, is_true_literal, last_segment, receiver};
+use crate::syntax::{Declares, dataclass_fields, is_classmethod, is_name, is_true_literal, last_segment, receiver};
 
 // `None` when no option of the dataclass rules gets a fix: a class without fields, such as a fixture standing for a
 // dataclass with the default options, has no state the options would protect, and a test expecting the class to fail
@@ -81,29 +82,17 @@ struct Fields<'a> {
 impl<'a> Fields<'a> {
     fn of(class: &'a ast::StmtClassDef) -> Self {
         // `ClassVar[...]` and `InitVar[...]` annotations declare no instance field, and so no slot.
-        let (class_variables, fields): (Vec<_>, Vec<_>) = class
-            .body
-            .iter()
-            .filter_map(|stmt| {
-                let stmt = stmt.as_ann_assign_stmt()?;
-                Some((
-                    stmt.target.as_name_expr()?.id.as_str(),
-                    annotated_as(&stmt.annotation, &["ClassVar", "InitVar"]),
-                ))
-            })
-            .partition(|(_, class_variable)| *class_variable);
-        let parameters = class
-            .body
-            .iter()
-            .filter_map(|stmt| stmt.as_ann_assign_stmt().filter(|stmt| stmt.target.is_name_expr()))
-            .filter(|stmt| {
-                !annotated_as(&stmt.annotation, &["ClassVar", "KW_ONLY"])
-                    && field_keyword(stmt.value.as_deref(), "init")
+        let (class_variables, fields): (Vec<_>, Vec<_>) = dataclass_fields(&class.body)
+            .partition(|field| matches!(field.kind, Declares::ClassVar | Declares::InitVar));
+        let parameters = dataclass_fields(&class.body)
+            .filter(|field| {
+                !matches!(field.kind, Declares::ClassVar | Declares::KwOnly)
+                    && field_keyword(field.stmt.value.as_deref(), "init")
                         .and_then(Expr::as_boolean_literal_expr)
                         .is_none_or(|init| init.value)
             })
             .count();
-        let names: FxHashSet<&str> = fields.into_iter().map(|(field, _)| field).collect();
+        let names: FxHashSet<&str> = fields.into_iter().map(|field| field.name).collect();
         let defaults: FxHashSet<&str> = class
             .body
             .iter()
@@ -114,21 +103,11 @@ impl<'a> Fields<'a> {
             .collect();
         Self {
             names,
-            class_variables: class_variables.into_iter().map(|(variable, _)| variable).collect(),
+            class_variables: class_variables.into_iter().map(|variable| variable.name).collect(),
             defaults,
             parameters,
         }
     }
-}
-
-// Whether the annotation names one of `names`, subscripted or quoted, such as `ClassVar[int]`.
-fn annotated_as(annotation: &Expr, names: &[&str]) -> bool {
-    if let Some(text) = annotation.as_string_literal_expr() {
-        let text = text.value.to_str();
-        return names.iter().any(|name| text.contains(name));
-    }
-    let annotation = annotation.as_subscript_expr().map_or(annotation, |subscript| &subscript.value);
-    last_segment(annotation).is_some_and(|name| names.contains(&name))
 }
 
 // The value of `arg` in the `field(...)` call a field's default is, the call `dataclasses.field` makes for its options.
@@ -315,8 +294,7 @@ fn index_hazards(checker: &Checker, decorated: &Decorated, fields: &Fields, haza
 }
 
 fn is_generic(base: &Expr) -> bool {
-    let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
-    last_segment(base) == Some("Generic")
+    last_segment(map_subscript(base)) == Some("Generic")
 }
 
 // Whether the class body reads a `__class__` cell, which `slots=True` leaves pointing at the class it replaces: a bare

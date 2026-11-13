@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:13 SMP543 `items.append()` changes its object in place and returns `None`, so this value is always `None`
+6:20 SMP543 `mapping.update()` changes its object in place and returns `None`, so this value is always `None`
+7:11 SMP543 `seen.add()` changes its object in place and returns `None`, so this value is always `None`
+9:15 SMP543 `names.sort()` changes its object in place and returns `None`, so this value is always `None`
+11:20 SMP543 `flags.discard()` changes its object in place and returns `None`, so this value is always `None`
+13:12 SMP543 `list(other).sort()` changes its object in place and returns `None`, so this value is always `None`
+13:34 SMP543 `list(other).sort()` changes its object in place and returns `None`, so this value is always `None`
+15:17 SMP543 `items.extend()` changes its object in place and returns `None`, so this value is always `None`
+22:12 SMP543 `random.shuffle()` changes its object in place and returns `None`, so this value is always `None`
+28:12 SMP543 `names.reverse()` changes its object in place and returns `None`, so this value is always `None`

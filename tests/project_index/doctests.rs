@@ -88,8 +88,11 @@ fn doctest_reads_are_opaque_to_call_sites_but_not_imports(read: &str, unused: &s
     let unread = check(root.path(), &["--select", "SMP411"]).1;
     assert_eq!((unread == common::PASSED, unread.contains(unused)), (unused.is_empty(), true), "{unread}");
     let stdout = check(root.path(), &["--select", "SMP401"]).1;
-    assert!(stdout.contains("`total` is imported by other modules"), "{stdout}");
-    assert!(!stdout.contains("`ratio`"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`total` is imported by other modules"), stdout.contains("`ratio`")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 // A name a doctest reads off the module of another file counts as used there, though the doctest imports no name of it.
@@ -103,7 +106,7 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
         ),
         ("p/doc.py", "\"\"\"Docs.\n\n>>> import p.util\n>>> p.util.helper()\n1\n\"\"\"\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP409");
     let without_doc = project(&[
         ("p/__init__.py", ""),
         (
@@ -122,7 +125,7 @@ fn constant_read_by_its_own_module_doctest_is_kept() {
         "_TIMEOUT = 30\n\n\ndef wait():\n    \"\"\"Wait.\n\n    >>> _TIMEOUT\n    30\n    \"\"\"\n    return \
         _TIMEOUT\n",
     )]);
-    assert_eq!(check(root.path(), &["--select", "SMP202"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP202");
     let unread = project(&[("pkg/consts.py", "_TIMEOUT = 30\n\n\ndef wait():\n    return _TIMEOUT\n")]);
     assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`_TIMEOUT` is used by one function only"));
 }

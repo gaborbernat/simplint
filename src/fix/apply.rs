@@ -27,14 +27,13 @@ pub(super) fn fix_file(
     unsafe_fixes: UnsafeFixes,
     withdrawn: &Withdrawn,
 ) -> Option<(FixResult, FxHashSet<usize>)> {
-    let required = unsafe_fixes.required_applicability();
     let candidates = diagnostics
         .iter()
         .enumerate()
         .zip(withdrawn.held_back(source, diagnostics))
         .filter(|(_, held)| !held)
         .filter_map(|((index, diagnostic), _)| diagnostic.fix().map(|fix| (index, diagnostic, fix)))
-        .filter(|(_, _, fix)| fix.applies(required))
+        .filter(|(_, _, fix)| fix.applies(unsafe_fixes.required_applicability()))
         .sorted_by_key(|(_, _, fix)| fix.min_start())
         .collect::<Vec<_>>();
     if candidates.is_empty() {
@@ -129,4 +128,41 @@ fn ruff_order(first: &str, second: &str, first_fix: &Fix, second_fix: &Fix) -> O
         .cmp(&(first == redefinition))
         .then_with(|| first_fix.min_start().cmp(&second_fix.min_start()))
         .then(goes_before(second, first).cmp(&goes_before(first, second)))
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_db::diagnostic::Diagnostic;
+    use ruff_diagnostics::{Edit, Fix, IsolationLevel};
+    use ruff_linter::{IOError, Violation};
+    use ruff_source_file::SourceFileBuilder;
+    use ruff_text_size::{TextRange, TextSize};
+
+    use super::fix_ruff_file;
+
+    const SOURCE: &str = "xxxxxxx";
+
+    fn inserting(at: u32, content: &str, isolation: IsolationLevel) -> Diagnostic {
+        let file = SourceFileBuilder::new("module.py", SOURCE).finish();
+        let mut diagnostic = IOError { message: content.to_owned() }.into_diagnostic(TextRange::default(), &file);
+        diagnostic.set_fix(Fix::safe_edit(Edit::insertion(content.to_owned(), TextSize::new(at))).isolate(isolation));
+        diagnostic
+    }
+
+    // The second fix of a group waits for the next pass, as does one starting where an applied edit ends, while a fix
+    // whose edits all applied already counts without editing again.
+    #[test]
+    fn ruff_fixes_skip_a_taken_group_and_a_touching_edit() {
+        let diagnostics = [
+            inserting(0, "a", IsolationLevel::Group(1)),
+            inserting(0, "a", IsolationLevel::NonOverlapping),
+            inserting(2, "c", IsolationLevel::NonOverlapping),
+            inserting(2, "d", IsolationLevel::NonOverlapping),
+            inserting(5, "b", IsolationLevel::Group(1)),
+        ];
+
+        let result = fix_ruff_file(SOURCE, diagnostics.iter()).expect("fixes apply");
+
+        assert_eq!((result.code.as_str(), result.fixes.counts().sum::<usize>()), ("axxcxxxxx", 3));
+    }
 }

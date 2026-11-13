@@ -93,3 +93,7 @@ def date_with_literal_percent(text):
 
 def date_variable_format(text, fmt):
     return moment.strptime(text, fmt).date()
+
+
+def date_trailing_percent(text):
+    return moment.strptime(text, "%Y-%").date()

@@ -305,3 +305,8 @@ def helper() -> None:
 
 for module_number in (1, 2):
     assert square_of(module_number)
+
+
+def test_set_and_attribute() -> None:
+    for value in {(1).real, 2}:
+        assert check(value)

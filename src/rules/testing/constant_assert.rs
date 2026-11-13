@@ -216,10 +216,6 @@ impl Value {
     }
 }
 
-// Longest string a repetition or concatenation builds; a longer one is not evaluated, so the rule never allocates a
-// large string.
-const MAX_STR_LEN: usize = 4096;
-
 // Only literals, operators on them and `not` are evaluated; a name or a call is unknown, as its value can change.
 fn evaluate(expr: &Expr) -> Option<Value> {
     match expr {
@@ -254,12 +250,10 @@ fn evaluate(expr: &Expr) -> Option<Value> {
             last
         }
         Expr::Compare(ast::ExprCompare { ops, operands, .. }) => {
-            let mut previous = evaluate(operands.first()?)?;
+            let values = operands.iter().map(evaluate).collect::<Option<Vec<_>>>()?;
             let mut all_hold = true;
-            for (op, operand) in ops.iter().zip(&operands[1..]) {
-                let next = evaluate(operand)?;
-                all_hold &= compare(&previous, *op, &next)?;
-                previous = next;
+            for (op, [left, right]) in ops.iter().zip(values.array_windows()) {
+                all_hold &= compare(left, *op, right)?;
             }
             Some(Value::Bool(all_hold))
         }
@@ -268,6 +262,9 @@ fn evaluate(expr: &Expr) -> Option<Value> {
 }
 
 fn binary(left: Value, op: Operator, right: Value) -> Option<Value> {
+    // Longest string a repetition or concatenation builds; a longer one is not evaluated, so the rule never allocates a
+    // large string.
+    const MAX_STR_LEN: usize = 4096;
     match (op, left, right) {
         (Operator::Add, Value::Str(left), Value::Str(right)) => {
             (left.len().saturating_add(right.len()) <= MAX_STR_LEN).then(|| Value::Str(left + &right))

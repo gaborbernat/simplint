@@ -8,7 +8,7 @@ use super::declared_outer;
 use crate::syntax::{alias_root_binding, last_segment, pattern_capture};
 
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
-pub(in crate::rules::logic) const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
+pub(crate) const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
 
 // Walked once per function, not once per assignment.
 pub(in crate::rules::logic) struct Names<'a> {
@@ -23,6 +23,7 @@ pub(in crate::rules::logic) struct Names<'a> {
     in_annotation: bool,
     // Whether the function reads its locals by name, which keeps every name alive.
     pub(in crate::rules::logic) reads_locals: bool,
+    pub(in crate::rules::logic) reads_by_text: bool,
 }
 
 impl<'a> Names<'a> {
@@ -34,6 +35,7 @@ impl<'a> Names<'a> {
             string_reads: FxHashSet::default(),
             in_annotation: false,
             reads_locals: false,
+            reads_by_text: false,
         };
         names.visit_body(body);
         names
@@ -79,7 +81,9 @@ impl<'a> Visitor<'a> for Names<'a> {
             Expr::Name(name) => {
                 self.mentions.entry(name.id.as_str()).or_default().push((name.range, name.ctx));
                 self.reads_locals |= LOCALS_READERS.contains(&name.id.as_str());
+                self.reads_by_text |= reads_by_text(name.id.as_str());
             }
+            Expr::Attribute(attribute) => self.reads_by_text |= reads_by_text(attribute.attr.as_str()),
             Expr::StringLiteral(string) if self.in_annotation => self.read_forward_reference(string),
             Expr::Call(ast::ExprCall { func, arguments, .. }) if last_segment(func) == Some("ForwardRef") => {
                 for argument in &arguments.args {
@@ -92,6 +96,13 @@ impl<'a> Visitor<'a> for Names<'a> {
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+// Whether a name or an attribute may run code that reads a name by its text: a locals reader, `globals`, or an
+// `exec`-like function such as `six.exec_`. Wider than the locals readers, for a rule that moves code rather than
+// removing a name.
+fn reads_by_text(name: &str) -> bool {
+    LOCALS_READERS.contains(&name) || name == "globals" || name.ends_with("exec") || name.ends_with("exec_")
 }
 
 impl Names<'_> {

@@ -39,13 +39,27 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
         ("tests/test_docs.py", &test),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    common::assert_clean(root.path(), "SMP402");
     let unread = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
         ("tests/test_docs.py", "from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    pass\n"),
     ]);
     assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`engine` is in `__all__`"));
+}
+
+// A loop at module level unpacks its string rows into each name of its target, a list target as a tuple one.
+#[test_case("for name, value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "tuple_target")]
+#[test_case("for [name, value] in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "list_target")]
+#[test_case("for name, holder.value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "attribute_in_the_target")]
+fn names_read_in_module_level_loops_are_used(header: &str) {
+    let test = format!("from docs import tutorial\n\n{header}    setattr(tutorial, name, None)\n");
+    let root = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
+        ("tests/test_docs.py", &test),
+    ]);
+    common::assert_clean(root.path(), "SMP402");
 }
 
 // A loop over anything but string rows of the same width, whose items the run cannot know, names no attribute, and
@@ -223,8 +237,7 @@ fn nested_loops_restore_the_outer_name() {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
-            what \
-             other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+             what other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }
@@ -319,7 +332,7 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
 fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[("docs/__init__.py", ""), ("docs/tutorial.py", "LIMIT = 3\n"), ("tests/test_docs.py", &test)]);
-    assert_eq!(check(root.path(), &["--select", "SMP601"]).1, common::native(common::PASSED));
+    common::assert_clean(root.path(), "SMP601");
     let unpatched = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "LIMIT = 3\n"),
@@ -366,8 +379,7 @@ fn setattr_on_a_non_module_writes_no_module_variable(test: &str) {
         check(root.path(), &["--select", "SMP601"]).1,
         common::native(
             "docs/tutorial.py:1:1: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -504,8 +516,7 @@ fn docstring_mention_does_not_keep_a_constant() {
         check(root.path(), &["--select", "SMP202"]).1,
         common::native(
             "pkg/helpers.py:1:1: SMP202 `_LIMIT` is used by one function only; define it there\nFound 1 error.\n1 \
-            unsafe fix \
-             available with `--fix --unsafe-fixes`.\n"
+             unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

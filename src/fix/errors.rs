@@ -28,13 +28,7 @@ impl FixBug {
             Self::BrokenSyntax { transformed, rules, error } => {
                 report_broken_syntax(path, transformed, rules, error, SIMPLINT);
             }
-            Self::NotConverging { rules } => report_bug(
-                &format!("Failed to converge after {MAX_ITERATIONS} iterations."),
-                "Infinite%20loop",
-                path,
-                rules,
-                SIMPLINT,
-            ),
+            Self::NotConverging { rules } => report_not_converging(path, rules, SIMPLINT),
         }
     }
 }
@@ -86,13 +80,7 @@ pub fn ruff_failed_to_converge(path: &Path, iterations: usize, transformed: &str
             relativize_path(path),
         );
     } else {
-        report_bug(
-            &format!("Failed to converge after {MAX_ITERATIONS} iterations."),
-            "Infinite%20loop",
-            path,
-            &rules,
-            RUFF,
-        );
+        report_not_converging(path, &rules, RUFF);
     }
     true
 }
@@ -114,6 +102,10 @@ fn report_broken_syntax(path: &Path, transformed: &str, rules: &str, error: &str
     } else {
         report_bug("Fix introduced a syntax error. Reverting all changes.", "Fix%20error", path, rules, tool);
     }
+}
+
+fn report_not_converging(path: &Path, rules: &str, tool: Tool) {
+    report_bug(&format!("Failed to converge after {MAX_ITERATIONS} iterations."), "Infinite%20loop", path, rules, tool);
 }
 
 fn fixed_codes(fixed: &FixTable) -> String {

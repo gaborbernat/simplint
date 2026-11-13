@@ -376,3 +376,28 @@ def inlined_after_parameter(items: list[int], log: list[int]) -> None:
 def inlined_pure_after_formatted_name(stack: list[int], top: int) -> str:
     shown = top + 1
     return f"{stack} after popping {shown}"
+
+
+def counted(items: list[int]) -> int:
+    count = items.count(1)
+    return count * 2
+
+
+def paired() -> tuple[int, ...]:
+    pair = 1, 2
+    return pair * 2
+
+
+def decorated_reader(items: list[int]) -> object:
+    size = len(items)
+
+    @staticmethod
+    def helper() -> int:
+        return size
+
+    return helper
+
+
+def any_listed(first: bool, second: bool) -> bool:
+    flags = [first, second]
+    return any(flags)

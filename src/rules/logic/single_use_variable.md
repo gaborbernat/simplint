@@ -249,6 +249,19 @@ def total_price(prices: list[float]) -> str:
       print(next(stream))
   ```
 
+- **A weak reference**: a call to `weakref.ref`, `weakref.proxy` or `weakref.WeakMethod`. Inlined, the weak reference is
+  dropped right after the read, so code that counts or relies on it, as `weakref.getweakrefcount` does, sees it gone.
+
+  ```python ok
+  import weakref
+
+
+  def count(node: object) -> int:
+      reference = weakref.ref(node)
+      print(reference())
+      return weakref.getweakrefcount(node)
+  ```
+
 - **A next statement that is `return name` in a function that does not yield**: Ruff's
   [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) (RET504) covers it, so this rule leaves it
   to Ruff whether or not the project selects that rule. RET504 skips a function that yields, so a generator's return is

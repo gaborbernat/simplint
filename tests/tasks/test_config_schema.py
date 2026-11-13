@@ -19,8 +19,11 @@ _VALIDATOR: Final[jsonschema.Draft7Validator] = jsonschema.Draft7Validator(_SCHE
 
 
 def _example_sources() -> list[str]:
-    examples = [example for rule in rule_entries() for example in rule["examples"].get("parsed", [])]
-    return [example["config"]["source"] for example in examples if example["config"] is not None]
+    sources: list[str] = []
+    for rule in rule_entries():
+        parsed = rule["examples"].get("parsed", [])
+        sources.extend(example["config"]["source"] for example in parsed if example["config"] is not None)
+    return sources
 
 
 def _simplint_tables(sources: list[str]) -> list[Table]:

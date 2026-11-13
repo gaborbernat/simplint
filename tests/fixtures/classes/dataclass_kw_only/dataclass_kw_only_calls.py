@@ -4,6 +4,8 @@ import functools
 from dataclasses import KW_ONLY, InitVar, dataclass, field
 from typing import ClassVar, Generic, TypeVar
 
+from dc_bases import ImportedBase, LaterBase
+
 Item = TypeVar("Item")
 
 
@@ -121,4 +123,18 @@ class Foreign(functools.partial):
 
 
 class Registry(metaclass=type):
+    pass
+
+
+@dataclass
+class FromImported(ImportedBase):
+    value: int
+
+
+@dataclass
+class FromLater(LaterBase):
+    value: int
+
+
+class LaterBase:
     pass

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rayon::prelude::*;
 use ruff_db::files::{File, system_path_to_file};
-use ruff_db::system::{OsSystem, SystemPathBuf};
+use ruff_db::system::{OsSystem, System, SystemPathBuf};
 use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_python_ast::PythonVersion;
 use ruff_text_size::TextRange;
@@ -17,9 +17,9 @@ use ty_module_resolver::{
 };
 
 use crate::project::constructors::{NameUse, UseKind};
-use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames};
+use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames, Signature};
 use crate::project::{Ending, FileFacts};
-use crate::syntax::is_stdlib_root;
+use crate::syntax::{is_stdlib_root, last_dotted_segment};
 
 use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
@@ -44,27 +44,29 @@ pub struct ImportResolver {
 
 impl ImportResolver {
     pub fn new<'a>(
+        cwd: &Path,
         roots: &SearchRoots,
         entry_roots: impl IntoIterator<Item = &'a Path>,
         coverage: impl IntoIterator<Item = (&'a Path, &'a Path)>,
     ) -> Result<Self> {
-        let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
+        let cwd = SystemPathBuf::from_path_buf(cwd.to_path_buf())
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
         let src_roots: Vec<SystemPathBuf> =
             roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
-        let paths = resolve_search_paths(&system, src_roots.clone(), None)?;
+        let paths = search_paths(&system, src_roots.clone());
         // Like the source roots, a non-UTF-8 directory is no search path, so its entry points stay unresolved.
-        let entry_paths = entry_roots
+        let entry_paths: FxHashMap<_, _> = entry_roots
             .into_iter()
             .unique()
-            .filter_map(|root| Some((root, SystemPathBuf::from_path_buf(root.to_path_buf()).ok()?)))
-            .map(|(root, system_root)| {
-                let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
-                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+            .filter_map(|root| {
+                SystemPathBuf::from_path_buf(root.to_path_buf()).ok().map(|system_root| {
+                    let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
+                    (root.to_path_buf(), search_paths(&system, search_roots))
+                })
             })
-            .collect::<Result<FxHashMap<_, _>>>()?;
-        let coverage_paths = coverage
+            .collect();
+        let coverage_paths: FxHashMap<_, _> = coverage
             .into_iter()
             .into_group_map()
             .into_iter()
@@ -78,9 +80,9 @@ impl ImportResolver {
                             .filter_map(|directory| SystemPathBuf::from_path_buf(directory.to_path_buf()).ok()),
                     )
                     .collect();
-                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+                (root.to_path_buf(), search_paths(&system, search_roots))
             })
-            .collect::<Result<FxHashMap<_, _>>>()?;
+            .collect();
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
         for paths in entry_paths.values().chain(coverage_paths.values()) {
@@ -99,10 +101,10 @@ impl ImportResolver {
         })
     }
 
+    // Only a file with diagnostics gets fixed, and such a file parsed, so the index resolved it.
     pub fn forget(&mut self, path: &Path) {
-        if let Some(id) = self.files.get(path) {
-            self.modules.remove(&id);
-        }
+        let id = self.files.get(path).expect("a fixed file was indexed");
+        self.modules.remove(&id);
     }
 
     pub fn release(&mut self, ending: Ending) {
@@ -156,8 +158,7 @@ impl ImportResolver {
             })
             .collect();
         for (id, facts) in fresh.into_iter().flatten() {
-            let facts = facts.map_files(|path| FileIds::intern(&mut self.files, &path));
-            self.modules.insert(id, facts);
+            self.modules.insert(id, facts.map_files(|path| FileIds::intern(&mut self.files, &path)));
         }
         ids
     }
@@ -201,8 +202,11 @@ pub(super) struct ModuleFacts<F> {
     pub(super) class_tuples: Vec<(String, Vec<(F, String)>)>,
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
     pub(super) functions: Vec<String>,
+    pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<(String, String, F)>,
     pub(super) runtime: Vec<(F, TextRange)>,
+    // The modules whose runtime import runs a file of the run.
+    pub(super) runtime_modules: Vec<String>,
     pub(super) computed_writes: Vec<F>,
     pub(super) written: Vec<(F, Vec<String>)>,
 }
@@ -242,12 +246,14 @@ impl<F> ModuleFacts<F> {
                 })
                 .collect(),
             functions: self.functions,
+            signatures: self.signatures,
             plain_modules: self
                 .plain_modules
                 .into_iter()
                 .map(|(bound, module, file)| (bound, module, to(file)))
                 .collect(),
             runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
+            runtime_modules: self.runtime_modules,
             computed_writes: self.computed_writes.into_iter().map(&mut to).collect(),
             written: self.written.into_iter().map(|(file, names)| (to(file), names)).collect(),
         }
@@ -327,7 +333,7 @@ impl ModuleFacts<PathBuf> {
             facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let class_tuples = class_tuples(&facts.class_tuples, &resolved);
-        let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
+        let (runtime, runtime_modules) = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         // A module may write its own names under a computed name too, so its own file stays.
         let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
         let classes = facts
@@ -356,6 +362,7 @@ impl ModuleFacts<PathBuf> {
             class_tuples,
             classes,
             functions: facts.functions.clone(),
+            signatures: facts.signatures.clone(),
             plain_modules: facts
                 .plain_modules
                 .iter()
@@ -363,6 +370,7 @@ impl ModuleFacts<PathBuf> {
                 .filter(|(_, _, file)| file != &own)
                 .collect(),
             runtime,
+            runtime_modules,
             computed_writes,
             written,
         }
@@ -379,7 +387,9 @@ pub(super) fn resolve<'db>(
 ) -> Option<PathBuf> {
     let name = ModuleName::new(module)?;
     let module = locate(db, environment, importing, &name)?;
-    let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
+    // Ruff's module database has no vendored standard library, so every file it resolves is on disk.
+    let path =
+        module.file(db)?.path(db).as_system_path().expect("a resolved module is on disk").as_std_path().to_path_buf();
     Some(normalized(&path.with_extension("py")))
 }
 
@@ -397,8 +407,16 @@ fn locate<'db>(
     }
 }
 
+// Resolving fails only for an empty path, and a module's path never is one.
 pub(super) fn normalized(path: &Path) -> PathBuf {
-    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+    std::path::absolute(path).expect("a module path is not empty")
+}
+
+// Each root was a directory when the run listed it, and one removed since holds no module to find, so it is left out
+// rather than failing the run.
+fn search_paths(system: &OsSystem, roots: Vec<SystemPathBuf>) -> SearchPaths {
+    let roots = roots.into_iter().filter(|root| system.is_directory(root)).collect();
+    resolve_search_paths(system, roots, None).expect("directories are valid search roots")
 }
 
 // Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
@@ -446,7 +464,7 @@ fn unreached_names<'f>(
             };
             let package = resolved(top)?;
             let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
-            let last = rest.rsplit_once('.').map_or(rest, |(_, name)| name);
+            let last = last_dotted_segment(rest);
             resolved(module).is_none().then(|| UnreachedPath {
                 package: directory,
                 last: last.to_owned(),
@@ -466,14 +484,15 @@ fn star_targets<'f>(
     for module in modules {
         match resolve(module) {
             Some(file) => stars.extend((file != own).then_some(file)),
-            None => unresolved.push(module.rsplit_once('.').map_or(module.as_str(), |(_, name)| name).to_owned()),
+            None => unresolved.push(last_dotted_segment(module).to_owned()),
         }
     }
     (stars, unresolved)
 }
 
 // A module that resolves to no file, such as `distutils.log` where the standard library has no `distutils` and the
-// run shims its own `log`, may be the run's file of the same last name, so its calls read that file.
+// run shims its own `log`, may be the run's file of the same last name, so its calls read that file. A call that drops
+// its value counts too: the rules that judge a function by the arguments of its calls would otherwise miss it.
 fn constructor_reads<'f>(
     module: &'f str,
     uses: &[NameUse],
@@ -484,12 +503,11 @@ fn constructor_reads<'f>(
     if let Some(file) = resolved(module) {
         return vec![(file, uses.to_vec())];
     }
-    let reads: Vec<NameUse> =
-        uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
+    let reads: Vec<NameUse> = uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_))).cloned().collect();
     if reads.is_empty() {
         return Vec::new();
     }
-    let last = module.rsplit_once('.').map_or(module, |(_, name)| name);
+    let last = last_dotted_segment(module);
     match run.namesakes.get(last) {
         Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
         _ => Vec::new(),
@@ -521,17 +539,18 @@ fn class_tuples<'f>(
         .collect()
 }
 
-// The files each runtime import statement runs, with the statement's range. A `from` import reads each name as a
-// submodule when one exists, and from the module otherwise, as Python does. An import a version check keeps to Pythons
-// older than the project's target never runs.
+// The files each runtime import statement runs, with the statement's range, and the modules whose import runs one. A
+// `from` import reads each name as a submodule when one exists, and from the module otherwise, as Python does. An
+// import a version check keeps to Pythons older than the project's target never runs.
 fn runtime_targets<'f>(
     sites: &'f [ImportSite],
     python_version: PythonVersion,
     resolved: &impl Fn(&'f str) -> Option<PathBuf>,
     own: &Path,
-) -> Vec<(PathBuf, TextRange)> {
+) -> (Vec<(PathBuf, TextRange)>, Vec<String>) {
     let version = (python_version.major, python_version.minor);
     let mut runtime = Vec::new();
+    let mut modules = Vec::new();
     for site in sites.iter().filter(|site| site.below.is_none_or(|below| version < below)) {
         let mut targets = Vec::new();
         if site.submodules.is_empty() {
@@ -548,7 +567,11 @@ fn runtime_targets<'f>(
                 targets.extend(resolved(&site.module));
             }
         }
+        let before = runtime.len();
         runtime.extend(targets.into_iter().filter(|file| file != own).map(|file| (file, site.range())));
+        if runtime.len() > before {
+            modules.push(site.module.clone());
+        }
     }
-    runtime
+    (runtime, modules)
 }

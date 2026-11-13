@@ -84,3 +84,9 @@ class DefaultOptions:
 @dataclass
 class PlainRuntime:
     text: str
+
+
+@dataclass
+class Labelled:
+    name: str = ""
+    PlainRuntime.label: str = ""

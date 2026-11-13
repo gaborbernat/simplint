@@ -16,6 +16,7 @@ mod rst_returns;
 mod rst_type_field;
 mod rst_unknown_attribute;
 mod rst_unknown_param;
+mod rst_unraised_exception;
 mod test_module_docstring;
 mod undocumented_public_api;
 
@@ -36,13 +37,14 @@ pub(crate) use rst_returns::rst_returns;
 pub(crate) use rst_type_field::rst_type_field;
 pub(crate) use rst_unknown_attribute::rst_unknown_attribute;
 pub(crate) use rst_unknown_param::rst_unknown_param;
+pub(crate) use rst_unraised_exception::rst_unraised_exception;
 pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::map_callable;
 use ruff_python_ast::name::QualifiedName;
-use ruff_python_ast::{self as ast, Decorator, Expr, Stmt};
+use ruff_python_ast::{self as ast, Decorator, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
@@ -64,10 +66,6 @@ fn ruff_ignores_function(checker: &Checker, decorators: &[Decorator]) -> bool {
 // concatenated docstrings.
 fn ruff_reports_empty_docstring(checker: &Checker, literal: &ast::ExprStringLiteral) -> bool {
     literal.as_single_part_string().is_some_and(|part| checker.text(part.content_range()).trim().is_empty())
-}
-
-fn raised_class(exc: &Expr) -> &Expr {
-    exc.as_call_expr().map_or(exc, |call| call.func.as_ref())
 }
 
 // Sphinx autodoc reads a string after a variable, or a `#:` comment above it or at the end of its line.

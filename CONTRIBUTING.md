@@ -166,8 +166,8 @@ Choose an installed Python version if 3.15 is unavailable. `tox` skips missing i
 
 1. Add a line to the `rules!` table in the rule registry: variant, code, kebab-case name, one-line summary, fix
    availability, the rule's module, and its hooks: `module` for a rule that reads the whole module, or the node kinds it
-   reacts to, such as `statement` and `expression`. The rule set holds at most 128 rules, which a compile-time assertion
-   checks.
+   reacts to, such as `statement` and `expression`. The rule set holds at most 1024 rules, which a compile-time
+   assertion checks.
 1. Write the rule in its own file in the family's directory, named after the rule:
    - A `module` rule is a function of that name, re-exported from the family's module.
    - A node rule's module is public in the family and holds a function for each hook. Prefer a node rule to walking the
@@ -321,6 +321,14 @@ uv run tasks/stdlib_submodules.py ~/cpython
 ```
 
 The blobless clone keeps every tag and branch, which the script reads through `git ls-tree`, without the sources.
+
+The rules that compare exception classes read a generated table of the standard exception classes and their bases.
+Regenerate it when a supported Python version is added or dropped, passing the oldest and the newest interpreter; a
+class whose bases differ between them is left out:
+
+```bash
+uv run tasks/exception_hierarchy.py python3.10 python3.15
+```
 
 ## Before committing
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 // A source root under `src` holds the `.pth` file the interpreter reads, as a project laid out with `src/` does.
@@ -11,7 +11,7 @@ fn startup_pth_under_src_keeps_the_name() {
         ("src/pkg/hook.py", HOOK_PROJECT),
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP408");
     let without_pth = project(&[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/hook.py", HOOK_PROJECT),
@@ -54,10 +54,7 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
             "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A `.pth` file that is not UTF-8 is skipped with a warning, as an unreadable Python file is, so the names it would

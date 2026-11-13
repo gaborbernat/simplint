@@ -145,8 +145,13 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
         ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         ("module.py", "def run() -> None:\n    pass\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP903"]).0, 1);
-    assert_eq!(check(root.path(), &["--select", "SMP903", "--config", "lint.select = [\"D103\"]"]).0, 0);
+    assert_eq!(
+        (
+            check(root.path(), &["--select", "SMP903"]).0,
+            check(root.path(), &["--select", "SMP903", "--config", "lint.select = [\"D103\"]"]).0
+        ),
+        (1, 0)
+    );
 }
 
 // Each case checks the file once, edits the file named, and checks again: the cache must check it again, so the second
@@ -282,6 +287,35 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     "SMP409",
     Change::Write("pyproject.toml", "[project]\nname = \"demo\"\n[tool.ruff]\nsrc = [\"src\"]\n"),
     (1, 0) ; "search_root_changed"
+)]
+// A project may require a distribution of its own name, which `unused-dependency` leaves alone until it is renamed.
+// The `py.typed` marker names the package, so the rename leaves it be.
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\ndependencies = [\"pkg\"]\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/py.typed", ""),
+    ],
+    "SMP313",
+    Change::Write("pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"pkg\"]\n"),
+    (0, 1) ; "project_renamed"
+)]
+// A test module beside it shows pytest collects from the directory, so the module it skips is reported.
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"),
+        ("tests/alpha_check.py", "def test_alpha() -> None:\n    assert True\n"),
+    ],
+    "SMP821",
+    Change::Write("tests/test_beta.py", "def test_beta() -> None:\n    assert True\n"),
+    (0, 1) ; "collected_test_module_added_beside"
+)]
+// A function another file calls becomes a coroutine, so the call that drops it is reported.
+#[test_case(
+    &[("helper.py", "def fetch() -> int:\n    return 1\n"), ("client.py", "from helper import fetch\n\nfetch()\n")],
+    "SMP555",
+    Change::Write("helper.py", "async def fetch() -> int:\n    return 1\n"),
+    (0, 1) ; "imported_function_becomes_a_coroutine"
 )]
 fn cached_result_is_checked_again_after_an_edit(
     files: &[(&str, &str)],
@@ -799,6 +833,17 @@ fn warm_run_warns_again_about_a_file_that_does_not_parse(flags: &[&str]) {
     assert_eq!((&first, &warm, warm.2.as_str()), (&fresh, &fresh, UNPARSED));
 }
 
+// A file that does not parse is cached without facts, so a warm run that indexes again, as another file changed, finds
+// none for it and still warns about it.
+#[test]
+fn file_that_does_not_parse_has_no_cached_facts() {
+    let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
+    let args = ["--select", "SMP101"];
+    check(root.path(), &args);
+    write_file(root.path(), "module.py", "y = 2\n");
+    assert_eq!(check(root.path(), &args), fresh_run(root.path(), &args));
+}
+
 #[test]
 fn file_that_parses_again_is_checked_again() {
     let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
@@ -1258,4 +1303,63 @@ fn private_import_is_checked_again_once_its_submodule_appears() {
         (cold.0, warm.0, warm.1.contains("re-export the names you use in `_a/__init__.py`"), warm == fresh),
         (1, 1, true, true)
     );
+}
+
+// The cache file goes to a temporary file renamed over it, so a build directory that takes no new file, or a
+// directory where the cache file goes, fails the write.
+#[cfg(unix)]
+#[test_case(false ; "read_only_directory")]
+#[test_case(true ; "directory_in_place_of_the_file")]
+fn cache_that_cannot_be_written_fails_the_run(blocked_by_directory: bool) {
+    let root = project(&[("module.py", CLEAN_MODULE)]);
+    check(root.path(), &["--select", "SMP101"]);
+    let directory = cache_dir(root.path());
+    if blocked_by_directory {
+        for file in cache_files(root.path()) {
+            fs::remove_file(&file).expect("remove");
+            fs::create_dir(&file).expect("create");
+        }
+    } else {
+        common::set_mode(&directory, 0o555);
+    }
+    fs::write(root.path().join("module.py"), "x = 1\n").expect("write");
+
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+
+    common::set_mode(&directory, 0o755);
+    let expected = if blocked_by_directory { "Failed to rename temporary cache file" } else { "temporary file" };
+    assert_eq!((code, stderr.contains(expected)), (2, true), "{stderr}");
+}
+
+// The `full` text goes beside the cache file, so a directory where it goes fails the write, whether the files lint
+// again or their stored reports are reused under new display settings.
+#[cfg(unix)]
+#[test_case("--preview" ; "linted")]
+#[test_case("--color=always" ; "reused")]
+fn full_text_that_cannot_be_written_fails_the_run(flag: &str) {
+    let root = project(&[("module.py", FIXABLE)]);
+    check(root.path(), &["--select", "SMP001,SMP901"]);
+    let reports_only = cache_files(root.path());
+    full_report(root.path(), &[], &[]);
+    for file in cache_files(root.path()).iter().filter(|file| !reports_only.contains(file)) {
+        fs::remove_file(file).expect("remove");
+        fs::create_dir(file).expect("create");
+    }
+
+    let (code, _, stderr) =
+        simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP001,SMP901", flag]);
+
+    assert_eq!((code, stderr.contains("Is a directory")), (2, true), "{stderr}");
+}
+
+// The cache keys files by their path as text, so a file whose name is not UTF-8 is linted on every run.
+#[cfg(unix)]
+#[test]
+fn file_whose_name_is_not_utf8_is_reported_on_a_warm_run() {
+    use std::os::unix::ffi::OsStrExt;
+    let root = empty_project();
+    fs::write(root.path().join(std::ffi::OsStr::from_bytes(b"name\xff.py")), "x = 1\n").expect("write");
+    let first = check(root.path(), &["--select", "SMP101"]);
+    let second = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!((first.0, &first, first.1.contains("Single-letter name")), (1, &second, true));
 }

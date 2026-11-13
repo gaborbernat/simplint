@@ -38,7 +38,7 @@ use self::visitor::{FactVisitor, grouped, top_level_bindings};
 pub(crate) use self::visitor::{FromImport, ImportBinding, qualified};
 use super::constructors::{CallContexts, Constructors};
 use super::receivers::{AttributeWrites, module_name};
-use crate::syntax::{Exports, dunder_all, module_statements};
+use crate::syntax::{Exports, dunder_all, module_statements, yields};
 
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
@@ -76,7 +76,10 @@ pub struct FileFacts {
     pub(super) classes: Vec<ClassBases>,
     // An import of one of these names may bind a function rather than a class.
     pub(super) functions: Vec<String>,
+    // The shape of each module-level function, which a call from another module checks its arguments against.
+    pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<String>,
+    pub(super) imported_modules: Vec<String>,
     pub(super) interface: Vec<Definition>,
     pub(super) runtime_imports: Vec<ImportSite>,
     pub(super) statements: Vec<Statement>,
@@ -84,6 +87,7 @@ pub struct FileFacts {
     // A file holds thousands of words, which as one string the cache reads back in one allocation.
     pub(super) string_words: String,
     pub(super) global_names: Vec<String>,
+    pub(super) bound_marks: Vec<String>,
     pub(super) source_digest: u64,
     // The search roots change the module paths a relative import resolves against, while the file stays the same.
     module_digest: u64,
@@ -180,7 +184,13 @@ impl FileFacts {
             class_tuples: visitor.class_tuples,
             classes,
             functions: module_functions(&parsed.syntax().body),
+            signatures: if parts.has(Parts::SIGNATURES) {
+                module_signatures(&parsed.syntax().body)
+            } else {
+                Vec::new()
+            },
             plain_modules: visitor.plain_modules,
+            imported_modules: visitor.imported_modules.into_iter().collect(),
             interface: interface(&parsed.syntax().body),
             fixture_requests: visitor.fixture_requests.into_iter().collect(),
             pytest_requests: visitor.pytest_requests.into_iter().collect(),
@@ -190,6 +200,7 @@ impl FileFacts {
             parts,
             string_words: string_words(scan.words),
             global_names: scan.global_names.into_iter().collect(),
+            bound_marks: scan.bound_marks.into_iter().collect(),
             source_digest: source_digest(source),
             module_digest: module_digest(module_path, importable),
         })
@@ -280,6 +291,46 @@ fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
                 .collect(),
         })
         .collect()
+}
+
+// A function's name, whether calling it makes a coroutine (an `async def` that does not yield), the names of its
+// positional parameters in order, and whether a decorator stands between its definition and what the name binds.
+#[derive(Clone, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct Signature {
+    pub name: String,
+    pub coroutine: bool,
+    pub positional: Vec<String>,
+    pub decorated: bool,
+}
+
+impl ruff_cache::CacheKey for Signature {
+    fn cache_key(&self, state: &mut ruff_cache::CacheKeyHasher) {
+        self.name.cache_key(state);
+        self.coroutine.cache_key(state);
+        self.positional.cache_key(state);
+        self.decorated.cache_key(state);
+    }
+}
+
+impl Signature {
+    pub fn of(function: &ast::StmtFunctionDef) -> Self {
+        let parameters = &function.parameters;
+        Self {
+            name: function.name.to_string(),
+            coroutine: function.is_async && !yields(&function.body),
+            positional: parameters
+                .posonlyargs
+                .iter()
+                .chain(&parameters.args)
+                .map(|parameter| parameter.name().to_string())
+                .collect(),
+            decorated: !function.decorator_list.is_empty(),
+        }
+    }
+}
+
+fn module_signatures(body: &[Stmt]) -> Vec<Signature> {
+    module_statements(body).filter_map(Stmt::as_function_def_stmt).map(Signature::of).collect()
 }
 
 fn module_functions(body: &[Stmt]) -> Vec<String> {
@@ -390,6 +441,13 @@ impl Parts {
     pub const REFLECTED_NAMES: Self = Self(1 << 10);
     // The modules a write under a computed name may set any name of, which a rename or move of their variables breaks.
     pub const COMPUTED_WRITES: Self = Self(1 << 11);
+    // The modules the file imports, which `unused-dependency` matches to the project's requirements.
+    pub const IMPORTED_MODULES: Self = Self(1 << 12);
+    // The positional parameters of the module's functions, which the rules that judge a call by its callee read.
+    pub const SIGNATURES: Self = Self(1 << 13);
+    // The marks bound to a name, as `C_EXT = pytest.mark.c_extension`, which a conftest may register through the name,
+    // so `unregistered-marker` leaves them alone.
+    pub const BOUND_MARKS: Self = Self(1 << 14);
 
     #[must_use]
     pub fn with(self, part: Self) -> Self {

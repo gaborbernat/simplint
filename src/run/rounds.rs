@@ -35,7 +35,6 @@ pub(super) fn index_and_lint<'f, T: Send>(
     work: &(dyn Fn(&DiscoveredFile) -> T + Sync),
 ) -> Result<Vec<Vec<T>>> {
     let start = Instant::now();
-    let linted: Vec<&RunFile> = files.iter().filter(|file| file.linted).collect();
     let inputs = IndexInputs {
         entry_points: &project.entry_points,
         build_hooks: &project.build_hooks,
@@ -44,12 +43,14 @@ pub(super) fn index_and_lint<'f, T: Send>(
         roles: &project.roles,
         test_modules: &project.test_modules,
         distribution_roots: &project.distribution_roots,
+        dependency_hosts: &project.dependency_hosts,
         docs,
         duplicate_statements: project.duplicate_statements,
         probed: project.probed,
         external,
     };
     let mut imports = ImportResolver::new(
+        plumbing.cwd,
         roots,
         project.entry_points.iter().map(|(root, _)| root.as_path()),
         project.coverage_paths.iter().map(|(root, directory)| (root.as_path(), directory.as_path())),
@@ -58,7 +59,7 @@ pub(super) fn index_and_lint<'f, T: Send>(
     let indexed = index_project(&paths, &facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.iter().flatten().count(), start.elapsed());
     let start = Instant::now();
-    let linted_files = &files[..linted.len()];
+    let linted_files = &files[..files.iter().filter(|file| file.linted).count()];
     let index = Index {
         facts: &mut facts,
         paths: &paths,

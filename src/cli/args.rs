@@ -366,8 +366,12 @@ impl CheckCommand {
         format.extend(switch("respect-gitignore", self.respect_gitignore, self.no_respect_gitignore));
         format.extend(switch("force-exclude", self.force_exclude, self.no_force_exclude));
         format.extend(switch("preview", self.preview, self.no_preview));
+        // Ruff's parser checks again that a `--config` file exists, which a watched run may have removed since.
         let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)?.global_options;
-        let (_, config_arguments) = FormatCommand::try_parse_from(format)?.partition(ruff_global)?;
+        // These flags passed simplint's parser, and Ruff's takes any value of theirs: a file pattern parses as a string.
+        let (_, config_arguments) = FormatCommand::try_parse_from(format)
+            .expect("Ruff's parser takes the flags simplint parsed")
+            .partition(ruff_global)?;
         let arguments = SimplintArguments {
             config_file,
             isolated: global_options.isolated,
@@ -375,6 +379,7 @@ impl CheckCommand {
                 inline,
                 flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli),
             },
+            cwd,
         };
         Ok((config_arguments, arguments))
     }
@@ -401,14 +406,8 @@ impl CheckCommand {
             fixable: self.fixable.clone(),
             extend_fixable: self.extend_fixable.clone(),
             unfixable: chained(&self.unfixable, &self.extend_unfixable),
-            extend_unfixable: None,
-            extend_safe_fixes: None,
-            extend_unsafe_fixes: None,
             per_file_ignores: self.per_file_ignores.as_deref().map(collect_per_file_ignores),
             extend_per_file_ignores: self.extend_per_file_ignores.as_deref().map(collect_per_file_ignores),
-            project_kind: None,
-            api_packages: None,
-            docstring_style: None,
             ..SimplintOptions::default()
         }
     }
@@ -452,6 +451,7 @@ pub struct SimplintArguments {
     pub(crate) config_file: Option<PathBuf>,
     pub(crate) isolated: bool,
     pub(crate) overrides: Overrides,
+    pub(crate) cwd: PathBuf,
 }
 
 #[derive(Parser)]
@@ -617,4 +617,26 @@ fn without_choices<T>(result: Result<T, clap::Error>) -> Result<T, clap::Error> 
         error.remove(ContextKind::ValidValue);
         error
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::{Args, FromArgMatches};
+
+    use super::{CheckCommand, GlobalConfigArgs};
+
+    // A watched run partitions the arguments again after each change, by when the `--config` file may be gone.
+    #[test]
+    fn configuration_file_removed_since_parsing_fails_the_partition() {
+        let directory = tempfile::TempDir::new().expect("temporary directory");
+        let config = directory.path().join("ruff.toml");
+        std::fs::write(&config, "line-length = 100\n").expect("write the configuration");
+        let matches = GlobalConfigArgs::augment_args(CheckCommand::augment_args(clap::Command::new("check")))
+            .get_matches_from(["check".as_ref(), "--config".as_ref(), config.as_os_str()]);
+        let check = CheckCommand::from_arg_matches(&matches).expect("the check arguments parse");
+        let global_options = GlobalConfigArgs::from_arg_matches(&matches).expect("the global arguments parse");
+        std::fs::remove_file(&config).expect("remove the configuration");
+
+        assert!(check.partition(&global_options).is_err());
+    }
 }

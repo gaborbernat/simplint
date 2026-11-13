@@ -2,16 +2,19 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-17:9 SMP203 `now` belongs with the alternative constructors, above `describe` [fix: Move `now` above `describe`]
-41:9 SMP203 `parse` belongs with the alternative constructors, above `describe`
-45:9 SMP203 `load` belongs with the alternative constructors, above `describe`
-49:9 SMP203 `quoted` belongs with the alternative constructors, above `describe`
-53:9 SMP203 `named` belongs with the alternative constructors, above `describe`
-78:9 SMP203 `copied` belongs with the alternative constructors, above `describe` [fix: Move `copied` above `describe`]
-111:9 SMP203 `fromstamp` belongs with the alternative constructors, above `describe` [fix: Move `fromstamp` above `describe`]
+19:9 SMP203 `now` belongs with the alternative constructors, above `describe` [fix: Move `now` above `describe`]
+43:9 SMP203 `parse` belongs with the alternative constructors, above `describe`
+47:9 SMP203 `load` belongs with the alternative constructors, above `describe`
+51:9 SMP203 `extended` belongs with the alternative constructors, above `describe`
+55:9 SMP203 `quoted` belongs with the alternative constructors, above `describe`
+59:9 SMP203 `named` belongs with the alternative constructors, above `describe`
+84:9 SMP203 `copied` belongs with the alternative constructors, above `describe` [fix: Move `copied` above `describe`]
+117:9 SMP203 `fromstamp` belongs with the alternative constructors, above `describe` [fix: Move `fromstamp` above `describe`]
 --- fixed (3 applied, 0 remaining) ---
 import typing
 from typing import Self
+
+import typing_extensions
 
 
 class Date:
@@ -38,6 +41,10 @@ class Date:
 
     @classmethod
     def load(cls, text: str) -> typing.Self:
+        return cls.registry[text]
+
+    @classmethod
+    def extended(cls, text: str) -> typing_extensions.Self:
         return cls.registry[text]
 
     @classmethod

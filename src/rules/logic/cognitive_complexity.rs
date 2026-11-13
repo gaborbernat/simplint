@@ -24,7 +24,9 @@ pub fn cognitive_complexity(checker: &Checker) {
 
 // `nesting` is the depth an inlined body starts at, so its increments grow from there.
 pub(super) fn score(body: &[Stmt], nesting: usize) -> usize {
-    Score::of(body, nesting).total
+    let mut score = Score { nesting, ..Score::default() };
+    score.visit_body(body);
+    score.total
 }
 
 // The nesting an inlined body starting at `range` would have, or `None` when the walk does not reach `range`.
@@ -48,12 +50,6 @@ struct Score {
 }
 
 impl Score {
-    fn of(body: &[Stmt], nesting: usize) -> Self {
-        let mut score = Score { nesting, ..Score::default() };
-        score.visit_body(body);
-        score
-    }
-
     fn nested(&mut self, visit: impl FnOnce(&mut Self)) {
         self.nesting += 1;
         visit(self);

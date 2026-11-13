@@ -21,6 +21,7 @@ pub(super) struct Scan<'a> {
     pub(super) discarded: FxHashSet<TextRange>,
     pub(super) words: FxHashSet<String>,
     pub(super) global_names: BTreeSet<String>,
+    pub(super) bound_marks: BTreeSet<String>,
     pub(super) modules: FxHashSet<String>,
     // Read once a body is walked, as the names it binds to modules may come later in the body.
     returns: Vec<Vec<&'a Expr>>,
@@ -35,6 +36,7 @@ impl<'a> Scan<'a> {
             discarded: FxHashSet::default(),
             words: FxHashSet::default(),
             global_names: BTreeSet::new(),
+            bound_marks: BTreeSet::new(),
             modules: FxHashSet::default(),
             returns: Vec::new(),
         };
@@ -49,6 +51,12 @@ impl<'a> Visitor<'a> for Scan<'a> {
         // reads a name in it.
         if is_prose_statement(stmt) {
             return;
+        }
+        // `obj.name += 1` reads the attribute before it stores it.
+        if let Stmt::AugAssign(ast::StmtAugAssign { target, .. }) = stmt
+            && let Expr::Attribute(ast::ExprAttribute { attr, .. }) = target.as_ref()
+        {
+            *self.attribute_loads.entry(attr.to_string()).or_default() += 1;
         }
         self.open(stmt);
         visitor::walk_stmt(self, stmt);
@@ -109,6 +117,17 @@ impl<'a> Scan<'a> {
         }
     }
 
+    // A conftest that binds a mark to a name, as `C_EXT = pytest.mark.c_extension`, registers it through
+    // `config.addinivalue_line("markers", f"{C_EXT.name}: ...")`, which spells no name in a string.
+    fn add_bound_mark(&mut self, value: &Expr) {
+        if self.parts.has(Parts::BOUND_MARKS)
+            && let Expr::Attribute(ast::ExprAttribute { value: marks, attr, .. }) = value
+            && UnqualifiedName::from_expr(marks).is_some_and(|name| name.segments().last() == Some(&"mark"))
+        {
+            self.bound_marks.insert(attr.to_string());
+        }
+    }
+
     // Before a statement's children, since a binding is read by the statements that follow it.
     fn open(&mut self, stmt: &'a Stmt) {
         match stmt {
@@ -116,7 +135,10 @@ impl<'a> Scan<'a> {
             Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
                 self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
             }
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => self.bind_module(targets, Some(value), None),
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                self.add_bound_mark(value);
+                self.bind_module(targets, Some(value), None);
+            }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, value, annotation, .. }) => {
                 self.bind_module(std::slice::from_ref(target.as_ref()), value.as_deref(), Some(annotation));
             }
@@ -153,8 +175,7 @@ impl<'a> Scan<'a> {
     fn close(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
-                let returns = self.returns.pop().unwrap_or_default();
-                if returns.into_iter().any(|value| self.is_module(value)) {
+                if self.returns.pop().unwrap_or_default().into_iter().any(|value| self.is_module(value)) {
                     self.modules.insert(function.name.to_string());
                     self.modules.extend(
                         function
@@ -187,4 +208,29 @@ pub(super) fn string_words(words: FxHashSet<String>) -> String {
     let mut words: Vec<String> = words.into_iter().collect();
     words.sort_unstable();
     words.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+
+    use super::{Parts, Scan};
+
+    // A `return` outside any function, which the parser accepts, returns from no fixture.
+    #[test]
+    fn module_level_return_returns_no_module() {
+        let parsed = parse_module("import importlib\n\nreturn importlib.import_module(\"pkg\")\n").expect("parses");
+        assert!(Scan::of(&parsed.syntax().body, Parts::default()).modules.is_empty());
+    }
+
+    // Only a literal `name=` of a decorator call renames the fixture; a bare decorator or a computed name adds none.
+    #[test]
+    fn fixture_returning_a_module_is_known_by_its_literal_names() {
+        let source = "import importlib\n\n\n@pytest.fixture\n@other(name=computed)\n@pytest.fixture(name=\"mod\")\ndef \
+                      fixture():\n    return importlib.import_module(\"pkg\")\n";
+        let parsed = parse_module(source).expect("parses");
+        let mut modules: Vec<String> = Scan::of(&parsed.syntax().body, Parts::default()).modules.into_iter().collect();
+        modules.sort_unstable();
+        assert_eq!(modules, ["fixture", "mod"]);
+    }
 }

@@ -1,5 +1,4 @@
-Flags `from __future__ import annotations` when the target version is Python 3.14 or newer. Annotations are evaluated
-lazily there by default, so the import no longer does what it was added for.
+Flags `from __future__ import annotations` when the target version is Python 3.14 or newer.
 
 ## Why is this bad?
 

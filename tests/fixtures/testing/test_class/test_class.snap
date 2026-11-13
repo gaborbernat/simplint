@@ -21,7 +21,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 117:7 SMP801 Test class `TestCommented`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestCommented` into module-level functions]
 129:7 SMP801 Test class `TestDetached`; use module-level test functions with a name prefix
 139:7 SMP801 Test class `TestHeader`; use module-level test functions with a name prefix
---- fixed (7 applied, 12 remaining) ---
+144:7 SMP801 Test class `TestQualname`; use module-level test functions with a name prefix
+149:7 SMP801 Test class `TestWithoutSelf`; use module-level test functions with a name prefix
+--- fixed (7 applied, 14 remaining) ---
 import pytest
 
 
@@ -159,3 +161,13 @@ class TestDetached:
 class TestHeader:  # grouped for the report
     def test_first(self) -> None:
         assert True
+
+
+class TestQualname:
+    def test_name(self) -> None:
+        assert self.test_name.__qualname__ == "TestQualname.test_name"
+
+
+class TestWithoutSelf:
+    def test_bound_elsewhere(this) -> None:
+        assert this

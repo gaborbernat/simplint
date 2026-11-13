@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:7 SMP711 `Wide` holds 13 instance attributes, over the limit of 12; group related ones into classes of their own
+28:7 SMP711 `Record` holds 13 instance attributes, over the limit of 12; group related ones into classes of their own
+47:7 SMP711 `Mixed` holds 14 instance attributes, over the limit of 12; group related ones into classes of their own
+100:7 SMP711 `Unpacked` holds 13 instance attributes, over the limit of 12; group related ones into classes of their own

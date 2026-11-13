@@ -1,7 +1,8 @@
+use rustc_hash::FxHashSet;
+
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, is_internal};
-use rustc_hash::FxHashSet;
 
 pub fn rst_missing_param(checker: &Checker) {
     for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {

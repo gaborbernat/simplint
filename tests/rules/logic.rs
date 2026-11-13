@@ -80,6 +80,7 @@ use crate::common::{self, check, read};
 )]
 #[test_case("string-concatenation", "string_concatenation_class_values.py", None ; "string_concatenation_class_values")]
 #[test_case("string-concatenation", "string_concatenation_bindings.py", None ; "string_concatenation_bindings")]
+#[test_case("default-argument-value", "default_argument_value.py", None ; "default_argument_value")]
 #[test_case("unused-default", "unused_default.py", None ; "unused_default")]
 #[test_case("unused-default", "unused_default_public_module.py", None ; "unused_default_public_module")]
 #[test_case("unused-default", "unused_default_comment.py", None ; "unused_default_comment")]
@@ -237,6 +238,7 @@ use crate::common::{self, check, read};
 )]
 #[test_case("long-tuple-return", "long_tuple_return.py", None ; "long_tuple_return")]
 #[test_case("long-tuple-return", "long_tuple_return_quoted.py", None ; "long_tuple_return_quoted")]
+#[test_case("long-tuple-return", "long_tuple_return_class_body.py", None ; "long_tuple_return_class_body")]
 #[test_case("cognitive-complexity", "cognitive_complexity.py", None ; "cognitive_complexity")]
 #[test_case(
     "collection-built-by-statements", "collection_built_by_statements.py", None ; "collection_built_by_statements"
@@ -248,6 +250,10 @@ use crate::common::{self, check, read};
     "collection_built_by_statements_names"
 )]
 #[test_case("unnamed-regex-group", "unnamed_regex_group.py", None ; "unnamed_regex_group")]
+#[test_case("unreachable-code", "unreachable_code.py", None ; "unreachable_code")]
+#[test_case("dead-store", "dead_store.py", None ; "dead_store")]
+#[test_case("loop-variable-after-loop", "loop_variable_after_loop.py", None ; "loop_variable_after_loop")]
+#[test_case("side-effect-expression", "side_effect_expression.py", None ; "side_effect_expression")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", None ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", None ; "unnamed_regex_group_default_scope")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", None ; "unnamed_regex_group_escaping")]
@@ -268,6 +274,23 @@ use crate::common::{self, check, read};
 #[test_case("inline-regex", "inline_regex_names.py", None ; "inline_regex_constant_names")]
 #[test_case("inline-regex", "inline_regex_nested.py", None ; "inline_regex_nested_calls")]
 #[test_case("inline-regex", "inline_regex_alias.py", None ; "inline_regex_alias")]
+#[test_case("inline-regex", "inline_regex_final_taken.py", Some("py311") ; "inline_regex_final_taken")]
+#[test_case("iterator-reuse", "iterator_reuse.py", None ; "iterator_reuse")]
+#[test_case("range-len-loop", "range_len_loop.py", None ; "range_len_loop")]
+#[test_case("accumulator-loop", "accumulator_loop.py", None ; "accumulator_loop")]
+#[test_case("empty-collection-comparison", "empty_collection_comparison.py", None ; "empty_collection_comparison")]
+#[test_case("slice-affix-comparison", "slice_affix_comparison.py", None ; "slice_affix_comparison")]
+#[test_case("slice-affix-comparison", "slice_affix_comparison_kinds.py", None ; "slice_affix_comparison_kinds")]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_walrus_annotation.py", Some("py311") ;
+    "slice_affix_comparison_walrus_annotation"
+)]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_unpacked_comprehension.py", Some("py315") ;
+    "slice_affix_comparison_unpacked_comprehension"
+)]
+#[test_case("anchored-regex-match", "anchored_regex_match.py", None ; "anchored_regex_match")]
+#[test_case("wall-clock-duration", "wall_clock_duration.py", None ; "wall_clock_duration")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", None ; "utf8_encoding_default_before_python315")]
 #[test_case(
@@ -298,6 +321,27 @@ use crate::common::{self, check, read};
 #[test_case(
     "up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310"
 )]
+#[test_case("shared-mutable-repetition", "shared_mutable_repetition.py", None ; "shared_mutable_repetition")]
+#[test_case("duplicate-condition", "duplicate_condition.py", None ; "duplicate_condition")]
+#[test_case("ambiguous-operator-chain", "ambiguous_operator_chain.py", None ; "ambiguous_operator_chain")]
+#[test_case("failed-swap", "failed_swap.py", None ; "failed_swap")]
+#[test_case("in-place-result", "in_place_result.py", None ; "in_place_result")]
+#[test_case("unformatted-exception-args", "unformatted_exception_args.py", None ; "unformatted_exception_args")]
+#[test_case("shadowed-except-handler", "shadowed_except_handler.py", None ; "shadowed_except_handler")]
+#[test_case("dropped-exception-note", "dropped_exception_note.py", None ; "dropped_exception_note")]
+#[test_case("expression-complexity", "expression_complexity.py", None ; "expression_complexity")]
+#[test_case("comprehension-complexity", "comprehension_complexity.py", None ; "comprehension_complexity")]
+#[test_case(
+    "comprehension-complexity", "comprehension_complexity.py", Some("py315") ; "comprehension_complexity_python315"
+)]
+#[test_case("cached-generator", "cached_generator.py", None ; "cached_generator")]
+#[test_case("unawaited-coroutine", "unawaited_coroutine.py", None ; "unawaited_coroutine")]
+#[test_case("misplaced-arguments", "misplaced_arguments.py", None ; "misplaced_arguments")]
+#[test_case("wrapper-without-wraps", "wrapper_without_wraps.py", None ; "wrapper_without_wraps")]
+#[test_case("wrapper-without-wraps", "wrapper_without_wraps_from_import.py", None ; "wrapper_without_wraps_from_import")]
+#[test_case("wrapper-without-wraps", "wrapper_without_wraps_no_import.py", None ; "wrapper_without_wraps_no_import")]
+#[test_case("function-as-condition", "function_as_condition.py", None ; "function_as_condition")]
+#[test_case("catastrophic-regex", "catastrophic_regex.py", None ; "catastrophic_regex")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -594,10 +638,49 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
     );
 }
 
+// Before Python 3.12 a value spread over lines goes into a replacement field as `ruff format` joins it, which a magic
+// trailing comma stops unless the formatter skips it.
+#[test_case(
+    "",
+    "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n" ;
+    "magic_trailing_comma_keeps_the_value"
+)]
+#[test_case(
+    "[tool.ruff.format]\nskip-magic-trailing-comma = true\n",
+    "def pair(first, second):\n    return f\"{(first, second)}\"\n" ;
+    "skipped_magic_trailing_comma_joins_the_value"
+)]
+fn single_use_fstring_value_follows_magic_trailing_comma(format: &str, fixed: &str) {
+    let source =
+        "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n";
+    let pyproject = format!("[tool.ruff]\ntarget-version = \"py311\"\n{format}");
+    let root = common::project(&[("pyproject.toml", pyproject.as_str()), ("module.py", source)]);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix", "--unsafe-fixes"]);
+    assert_eq!(read(root.path(), "module.py"), fixed);
+}
+
+// A function another module defines on both sides of a version check is the same function when both definitions
+// agree, and has no single signature when they do not.
+#[test_case("def ready() -> bool:\n        return True", true ; "same_shape")]
+#[test_case("def ready(strict: bool) -> bool:\n        return strict", false ; "other_shape")]
+fn function_as_condition_reads_a_twice_defined_import(other: &str, reported: bool) {
+    let checks = format!(
+        "import sys\n\nif sys.version_info >= (3, 12):\n\n    def ready() -> bool:\n        return True\n\nelse:\n\n    \
+         {other}\n"
+    );
+    let root = common::project(&[
+        ("checks.py", checks.as_str()),
+        ("main.py", "from checks import ready\n\nif ready:\n    print(1)\n"),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP558"]).1;
+    assert_eq!(stdout.contains("main.py:3:4"), reported, "{stdout}");
+}
+
 // A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
 // naming an undefined name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
 #[test_case("box = Generic[T]\n    ref = ForwardRef(\"list[T]\")\n    return box, ref" ; "forward_ref")]
+#[test_case("box = Generic[T]\n    refs = ForwardRef(str(box)), ForwardRef(\"list[T]\")\n    return refs" ; "forward_ref_among_other_arguments")]
 fn single_use_string_annotation_is_a_read(body: &str) {
     let source = format!(
         "from typing import ForwardRef, Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    \
@@ -698,8 +781,11 @@ fn unused_default_leaves_reexported_functions_alone() {
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`_helper`") && !stdout.contains("`_connect`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`_helper`") && !stdout.contains("`_connect`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // A package with a dynamic `__all__` still offers the names other files import from it, so the default they pass is the
@@ -717,8 +803,11 @@ fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
         ("pkg/cli.py", "from pkg import make\n\nprint(make(2))\n"),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`_unused`") && !stdout.contains("`make`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`_unused`") && !stdout.contains("`make`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // The `__all__` of a library's public module declares its interface, so a public function it leaves out is judged like
@@ -734,8 +823,11 @@ fn unused_default_judges_public_functions_all_omits() {
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`helper`") && !stdout.contains("`connect`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`helper`") && !stdout.contains("`connect`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // A star import hands the module's names to code that the calls of the run do not show.
@@ -788,17 +880,6 @@ fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &st
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP506"]);
     assert_eq!(stdout.matches("Every call to").count(), reports, "{stdout}");
-}
-
-// Test modules may assert on the messages their code raises.
-#[test]
-fn error_message_matching_leaves_test_modules_alone() {
-    let root = common::project(&[(
-        "test_errors.py",
-        "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n",
-    )]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Ruff's PT017 reports an `assert` naming the exception, at any depth in the handler, so SMP507 leaves it to Ruff
@@ -921,26 +1002,29 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A class whose base name is rebound to a class deriving from it is followed through both bindings, and stops at the
-// cycle, so the first binding still shows the exception.
-#[test]
-fn error_message_matching_stops_at_rebound_class_cycles() {
-    let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A\
-        ):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\
-        \n            return str(exc) == str(other)\n    return inner\n";
-    let root = common::project(&[("module.py", source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.as_str(), common::PASSED);
-}
-
-// An exception class of the file counts as an exception type for a parameter annotation.
-#[test]
-fn error_message_matching_reads_exception_classes_of_the_file() {
-    let root = common::project(&[(
-        "module.py",
-        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    \
-            except Offset as replay_error:\n        return replay_error.args == error.args\n",
-    )]);
+// Test modules may assert on the messages their code raises. An exception class of the file counts as an exception type
+// for a parameter annotation. A class whose base name is rebound to a class deriving from it is followed through both
+// bindings, and stops at the cycle, so the first binding still shows the exception.
+#[test_case(
+    "test_errors.py",
+    "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n" ;
+    "test_module"
+)]
+#[test_case(
+    "module.py",
+    "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    \
+     except Offset as replay_error:\n        return replay_error.args == error.args\n" ;
+    "exception_class_of_the_file"
+)]
+#[test_case(
+    "module.py",
+    "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A):\n        \
+     pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\n            \
+     return str(exc) == str(other)\n    return inner\n" ;
+    "rebound_class_cycle"
+)]
+fn error_message_matching_leaves_alone(file: &str, source: &str) {
+    let root = common::project(&[(file, source)]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
@@ -1015,6 +1099,7 @@ fn single_caller_helper_respects_other_ruff_rules(rule: &str, option: &str, call
 #[test_case("raise ValueError('bad')", "except ValueError:" ; "constructed_exception")]
 #[test_case("raise ValueError", "except:" ; "catch_all")]
 #[test_case("raise ValueError", "except (ValueError, TypeError):" ; "tuple_handler")]
+#[test_case("raise ValueError", "except Exception:" ; "broad_handler")]
 fn single_caller_helper_keeps_caught_raises_outside_try(raised: &str, handler: &str) {
     let root = common::project(&[
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"TRY301\"]\n"),
@@ -1465,6 +1550,22 @@ fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(body: &str, reported: usize) {
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
 }
 
+// SMP550 turns an end-anchored `re.match` into `re.fullmatch`, so with both rules selected SMP522 leaves it to SMP550
+// and renames only the other calls.
+#[test_case("return re.match(r\"a.$\", text)", 0, 1 ; "anchored")]
+#[test_case("return re.match(r\"a.\", text)", 1, 0 ; "open_end")]
+fn up_re_prefixmatch_leaves_anchored_calls_to_smp550(body: &str, renamed: usize, anchored: usize) {
+    let source = format!("import re\n\n\ndef check(text):\n    {body}\n");
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\nselect = []\n"),
+        ("module.py", &source),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522,SMP550", "--output-format", "json"]);
+    let counts = (stdout.matches("\"code\": \"SMP522\"").count(), stdout.matches("\"code\": \"SMP550\"").count());
+    assert_eq!(counts, (renamed, anchored), "{stdout}");
+}
+
 // Code outside a library may call the public functions and classes of its public modules without the argument, even
 // when every call in the run passes it. A private function there is still judged.
 #[test]
@@ -1478,8 +1579,7 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     assert_eq!(
         stdout,
         "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 \
-            unsafe \
-         fix available with `--fix --unsafe-fixes`.\n"
+         unsafe fix available with `--fix --unsafe-fixes`.\n"
     );
 }
 
@@ -1524,6 +1624,34 @@ fn inline_regex_fix_keeps_the_constants_in_source_order() {
                 .to_owned()
         )
     );
+}
+
+// A loop variable is a `ContextVar` when the loop walks a literal list of `ContextVar` calls; a starred item or an
+// unpacked target leaves its values unknown.
+#[test_case("variable in [contextvars.ContextVar(\"a\"), contextvars.ContextVar(\"b\")]", 1 ; "literal_list")]
+#[test_case("variable in [contextvars.ContextVar(\"a\"), *OTHERS]", 0 ; "starred_item")]
+#[test_case("variable, _ in [(contextvars.ContextVar(\"a\"), 1)]", 0 ; "unpacked_target")]
+fn context_var_token_reset_reads_loop_values(header: &str, reports: usize) {
+    let source = format!(
+        "import contextvars\n\nOTHERS = []\n\n\ndef each(value):\n    for {header}:\n        token = variable.set(value)\
+        \n        try:\n            print(value)\n        finally:\n            variable.reset(token)\n"
+    );
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        ("module.py", source.as_str()),
+    ]);
+    common::assert_report_count(root.path(), "SMP512", reports);
+}
+
+// A parameter annotated `list` is a list, while a name bound to a `def` has no parameter of its own to read.
+#[test]
+fn in_place_result_reads_parameter_annotations_only() {
+    let root = common::project(&[(
+        "module.py",
+        "def items():\n    return []\n\n\ndef use(values: list[int]):\n    first = items.sort()\n    second = \
+         values.sort()\n    return first, second\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP543", 1);
 }
 
 // The module constant an inline-regex fix writes is one the constant rules leave alone.

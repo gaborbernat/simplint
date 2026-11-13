@@ -61,7 +61,7 @@ fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
 )]
 fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
     let root = project(files);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let production = project(&[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
@@ -106,8 +106,7 @@ fn entry_point_module_resolves_from_its_project(name: &str, pyproject: &str) {
         check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1,
         common::native(&format!(
             "{name}:4:5: SMP401 [*] `run` is imported by other modules; list it in `__all__`\nFound 1 error.\n[*] 1 \
-            fixable \
-             with `--fix`.\n"
+             fixable with `--fix`.\n"
         ))
     );
 }
@@ -123,7 +122,7 @@ fn flat_layout_module_entry_point_uses_its_public_names() {
         ("src/pkg/__init__.py", ""),
         ("plugin.py", "__all__ = []\n\n\ndef activate() -> None:\n    pass\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP403,SMP409");
     let unlisted = project(&[
         ("pyproject.toml", "[project]\n[tool.ruff]\nsrc = [\"src\"]\n"),
         ("src/pkg/__init__.py", ""),
@@ -169,8 +168,7 @@ fn stdlib_import_of_own_stem_does_not_import_own_names() {
             "pkg/_compat/tomllib.py:8:12: SMP402 `TOMLDecodeError` is in `__all__`, yet no other module imports it; \
             list \
              only what other modules use\npkg/_compat/tomllib.py:8:39: SMP402 `loads` is in `__all__`, yet no other \
-             module \
-             imports it; list only what other modules use\nFound 2 errors.\n"
+             module imports it; list only what other modules use\nFound 2 errors.\n"
         )
     );
 }
@@ -193,8 +191,7 @@ fn doctest_naming_its_own_module_does_not_patch_the_package() {
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
             "pkg/parser/_parser.py:5:12: SMP304 Import `tzstr` from `..tz` instead of reaching it through the \
-            module\nFound \
-             1 error.\n"
+             module\nFound 1 error.\n"
         )
     );
 }
@@ -207,7 +204,7 @@ fn stub_only_module_attribute_is_not_reported() {
         ("writers/findings.pyi", "def save() -> None: ...\n"),
         ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP304"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP304");
     let module = project(&[
         ("writers/__init__.py", ""),
         ("writers/findings.py", "def save() -> None:\n    pass\n"),
@@ -247,7 +244,7 @@ fn module_import_is_not_an_export(reference: &str) {
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let production = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/files.py", "def cwd() -> str:\n    return \"\"\n"),
@@ -302,10 +299,10 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
 #[test_case("report.TABLE_JSON_DIR = Path(\"out\")\n" ; "assignment")]
 #[test_case("del report.TABLE_JSON_DIR\n" ; "deletion")]
 #[test_case("setattr(report, \"TABLE_JSON_DIR\", Path(\"out\"))\n" ; "setattr")]
+#[test_case("from typing import Any, cast\n\ncast(Any, report).TABLE_JSON_DIR = Path(\"out\")\n" ; "cast")]
 fn stored_module_variable_stays_module_level(store: &str) {
     let report = "from pathlib import Path\n\nTABLE_JSON_DIR: Path | None = None\n\n\ndef render() -> bool:\n    \
-    return \
-                  TABLE_JSON_DIR is not None\n";
+                  return TABLE_JSON_DIR is not None\n";
     let root = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/report.py", report),
@@ -343,6 +340,32 @@ fn star_reexport_keeps_names_of_the_package() {
     );
 }
 
+// A star import takes only what the module's `__all__` lists, so a listed name read through the package is in use.
+#[test]
+fn star_reexport_reaches_the_names_all_lists() {
+    let root = project(&[
+        ("lib/__init__.py", ""),
+        ("lib/humio/__init__.py", "from ._types import *\n"),
+        ("lib/humio/_types.py", "__all__ = [\"parse\"]\n\n\ndef parse() -> None:\n    pass\n"),
+        ("app.py", "from lib.humio import parse, missing\n\n_USED = (parse, missing)\n"),
+    ]);
+    common::assert_clean(root.path(), "SMP402");
+}
+
+// A module the run excludes has no facts, so a star import of it re-exports whatever the package's importers read.
+#[test]
+fn star_reexport_of_an_excluded_module_keeps_the_package_clean() {
+    let root = project(&[
+        ("lib/__init__.py", ""),
+        ("lib/humio/__init__.py", "from ._types import *\n"),
+        ("lib/humio/_types.py", "def parse() -> None:\n    pass\n"),
+        ("app.py", "from lib.humio import parse\n\n_USED = parse\n"),
+    ]);
+    let (_, stdout, stderr) =
+        check(root.path(), &["--select", "SMP401,SMP402,SMP404", "--extend-exclude", "lib/humio/_types.py"]);
+    assert_eq!(stdout, common::PASSED, "{stderr}");
+}
+
 // `oci_test_init` resolves only through a `sys.path` entry a `conftest.py` adds, so any module of the run by that name
 // may be the one star-imported and keeps its names, while modules by other names cannot be.
 #[test]
@@ -356,8 +379,7 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "support/other.py:1:1: SMP404 `region` is not in `__all__`; name it `_region`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -373,6 +395,31 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     "",
     "@dataclass(frozen=True)"
     ; "namesake"
+)]
+#[test_case(
+    "result = Result(log=\"\")\n    result.log.upper = log\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "write_on_a_member_of_an_instance"
+)]
+#[test_case(
+    "pass\n\n\ndef patch(thing: Unknown, key: str) -> None:\n    setattr(thing, key, 1)\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "computed_write_on_an_unknown_class"
+)]
+#[test_case(
+    "pass\n\n\ndef test_patch(monkeypatch) -> None:\n    monkeypatch.setattr(\"log\", None)\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "patch_of_a_path_without_a_dot"
+)]
+#[test_case(
+    "pass\n\n\nclass Base:\n    pass\n\n\nclass Left(Base):\n    pass\n\n\nclass Right(Base):\n    pass\n\n\n\
+     class Both(Left, Right):\n    pass\n\n\nBoth.level = 1\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "class_write_through_a_diamond"
 )]
 #[test_case(
     concat!(
@@ -395,6 +442,17 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ),
     "",
     "@dataclass" ; "low_protocol_aliased_pickle"
+)]
+#[test_case(
+    concat!(
+        "import pickle\n",
+        "\n",
+        "    result = Result(log=\"\")\n",
+        "    result.log = log\n",
+        "    pickle.dump(result, open(\"result.pickle\", \"wb\"), 1)\n"
+    ),
+    "",
+    "@dataclass" ; "low_protocol_pickle_to_a_file"
 )]
 #[test_case(
     concat!(
@@ -432,5 +490,118 @@ fn dataclass_frozen_reads_writes_in_other_files(body: &str, marker: &str, decora
             ),
             Some(decorator)
         )
+    );
+}
+
+// A test imports `changelog` by its bare name from a directory pytest's `pythonpath` adds, which the index does not
+// search, so the module is the namesake of the run's file. The test's call drops its value, but its arguments still
+// count: it leaves `full` at its default.
+#[test]
+fn namesake_call_that_drops_its_value_counts_its_arguments() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\n"),
+        ("demo/__init__.py", ""),
+        (
+            "scripts/changelog.py",
+            "def validate(*, top: str | None = None, full: bool = False) -> None:\n    print(top, full)\n\n\n\
+             validate(top=\"1\", full=True)\n",
+        ),
+        (
+            "tests/test_changelog.py",
+            "from changelog import validate\n\n\ndef test_validate() -> None:\n    validate(top=\"1\")\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP410,SMP506"]).1,
+        common::native(
+            "scripts/changelog.py:1:35: SMP506 Every call to `validate` passes `top`; drop its default `None`\nFound 1 \
+             error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}
+
+// A module that defines a function on both branches of a test gives its importers one signature only when both
+// definitions agree on it.
+#[test_case("first, second, third", 1 ; "same_parameters")]
+#[test_case("second, first, third", 0 ; "other_parameters")]
+fn imported_function_defined_twice_has_a_signature_when_both_agree(other: &str, reported: usize) {
+    let library = format!(
+        "import os\n\nif os.environ.get(\"FAST\"):\n\n    def shuffle(first, second, third):\n        return first\n\n\
+         else:\n\n    def shuffle({other}):\n        return first\n"
+    );
+    let caller = "from library import shuffle\n\n\ndef run(first, second, third):\n    shuffle(first, first, second)\n";
+    let root = project(&[("library.py", library.as_str()), ("caller.py", caller)]);
+    let stdout = check(root.path(), &["--select", "SMP556"]).1;
+    assert_eq!(common::reports(&stdout, "SMP556").len(), reported, "{stdout}");
+}
+
+// A write through a member of the enclosing class, reached from the instance or from a parameter annotated with the
+// class, lands on the member's class only: that class keeps its report without a fix, while a namesake field of another
+// dataclass can still be frozen.
+#[test_case("self" ; "own_instance")]
+#[test_case("other" ; "declared_parameter")]
+fn write_through_a_class_member_reaches_the_member_class(receiver: &str) {
+    let root = project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    log: str\n\n\n@dataclass\nclass \
+             Other:\n    log: str\n",
+        ),
+        (
+            "use.py",
+            &format!(
+                "from models import Result\n\n\nclass Runner:\n    result: Result\n\n    def go(self, other: Runner, \
+                 log: str) -> None:\n        {receiver}.result.log = log\n"
+            ),
+        ),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP701", "--target-version", "py314"]).1;
+    assert_eq!(
+        common::reports(&stdout, "SMP701"),
+        [
+            common::native("models.py:4:2: SMP701 Dataclass is missing frozen; set `frozen=True`"),
+            common::native("models.py:9:2: SMP701 [*] Dataclass is missing frozen; set `frozen=True`"),
+        ],
+        "{stdout}"
+    );
+}
+
+// A module that imports one of the run's modules still knows the text a library call returns, while the run's module
+// answers for its own function by its signature.
+#[test]
+fn slice_of_a_library_call_beside_a_run_module_is_text() {
+    let root = project(&[
+        ("helpers.py", "def name() -> str:\n    return \"x\"\n"),
+        (
+            "main.py",
+            "import getpass\n\nimport helpers\n\n\ndef user() -> bool:\n    return getpass.getuser()[:2] == \"ab\" or \
+             helpers.name()[:2] == \"ab\"\n",
+        ),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP549"]).1;
+    assert_eq!(
+        common::reports(&stdout, "SMP549"),
+        [
+            common::native("main.py:7:12: SMP549 Comparing a slice with a literal of its length is `startswith`"),
+            common::native("main.py:7:45: SMP549 Comparing a slice with a literal of its length is `startswith`"),
+        ],
+        "{stdout}"
+    );
+}
+
+// `json` resolves to the standard library's stub, which has no file of the run, so a module of the run named `json`
+// may still be the one imported, and the names read from it are in use.
+#[test]
+fn standard_library_import_reaches_a_module_of_its_name() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/json.py", "def dumps(value: int) -> int:\n    return value\n"),
+        ("main.py", "import json\n\nprint(json.dumps(1))\n"),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP401,SMP409"]).1;
+    assert_eq!(
+        common::reports(&stdout, "SMP401"),
+        [common::native("pkg/json.py:1:5: SMP401 `dumps` is imported by other modules; list it in `__all__`")],
+        "{stdout}"
     );
 }

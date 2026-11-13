@@ -1,9 +1,9 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::regex_pattern::{Facts, scan};
+use crate::rules::logic::regex_pattern::scan;
 
 pub fn unexplained_regex(checker: &Checker) {
-    let facts = Facts::collect(checker);
+    let facts = checker.state().regex_facts(checker);
     for (literal, call) in facts.sites() {
         let Some(scan) = scan(&literal.decoded(), call.verbose) else {
             continue;

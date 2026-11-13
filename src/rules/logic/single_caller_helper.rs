@@ -13,7 +13,7 @@ use crate::lint::registry::Rule;
 use crate::rules::logic::cognitive_complexity;
 use crate::rules::logic::forwarding_function::{forward_target, is_called};
 use crate::rules::testing::{conditionals, is_test_module_function};
-use crate::syntax::{Visibility, is_repeating_expr, last_segment};
+use crate::syntax::{Visibility, is_repeating_expr, last_segment, yields};
 
 mod ruff_metrics;
 
@@ -37,6 +37,7 @@ fn check_helper<'a>(
     if Visibility::of(name) != Visibility::Private
         || !helper.decorator_list.is_empty()
         || helper.is_async
+        // A generator's body runs only when it is iterated, so inlining it would make the caller a generator.
         || yields(&helper.body)
         || checker.is_exported(name)
         || helper.returns.as_deref().is_some_and(|returns| is_type_guard(checker, returns))
@@ -95,34 +96,6 @@ fn check_helper<'a>(
         helper.name.range(),
         format!("`{name}` is called only from `{caller_name}`, and inlining keeps `{caller_name}` short; inline it"),
     );
-}
-
-// A generator's body runs only when it is iterated, so inlining it into a caller would make the caller a generator.
-fn yields(body: &[Stmt]) -> bool {
-    let mut finder = Yields { found: false };
-    finder.visit_body(body);
-    finder.found
-}
-
-struct Yields {
-    found: bool,
-}
-
-impl<'a> Visitor<'a> for Yields {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            visitor::walk_stmt(self, stmt);
-        }
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        match expr {
-            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
-            Expr::Lambda(_) => return,
-            _ => {}
-        }
-        visitor::walk_expr(self, expr);
-    }
 }
 
 // Inlining replaces the call with a bare expression, which drops the narrowing a `TypeGuard` or `TypeIs` return gives.

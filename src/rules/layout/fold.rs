@@ -148,7 +148,7 @@ fn repeat_tuple(count: i128, len: usize, nested: usize) -> Option<Folded> {
     if count == 0 {
         return Some(Folded::Tuple { len: 0, nested: 0 });
     }
-    if count.checked_mul(len)? > MAX_COLLECTION_SIZE || count.checked_mul(len + nested)? > MAX_TOTAL_ITEMS {
+    if count.saturating_mul(len) > MAX_COLLECTION_SIZE || count.saturating_mul(len + nested) > MAX_TOTAL_ITEMS {
         return None;
     }
     Some(Folded::Tuple { len: count * len, nested: count * nested })
@@ -196,10 +196,8 @@ fn int_power(base: i128, exponent: i128) -> Option<Folded> {
     if exponent == 0 {
         return Some(Folded::Int(1));
     }
-    if i128::from(bit_length(base)) > i128::from(MAX_INT_SIZE) / exponent {
-        return None;
-    }
-    base.checked_pow(u32::try_from(exponent).ok()?).map(Folded::Int)
+    let exponent = u32::try_from(exponent).ok().filter(|exponent| bit_length(base) <= MAX_INT_SIZE / exponent)?;
+    base.checked_pow(exponent).map(Folded::Int)
 }
 
 fn int_shift_left(value: i128, count: i128) -> Option<Folded> {
@@ -222,7 +220,7 @@ fn int_shift_left(value: i128, count: i128) -> Option<Folded> {
 
 fn floor_div(left: i128, right: i128) -> Option<i128> {
     let quotient = left.checked_div(right)?;
-    let remainder = left.checked_rem(right)?;
+    let remainder = left % right;
     if remainder != 0 && (remainder < 0) != (right < 0) { quotient.checked_sub(1) } else { Some(quotient) }
 }
 

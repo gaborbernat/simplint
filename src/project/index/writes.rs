@@ -4,7 +4,7 @@ use crate::project::FileFacts;
 use crate::project::receivers::ANY_ATTRIBUTE;
 
 use super::files::FileId;
-use super::reach::unqualified;
+use crate::syntax::last_dotted_segment;
 
 #[derive(Default)]
 pub(super) struct Writes {
@@ -60,11 +60,38 @@ impl Writes {
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
-        let mut namesakes: FxHashMap<String, usize> = FxHashMap::default();
         for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
-            *namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
+            *writes.namesakes.entry(last_dotted_segment(class).to_owned()).or_default() += 1;
         }
-        writes.namesakes = namesakes;
         writes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use super::Writes;
+    use crate::project::index::FileIds;
+    use crate::project::{FileFacts, Parts};
+
+    // A class attribute reaches every base once, though a diamond reaches the shared base on two paths; a computed name
+    // written on an object of a class the run does not define names no field.
+    #[test]
+    fn class_attributes_reach_each_base_once() {
+        let source = "from typing import Any\n\n\nclass Base:\n    pass\n\n\nclass Left(Base):\n    pass\n\n\n\
+                      class Right(Base):\n    pass\n\n\nclass Both(Left, Right):\n    pass\n\n\nBoth.limit = 1\n\n\n\
+                      def store(target: Any, name: str) -> None:\n    setattr(target, name, 1)\n";
+        let path = Path::new("/project/shapes.py");
+        let facts = FileFacts::collect(path, source, None, None, Parts::default()).expect("facts");
+        let mut ids = Arc::new(FileIds::default());
+        let writes = Writes::collect(&[(FileIds::intern(&mut ids, path), &facts)]);
+        let mut reached: Vec<&str> = writes.class_attributes.keys().map(String::as_str).collect();
+        reached.sort_unstable();
+        assert_eq!(
+            (reached, writes.untyped.contains("*")),
+            (vec!["shapes.Base", "shapes.Both", "shapes.Left", "shapes.Right"], false)
+        );
     }
 }

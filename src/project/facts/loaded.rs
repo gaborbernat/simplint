@@ -210,3 +210,43 @@ fn module_of(relative: &Path) -> Option<String> {
     let parts = module_parts(&parts);
     (!parts.is_empty() && parts.iter().all(|part| is_identifier(part))).then(|| parts.join("."))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use test_case::test_case;
+
+    use super::super::{FileFacts, Parts};
+    use super::module_of;
+
+    // Without a package around the file there is no root to name the module a path holds, so the key reads as one of
+    // any module.
+    #[test_case(None, &["value"] ; "outside_any_package")]
+    #[test_case(Some(&["pkg", "main"]), &[] ; "inside_a_package")]
+    fn run_path_names_its_module_under_the_package_root(module_path: Option<&[&str]>, reads: &[&str]) {
+        let module_path: Option<Vec<String>> =
+            module_path.map(|parts| parts.iter().map(|&part| part.to_owned()).collect());
+        let source = "import runpy\n\nprint(runpy.run_path(\"helper.py\")[\"value\"])\n";
+        let path = Path::new("/project/pkg/main.py");
+        let facts = FileFacts::collect(path, source, module_path.as_deref(), None, Parts::default()).expect("facts");
+        assert_eq!(facts.module_reads, reads);
+    }
+
+    #[test_case("pkg/mod.py", Some("pkg.mod") ; "module")]
+    #[test_case("pkg/__init__.py", Some("pkg") ; "package")]
+    #[test_case("", None ; "the_root_itself")]
+    #[test_case("pkg/mod.txt", None ; "not_python")]
+    fn module_of_names_the_module_a_path_holds(relative: &str, expected: Option<&str>) {
+        assert_eq!(module_of(Path::new(relative)).as_deref(), expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn module_of_a_path_that_is_not_utf8_is_unknown() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        assert_eq!(module_of(Path::new(OsStr::from_bytes(b"p\xffkg/mod.py"))), None);
+    }
+}

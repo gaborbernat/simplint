@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+14:5 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+18:5 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+26:9 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+32:9 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+71:5 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+108:5 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result
+123:5 SMP818 This test checks nothing, so it passes for any code that does not raise; assert on the result

@@ -1,10 +1,11 @@
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::is_documented_variable;
-use crate::rules::public_api::module_statements_with_next;
-use crate::syntax::{instance_writes, is_classmethod, is_name, last_segment, target_names};
+use crate::syntax::module_statements_with_next;
+use crate::syntax::{annotation_name, instance_writes, is_classmethod, is_name, last_segment, target_names};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {
@@ -61,8 +62,8 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                 }
             }
             Stmt::TypeAlias(ast::StmtTypeAlias { name, .. }) => {
-                if let Some(name) = name.as_name_expr() {
-                    add(name.id.as_str(), true, documented);
+                for name in target_names(name) {
+                    add(name, true, documented);
                 }
             }
             // A loop variable of the class body is a class variable, as an assignment to it is.
@@ -84,17 +85,6 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
     found
 }
 
-pub(super) fn annotation_name(annotation: &Expr) -> Option<&str> {
-    match annotation.as_string_literal_expr() {
-        Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
-        None => last_segment(unsubscripted(annotation)),
-    }
-}
-
-fn unsubscripted(expr: &Expr) -> &Expr {
-    expr.as_subscript_expr().map_or(expr, |subscript| &subscript.value)
-}
-
 fn slot_names(value: &Expr) -> Vec<&str> {
     let names: Vec<&Expr> = match value {
         Expr::Tuple(ast::ExprTuple { elts, .. })
@@ -114,7 +104,7 @@ pub(super) fn is_field_call(value: &Expr) -> bool {
 pub(crate) fn has_attribute_bases(class: &ast::StmtClassDef) -> bool {
     class.bases().iter().any(|base| {
         !matches!(
-            last_segment(unsubscripted(base)),
+            last_segment(map_subscript(base)),
             Some("object" | "ABC" | "Protocol" | "Generic" | "NamedTuple" | "TypedDict")
         )
     })

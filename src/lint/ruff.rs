@@ -1,10 +1,9 @@
-use memchr::memchr2_iter;
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::Cell;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::OnceLock;
 
+use memchr::memchr2_iter;
 use ruff_db::diagnostic::Diagnostic;
 use ruff_diagnostics::Applicability;
 use ruff_linter::line_width::LineLength;
@@ -17,6 +16,7 @@ use ruff_linter::source_kind::SourceKind;
 use ruff_python_ast::{ModModule, PySourceType, PythonVersion};
 use ruff_python_parser::Parsed;
 use ruff_source_file::LineRanges;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::layout::{Layout, Widths};
 use crate::settings::FromRuff;
@@ -74,19 +74,19 @@ impl<'a> RuffFile<'a> {
         for diagnostic in diagnostics.iter().filter(|diagnostic| {
             !diagnostic.is_invalid_syntax() && !diagnostic.secondary_code().is_some_and(|code| is_layout(code.as_str()))
         }) {
-            let counts = findings.counts.entry(diagnostic.name()).or_default();
+            let name = diagnostic.name();
+            let counts = findings.counts.entry(name).or_default();
             counts.all += 1;
             let fixable = fixable_unsafely(diagnostic);
             counts.fixable += usize::from(fixable);
             // An unsorted import block's finding is about the whole block: one that gained imports is new work, which
             // Ruff can take up once `ruff format` splits a statement sharing its last line. An unused suppression
             // left after `ruff check --fix` is one only the missing line length leaves unused, so it is not tracked.
-            let name = diagnostic.name();
             if (fixable && name != RuffRule::UnusedNOQA.name().as_str())
                 || name == RuffRule::UnsortedImports.name().as_str()
             {
                 let lines = diagnostic.range().map_or("", |range| source.full_lines_str(range));
-                findings.spans.insert((diagnostic.name(), lines.to_owned()));
+                findings.spans.insert((name, lines.to_owned()));
             }
         }
         if layout.overlong > 0 && self.settings.rules.enabled(RuffRule::LineTooLong) {
@@ -262,5 +262,20 @@ impl Findings {
             introduced.extend(moved.into_iter().filter(|name| !failing.contains(name)));
         }
         introduced
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::has_blanket_noqa;
+
+    #[test_case("x = 1  # noqa\n", true ; "bare")]
+    #[test_case("x = 1  # noqa: E501\n", false ; "codes")]
+    #[test_case("x = 1  # noqa \t: E501\n", false ; "blanks_before_the_colon")]
+    #[test_case("x = 1  # noqa\n: E501\n", true ; "colon_on_the_next_line")]
+    fn blanket_noqa_is_one_no_colon_follows(source: &str, blanket: bool) {
+        assert_eq!(has_blanket_noqa(source), blanket);
     }
 }

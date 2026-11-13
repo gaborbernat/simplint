@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP706 `super()` without arguments fails here: a function outside a class has no `__class__` cell for `super()` to read; pass the class and instance, or call it in the method
+17:17 SMP706 `super()` without arguments fails here: a class body has no instance for `super()` to bind; pass the class and instance, or call it in the method
+23:21 SMP706 `super()` without arguments fails here: a generator expression passes `super()` its iterator instead of the instance; pass the class and instance, or call it in the method
+29:17 SMP706 `super()` without arguments fails here: before Python 3.12 a comprehension passes `super()` its iterator instead of the instance; pass the class and instance, or call it in the method
+32:25 SMP706 `super()` without arguments fails here: a lambda without parameters has no first argument for `super()` to bind; pass the class and instance, or call it in the method
+39:20 SMP706 `super()` without arguments fails here: a nested function without parameters has no first argument for `super()` to bind; pass the class and instance, or call it in the method
+53:23 SMP706 `super()` without arguments fails here: before Python 3.12 a comprehension passes `super()` its iterator instead of the instance; pass the class and instance, or call it in the method

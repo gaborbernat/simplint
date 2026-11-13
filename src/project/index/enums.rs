@@ -27,3 +27,21 @@ pub(super) fn enum_classes(
 fn is_enum_base(module: &str, name: &str) -> bool {
     module == "enum" && matches!(name, "Enum" | "IntEnum" | "StrEnum" | "Flag" | "IntFlag")
 }
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::is_enum_base;
+
+    #[test_case("enum", "Enum", true ; "enum")]
+    #[test_case("enum", "IntEnum", true ; "int_enum")]
+    #[test_case("enum", "StrEnum", true ; "str_enum")]
+    #[test_case("enum", "Flag", true ; "flag")]
+    #[test_case("enum", "IntFlag", true ; "int_flag")]
+    #[test_case("enum", "EnumMeta", false ; "metaclass")]
+    #[test_case("pkg", "Enum", false ; "other_module")]
+    fn enum_bases(module: &str, name: &str, base: bool) {
+        assert_eq!(is_enum_base(module, name), base);
+    }
+}

@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:12 SMP537 `row` is read after the loop on line 5 ends: it holds the last item, and is unbound when the loop never runs
+13:11 SMP537 `name` is read after the loop on line 11 ends: it holds the last item, and is unbound when the loop never runs
+14:12 SMP537 `count` is read after the loop on line 11 ends: it holds the last item, and is unbound when the loop never runs
+21:15 SMP537 `row` is read after the loop on line 18 ends: it holds the last item, and is unbound when the loop never runs
+81:12 SMP537 `group` is read after the loop on line 78 ends: it holds the last item, and is unbound when the loop never runs

@@ -7,7 +7,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 15:7 SMP801 Test class `TestDefault`; use module-level test functions with a name prefix
 20:7 SMP801 Test class `TestDefaulted`; use module-level test functions with a name prefix
 25:7 SMP801 Test class `TestPlain`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestPlain` into module-level functions]
---- fixed (3 applied, 2 remaining) ---
+30:7 SMP801 Test class `TestUnannotated`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestUnannotated` into module-level functions]
+--- fixed (4 applied, 2 remaining) ---
 def test_box_holds_value() -> None:
     assert Box[int]().get(1) == 1
 
@@ -33,3 +34,7 @@ class TestDefaulted[T: int = int]:
 
 def test_plain_plain() -> None:
     assert 1 == 1
+
+
+def test_unannotated_untyped(value=None) -> None:
+    assert value is None

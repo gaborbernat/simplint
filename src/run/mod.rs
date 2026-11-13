@@ -8,9 +8,8 @@ mod files;
 mod overlay;
 mod rounds;
 
-use std::env;
 use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::Write;
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
@@ -37,6 +36,8 @@ use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
 pub(crate) use cache::{DisplayKey, FullDisplay};
+#[cfg(test)]
+pub(crate) use check::with_linter;
 pub(crate) use check::{CacheUse, add_suppressions, check_files, check_stdin};
 use discover::within;
 pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing};
@@ -47,6 +48,8 @@ pub(crate) struct Resolved {
     pub(crate) settings_resolver: SettingsResolver,
     pub(crate) pyproject_config: PyprojectConfig,
     pub(crate) cache_dir: Option<PathBuf>,
+    // Read once, as the run starts, so paths shown relative to it stay the same through the run.
+    pub(crate) cwd: PathBuf,
 }
 
 impl Resolved {
@@ -62,19 +65,17 @@ impl Resolved {
 // link committed in place of the default, so it must stay inside the project root: the directory of the configuration
 // file, or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there,
 // and a default that leaves it too turns the cache off.
-pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<PathBuf> {
+pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig, cwd: &Path) -> Option<PathBuf> {
     let configured = &config.settings.cache_dir;
     if named {
         return Some(configured.clone());
     }
-    let root = match config.path.as_deref().and_then(Path::parent) {
-        Some(parent) => parent.to_path_buf(),
-        None => env::current_dir().ok()?,
-    };
-    let chosen = if within(configured, &root) { configured.clone() } else { ruff_cache::cache_dir(&root) };
+    let root =
+        config.path.as_deref().map_or(cwd, |path| path.parent().expect("a configuration file lies in a directory"));
+    let chosen = if within(configured, root) { configured.clone() } else { ruff_cache::cache_dir(root) };
     // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
-    let build = crate::project::cache::documentation_file(&chosen, &root);
-    if build.parent().is_some_and(|build| within(build, &root)) {
+    let build = crate::project::cache::documentation_file(&chosen, root);
+    if within(build.parent().expect("a build file lies in a directory"), root) {
         return Some(chosen);
     }
     warn_user!("Not caching: the cache directory `{}` leads outside the project", chosen.display());
@@ -247,9 +248,13 @@ fn fix_path(
             diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
-    let fixed = FixMap::of(path, fixed);
     Ok(Linting {
-        diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
+        diagnostics: Diagnostics {
+            inner: diagnostics,
+            fixed: FixMap::of(path, fixed),
+            diffs,
+            ..Diagnostics::default()
+        },
         settled,
         noqa_rows,
         cacheable: true,
@@ -263,12 +268,8 @@ fn fix_path(
 fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> Result<()> {
     let target = std::fs::canonicalize(path)?;
     ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
-    let mut file = OpenOptions::new().read(true).write(true).open(&target)?;
-    let mut current = String::new();
-    file.read_to_string(&mut current)?;
-    ensure!(current == original, "{} changed while simplint fixed it", path.display());
-    file.seek(SeekFrom::Start(0))?;
-    file.set_len(0)?;
+    ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
+    let mut file = OpenOptions::new().write(true).truncate(true).open(&target)?;
     file.write_all(fixed.as_bytes())?;
     file.sync_all()?;
     Ok(())
@@ -301,12 +302,7 @@ fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> StdinL
             .map(|transformed| SourceKindDiff::from_text(source, &transformed, Some(path)).to_string())
     };
     StdinLint {
-        diagnostics: Diagnostics {
-            inner: diagnostics,
-            fixed: FixMap::of(path, fixed),
-            diffs: Vec::new(),
-            rendered: FxHashMap::default(),
-        },
+        diagnostics: Diagnostics { inner: diagnostics, fixed: FixMap::of(path, fixed), ..Diagnostics::default() },
         output,
     }
 }
@@ -365,9 +361,38 @@ struct Linted {
 
 #[cfg(test)]
 mod tests {
+    use std::io::ErrorKind;
     use std::path::PathBuf;
 
+    use test_case::test_case;
+
     use super::write_source;
+
+    // A file removed or rewritten as binary since it was read fails the write and stays as it is.
+    #[test_case(None, ErrorKind::NotFound ; "removed")]
+    #[test_case(Some(b"\xff".as_slice()), ErrorKind::InvalidData ; "not_utf8")]
+    fn write_source_fails_on_a_file_it_cannot_read_back(content: Option<&[u8]>, kind: ErrorKind) {
+        let directory = tempfile::TempDir::new().expect("temporary directory");
+        let path = directory.path().join("module.py");
+        if let Some(content) = content {
+            std::fs::write(&path, content).expect("write file");
+        }
+        let roots = [std::fs::canonicalize(directory.path()).expect("canonical directory")];
+        let error = write_source(&path, &roots, "read = 1\n", "fixed = 1\n").expect_err("unreadable");
+        assert_eq!(
+            (error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), std::fs::read(&path).ok()),
+            (Some(kind), content.map(<[u8]>::to_vec))
+        );
+    }
+
+    // Linux takes a write to `/dev/null` but refuses to sync it, which fails the write.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn write_source_fails_when_the_file_takes_no_sync() {
+        let error = write_source(&PathBuf::from("/dev/null"), &[PathBuf::from("/dev")], "", "fixed = 1\n")
+            .expect_err("no sync");
+        assert_eq!(error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), Some(ErrorKind::InvalidInput));
+    }
 
     #[test]
     fn write_source_keeps_a_file_changed_since_it_was_read() {
@@ -393,6 +418,30 @@ mod tests {
         assert_eq!(
             (error.to_string(), std::fs::read_to_string(&path).expect("read file")),
             (format!("{} lies outside the linted paths", path.display()), "read = 1\n".to_owned())
+        );
+    }
+
+    // A file that cannot grow fails the write, as on a full disk.
+    #[cfg(unix)]
+    #[test]
+    fn write_source_fails_when_the_file_cannot_grow() {
+        crate::limits::limited(
+            concat!(module_path!(), "::write_source_fails_when_the_file_cannot_grow"),
+            crate::limits::Limit::FileSize,
+            || {
+                let directory = tempfile::TempDir::new().expect("temporary directory");
+                std::fs::write(directory.path().join("module.py"), "read = 1\n").expect("write file");
+                directory
+            },
+            |directory| {
+                let roots = [std::fs::canonicalize(directory.path()).expect("canonical directory")];
+                let error = write_source(&directory.path().join("module.py"), &roots, "read = 1\n", "fixed = 1\n")
+                    .expect_err("the file cannot grow");
+                assert_eq!(
+                    error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+                    Some(ErrorKind::FileTooLarge)
+                );
+            },
         );
     }
 }

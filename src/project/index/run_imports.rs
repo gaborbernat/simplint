@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::FileId;
 use super::classes::Reexports;
 use super::resolve::{ClassKey, ModuleFacts};
-use crate::project::facts::ImportBinding;
+use crate::project::facts::{ImportBinding, Signature};
 
 // A name the file only imports, assigns or leaves to a module `__getattr__` is absent, so nothing tells what it is.
 pub(super) type Members = FxHashMap<String, bool>;
@@ -13,6 +13,8 @@ pub(super) struct RunImports {
     pub(super) names: FxHashMap<FileId, Members>,
     pub(super) modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
     pub(super) members: FxHashMap<FileId, Members>,
+    // The functions of the run each file imports by name, with their signatures, under the names the file binds.
+    pub(super) signatures: FxHashMap<FileId, FxHashMap<String, Signature>>,
 }
 
 pub(super) fn run_import_kinds(
@@ -30,10 +32,23 @@ pub(super) fn run_import_kinds(
     let defined = |file: FileId, name: &str| home(file, name).map(|key| classes.contains(&key));
     let mut bound: FxHashMap<FileId, Vec<&str>> = FxHashMap::default();
     let mut names: FxHashMap<FileId, Members> = FxHashMap::default();
+    let mut signatures: FxHashMap<FileId, FxHashMap<String, Signature>> = FxHashMap::default();
     for (importer, source, binding) in bindings {
         bound.entry(*importer).or_default().push(binding.bound.as_str());
-        if let Some(is_class) = defined(*source, &binding.name) {
-            names.entry(*importer).or_default().insert(binding.bound.clone(), is_class);
+        let Some(key) = home(*source, &binding.name) else {
+            continue;
+        };
+        let is_class = classes.contains(&key);
+        names.entry(*importer).or_default().insert(binding.bound.clone(), is_class);
+        // A module that defines the name twice, as on both sides of a version check, gives no single signature.
+        let mut shapes = modules
+            .get(&key.0)
+            .into_iter()
+            .flat_map(|module| &module.signatures)
+            .filter(|signature| signature.name == key.1);
+        let found = shapes.next().filter(|first| shapes.all(|other| other == *first));
+        if let Some(signature) = found.filter(|_| !is_class) {
+            signatures.entry(*importer).or_default().insert(binding.bound.clone(), signature.clone());
         }
     }
     let members: FxHashMap<FileId, Members> = modules
@@ -62,5 +77,5 @@ pub(super) fn run_import_kinds(
             (*importer, found)
         })
         .collect();
-    RunImports { names, modules, members }
+    RunImports { names, modules, members, signatures }
 }

@@ -1,6 +1,8 @@
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
+use std::ffi::OsStr;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
@@ -111,9 +113,11 @@ impl SearchRoots {
             .into_iter()
             .filter_map(|root| {
                 path.strip_prefix(root)
-                    .ok()?
+                    .expect("the root is a prefix of the path")
                     .iter()
-                    .map(|part| Path::new(part).file_stem()?.to_str().map(str::to_owned))
+                    .map(|part| {
+                        Path::new(part).file_stem().expect("a normal component has a stem").to_str().map(str::to_owned)
+                    })
                     .collect()
             })
             .collect()
@@ -129,19 +133,21 @@ fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
             let name = entry.file_name();
             name.to_str().is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name)))
         })
-        .filter_map(|entry| {
-            let kind = entry.file_type().ok()?;
-            let path = entry.path();
-            if kind.is_dir() {
-                Some((path, None))
-            } else if kind.is_symlink() && path.is_dir() {
-                let target = fs::canonicalize(&path).ok()?;
-                Some((path, Some(target)))
-            } else {
-                None
-            }
-        })
+        .filter_map(|entry| importable(entry.path(), entry.file_type()))
         .collect()
+}
+
+// A directory, or a link to one with its target. An entry whose type cannot be read was removed after the listing.
+fn importable(path: PathBuf, kind: io::Result<fs::FileType>) -> Option<(PathBuf, Option<PathBuf>)> {
+    let kind = kind.ok()?;
+    if kind.is_dir() {
+        return Some((path, None));
+    }
+    if !kind.is_symlink() {
+        return None;
+    }
+    let target = fs::canonicalize(&path).ok()?;
+    target.is_dir().then_some((path, Some(target)))
 }
 
 // The links to a `.py` or `.pyi` file in a directory. A link's target can go away without changing any entry of the
@@ -153,6 +159,41 @@ fn module_links(directory: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
         .map(|entry| entry.path())
-        .filter(|path| matches!(path.extension().and_then(|extension| extension.to_str()), Some("py" | "pyi")))
+        .filter(|path| ["py", "pyi"].iter().any(|extension| path.extension() == Some(OsStr::new(extension))))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::io;
+
+    use tempfile::TempDir;
+
+    use super::importable;
+
+    #[test]
+    fn entry_whose_type_cannot_be_read_is_not_importable() {
+        let folder = TempDir::new().expect("create a temporary directory");
+        assert_eq!(importable(folder.path().join("gone"), Err(io::Error::other("removed"))), None);
+    }
+
+    // A link counts by its target: a directory is importable under the link's name, a file or a dangling link is not.
+    #[cfg(unix)]
+    #[test]
+    fn link_is_importable_when_it_reaches_a_directory() {
+        let folder = TempDir::new().expect("create a temporary directory");
+        let root = fs::canonicalize(folder.path()).expect("resolve the temporary directory");
+        fs::create_dir(root.join("real")).expect("create the target directory");
+        fs::write(root.join("file.py"), "").expect("write the target file");
+        let importable_link = |name: &str, target: &str| {
+            let link = root.join(name);
+            std::os::unix::fs::symlink(root.join(target), &link).expect("create a link");
+            importable(link.clone(), fs::symlink_metadata(&link).map(|metadata| metadata.file_type()))
+        };
+        assert_eq!(
+            [importable_link("pkg", "real"), importable_link("module", "file.py"), importable_link("dangling", "gone")],
+            [Some((root.join("pkg"), Some(root.join("real")))), None, None]
+        );
+    }
 }

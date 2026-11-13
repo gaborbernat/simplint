@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 125
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 11:5 SMP526 `count` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
@@ -9,7 +8,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 31:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
 39:5 SMP526 `seen` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
 47:5 SMP526 `out` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
---- fixed (6 applied, 0 remaining) ---
+54:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use
+60:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+--- fixed (7 applied, 1 remaining) ---
 def total(items: list[int]) -> int:
     count = 0
     items.sort()
@@ -60,3 +61,16 @@ def text_not_a_name(items: list[int]) -> list[int]:
     print("output")
     out = []
     return out
+
+
+def use_before_comment(items: list[int]) -> int:
+    limit = 3
+    items.sort()
+    return len(items) + limit  # keeps the fix away
+
+
+def use_before_lone_semicolon(items: list[int]) -> int:
+    items.sort()
+    limit = 3
+    print(limit)
+    return len(items)

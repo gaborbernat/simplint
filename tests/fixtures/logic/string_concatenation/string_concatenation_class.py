@@ -16,3 +16,10 @@ ESCAPED = named + "<i>"
 
 def wrap(text: str) -> list[str]:
     return [Label("x") + "!", "<b>" + text, str(text) + "!", "<b>" + "<i>" + text]
+
+
+def shadowed() -> str:
+    class Label:
+        text = "x"
+
+    return "name: " + Label().text

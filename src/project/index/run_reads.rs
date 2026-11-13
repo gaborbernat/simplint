@@ -10,9 +10,9 @@ use crate::project::facts::Channel;
 use crate::project::{DocReferences, FileFacts};
 
 use super::files::FileId;
-use super::reach::unqualified;
 use super::writes::Writes;
 use super::{every, every_in};
+use crate::syntax::last_dotted_segment;
 
 pub(in crate::project) struct RunWide {
     pub(super) reads: RunReads,
@@ -30,6 +30,7 @@ pub(in crate::project) struct RunWide {
     // The class names more than one module-level class of the run defines, which a documentation reference by simple
     // name cannot tell apart.
     pub(super) class_namesakes: FxHashSet<String>,
+    pub(super) bound_marks: FxHashSet<String>,
 }
 
 pub(super) fn run_names(
@@ -73,6 +74,7 @@ pub(super) fn run_names(
         computed_reads,
         writes,
         class_namesakes: class_namesakes(indexed),
+        bound_marks: every(indexed, |facts| &facts.bound_marks),
     }
 }
 
@@ -107,15 +109,23 @@ pub(super) struct RunReads {
     pub(super) class_names: bool,
     pub(super) reflected: FxHashSet<String>,
     pub(super) string_words: FxHashMap<String, u32>,
+    // Whether a test reads `__all__`, by its name in a string as `getattr(module, "__all__")` does or as an attribute,
+    // which may check what type it is.
+    pub(super) tests_read_all: bool,
 }
 
 impl RunReads {
-    pub(super) fn collect(indexed: &[(FileId, &FileFacts)]) -> Self {
+    pub(super) fn collect(indexed: &[(FileId, &FileFacts)], test_modules: &FxHashSet<FileId>) -> Self {
         Self {
             docstrings: indexed.iter().any(|(_, facts)| facts.reads_docstrings),
             class_names: indexed.iter().any(|(_, facts)| facts.reads_class_names),
             reflected: indexed.iter().flat_map(|(_, facts)| facts.reflected_names.iter().cloned()).collect(),
             string_words: string_word_counts(indexed),
+            tests_read_all: indexed.iter().any(|(id, facts)| {
+                test_modules.contains(id)
+                    && (facts.string_words.lines().any(|word| word == "__all__")
+                        || facts.attribute_loads.contains_key("__all__"))
+            }),
         }
     }
 }
@@ -150,6 +160,7 @@ impl RunWide {
         docs.cache_key(&mut hasher);
         self.computed_reads.cache_key(&mut hasher);
         string_words_key(&self.reads.string_words).cache_key(&mut hasher);
+        self.reads.tests_read_all.cache_key(&mut hasher);
         // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
         for names in [
             &self.assigned_attributes,
@@ -158,6 +169,7 @@ impl RunWide {
             &self.fixture_requests,
             &self.opaque_names,
             &self.referenced_paths,
+            &self.bound_marks,
             &self.writes.untyped,
             &self.writes.dict_stores,
             &self.writes.unslottable_bases,
@@ -183,23 +195,26 @@ impl RunWide {
             .chain(writes.dict_stores.symmetric_difference(&others.dict_stores))
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
-            .map(|class| unqualified(class));
+            .map(|class| last_dotted_segment(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
+        let all_read = (self.reads.tests_read_all != other.reads.tests_read_all).then_some("__all__");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.module_reads.symmetric_difference(&other.module_reads))
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
             .chain(self.fixture_requests.symmetric_difference(&other.fixture_requests))
             .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
+            .chain(self.bound_marks.symmetric_difference(&other.bound_marks))
             .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
             .chain(
                 self.referenced_paths
                     .symmetric_difference(&other.referenced_paths)
-                    .map(|path| path.rsplit_once('.').map_or(path.as_str(), |(_, name)| name)),
+                    .map(|path| last_dotted_segment(path)),
             )
             .chain(classes)
             .chain(pickling)
+            .chain(all_read)
             .chain(self.string_word_changes(other))
             .collect()
     }

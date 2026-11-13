@@ -9,11 +9,15 @@ use crate::settings::SettingsResolver;
 impl Resolved {
     pub(crate) fn new(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Result<Self> {
         let (config_arguments, arguments) = cli.partition(global_options)?;
-        let settings_resolver =
-            SettingsResolver::new(arguments.config_file.as_deref(), arguments.isolated, arguments.overrides)?;
+        let settings_resolver = SettingsResolver::new(
+            &arguments.cwd,
+            arguments.config_file.as_deref(),
+            arguments.isolated,
+            arguments.overrides,
+        )?;
         let pyproject_config = ruff::resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())
             .map_err(|error| redact_extended(error, &settings_resolver.root.root))?;
-        let cache_dir = choose_cache_dir(cli.cache_dir.is_some(), &pyproject_config);
-        Ok(Self { config_arguments, settings_resolver, pyproject_config, cache_dir })
+        let cache_dir = choose_cache_dir(cli.cache_dir.is_some(), &pyproject_config, &arguments.cwd);
+        Ok(Self { config_arguments, settings_resolver, pyproject_config, cache_dir, cwd: arguments.cwd })
     }
 }

@@ -4,10 +4,12 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::keyword_removal;
+use crate::rules::edits::argument_removal;
 
-// The attribute `expr` reads from a module the name is only ever bound to, as `re.error` is read from `re`. An
-// assignment or `del` patches the module, so only reads count.
+// The attribute `expr` reads from a module the name is only ever bound to, as `re.error` is read from `re`, so a fix
+// can rename the attribute. A name imported from the module is left alone, since renaming it would also rename its
+// uses. An assignment or `del` patches the module, where a rename would patch the other name, so only reads count. A
+// name bound to another module as well may be that one.
 pub fn module_attribute_read<'e>(checker: &Checker, expr: &'e Expr, path: &[&str]) -> Option<&'e ast::ExprAttribute> {
     let Expr::Attribute(attribute) = expr else {
         return None;
@@ -35,7 +37,7 @@ pub fn report_redundant_keyword(
     message: &str,
     title: &str,
 ) {
-    let fix = keyword_removal(checker, call, keyword)
+    let fix = argument_removal(checker, call, keyword.range())
         .map(|range| Fix::applicable_edit(Edit::range_deletion(range), applicability));
     checker.report_fix(rule, keyword.range(), message, fix, title);
 }

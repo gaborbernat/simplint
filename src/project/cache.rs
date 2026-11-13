@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use filetime::FileTime;
 use log::error;
 use rkyv::util::AlignedVec;
@@ -117,17 +117,33 @@ fn remove_stale(current: &Path) {
         if sibling == current || !is_build_directory(&entry) {
             continue;
         }
-        let newest = fs::read_dir(&sibling)
-            .into_iter()
-            .flatten()
-            .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
-            .max()
-            .or_else(|| sibling.metadata().ok()?.modified().ok());
-        let now = SystemTime::now();
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
-        if newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN)) {
+        if last_written(&sibling)
+            .is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
+        {
             let _ = fs::remove_dir_all(&sibling);
         }
+    }
+}
+
+// The time of the newest file a directory holds; an empty one, or one whose files cannot be stat'd, goes by its own.
+fn last_written(directory: &Path) -> Option<SystemTime> {
+    newest(fs::read_dir(directory).into_iter().flatten()).or_else(|| directory.metadata().ok()?.modified().ok())
+}
+
+// The newest time of the entries a directory listing gave; an entry the listing failed on, or one that cannot be stat'd,
+// has none.
+fn newest<E: Modified>(entries: impl Iterator<Item = io::Result<E>>) -> Option<SystemTime> {
+    entries.filter_map(|entry| entry.ok()?.modified().ok()).max()
+}
+
+trait Modified {
+    fn modified(&self) -> io::Result<SystemTime>;
+}
+
+impl Modified for fs::DirEntry {
+    fn modified(&self) -> io::Result<SystemTime> {
+        self.metadata()?.modified()
     }
 }
 
@@ -172,7 +188,7 @@ pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf
 // Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
 // first, as the run may write before it has opened the package caches.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    let directory = path.parent().context("a cache file sits in a directory")?;
+    let directory = path.parent().expect("a cache file sits in a directory");
     fs::create_dir_all(directory)?;
     let mut temporary = tempfile_in(directory)?;
     temporary.write_all(bytes)?;
@@ -190,4 +206,130 @@ pub fn tempfile_in(path: &Path) -> io::Result<NamedTempFile> {
 #[cfg(not(unix))]
 pub fn tempfile_in(path: &Path) -> io::Result<NamedTempFile> {
     tempfile::Builder::new().tempfile_in(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+    use test_case::test_case;
+
+    use super::{Modified, init, is_build_name, last_written, newest, read_aligned, write_atomically};
+
+    #[test_case("0.11.1-0123456789abcdef", true ; "release")]
+    #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
+    #[test_case("0.11_1-0123456789abcdef", false ; "underscore_in_version")]
+    #[test_case("-0123456789abcdef", false ; "no_version")]
+    #[test_case("0.11.1-0123456789ABCDEF", false ; "uppercase_hash")]
+    fn build_directory_names(name: &str, build: bool) {
+        assert_eq!(is_build_name(name), build);
+    }
+
+    #[test]
+    fn reading_a_directory_as_a_cache_fails() {
+        let directory = TempDir::new().expect("create a temporary directory");
+
+        assert!(read_aligned(directory.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_ruff_cache_fails_the_initialization() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TempDir::new().expect("create a temporary directory");
+        let ruff_cache = root.path().join("ruff");
+        fs::create_dir(&ruff_cache).expect("create the directory");
+        fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o555)).expect("make the directory read-only");
+        let initialized = init(&ruff_cache, &root.path().join("build"));
+        fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o755)).expect("make the directory writable");
+
+        assert!(initialized.is_err());
+    }
+
+    #[test]
+    fn writing_over_a_directory_fails() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let target = root.path().join("cache");
+        fs::create_dir(&target).expect("create the directory");
+
+        assert!(write_atomically(&target, b"data").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writing_into_a_read_only_directory_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = TempDir::new().expect("create a temporary directory");
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o555)).expect("make the directory read-only");
+        let written = write_atomically(&root.path().join("cache"), b"data");
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o755)).expect("make the directory writable");
+
+        assert!(written.is_err());
+    }
+
+    // A file that cannot grow fails the write and leaves no cache file behind.
+    #[cfg(unix)]
+    #[test]
+    fn writing_a_file_that_cannot_grow_fails() {
+        crate::limits::limited(
+            concat!(module_path!(), "::writing_a_file_that_cannot_grow_fails"),
+            crate::limits::Limit::FileSize,
+            || TempDir::new().expect("create a temporary directory"),
+            |root| {
+                let target = root.path().join("cache");
+                let error = write_atomically(&target, b"data").expect_err("the file cannot grow");
+                assert_eq!(
+                    (error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), target.exists()),
+                    (Some(std::io::ErrorKind::FileTooLarge), false)
+                );
+            },
+        );
+    }
+
+    // A directory whose files cannot be stat'd, as one that may be listed but not searched, goes by its own time.
+    #[cfg(unix)]
+    #[test]
+    fn directory_without_search_permission_goes_by_its_own_time() {
+        use std::os::unix::fs::PermissionsExt;
+
+        use filetime::{FileTime, set_file_mtime};
+
+        let root = TempDir::new().expect("create a temporary directory");
+        let directory = root.path().join("0.0.1-00000000000000a1");
+        fs::create_dir(&directory).expect("create the directory");
+        fs::write(directory.join("1"), "").expect("write a cache file");
+        set_file_mtime(directory.join("1"), FileTime::from_unix_time(1_000, 0)).expect("age the file");
+        set_file_mtime(&directory, FileTime::from_unix_time(2_000, 0)).expect("age the directory");
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o444)).expect("make the directory unsearchable");
+        let written = last_written(&directory);
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).expect("make the directory searchable");
+
+        assert_eq!(written.map(FileTime::from_system_time), Some(FileTime::from_unix_time(2_000, 0)));
+    }
+
+    // A directory removed since the cache listed it has no time, which counts as stale.
+    #[test]
+    fn directory_removed_since_listing_has_no_time() {
+        let root = TempDir::new().expect("create a temporary directory");
+        assert_eq!(last_written(&root.path().join("0.0.1-00000000000000a1")), None);
+    }
+
+    struct Written(std::time::SystemTime);
+
+    impl Modified for Written {
+        fn modified(&self) -> std::io::Result<std::time::SystemTime> {
+            Ok(self.0)
+        }
+    }
+
+    // An entry the listing failed on, as on a disk error, has no time, so the others decide.
+    #[test]
+    fn entry_the_listing_failed_on_is_skipped() {
+        let time = std::time::SystemTime::UNIX_EPOCH;
+        let entries = [Err(std::io::Error::other("disk error")), Ok(Written(time))];
+        assert_eq!(newest(entries.into_iter()), Some(time));
+    }
 }

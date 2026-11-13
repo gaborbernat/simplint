@@ -11,11 +11,15 @@ use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{definitions, names_are_followed, references_outside};
 use crate::rules::is_named_by_doctest;
+use crate::rules::logic::LOCALS_READERS;
 use crate::rules::public_api::Need;
 use crate::semantic::Evaluation;
-use crate::syntax::{Visibility, identifier_words, module_statements};
+use crate::syntax::{
+    REBUILD_HOOKS, Visibility, for_each_child_body, identifier_words, instance_attributes, module_statements,
+};
 
 pub fn unused_definition(checker: &Checker) {
+    nested_functions(checker);
     if !names_are_followed(checker) {
         return;
     }
@@ -190,6 +194,179 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
                 format!("`{class_name}.{name}` is never {verb} in the run; remove it or give it a {caller}"),
             );
         }
+    }
+    instance_attributes_of(checker, class, local_reads, strings);
+}
+
+// An attribute the methods store on the instance that nothing reads: no `obj.name` load, `getattr` literal or string
+// in the run names it. A class that reads its instance as a whole, as `vars(self)`, pickling or a copy does, is kept
+// whole, and so are the public attributes of a class the public API offers.
+fn instance_attributes_of(
+    checker: &Checker,
+    class: &ast::StmtClassDef,
+    local_reads: &ComputedReads,
+    strings: &StringWords,
+) {
+    if reads_instance_whole(class) {
+        return;
+    }
+    let project = checker.project();
+    let public_class = checker.state().public_api(checker).covers(class.range(), Need::Any);
+    let members: Vec<&str> = module_statements(&class.body)
+        .filter_map(|member| match member {
+            Stmt::FunctionDef(method) => Some(method.name.as_str()),
+            Stmt::Assign(ast::StmtAssign { targets, .. }) => match targets.as_slice() {
+                [Expr::Name(target)] => Some(target.id.as_str()),
+                _ => None,
+            },
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => target.as_name_expr().map(|name| name.id.as_str()),
+            _ => None,
+        })
+        .collect();
+    for (name, range) in instance_attributes(class) {
+        if !(members.contains(&name)
+            || is_protocol_name(name)
+            || public_class && Visibility::of(name) == Visibility::Public
+            || project.calls().attribute_loads(name) != 0
+            || project.string_word_count(name) != 0
+            || computed_read_hides(checker, name, local_reads)
+            || project.is_referenced(name)
+            || is_in_strings(strings, name, TextRange::empty(range.start())))
+        {
+            checker.report(
+                Rule::UnusedDefinition,
+                range,
+                format!(
+                    "`{}.{name}` is stored on the instance but never read in the run; remove it or give it a reader",
+                    class.name
+                ),
+            );
+        }
+    }
+}
+
+// `vars(self)`, `self.__dict__`, and the hooks pickling and copying call read every attribute of the instance.
+fn reads_instance_whole(class: &ast::StmtClassDef) -> bool {
+    struct Whole(bool);
+    impl<'a> Visitor<'a> for Whole {
+        fn visit_expr(&mut self, expr: &'a Expr) {
+            match expr {
+                Expr::Attribute(attribute) if attribute.attr.as_str() == "__dict__" => self.0 = true,
+                Expr::Name(name) if matches!(name.id.as_str(), "vars" | "asdict" | "astuple") => self.0 = true,
+                _ => walk_expr(self, expr),
+            }
+        }
+    }
+    let is_hook = |name: &str| {
+        REBUILD_HOOKS.contains(&name)
+            || ["__getstate__", "__copy__", "__deepcopy__", "__slots__", "__getattr__"].contains(&name)
+    };
+    if module_statements(&class.body).any(|member| match member {
+        Stmt::FunctionDef(method) => is_hook(method.name.as_str()),
+        Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+            targets.iter().any(|target| target.as_name_expr().is_some_and(|name| is_hook(name.id.as_str())))
+        }
+        _ => false,
+    }) {
+        return true;
+    }
+    let mut whole = Whole(false);
+    whole.visit_body(&class.body);
+    whole.0
+}
+
+// A function defined inside another function that the enclosing function never reads: it is never called, returned or
+// passed on. A `locals()` or `vars()` call, or a `global` or `nonlocal` statement naming it, can reach it by name.
+fn nested_functions(checker: &Checker) {
+    for outer in checker.function_defs() {
+        // A function that holds only definitions runs none of them; it is source text another tool reads, such as a
+        // plugin a test writes out.
+        if outer.body.iter().all(|stmt| {
+            matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Pass(_))
+                || stmt.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr())
+        }) || !defines_function(&outer.body)
+        {
+            continue;
+        }
+        let mut scope = Scope::default();
+        scope.visit_body(&outer.body);
+        if scope.dynamic {
+            continue;
+        }
+        for inner in scope.functions {
+            let name = inner.name.as_str();
+            let read = scope
+                .loads
+                .get(name)
+                .is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
+            if inner.decorator_list.is_empty() && !read && !scope.declared.contains(&name) && name != "_" {
+                checker.report(
+                    Rule::UnusedDefinition,
+                    inner.name.range(),
+                    format!(
+                        "`{}.{name}` is defined inside `{}` but never called or read; remove it",
+                        outer.name, outer.name
+                    ),
+                );
+            }
+        }
+    }
+}
+
+// Whether the body defines a function of its own, outside its nested functions and classes.
+fn defines_function(body: &[Stmt]) -> bool {
+    body.iter().any(|stmt| match stmt {
+        Stmt::FunctionDef(_) => true,
+        Stmt::ClassDef(_) => false,
+        _ => {
+            let mut found = false;
+            for_each_child_body(stmt, &mut |child| found |= defines_function(child));
+            found
+        }
+    })
+}
+
+// The direct nested functions of a function body, the names it loads anywhere, nested scopes included, and whether it
+// reaches its locals by name.
+#[derive(Default)]
+struct Scope<'a> {
+    functions: Vec<&'a ast::StmtFunctionDef>,
+    loads: FxHashMap<&'a str, Vec<TextRange>>,
+    declared: Vec<&'a str>,
+    dynamic: bool,
+    depth: usize,
+}
+
+impl<'a> Visitor<'a> for Scope<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
+                if let Stmt::FunctionDef(function) = stmt
+                    && self.depth == 0
+                {
+                    self.functions.push(function);
+                }
+                self.depth += 1;
+                walk_stmt(self, stmt);
+                self.depth -= 1;
+            }
+            Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
+                self.declared.extend(names.iter().map(ast::Identifier::as_str));
+            }
+            _ => walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Name(name) = expr {
+            if name.ctx.is_load() && LOCALS_READERS.contains(&name.id.as_str()) {
+                self.dynamic = true;
+            }
+            if name.ctx.is_load() || name.ctx.is_del() {
+                self.loads.entry(name.id.as_str()).or_default().push(name.range);
+            }
+        }
+        walk_expr(self, expr);
     }
 }
 

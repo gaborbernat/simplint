@@ -5,14 +5,22 @@ use crate::semantic::Semantic;
 use crate::syntax::single_assignment;
 
 pub(crate) mod callable_ellipsis;
+mod globals_writes;
 pub(crate) mod imprecise_annotation;
 pub(crate) mod missing_final;
+mod mutable_module_constant;
 pub(crate) mod vars_call;
 
 pub(crate) use missing_final::missing_final;
+pub(crate) use mutable_module_constant::mutable_module_constant;
 
 pub(crate) fn is_type_parameter_constructor(semantic: &Semantic, func: &Expr) -> bool {
     ["TypeVar", "TypeVarTuple", "ParamSpec"].iter().any(|member| semantic.match_typing_expr(func, member))
+}
+
+// `typing.Callable`, its `typing_extensions` copy, or `collections.abc.Callable`.
+fn is_callable(semantic: &Semantic, expr: &Expr) -> bool {
+    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
 }
 
 pub(crate) fn type_parameter_assignment<'a>(checker: &Checker, stmt: &'a Stmt) -> Option<&'a ast::ExprName> {

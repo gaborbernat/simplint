@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 // A production module reaches another as a value through a dotted name, or through an import in a function or class
@@ -67,10 +67,7 @@ fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service:
             "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP408"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A function that imports a module and only calls one of its functions loads no name as a value, so the module's other
@@ -93,7 +90,7 @@ fn import_only_called_through_keeps_other_test_only_names() {
         check(root.path(), &["--select", "SMP408"]).1,
         "pkg/fast.py:5:5: SMP408 `encode` is used only by tests; move it into the tests or a test helper module\nFound \
         1 error.\n"
-            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+            .replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -149,10 +146,7 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
             \"a:True\"\n",
         ),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP410"]).1,
-        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP410"]).1, stdout.replace("app/", &native("app/")));
 }
 
 // The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production
@@ -177,10 +171,7 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
         ("pkg/service.py", service),
         ("tests/test_fast.py", "from pkg.fast import LIMIT\n\n\ndef test_limit() -> None:\n    assert LIMIT == 1\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP401"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
 // A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant
@@ -332,10 +323,26 @@ fn startup_pth_reads_are_not_unused(prefix: &str, name: &str, rule: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/hook.py", &format!("{prefix}def {name}() -> None:\n    print(\"hook\")\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", rule]).1, common::PASSED);
+    common::assert_clean(root.path(), rule);
     let without_pth = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/hook.py", &format!("{prefix}def {name}() -> None:\n    print(\"hook\")\n")),
     ]);
     assert!(check(without_pth.path(), &["--select", rule]).1.contains(&format!("`{name}`")));
+}
+
+// A test class another test module imports, as a suite that reruns it under another backend does, stays a class.
+#[test]
+fn test_class_imported_elsewhere_keeps_its_class() {
+    let base = "def helper() -> int:\n    return 1\n\n\nclass TestSSL:\n    def test_one(self) -> None:\n        assert helper()\n";
+    let root = project(&[
+        ("tests/__init__.py", ""),
+        ("tests/test_ssl.py", base),
+        ("tests/test_contrib.py", "from tests.test_ssl import TestSSL\n\n_ = TestSSL\n"),
+    ]);
+    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP801"]);
+    assert_eq!(common::read(root.path(), "tests/test_ssl.py"), base);
+    let alone = project(&[("tests/__init__.py", ""), ("tests/test_ssl.py", base)]);
+    check(alone.path(), &["--fix", "--unsafe-fixes", "--select", "SMP801"]);
+    assert_ne!(common::read(alone.path(), "tests/test_ssl.py"), base);
 }

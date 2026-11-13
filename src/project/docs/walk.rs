@@ -117,7 +117,8 @@ const WATCHED: [&str; 6] = [".gitignore", ".ignore", "index.txt", "pyproject.tom
 // when an entry is added or renamed but not when a page is edited, so pages and ignore files are stat'd too. Each
 // level is listed on all threads, as a gitignored build tree can hold tens of thousands of directories. A directory an
 // ignore file hides is listed too, so the key covers at least what the walk reads.
-pub(super) fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> u64 {
+// `global` is git's excludes file, which git finds only through a home directory or its configuration.
+pub(super) fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path, global: Option<&Path>) -> u64 {
     let mut hasher = CacheKeyHasher::new();
     settings.file_resolver.cache_key(&mut hasher);
     for ancestor in root.ancestors() {
@@ -125,8 +126,8 @@ pub(super) fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &
             stat_key(&ancestor.join(name), &mut hasher);
         }
     }
-    if let Some(global) = ignore::gitignore::gitconfig_excludes_path() {
-        stat_key(&global, &mut hasher);
+    if let Some(global) = global {
+        stat_key(global, &mut hasher);
     }
     let mut stats = Vec::new();
     let mut level = vec![root.to_path_buf()];
@@ -156,21 +157,87 @@ fn list(directory: &Path, exclusions: &Exclusions, main: &Path) -> Listing {
     let mut stats = vec![(directory.to_path_buf(), stat(directory))];
     let mut below = Vec::new();
     for entry in fs::read_dir(directory).into_iter().flatten().filter_map(Result::ok) {
-        let (path, name) = (entry.path(), entry.file_name());
-        let Ok(file_type) = entry.file_type() else { continue };
-        if file_type.is_dir() {
-            if enters(&path, &name, exclusions, main) {
-                below.push(path);
-            }
-        } else if is_configuration(&path) {
-            if file_type.is_file() || file_type.is_symlink() {
+        let path = entry.path();
+        match listed(&path, &entry.file_name(), entry.file_type().ok(), exclusions, main) {
+            Listed::Below => below.push(path),
+            Listed::Stat => {
                 let stat = stat(&path);
                 stats.push((path, stat));
             }
-        } else if file_type.is_file() && (is_page(&path) || WATCHED.iter().any(|watched| name == *watched)) {
-            let stat = stat(&path);
-            stats.push((path, stat));
+            Listed::Skip => {}
         }
     }
     Listing { stats, below }
+}
+
+#[derive(Debug, PartialEq)]
+enum Listed {
+    Below,
+    Stat,
+    Skip,
+}
+
+// An entry whose type cannot be read was removed after the listing, which the directory's own stat records.
+fn listed(path: &Path, name: &OsStr, file_type: Option<fs::FileType>, exclusions: &Exclusions, main: &Path) -> Listed {
+    let Some(file_type) = file_type else {
+        return Listed::Skip;
+    };
+    if file_type.is_dir() {
+        return if enters(path, name, exclusions, main) { Listed::Below } else { Listed::Skip };
+    }
+    let stated = if is_configuration(path) {
+        file_type.is_file() || file_type.is_symlink()
+    } else {
+        file_type.is_file() && (is_page(path) || WATCHED.iter().any(|watched| name == *watched))
+    };
+    if stated { Listed::Stat } else { Listed::Skip }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsStr;
+    use std::fs;
+    use std::path::Path;
+
+    use ruff_linter::settings::types::FilePatternSet;
+    use tempfile::TempDir;
+
+    use super::{Exclusions, Listed, list, listed, tree_key};
+
+    #[test]
+    fn global_excludes_file_is_part_of_the_key() {
+        let folder = TempDir::new().expect("create a temporary directory");
+        let global = folder.path().join("excludes");
+        fs::write(&global, "*.log\n").expect("write the excludes file");
+        let settings = ruff_workspace::Settings::default();
+        let root = folder.path();
+        assert_ne!(tree_key(root, &settings, root, None), tree_key(root, &settings, root, Some(&global)));
+    }
+
+    #[test]
+    fn entry_whose_type_cannot_be_read_is_skipped() {
+        let exclusions = Exclusions { exclude: FilePatternSet::default(), extend_exclude: FilePatternSet::default() };
+        assert_eq!(listed(Path::new("conf.py"), OsStr::new("conf.py"), None, &exclusions, Path::new("")), Listed::Skip);
+    }
+
+    // Sphinx reads a `conf.py` a link points at, but not one that is a socket or another special file.
+    #[cfg(unix)]
+    #[test]
+    fn configuration_counts_as_a_file_or_a_link_only() {
+        let folder = TempDir::new().expect("create a temporary directory");
+        let (linked, socket) = (folder.path().join("linked"), folder.path().join("socket"));
+        fs::create_dir(&linked).expect("create the linked directory");
+        fs::create_dir(&socket).expect("create the socket directory");
+        fs::write(folder.path().join("real.py"), "").expect("write the link target");
+        std::os::unix::fs::symlink(folder.path().join("real.py"), linked.join("conf.py")).expect("link conf.py");
+        let _listener = std::os::unix::net::UnixListener::bind(socket.join("conf.py")).expect("bind a socket conf.py");
+        let exclusions = Exclusions { exclude: FilePatternSet::default(), extend_exclude: FilePatternSet::default() };
+        let stated = |directory: &Path| -> Vec<_> {
+            list(directory, &exclusions, folder.path()).stats.into_iter().map(|(path, _)| path).collect()
+        };
+        assert_eq!(
+            (stated(&linked), stated(&socket)),
+            (vec![linked.clone(), linked.join("conf.py")], vec![socket.clone()])
+        );
+    }
 }

@@ -58,19 +58,6 @@ pub struct ApiScope {
     pub(crate) packages: Option<BTreeSet<String>>,
 }
 
-// Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
-// the interface its author declares to them, so no name in it needs an importer in the project.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub struct ModuleRole {
-    pub(crate) public: bool,
-}
-
-impl CacheKey for ModuleRole {
-    fn cache_key(&self, state: &mut CacheKeyHasher) {
-        self.public.cache_key(state);
-    }
-}
-
 impl ApiScope {
     pub(super) fn resolve(
         root: &Path,
@@ -81,12 +68,11 @@ impl ApiScope {
     ) -> Self {
         let library =
             option == ProjectKindOption::Library || option == ProjectKindOption::Auto && is_installable(root, build);
-        let kind = if library { ProjectKind::Library } else { ProjectKind::Application };
         let packages = packages.map_or_else(
             || shipped_packages(root, build, metadata),
             |names| Some(names.iter().map(|name| package_name(name)).collect()),
         );
-        Self { kind, packages }
+        Self { kind: if library { ProjectKind::Library } else { ProjectKind::Application }, packages }
     }
 
     // A file's role from its module path, such as `["package", "module"]` or `["package", "__init__"]`; a file that is
@@ -126,6 +112,19 @@ impl CacheKey for ApiScope {
     }
 }
 
+// Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
+// the interface its author declares to them, so no name in it needs an importer in the project.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct ModuleRole {
+    pub(crate) public: bool,
+}
+
+impl CacheKey for ModuleRole {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.public.cache_key(state);
+    }
+}
+
 // Something builds and installs the project, so others can import it: a `[build-system]`, or the `setup.py` or
 // `setup.cfg` pip falls back to without one. uv's `package = false` and maturin's binary-only builds install no Python
 // package.
@@ -151,7 +150,7 @@ fn shipped_packages(root: &Path, build: &BuildConfiguration, metadata: &ProjectM
     };
     let typed: BTreeSet<String> = candidates()
         .filter(|path| path.join("py.typed").is_file())
-        .filter_map(|path| path.file_name()?.to_str().map(str::to_owned))
+        .filter_map(|path| path.file_name().expect("a directory entry has a name").to_str().map(str::to_owned))
         .collect();
     if !typed.is_empty() {
         return Some(typed);

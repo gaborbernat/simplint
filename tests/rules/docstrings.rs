@@ -74,6 +74,7 @@ use crate::common;
 #[test_case("rst-returns", "rst_returns.py", None ; "rst_returns")]
 #[test_case("rst-returns", "rst_returns_lambda_yield.py", None ; "rst_returns_lambda_yield")]
 #[test_case("rst-missing-raises", "rst_missing_raises.py", None ; "rst_missing_raises")]
+#[test_case("rst-unraised-exception", "rst_unraised_exception.py", None ; "rst_unraised_exception")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -531,7 +532,7 @@ fn simple_name_shared_by_two_classes_reports_nothing() {
         ("docs/conf.py", ""),
         ("docs/api.rst", api),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP918");
 }
 
 // A module of a package is named by its dotted path from the package's root, so a directive that names it in full
@@ -558,6 +559,7 @@ fn packaged_module_is_named_by_its_dotted_path() {
 #[test_case("", "", "extensions = []\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_extensions")]
 #[test_case("", "", "master_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_master_doc")]
 #[test_case("", "", "root_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_root_doc")]
+#[test_case("", "", "from shared import extensions\nautoclass_content = \"init\"\n", KEPT_INIT ; "imports_extensions")]
 #[test_case("", "", INIT, KEPT_CLASS ; "neither_index_nor_name_is_not_sphinx")]
 #[test_case("", "", "from shared import *\nextensions = []\n", common::PASSED ; "star_import_beside_a_real_binding")]
 fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
@@ -571,6 +573,19 @@ fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
         files.push((index, index_text));
     }
     assert_eq!(duplicate_report(&files), stdout);
+}
+
+// A page that is not UTF-8 holds no text to read, so the other pages decide.
+#[test]
+fn page_that_is_not_utf8_is_skipped() {
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("model.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", INIT),
+    ]);
+    std::fs::write(root.path().join("docs/broken.rst"), b"\xff\xfe\n").expect("write the page");
+    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_INIT);
 }
 
 // A wildcard binding may bind any name, so it leaves the options unknown, but it does not make a `conf.py` one.
@@ -604,6 +619,7 @@ fn star_importing_conf_py_elsewhere_does_not_disable_the_rule() {
 #[test_case("from shared import autoclass_content\n", common::PASSED ; "imported_name")]
 #[test_case("exec(\"autoclass_content = 'init'\")\n", common::PASSED ; "exec")]
 #[test_case("globals()[\"autoclass_content\"] = \"init\"\n", common::PASSED ; "globals_store")]
+#[test_case("loaded: object = exec(\"autoclass_content = 'init'\")\n", common::PASSED ; "exec_in_annotated_value")]
 #[test_case("match autoclass_content:\n    case _:\n        pass\n", common::PASSED ; "bound_by_match")]
 #[test_case("try:\n    pass\nexcept ImportError as autoclass_content:\n    pass\n", common::PASSED ; "bound_by_except")]
 #[test_case("import autoclass_content.sub\n", common::PASSED ; "bound_by_dotted_import")]
@@ -848,7 +864,7 @@ fn rst_rules_need_the_docstring_style() {
             "def run(path: str) -> str:\n    \"\"\"Run.\n\n    :parm path: Where.\n    \"\"\"\n    return path\n",
         ),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP91,SMP92");
 }
 
 // Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
@@ -1126,8 +1142,7 @@ fn inherited_members_of_a_private_base_are_public_api() {
             "class XDGMixin:\n    @property\n    def user_data_dir(self) -> str:\n        \"\"\"Data directory.\"\"\"\
                 \n        \
              return \"/data\"\n\n    def site_dir(self) -> str:\n        return \"/site\"\n\n    def ensure(self, path\
-             : \
-             str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
+             : str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
         ),
         (
             "pkg/unix.py",

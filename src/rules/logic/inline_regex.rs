@@ -10,14 +10,14 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, Import, above_comments, ensure_import, fix_of, preamble_len, statement_lines};
-use crate::rules::logic::regex_pattern::{Call, Context, Facts, Literal};
+use crate::rules::logic::regex_pattern::{Call, Context, Literal};
 use crate::rules::typing::missing_final::final_qualifier;
 
 const METACHARACTERS: &[u8] = b".^$*+?{[\\|()";
 const ESCAPABLE: &[u8] = b"abfnrtv";
 
 pub fn inline_regex(checker: &Checker) {
-    let facts = Facts::collect(checker);
+    let facts = checker.state().regex_facts(checker);
     let sites: Vec<(&Literal, &Call)> = facts
         .sites()
         .into_iter()
@@ -127,8 +127,6 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
             .expect("a call sits in a statement of the module body");
         let constant = constant_name(checker, call, function, &constants);
         constants.insert(constant.clone());
-        let alias = alias_edits(checker, call, function, &constant, sites);
-
         let value_type = if literal.bytes { "bytes" } else { "str" };
         let mut compile_arguments = vec![checker.text(literal.range)];
         compile_arguments.extend(call.flags.map(|flags| checker.text(flags)));
@@ -137,7 +135,7 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
             spelling.qualifier,
             compile_arguments.join(", "),
         ));
-        if let Some(edits) = alias {
+        if let Some(edits) = alias_edits(checker, call, function, &constant, sites) {
             replacements.extend(edits);
         } else {
             let replacement = if call.attr == "compile" {
@@ -166,7 +164,8 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
         Import::Add(edit) => Some(edit),
         Import::Present => None,
     });
-    let fix = fix_of(import_edits.chain(insertions).chain(replacements), Applicability::Unsafe)?;
+    let fix = fix_of(import_edits.chain(insertions).chain(replacements), Applicability::Unsafe)
+        .expect("each included call inserts its constant");
     Some(if isolated { fix.isolate(IsolationLevel::Group(1)) } else { fix })
 }
 

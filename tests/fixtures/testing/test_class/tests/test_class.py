@@ -139,3 +139,13 @@ class TestDetached:
 class TestHeader:  # grouped for the report
     def test_first(self) -> None:
         assert True
+
+
+class TestQualname:
+    def test_name(self) -> None:
+        assert self.test_name.__qualname__ == "TestQualname.test_name"
+
+
+class TestWithoutSelf:
+    def test_bound_elsewhere(this) -> None:
+        assert this

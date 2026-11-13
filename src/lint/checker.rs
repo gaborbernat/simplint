@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::parenthesize::parenthesized_range;
-use ruff_python_ast::token::TokenKind;
+use ruff_python_ast::token::{Token, TokenKind};
 use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
@@ -15,10 +15,10 @@ use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
-use crate::lint::Linter;
 use crate::lint::noqa::Suppressions;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::lint::{Linter, Parse};
 use crate::project::FileIndex;
 use crate::rules::FileState;
 use crate::semantic::{RuffMatches, Semantic};
@@ -59,11 +59,7 @@ pub struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(
-        path: &'a Path,
-        file: &'a SourceFile,
-        parsed: &'a Parsed<ModModule>,
-        indexer: &'a Indexer,
-        stylist: &'a Stylist<'a>,
+        Parse { path, file, parsed, indexer, stylist }: Parse<'a>,
         linter: &'a Linter<'a>,
         suppressions: &'a Suppressions<'a>,
     ) -> Self {
@@ -112,12 +108,9 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of. Only debug builds check, so
-    // a release build skips the bookkeeping.
+    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of in debug builds.
     pub(super) fn enter(&self, rule: Rule) {
-        if cfg!(debug_assertions) {
-            self.rule.set(Some(rule));
-        }
+        self.rule.set(Some(rule));
     }
 
     fn report_unused_ignores(&self, suppressions: &Suppressions) {
@@ -169,21 +162,21 @@ impl<'a> Checker<'a> {
         related: Vec<Related>,
     ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
-        for location in related {
+        let annotations = related.into_iter().filter_map(|location| {
             let file = if location.path == self.path {
                 Some(self.file.clone())
             } else {
                 let mut files = self.related_files.borrow_mut();
                 files.entry(location.path).or_insert_with_key(|path| source_file_at(path)).clone()
             };
-            if let Some(file) = file {
-                let span = Span::from(file).with_range(location.range);
-                diagnostic.annotate(Annotation::secondary(span).message(location.message));
-            }
+            file.map(|file| {
+                Annotation::secondary(Span::from(file).with_range(location.range)).message(location.message)
+            })
+        });
+        for annotation in annotations {
+            diagnostic.annotate(annotation);
         }
-        // Applying a fix and rendering its diff both walk its edits in order, which unsorted or overlapping
-        // edits break.
-        debug_assert!(fix.as_ref().is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
+        assert_disjoint_edits(rule, fix.as_ref());
         if fix.is_some() {
             diagnostic.help(title.into());
             diagnostic.set_optional_fix(self.settings.project.fix_for(rule, fix));
@@ -281,6 +274,16 @@ impl<'a> Checker<'a> {
 
     pub fn parenthesized_range(&self, expr: &Expr, parent: AnyNodeRef) -> TextRange {
         parenthesized_range(expr.into(), parent, self.comment_ranges(), self.source).unwrap_or_else(|| expr.range())
+    }
+
+    // The kind of the first token after `offset` that is neither a comment nor a line break inside brackets.
+    pub fn next_significant_token(&self, offset: TextSize) -> Option<TokenKind> {
+        self.parsed
+            .tokens()
+            .after(offset)
+            .iter()
+            .map(Token::kind)
+            .find(|kind| !matches!(kind, TokenKind::NonLogicalNewline | TokenKind::Comment))
     }
 
     pub fn comment_ranges(&self) -> &'a CommentRanges {
@@ -456,4 +459,45 @@ pub(crate) fn source_file_at(path: &Path) -> Option<SourceFile> {
 // deletion, do not overlap.
 fn disjoint_edits(fix: &Fix) -> bool {
     fix.edits().windows(2).all(|pair| pair[1].start() >= pair[0].end())
+}
+
+// Applying a fix and rendering its diff both walk its edits in order, which overlapping edits break.
+fn assert_disjoint_edits(rule: Rule, fix: Option<&Fix>) {
+    debug_assert!(fix.is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_diagnostics::{Edit, Fix};
+    use ruff_text_size::TextSize;
+
+    use super::{assert_disjoint_edits, source_file_at};
+    use crate::lint::registry::Rule;
+
+    #[test]
+    fn file_that_is_gone_has_no_source() {
+        let root = tempfile::TempDir::new().expect("create a temporary directory");
+        assert!(source_file_at(&root.path().join("module.py")).is_none());
+    }
+
+    #[test]
+    fn touching_edits_are_disjoint() {
+        let fix = Fix::safe_edits(
+            Edit::deletion(TextSize::new(0), TextSize::new(2)),
+            [Edit::insertion("x".to_owned(), TextSize::new(2))],
+        );
+
+        assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
+    }
+
+    #[test]
+    #[should_panic(expected = "unused-ignore built a fix with overlapping edits")]
+    fn overlapping_edits_fail_the_check() {
+        let fix = Fix::safe_edits(
+            Edit::deletion(TextSize::new(0), TextSize::new(3)),
+            [Edit::deletion(TextSize::new(2), TextSize::new(4))],
+        );
+
+        assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
+    }
 }

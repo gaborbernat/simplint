@@ -2,7 +2,9 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-5:5 SMP924 `parse` raises `ParseError`, which its docstring does not document; add `:raises ParseError:`
-5:5 SMP924 `parse` raises `LookupError`, which its docstring does not document; add `:raises LookupError:`
-87:5 SMP924 `hierarchy` raises `ValueError`, which its docstring does not document; add `:raises ValueError:`
-144:5 SMP924 `exits` raises `SystemExit`, which its docstring does not document; add `:raises SystemExit:`
+6:5 SMP924 `parse` raises `ParseError`, which its docstring does not document; add `:raises ParseError:`
+6:5 SMP924 `parse` raises `LookupError`, which its docstring does not document; add `:raises LookupError:`
+88:5 SMP924 `hierarchy` raises `ValueError`, which its docstring does not document; add `:raises ValueError:`
+145:5 SMP924 `exits` raises `SystemExit`, which its docstring does not document; add `:raises SystemExit:`
+202:5 SMP924 `undocumented_warning` raises `UserWarning`, which its docstring does not document; add `:raises UserWarning:`
+207:5 SMP924 `caught_by_other` raises `ParseError`, which its docstring does not document; add `:raises ParseError:`

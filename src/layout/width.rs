@@ -30,8 +30,10 @@ pub(crate) fn fits_line(
 // quote decides which quote the value may hold.
 pub(crate) fn joined(checker: &Checker, text: &str) -> Option<String> {
     let options = formatting_options(checker).with_quote_style(QuoteStyle::Preserve);
-    let printed = format_module_source(&format!("_ = ({text})\n"), options).ok()?;
-    printed.as_code().trim_end().strip_prefix("_ = ").filter(|line| !line.contains('\n')).map(str::to_owned)
+    // The text is an expression's source, which parses again inside parentheses.
+    let printed = format_module_source(&format!("_ = ({text})\n"), options).expect("a parenthesized expression parses");
+    let line = printed.as_code().trim_end().strip_prefix("_ = ").expect("the formatter keeps the assignment target");
+    (!line.contains('\n')).then(|| line.to_owned())
 }
 
 fn formatting_options(checker: &Checker) -> PyFormatOptions {
@@ -79,12 +81,12 @@ pub(crate) fn fits(checker: &Checker, next: &Stmt, replace: &Edit, depth: usize)
         .collect::<Vec<_>>()
         .join("\n");
     let statement = if compound { format!("{text}\n    pass\n") } else { format!("{text}\n") };
-    let indent = checker.settings.from_ruff.indent_width * depth;
-    let limit = checker.settings.from_ruff.line_width;
     // The formatter would parse the statement the same way, so a statement that does not parse cannot be formatted.
     let Ok(parsed) = parse(&statement, ParseOptions::from(PySourceType::Python)) else {
         return false;
     };
+    let indent = checker.settings.from_ruff.indent_width * depth;
+    let limit = checker.settings.from_ruff.line_width;
     let respects_commas = checker.settings.from_ruff.magic_trailing_comma;
     if !text.contains('\n')
         && widest_format(&parsed, &statement, text.len(), respects_commas).is_some_and(|width| indent + width <= limit)

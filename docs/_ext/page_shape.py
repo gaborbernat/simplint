@@ -7,6 +7,7 @@ import posixpath
 import re
 from functools import partial
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NotRequired, TypedDict
 
 from docutils import nodes
@@ -94,9 +95,10 @@ def _add_measures(example: nodes.Element) -> None:
     # longest line of both, built like the snippets around it, so the browser sizes both sides alike and wraps the
     # second below the first once that line no longer fits; no script measures the page.
     sides = [node for node in example.findall(nodes.container) if "example-side" in node["classes"]]
-    lines = [
-        line for side in sides for block in side.findall(nodes.literal_block) for line in block.astext().splitlines()
-    ]
+    lines: list[str] = []
+    for side in sides:
+        for block in side.findall(nodes.literal_block):
+            lines.extend(block.astext().splitlines())
     longest = html.escape(max(lines, key=len, default=""))
     measure = (
         '<div class="highlight-text example-measure" aria-hidden="true"><div class="highlight"><pre>'
@@ -193,13 +195,13 @@ def _inline_assets(app: Sphinx, exception: Exception | None) -> None:
         page.write_text(_ASSET.sub(inline, text), encoding="utf-8")
 
 
-_EXAMPLE_TOGGLES: Final[dict[str, tuple[str, str]]] = {
+_EXAMPLE_TOGGLES: Final[MappingProxyType[str, tuple[str, str]]] = MappingProxyType({
     "example-reported": ("✗", "Show an example it reports"),
     "example-not-reported": ("✓", "Show an example it accepts"),
     "example-pair": ("✗✓", "Show an example it reports beside one it accepts"),
     "example-fix": ("🔧", "Show the fix"),
     "example-configuration": ("⚙", "Show the configuration"),
-}
+})
 
 
 _SIDEBAR_LINK: Final[re.Pattern[str]] = re.compile(

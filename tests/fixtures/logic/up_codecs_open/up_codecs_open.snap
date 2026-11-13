@@ -13,7 +13,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 39:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
 43:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
 47:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
---- fixed (5 applied, 6 remaining) ---
+51:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+--- fixed (5 applied, 7 remaining) ---
 import codecs
 
 
@@ -61,3 +62,7 @@ def read_commented(path):
 
 def read_positional(path):
     return open(path, "r", buffering=1, encoding="utf-8", errors="strict", newline="").read()
+
+
+def read_without_filename(path):
+    return codecs.open(encoding="utf-8").read(), path

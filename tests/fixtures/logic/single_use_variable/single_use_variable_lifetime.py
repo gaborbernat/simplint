@@ -1,3 +1,7 @@
+import weakref
+from weakref import WeakMethod
+
+
 def produce(rows: list[int]):
     try:
         yield rows[0]
@@ -68,3 +72,35 @@ def method_on_temporary() -> str:
 def part_of_literal() -> str:
     pair = ("scratch", 1)
     return pair[0]
+
+
+def weak_target(scratch: Scratch) -> int:
+    reference = weakref.ref(scratch)
+    target = reference()
+    print(target)
+    return weakref.getweakrefcount(scratch)
+
+
+def weak_method(scratch: Scratch) -> object:
+    method = WeakMethod(scratch.describe)
+    return method()
+
+
+def weak_reference_type(scratch: Scratch) -> object:
+    reference = weakref.ReferenceType(scratch)
+    return reference()
+
+
+def weak_proxy_type(scratch: Scratch) -> object:
+    proxy = weakref.ProxyType(scratch)
+    return proxy.describe()
+
+
+def described_each(items: list[Scratch]) -> bool:
+    described = [item.describe() for item in items]
+    return any(described)
+
+
+def positive_each(items: list[int]) -> bool:
+    positive = [item > 0 for item in items]
+    return all(positive)

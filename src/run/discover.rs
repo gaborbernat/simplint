@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use ignore::Error as WalkError;
 use log::warn;
-use ruff_workspace::resolver::{Resolver, match_exclusion, project_files_in_path};
+use ruff_workspace::resolver::{ResolvedFile, Resolver, match_exclusion, project_files_in_path};
 use rustc_hash::FxHashSet;
 
 use super::Resolved;
@@ -23,9 +23,7 @@ pub(crate) struct Discovered<'a> {
 }
 
 pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discovered<'a>> {
-    let (found, resolver) =
-        project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)
-            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let (found, resolver) = project_files(files, configuration)?;
     let roots = linted_roots(files);
     let mut python = Vec::new();
     let mut unlinted = Vec::new();
@@ -53,7 +51,7 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
         }
         // A file named on the command line is Python whatever its extension, as Ruff treats it, unless it is a
         // notebook, TOML or Markdown file, which simplint does not lint.
-        let named = file.is_root() && !matches!(extension, Some("ipynb" | "toml" | "md"));
+        let named = file.is_root() && !is_other_language(extension);
         if extension != Some("py") && !named {
             continue;
         }
@@ -67,6 +65,19 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
         python.push(path.to_path_buf());
     }
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
+}
+
+fn project_files<'a>(
+    files: &[PathBuf],
+    configuration: &'a Resolved,
+) -> Result<(Vec<Result<ResolvedFile, WalkError>>, Resolver<'a>)> {
+    project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)
+        .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))
+}
+
+// Notebooks, TOML and Markdown files, which Ruff can lint but simplint does not.
+fn is_other_language(extension: Option<&str>) -> bool {
+    matches!(extension, Some("ipynb" | "toml" | "md"))
 }
 
 // The paths a run lints, canonical, so a file under them is one the run may read and write.
@@ -117,13 +128,10 @@ fn identity(path: &Path) -> Option<PathBuf> {
 // is not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the
 // walk reports it as missing rather than as a file.
 pub(super) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
-    let extension = path.extension().and_then(|extension| extension.to_str());
-    if matches!(extension, Some("ipynb" | "toml" | "md")) {
+    if is_other_language(path.extension().and_then(|extension| extension.to_str())) {
         return Ok(false);
     }
-    let (found, resolver) =
-        project_files_in_path(&[path.to_path_buf()], &configuration.pyproject_config, &configuration.config_arguments)
-            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let (found, resolver) = project_files(&[path.to_path_buf()], configuration)?;
     let settings = resolver.resolve(path);
     let excluded = settings.file_resolver.force_exclude
         && match_exclusion(path, path.file_name().unwrap_or_default(), &settings.linter.exclude);
@@ -154,7 +162,7 @@ pub(crate) fn within(path: &Path, root: &Path) -> bool {
 fn resolve_links(path: &Path) -> Option<PathBuf> {
     path.ancestors().find_map(|ancestor| {
         let existing = fs::canonicalize(ancestor).ok()?;
-        Some(existing.join(path.strip_prefix(ancestor).ok()?))
+        Some(existing.join(path.strip_prefix(ancestor).expect("an ancestor is a prefix of its path")))
     })
 }
 
@@ -162,5 +170,24 @@ fn resolve_links(path: &Path) -> Option<PathBuf> {
 pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
     for (_, message) in missing {
         warn!("{} {message}", "Encountered error:".bold());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use anyhow::anyhow;
+
+    use super::redact_extended;
+
+    // A message that names no complete path is not one about an extended file, so it stays as Ruff wrote it.
+    #[test]
+    fn redact_extended_keeps_an_unterminated_name() {
+        let message = "Failed to load extended configuration `/elsewhere/ruff.toml";
+
+        let redacted = redact_extended(anyhow!(message), Path::new("."));
+
+        assert_eq!(redacted.to_string(), message);
     }
 }

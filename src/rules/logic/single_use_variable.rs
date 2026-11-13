@@ -2,7 +2,7 @@ use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 
 use crate::layout::fits;
 use crate::lint::checker::Checker;
@@ -21,7 +21,7 @@ use ruff::{leads_if_test, raises_with_name, reports_default, returns_or_yields, 
 
 pub fn single_use_variable(checker: &Checker) {
     // A function's names are walked once, and only when one of its blocks assigns a single name.
-    let mut names: FxHashMap<TextRange, Names> = FxHashMap::default();
+    let scopes = checker.state().local_scopes(checker);
     // A call rebinds only a name some function declares `global` or `nonlocal`.
     let rebindable = declared_outer(checker.body());
     for_each_scoped_body(checker.body(), None, 0, &enter_function, &mut |body, function, depth| {
@@ -32,7 +32,7 @@ pub fn single_use_variable(checker: &Checker) {
             if let [Stmt::Assign(assign), next] = pair
                 && let Some(target) = sole_name_target(assign)
             {
-                let function_names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
+                let function_names = &scopes.function(function).names().names;
                 check_pair(checker, (function_names, &rebindable), (assign, target), next, &function.body, depth);
             }
         }
@@ -66,7 +66,7 @@ fn check_pair<'a>(
     let fix = match keep_debug_text(checker, vec![edit]) {
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
-            let Some(replace) = edits.first() else { return };
+            let replace = &edits[0];
             if !fits(checker, next, replace, depth) {
                 return;
             }
@@ -110,6 +110,7 @@ fn single_read<'a>(
         || names.rebound.contains(name)
         || names.string_reads.contains(name)
         || names.reads_locals
+        || is_weak_reference(checker, value)
     {
         return None;
     }
@@ -142,4 +143,14 @@ fn single_read<'a>(
         return None;
     }
     Some((use_range, reading))
+}
+
+// A weak reference counts for nothing once its last name is gone: inlined, it is dropped right after the read, and a
+// later `weakref.getweakrefcount` or callback sees it missing.
+fn is_weak_reference(checker: &Checker, value: &Expr) -> bool {
+    value.as_call_expr().is_some_and(|call| {
+        checker.semantic().qualified_name(&call.func).is_some_and(|name| {
+            matches!(name.segments(), ["weakref", "ref" | "proxy" | "WeakMethod" | "ReferenceType" | "ProxyType"])
+        })
+    })
 }

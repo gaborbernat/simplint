@@ -14,7 +14,7 @@ use crate::rules::comments::Comment;
 use crate::rules::docstrings::rst::{Target, collect_targets};
 use crate::rules::edits::DebugFields;
 use crate::rules::layout::{ClassOrder, class_order};
-use crate::rules::logic::KindsCache;
+use crate::rules::logic::{KindsCache, LocalScopes, RegexFacts};
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
 use crate::rules::public_api::PublicApi;
@@ -28,6 +28,7 @@ pub(crate) struct FileState<'a> {
     module_variables: OnceCell<Vec<ModuleVariable<'a>>>,
     rst_targets: OnceCell<Vec<Target<'a>>>,
     kinds: KindsCache<'a>,
+    local_scopes: OnceCell<LocalScopes<'a>>,
     reported_names: ReportedNames<'a>,
     // The string literals of the `__all__` assignments, which renames of a name also rewrite.
     export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
@@ -50,6 +51,7 @@ pub(crate) struct FileState<'a> {
     // The comments that stand on a line of their own, which the comment rules read in runs.
     own_line_comments: OnceCell<Vec<TextRange>>,
     expected_to_raise: OnceCell<FxHashSet<&'a str>>,
+    regex_facts: OnceCell<RegexFacts<'a>>,
 }
 
 impl<'a> FileState<'a> {
@@ -78,6 +80,11 @@ impl<'a> FileState<'a> {
     // What `string-concatenation` reads off the module to tell the types of its operands.
     pub(crate) fn kinds(&self) -> &KindsCache<'a> {
         &self.kinds
+    }
+
+    // What the local-variable rules read off the module and each function, built per scope as the rules ask.
+    pub(crate) fn local_scopes(&self, checker: &Checker<'a>) -> &LocalScopes<'a> {
+        self.local_scopes.get_or_init(|| LocalScopes::of(checker.body(), checker.function_defs()))
     }
 
     // The names the single-letter and meaningless name rules reported so far.
@@ -140,6 +147,11 @@ impl<'a> FileState<'a> {
         self.comments.get_or_init(|| {
             checker.comment_ranges().into_iter().map(|range| (range, Comment::at(checker.source, range))).collect()
         })
+    }
+
+    // The `re` calls with literal patterns, and the names their results flow to, which the regex rules share.
+    pub(crate) fn regex_facts(&self, checker: &Checker<'a>) -> &RegexFacts<'a> {
+        self.regex_facts.get_or_init(|| RegexFacts::collect(checker))
     }
 
     pub(crate) fn overload_implementations(&self, checker: &Checker<'a>) -> &FxHashSet<TextSize> {
@@ -235,6 +247,22 @@ impl<'a> FileState<'a> {
     }
 }
 
+// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
+// the output.
+#[derive(Default)]
+struct SourceTextSpans {
+    spans: Vec<TextRange>,
+}
+
+impl<'a> Visitor<'a> for SourceTextSpans {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if matches!(expr, Expr::TString(_)) {
+            self.spans.push(expr.range());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
 // The ends of the callees of the calls in a file. A name or an attribute ends where its reference does, so a reference
 // is the callee of a call when its end is one of these, wherever the call's `(` sits.
 #[derive(Default)]
@@ -262,22 +290,6 @@ impl<'a> Visitor<'a> for AttributeReads<'a> {
             && let Expr::Name(base) = attribute.value.as_ref()
         {
             self.attributes.entry(base.id.as_str()).or_default().push(attribute.attr.as_str());
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
-// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
-// the output.
-#[derive(Default)]
-struct SourceTextSpans {
-    spans: Vec<TextRange>,
-}
-
-impl<'a> Visitor<'a> for SourceTextSpans {
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if matches!(expr, Expr::TString(_)) {
-            self.spans.push(expr.range());
         }
         visitor::walk_expr(self, expr);
     }

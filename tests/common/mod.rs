@@ -95,9 +95,25 @@ pub fn check_in(root: &Path, cwd: &Path, args: &[&str]) -> (i32, String, String)
     )
 }
 
+pub fn assert_clean(root: &Path, select: &str) {
+    let (_, stdout, stderr) = check(root, &["--select", select]);
+    assert_eq!(stdout, PASSED, "{stderr}");
+}
+
 pub fn assert_report_count(root: &Path, code: &str, expected: usize) {
     let stdout = check(root, &["--no-cache", "--select", code]).1;
     assert_eq!(reports(&stdout, code).len(), expected, "{stdout}");
+}
+
+// The files the concise lines that report `code` name, `/`-separated and sorted, so they read the same on Windows.
+pub fn report_paths(stdout: &str, code: &str) -> Vec<String> {
+    let mut paths: Vec<String> = reports(stdout, code)
+        .into_iter()
+        .filter_map(|line| line.split(':').next())
+        .map(|path| path.replace(std::path::MAIN_SEPARATOR, "/"))
+        .collect();
+    paths.sort_unstable();
+    paths
 }
 
 // The concise lines that report `code`, matched as a whole code so that a message naming it is not counted.

@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:21 SMP559 `(a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+4:20 SMP559 `(\w+\s?)*` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+5:26 SMP559 `(x|y+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+6:30 SMP559 `(?:a+){2,}` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+7:20 SMP559 `(?P<word>[a-z]+)*` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+8:19 SMP559 `((\d)*?)*?` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+9:20 SMP559 `(a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+11:5 SMP559 `(\w+\s?)*` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+18:29 SMP559 `(a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+37:20 SMP559 `(a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+38:27 SMP559 `(a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+43:30 SMP559 `(a+){,}` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+44:27 SMP559 `((?:a+)b?)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+53:25 SMP559 `(?<w>a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier
+54:25 SMP559 `(?<Word>a+)+` repeats a group that a repeat inside it can split in many ways, so a string that almost matches takes exponential time; make the parts inside the group exclusive, or use an atomic group or a possessive quantifier

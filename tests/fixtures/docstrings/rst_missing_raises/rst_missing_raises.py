@@ -1,3 +1,4 @@
+import json
 import errors
 
 
@@ -144,5 +145,81 @@ def exits() -> None:
     """Stop."""
     try:
         raise SystemExit(1)
+    except Exception:
+        pass
+
+
+def documented_warning_base() -> None:
+    """Warn.
+
+    :raises Warning: Always.
+    """
+    raise UserWarning
+
+
+def documented_standard_base(text: str) -> None:
+    """Decode a document.
+
+    :param text: The document.
+    :raises ValueError: When it is not JSON.
+    """
+    raise json.JSONDecodeError(text, text, 0)
+
+
+def documented_alias(path: str) -> None:
+    """Open a file.
+
+    :param path: The file.
+    :raises IOError: When it cannot be opened.
+    """
+    raise FileNotFoundError(path)
+
+
+class LocalError(LookupError):
+    """A local failure."""
+
+
+def documented_local_base() -> None:
+    """Look up.
+
+    :raises LookupError: Always.
+    """
+    raise LocalError
+
+
+def caught_by_standard_base(path: str) -> None:
+    """Open a file.
+
+    :param path: The file.
+    """
+    try:
+        raise json.JSONDecodeError(path, path, 0)
+    except ValueError:
+        pass
+
+
+def undocumented_warning() -> None:
+    """Warn."""
+    raise UserWarning
+
+
+def caught_by_other(text: str) -> None:
+    """Parse a number.
+
+    :param text: The text.
+    """
+    try:
+        raise errors.ParseError(text)
+    except KeyError:
+        pass
+
+
+def caught_broadly(text: str) -> None:
+    """Parse a number.
+
+    :param text: The text.
+    """
+    try:
+        raise errors.ParseError(text)
     except Exception:
         pass

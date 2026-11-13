@@ -88,3 +88,19 @@ impl CacheKey for ComputedReads {
         self.prefixes.iter().cloned().collect::<Vec<_>>().cache_key(state);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+    use test_case::test_case;
+
+    use super::ComputedReads;
+
+    #[test_case("getattr(obj, kind + \"_suffix\")" ; "computed_left_operand")]
+    #[test_case("getattr(obj, f\"\")" ; "empty_fstring")]
+    fn name_without_a_literal_start_reaches_any_name(source: &str) {
+        let parsed = parse_module(source).expect("parses");
+        let reads = ComputedReads::of(&parsed.syntax().body);
+        assert!(reads.any && reads.prefixes.is_empty());
+    }
+}

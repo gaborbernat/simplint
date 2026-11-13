@@ -7,9 +7,8 @@ mod unused_imports;
 use std::path::Path;
 
 use ruff_linter::settings::LinterSettings;
-use ruff_python_ast::identifier::Identifier;
-
 use ruff_python_ast::helpers::from_relative_import;
+use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::{QualifiedName, UnqualifiedName};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_semantic::analyze::logging;
@@ -23,7 +22,7 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::syntax::{first_positional, is_name, receiver, statement_index};
+use crate::syntax::{decorator_callee, first_positional, is_name, receiver, statement_index};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
@@ -189,6 +188,18 @@ impl<'a> Semantic<'a> {
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
     }
 
+    pub const PROPERTY: &[&[&str]] = &[&["", "property"], &["functools", "cached_property"]];
+
+    // Whether a decorator, or the factory a called decorator comes from, resolves to one of `names`.
+    pub fn is_decorator(&self, decorator: &ast::Decorator, names: &[&[&str]]) -> bool {
+        let callee = decorator_callee(decorator);
+        names.iter().any(|segments| self.resolves_to(callee, segments))
+    }
+
+    pub fn decorated_by(&self, decorators: &[ast::Decorator], names: &[&[&str]]) -> bool {
+        decorators.iter().any(|decorator| self.is_decorator(decorator, names))
+    }
+
     // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.
     pub fn qualified_name<'e>(&'e self, expr: &'e Expr) -> Option<QualifiedName<'e>> {
         self.model.resolve_qualified_name(expr)
@@ -204,7 +215,7 @@ impl<'a> Semantic<'a> {
         let (Some(module_path), Some(name)) = (module_path, UnqualifiedName::from_expr(expr)) else {
             return self.qualified_name(expr);
         };
-        let (head, tail) = name.segments().split_first()?;
+        let (head, tail) = name.segments().split_first().expect("a name has a segment");
         let Symbol::Binding(id) = self.model.lookup_symbol(head) else {
             return self.qualified_name(expr);
         };
@@ -261,7 +272,12 @@ impl<'a> Semantic<'a> {
         if !matches!(binding.kind, RuffBindingKind::ClassDefinition(_)) {
             return None;
         }
-        binding.statement(&self.model)?.as_class_def_stmt()
+        Some(
+            binding
+                .statement(&self.model)
+                .and_then(Stmt::as_class_def_stmt)
+                .expect("a class binding's statement is its class"),
+        )
     }
 
     pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {
@@ -271,18 +287,38 @@ impl<'a> Semantic<'a> {
         function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
     }
 
+    // The `def` at module level a load of `name` reads, when no statement of the file rebinds the name.
     pub fn module_function(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
         if self.is_rebound(name.id.as_str()) {
             return None;
         }
+        self.function_binding(name).filter(|(_, global)| *global).map(|(function, _)| function)
+    }
+
+    // The `def` a load of `name` reads, when its scope binds the name once, and to that `def`.
+    pub fn function_of(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
+        self.function_binding(name).map(|(function, _)| function)
+    }
+
+    fn function_binding(&self, name: &ast::ExprName) -> Option<(&'a ast::StmtFunctionDef, bool)> {
         let bindings = self.resolved_bindings(name);
         let [binding] = bindings.as_slice() else {
             return None;
         };
-        if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) || !binding.scope.is_global() {
+        if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) {
             return None;
         }
-        binding.statement(&self.model)?.as_function_def_stmt()
+        let function = binding
+            .statement(&self.model)
+            .and_then(Stmt::as_function_def_stmt)
+            .expect("a function binding's statement is its def");
+        Some((function, binding.scope.is_global()))
+    }
+
+    // Whether a load of `name` reads a `from ... import`, the only binding of the name in its scope.
+    pub fn reads_from_import(&self, name: &ast::ExprName) -> bool {
+        let bindings = self.resolved_bindings(name);
+        matches!(bindings.as_slice(), [binding] if matches!(binding.kind, RuffBindingKind::FromImport(_)))
     }
 
     pub fn is_rebound(&self, name: &str) -> bool {
@@ -302,7 +338,7 @@ impl<'a> Semantic<'a> {
     // of a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
     pub fn binding_values(&self, binding: &RuffBinding<'a>) -> Option<Vec<&Expr>> {
         match binding.kind {
-            RuffBindingKind::LoopVar => match binding.statement(&self.model)? {
+            RuffBindingKind::LoopVar => match binding.statement(&self.model).expect("a loop variable has its loop") {
                 Stmt::For(ast::StmtFor { target, iter, .. })
                     if target.as_name_expr().is_some_and(|target| target.range() == binding.range) =>
                 {
@@ -409,21 +445,18 @@ impl<'a> Semantic<'a> {
 }
 
 // The body is the part of a scope's node after its header, since a header's defaults, decorators and bases run in the
-// enclosing scope.
+// enclosing scope. Rules only see files that parse, where a `def` or `class` body holds a statement.
 fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     match kind {
         ScopeKind::Function(function) => {
-            Some((function.range(), TextRange::new(function.body.first()?.start(), function.range().end())))
+            Some((function.range(), TextRange::new(function.body[0].start(), function.range().end())))
         }
         ScopeKind::Lambda(lambda) => Some((lambda.range(), TextRange::new(lambda.body.start(), lambda.range().end()))),
-        ScopeKind::Class(class) => {
-            Some((class.range(), TextRange::new(class.body.first()?.start(), class.range().end())))
-        }
+        ScopeKind::Class(class) => Some((class.range(), TextRange::new(class.body[0].start(), class.range().end()))),
         _ => None,
     }
 }
 
-// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
 // What a binding names, as the rules that follow a name into the project read it.
 pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     match binding.kind {
@@ -437,6 +470,7 @@ pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     }
 }
 
+// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
     stmt.as_import_from_stmt()
         .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))
@@ -515,7 +549,6 @@ impl<'a> Index<'a> {
         body: &[Stmt],
         name: &'a ast::ExprName,
     ) {
-        let function = model.current_scopes().filter_map(|scope| function_range(scope.kind)).last();
         if let Some((receiver, class)) = enclosing_method(model)
             && let Some(attribute) = member_read(model, name, receiver, class)
         {
@@ -525,6 +558,7 @@ impl<'a> Index<'a> {
         if !resolves_to_module(model, module_bindings, name) {
             return;
         }
+        let function = model.current_scopes().filter_map(|scope| function_range(scope.kind)).last();
         // PEP 695 evaluates type parameter bounds and defaults, and `type` alias values, lazily.
         let lazy = model.in_deferred_type_definition() || model.in_deferred_type_alias_value();
         self.references.entry(name.id.as_str()).or_default().push(Reference {
@@ -650,10 +684,10 @@ fn is_receiver_instance(model: &SemanticModel, name: &ast::ExprName, receiver: O
 }
 
 fn resolves_to_module(model: &SemanticModel, module_bindings: &FxHashSet<BindingId>, name: &ast::ExprName) -> bool {
-    let id = name.id.as_str();
     if model.resolve_name(name).is_some_and(|binding_id| !module_bindings.contains(&binding_id)) {
         return false;
     }
+    let id = name.id.as_str();
     // Ruff resolves a load against the bindings made so far, but a name a function or comprehension binds anywhere is
     // local to all of it.
     model

@@ -56,13 +56,7 @@ fn rules_json_lists_parsed_examples() {
 
 #[test_case("dataclass-kw-only", "# dataclass-kw-only (SMP703)", "Fix is always available." ; "by_name_always")]
 #[test_case("SMP901", "# function-docstring (SMP901)", "Fix is sometimes available." ; "by_code_sometimes")]
-#[test_case(
-    "SMP002",
-    "# long-paragraph (SMP002)",
-    "Flags comment paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and \
-     gets" ;
-    "by_code_never"
-)]
+#[test_case("SMP002", "# long-paragraph (SMP002)", "Flags comment paragraphs longer than 100 words by default." ; "by_code_never")]
 fn rule_explains(selector: &str, title: &str, third: &str) {
     let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", selector]);

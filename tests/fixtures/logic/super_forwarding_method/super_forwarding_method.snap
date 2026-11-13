@@ -7,7 +7,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 20:9 SMP527 `store` only returns `super().store()` called with its own arguments; the parent's method is inherited [fix: Delete the method]
 36:9 SMP527 `run` only returns `super().run()` called with its own arguments; the parent's method is inherited
 172:9 SMP527 `ordered` only returns `super().ordered()` called with its own arguments; the parent's method is inherited [fix: Delete the method]
---- fixed (4 applied, 1 remaining) ---
+226:9 SMP527 `run` only returns `super().run()` called with its own arguments; the parent's method is inherited [fix: Delete the method]
+--- fixed (5 applied, 1 remaining) ---
 class Base:
     def run(self, name: str) -> str:
         return name
@@ -213,3 +214,11 @@ def build():
 class Trailing(Base):
     def run(self, name):
         return super().run(name)  # keep: the base class validates the name
+
+
+class ClassBodyStatements(Base):
+    try:
+        default = int("1")
+    except ValueError:
+        default = 0
+    make = lambda: 0  # noqa: E731

@@ -78,7 +78,8 @@ pub(super) fn coverage_plugin_names(
     let files: Vec<PathBuf> = plugins
         .iter()
         .filter_map(|(root, module)| {
-            let paths = resolver.coverage_paths.get(root)?;
+            // A project's search paths include its own directory, so each project with plugins has an entry.
+            let paths = &resolver.coverage_paths[root];
             let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, paths.clone());
             resolve(&resolver.db, environment, None, module)
         })

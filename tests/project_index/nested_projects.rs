@@ -63,7 +63,7 @@ fn nested_project_names_its_own_documentation() {
         ("roots/test-b/support.py", "def helper() -> None:\n    pass\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
-    let reported: Vec<&str> = stdout.lines().filter(|line| line.contains(" SMP409 ")).collect();
+    let reported = common::reports(&stdout, "SMP409");
     assert_eq!(
         reported,
         [format!(
@@ -249,8 +249,7 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
             \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
         ),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404");
     let outside = project(&[
         (
             "pyproject.toml",
@@ -376,15 +375,16 @@ fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, exp
     assert_eq!(stdout, common::native(expected));
 }
 
-// A doctest reads a module's name, which is no patch of it, so the module's own reads still get the import fix.
+// A doctest reads a module's name, which is no patch of it, so the module's own reads still get the import fix. A
+// `from` line without `import` imports nothing.
 #[test]
 fn doctest_read_does_not_patch_module() {
     let root = project(&[
         ("tools/bench/__init__.py", ""),
         (
             "tools/bench/operations.py",
-            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import \
-            operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
+            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench\n    \
+            >>> from bench import operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
         ),
         (
             "tools/bench/report.py",
@@ -395,8 +395,7 @@ fn doctest_read_does_not_patch_module() {
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
             "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it \
-            through \
-             the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+             through the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -445,8 +444,7 @@ fn autodoc_names_a_package_function_by_its_package() {
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autofunction:: app.helper\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP901,SMP409"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP901,SMP409");
     let undocumented = project(&[
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         (
@@ -476,8 +474,7 @@ fn autodoc_names_a_method_by_its_class() {
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autoclass:: app.mod.Foo\n   :members:\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP901"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP901");
     let undocumented = project(&[
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         ("app/__init__.py", ""),
@@ -530,7 +527,7 @@ fn coverage_plugin_init_is_used(all: &str) {
         ("tasks/__init__.py", ""),
         ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP402,SMP403,SMP409");
     let unconfigured = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n"),
         ("tasks/__init__.py", ""),

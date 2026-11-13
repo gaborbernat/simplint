@@ -175,8 +175,8 @@ field until they do.
     ```
 
 - **An exception a surrounding `try` of the same function catches**: it does not escape the function. The `try` catches
-  it by name, through a built-in base such as [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError)
-  for [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), through
+  it by name, through a base such as [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError) for
+  [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), through
   [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception), which does not catch
   [`SystemExit`](https://docs.python.org/3/builtins/exceptions.html#SystemExit),
   [`KeyboardInterrupt`](https://docs.python.org/3/builtins/exceptions.html#KeyboardInterrupt) or
@@ -231,8 +231,9 @@ field until they do.
           return 0
   ```
 
-- **An exception whose built-in base a field documents**: a field for the base documents its subclasses too, as
-  `:raises OSError:` does `FileNotFoundError`.
+- **An exception whose base a field documents**: a field for the base documents its subclasses too, as
+  `:raises OSError:` does `FileNotFoundError` and `:raises ValueError:` does `json.JSONDecodeError`. A field may name a
+  class by a second name, as `:raises IOError:` names `OSError`.
 
   ```toml config
   [project]
@@ -344,7 +345,8 @@ field until they do.
       load()
   ```
 
-The bases of built-in exceptions are known; those of a project's own exceptions are not.
+The bases of built-in exceptions, of common standard library exceptions and of the classes the file defines are known;
+those of exceptions the file imports from the rest of the project are not.
 
 ## Other tools
 

@@ -31,23 +31,25 @@ pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix>
         || checker.project().is_read_opaquely(old)
         // A computed write may set any name of the module, as `setattr(module, name, value)` does.
         || checker.project().is_computed_written()
+        // Compiled code can import any name by its spelling, which no index of the Python files sees.
+        || checker.settings.project.metadata.native
         || ranges.is_empty()
         || checker.name_token_count(old) != ranges.len()
+        || appears_in_strings(checker, old)
+        // A name in a t-string keeps its source text, which a new spelling would change.
+        || ranges.iter().any(|range| checker.state().in_source_text(checker, *range))
     {
         return None;
     }
-    if appears_in_strings(checker, old) {
-        return None;
-    }
-    // A name in a t-string keeps its source text, which a new spelling would change.
-    if ranges.iter().any(|range| checker.state().in_source_text(checker, *range)) {
-        return None;
-    }
     let exports = checker.state().export_strings(checker);
-    let renamed_exports = exports
-        .iter()
-        .filter(|element| element.value.to_str() == old)
-        .filter_map(|element| Some(element.value.iter().next()?.content_range()));
+    let mut renamed_exports = Vec::new();
+    for element in exports.iter().filter(|element| element.value.to_str() == old) {
+        // An entry split over concatenated strings, as `"lim" "it"`, has no one part to respell.
+        let [part] = element.value.as_slice() else {
+            return None;
+        };
+        renamed_exports.push(part.content_range());
+    }
     let edits = ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
     fix_of(keep_debug_text(checker, edits.collect())?, Applicability::Unsafe)
 }

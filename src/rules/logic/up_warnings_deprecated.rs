@@ -71,7 +71,8 @@ fn fix(checker: &Checker, name: &ast::Identifier, body: &[Stmt], warning: &Warni
         return None;
     }
     // A body of only the warning keeps a statement, as the decorated function still has to run to its end.
-    let removal = statement_removal(checker, statement.range(), body.len(), None, Blanks::Trailing)?;
+    let removal = statement_removal(checker, statement.range(), body.len(), None, Blanks::Trailing)
+        .expect("a statement alone on its lines is removable");
     let decorator = format!(
         "{}@{}.deprecated({text}){}",
         checker.indentation(name),

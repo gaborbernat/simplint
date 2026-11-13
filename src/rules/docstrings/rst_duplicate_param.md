@@ -1,10 +1,11 @@
 Flags a constructor parameter documented by a `:param name:` field in both the class docstring and the `__init__`
-docstring. Sphinx shows the class docstring by default, so the two copies drift apart as each is edited on its own.
+docstring.
 
 ## Why is this bad?
 
 [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content) shows the class
-docstring by default, so the copy in `__init__` is read only by those who open the source.
+docstring by default, so the copy in `__init__` is read only by those who open the source, and the two copies drift
+apart as each is edited on its own.
 
 ## Example
 

@@ -1,9 +1,9 @@
+use std::sync::LazyLock;
+
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
-use ruff_macros::CacheKey;
 use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
-
-use std::sync::LazyLock;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
@@ -71,7 +71,7 @@ macro_rules! rules {
                 url.to_owned()
             }
 
-                    pub fn family(self) -> &'static str {
+            pub fn family(self) -> &'static str {
                 match self {
                     $(Rule::$variant => stringify!($family),)*
                 }
@@ -130,39 +130,27 @@ macro_rules! rules {
         }
 
         pub(crate) fn statement<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt))
-            })*)*
+            $($(hook!(statement, $hook, rules, walker, Rule::$variant, $family::$check(walker, stmt));)*)*
         }
 
         pub(crate) fn expression<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr))
-            })*)*
+            $($(hook!(expression, $hook, rules, walker, Rule::$variant, $family::$check(walker, expr));)*)*
         }
 
         pub(crate) fn scope<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope))
-            })*)*
+            $($(hook!(scope, $hook, rules, walker, Rule::$variant, $family::$check(walker, scope));)*)*
         }
 
         pub(crate) fn except_handler<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler))
-            })*)*
+            $($(hook!(except_handler, $hook, rules, walker, Rule::$variant, $family::$check(walker, handler));)*)*
         }
 
         pub(crate) fn pattern<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern))
-            })*)*
+            $($(hook!(pattern, $hook, rules, walker, Rule::$variant, $family::$check(walker, pattern));)*)*
         }
 
         pub(crate) fn type_param<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param))
-            })*)*
+            $($(hook!(type_param, $hook, rules, walker, Rule::$variant, $family::$check(walker, type_param));)*)*
         }
 
     };
@@ -211,40 +199,40 @@ macro_rules! hook {
     (module, module, $family:ident::$check:ident($($argument:expr),*)) => {
         rules::$family::$check($($argument),*)
     };
-    (statement, statement, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (statement, statement, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::statement($($argument),*)
+            rules::$family::$check::statement($($argument),*);
         }
     };
-    (expression, expression, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (expression, expression, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::expression($($argument),*)
+            rules::$family::$check::expression($($argument),*);
         }
     };
-    (scope, scope, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (scope, scope, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::scope($($argument),*)
+            rules::$family::$check::scope($($argument),*);
         }
     };
-    (except_handler, except_handler, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (except_handler, except_handler, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::except_handler($($argument),*)
+            rules::$family::$check::except_handler($($argument),*);
         }
     };
-    (pattern, pattern, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (pattern, pattern, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::pattern($($argument),*)
+            rules::$family::$check::pattern($($argument),*);
         }
     };
-    (type_param, type_param, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (type_param, type_param, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::type_param($($argument),*)
+            rules::$family::$check::type_param($($argument),*);
         }
     };
     (walks, module) => {
@@ -253,9 +241,7 @@ macro_rules! hook {
     (walks, $hook:ident) => {
         true
     };
-    ($asked:ident, $hook:ident, $($call:tt)*) => {
-        ()
-    };
+    ($asked:ident, $hook:ident, $($call:tt)*) => {};
 }
 
 rules! {
@@ -286,15 +272,17 @@ rules! {
     ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS, working_directory]),
     PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
     FlattenedPackage => ("SMP311", "flattened-package", "Private modules sharing a name prefix instead of a package", None, imports::flattened_package { module } reads [cross_file]),
+    UndeclaredDependency => ("SMP312", "undeclared-dependency", "Imports of third-party modules no requirement of the project installs", None, imports::undeclared_dependency { module } reads [cross_file, RUNTIME_IMPORTS]),
+    UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file, IMPORTED_MODULES]),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
-    AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Always, api::all_format { module }),
+    AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Sometimes, api::all_format { module } reads [cross_file, STRING_WORDS]),
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
     InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file]),
     TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),
-    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods and class attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, COMPUTED_READS, DOCTESTS, docs]),
+    UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods, nested functions and attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, STRING_WORDS, COMPUTED_READS, DOCTESTS, docs]),
     TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     UnusedReturnValue => ("SMP411", "unused-return-value", "Return values no production call reads", None, api::unused_return_value { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     ForwardingFunction => ("SMP501", "forwarding-function", "Private functions that only forward to another call", None, logic::forwarding_function { module } reads [cross_file]),
@@ -331,15 +319,51 @@ rules! {
     UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module } reads [cross_file]),
     UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
     InlineRegex => ("SMP534", "inline-regex", "Regular expressions compiled inside a function", Sometimes, logic::inline_regex { module }),
+    UnreachableCode => ("SMP535", "unreachable-code", "Statements that never run, after a `return`, `raise`, `break` or `continue` or under a false test", Sometimes, logic::unreachable_code { module }),
+    DeadStore => ("SMP536", "dead-store", "Values assigned to a local that the next assignment replaces before anything reads them", Sometimes, logic::dead_store { module }),
+    LoopVariableAfterLoop => ("SMP537", "loop-variable-after-loop", "`for` loop variables read after the loop ends", None, logic::loop_variable_after_loop { module }),
+    SideEffectExpression => ("SMP538", "side-effect-expression", "Comprehensions and `and`/`or` expressions used as statements for their side effects", Sometimes, logic::side_effect_expression { module }),
+    SharedMutableRepetition => ("SMP539", "shared-mutable-repetition", "Sequences repeated with `*` whose element is a mutable object every copy shares", Sometimes, logic::shared_mutable_repetition { statement }),
+    DuplicateCondition => ("SMP540", "duplicate-condition", "Conditions, operands and `case` patterns that repeat an earlier one", None, logic::duplicate_condition { statement, expression }),
+    AmbiguousOperatorChain => ("SMP541", "ambiguous-operator-chain", "Comparison chains that mix operator kinds or hide a bitwise operator", None, logic::ambiguous_operator_chain { expression }),
+    FailedSwap => ("SMP542", "failed-swap", "Swaps that copy one value over both names, and augmented assignments that repeat their target", Sometimes, logic::failed_swap { module }),
+    InPlaceResult => ("SMP543", "in-place-result", "Results of in-place methods, which are always `None`", None, logic::in_place_result { expression }),
+    UnformattedExceptionArgs => ("SMP544", "unformatted-exception-args", "Exception messages with placeholders that the extra arguments never fill", Sometimes, logic::unformatted_exception_args { statement }),
+    IteratorReuse => ("SMP545", "iterator-reuse", "One-pass iterators read twice or inside a loop", None, logic::iterator_reuse { module }),
+    RangeLenLoop => ("SMP546", "range-len-loop", "`for i in range(len(seq))` loops that read `seq[i]`", Sometimes, logic::range_len_loop { module }),
+    AccumulatorLoop => ("SMP547", "accumulator-loop", "Loops that only add to a string or number `join` or `sum` builds", Sometimes, logic::accumulator_loop { module }),
+    EmptyCollectionComparison => ("SMP548", "empty-collection-comparison", "Comparisons with an empty list, tuple or dict literal", Sometimes, logic::empty_collection_comparison { expression }),
+    SliceAffixComparison => ("SMP549", "slice-affix-comparison", "Slices compared with a literal instead of `startswith` or `endswith`", Sometimes, logic::slice_affix_comparison { expression } reads [cross_file]),
+    AnchoredRegexMatch => ("SMP550", "anchored-regex-match", "`re.match` and `re.search` with a pattern anchored at both ends", Sometimes, logic::anchored_regex_match { expression }),
+    WallClockDuration => ("SMP551", "wall-clock-duration", "Durations measured with `time.time()`", Sometimes, logic::wall_clock_duration { module }),
+    ShadowedExceptHandler => ("SMP552", "shadowed-except-handler", "`except` clauses an earlier, broader clause already catches", Sometimes, logic::shadowed_except_handler { statement }),
+    DroppedExceptionNote => ("SMP553", "dropped-exception-note", "Exceptions given a note and then dropped", None, logic::dropped_exception_note { statement, except_handler }),
+    CachedGenerator => ("SMP554", "cached-generator", "Generators under `functools.cache`, `lru_cache` or `cached_property`", None, logic::cached_generator { statement }),
+    UnawaitedCoroutine => ("SMP555", "unawaited-coroutine", "Calls of the run's coroutine functions that nothing awaits", Sometimes, logic::unawaited_coroutine { statement } reads [cross_file, SIGNATURES]),
+    MisplacedArguments => ("SMP556", "misplaced-arguments", "Positional arguments named after another parameter of the call", None, logic::misplaced_arguments { expression } reads [cross_file, SIGNATURES]),
+    WrapperWithoutWraps => ("SMP557", "wrapper-without-wraps", "Decorator wrappers without `functools.wraps`", Sometimes, logic::wrapper_without_wraps { statement }),
+    FunctionAsCondition => ("SMP558", "function-as-condition", "Functions tested for truth instead of called", Sometimes, logic::function_as_condition { statement, expression } reads [cross_file, SIGNATURES]),
+    CatastrophicRegex => ("SMP559", "catastrophic-regex", "Regular expressions whose nested repeats backtrack exponentially", None, logic::catastrophic_regex { module }),
+    DefaultArgumentValue => ("SMP560", "default-argument-value", "Arguments that pass a parameter its own default", Always, logic::default_argument_value { module } reads [cross_file]),
+    ExpressionComplexity => ("SMP561", "expression-complexity", "Expressions whose operators nest past the limit", None, logic::expression_complexity { module }),
+    ComprehensionComplexity => ("SMP562", "comprehension-complexity", "Comprehensions with more than one `for` or a compound filter", None, logic::comprehension_complexity { expression }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
+    MutableModuleConstant => ("SMP605", "mutable-module-constant", "Module constants bound to a list, dict or set that nothing changes", Sometimes, typing::mutable_module_constant { module } reads [cross_file, DOCTESTS, COMPUTED_WRITES]),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
     IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module } reads [cross_file, CAUGHT, docs]),
-    TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
+    ExceptionInitArgs => ("SMP705", "exception-init-args", "Exception classes whose `__init__` passes its parent other arguments than it takes", None, classes::exception_init_args { statement } reads [cross_file]),
+    UnboundSuper => ("SMP706", "unbound-super", "Zero-argument `super()` where it cannot find the class or instance", None, classes::unbound_super { expression }),
+    BrokenDecoratorStack => ("SMP707", "broken-decorator-stack", "Descriptor decorators stacked in an order that does not work", None, classes::broken_decorator_stack { statement }),
+    AsyncSyncDunder => ("SMP708", "async-sync-dunder", "`async def` on special methods Python calls without awaiting", None, classes::async_sync_dunder { statement }),
+    RejectedOperand => ("SMP709", "rejected-operand", "Operator methods that reject an unknown operand instead of returning `NotImplemented`", Sometimes, classes::rejected_operand { statement }),
+    MissingOverride => ("SMP710", "missing-override", "Methods that override a base class method without `@override`", Always, classes::missing_override { module } since PY312 reads [cross_file]),
+    TooManyAttributes => ("SMP711", "too-many-attributes", "Classes whose instances hold more attributes than the limit", None, classes::too_many_attributes { module }),
+    TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file, STRING_WORDS]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
     ConstantAssert => ("SMP804", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
@@ -352,6 +376,12 @@ rules! {
     LoopInTest => ("SMP813", "loop-in-test", "Loops in tests that assert over a table of cases", None, testing::loop_in_test { module }),
     MockAssertionTypo => ("SMP814", "mock-assertion-typo", "Mock assertion methods misspelled or missing their `assert_` prefix", Always, testing::mock_assertion_typo { module } reads [cross_file]),
     UnusedFixture => ("SMP815", "unused-fixture", "Pytest fixtures no test or fixture requests", None, testing::unused_fixture { module } reads [cross_file, FIXTURES]),
+    TestProcessState => ("SMP816", "test-process-state", "Tests that change environment variables, the working directory or module state by hand", None, testing::test_process_state { module }),
+    TestReturnValue => ("SMP817", "test-return-value", "Test functions that return a value", Sometimes, testing::test_return_value { module }),
+    TestWithoutAssertion => ("SMP818", "test-without-assertion", "Tests that check nothing", None, testing::test_without_assertion { module }),
+    PytestDeprecatedApi => ("SMP819", "up-pytest-deprecated-api", "pytest APIs that pytest removed or no longer calls", Sometimes, testing::up_pytest_deprecated_api { module }),
+    UnregisteredMarker => ("SMP820", "unregistered-marker", "pytest marks the configuration does not register", None, testing::unregistered_marker { module } reads [cross_file, STRING_WORDS, BOUND_MARKS]),
+    UncollectedTestModule => ("SMP821", "uncollected-test-module", "Test modules whose file name pytest does not collect", None, testing::uncollected_test_module { module } reads [cross_file, STRING_WORDS]),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file, docs] skips [nested]),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module } skips [nested]),
     UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module } reads [cross_file, working_directory] skips [nested]),
@@ -371,6 +401,7 @@ rules! {
     RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module } reads [docs] skips [nested]),
     RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module } reads [cross_file, docs] skips [nested]),
     RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", None, docstrings::rst_missing_raises { module } reads [cross_file, docs] skips [nested]),
+    RstUnraisedException => ("SMP925", "rst-unraised-exception", "Public API docstrings that document an exception the function never raises", Sometimes, docstrings::rst_unraised_exception { module } reads [cross_file, docs] skips [nested]),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
@@ -378,10 +409,19 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
     diagnostic.secondary_code().and_then(|code| Rule::from_code(code.as_str()))
 }
 
-#[derive(Clone, Copy, Default, CacheKey)]
-pub struct RuleSet(u128);
+// One bit per rule, in as few words as the rules need, so a membership test on the walker's path reads one word.
+const WORDS: usize = Rule::ALL.len().div_ceil(128);
 
-const _: () = assert!(Rule::ALL.len() <= 128, "RuleSet holds one bit per rule in a u128");
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct RuleSet([u128; WORDS]);
+
+const _: () = assert!(Rule::ALL.len() <= 1024, "the rule set holds at most 1024 rules");
+
+impl CacheKey for RuleSet {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.0.as_slice().cache_key(state);
+    }
+}
 
 impl RuleSet {
     // A selector's rules and how specific it is, ordered as Ruff's `Specificity`: `ALL`, then code prefixes by length,
@@ -394,7 +434,7 @@ impl RuleSet {
             return Some((Self::from_rules([rule]), usize::MAX));
         }
         let set = Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.code().starts_with(selector)));
-        (!selector.is_empty() && set.0 != 0).then_some((set, selector.len()))
+        (!selector.is_empty() && !set.is_empty()).then_some((set, selector.len()))
     }
 
     pub fn all() -> Self {
@@ -402,11 +442,22 @@ impl RuleSet {
     }
 
     pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
-        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u128))
+        rules.into_iter().fold(Self::default(), |set, rule| set.union(Self::single(rule)))
+    }
+
+    fn single(rule: Rule) -> Self {
+        let bit = rule as usize;
+        let mut words = [0; WORDS];
+        words[bit / 128] = 1 << (bit % 128);
+        Self(words)
+    }
+
+    fn combine(self, other: Self, word: fn(u128, u128) -> u128) -> Self {
+        Self(std::array::from_fn(|index| word(self.0[index], other.0[index])))
     }
 
     pub fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
+        self.combine(other, |left, right| left | right)
     }
 
     pub fn for_target(self, target: PythonVersion) -> Self {
@@ -416,7 +467,7 @@ impl RuleSet {
     }
 
     pub fn subtract(self, other: Self) -> Self {
-        Self(self.0 & !other.0)
+        self.combine(other, |left, right| left & !right)
     }
 
     pub fn iter(self) -> impl Iterator<Item = Rule> {
@@ -424,11 +475,16 @@ impl RuleSet {
     }
 
     pub fn contains(self, rule: Rule) -> bool {
-        self.0 & 1 << rule as u128 != 0
+        let bit = rule as usize;
+        self.0[bit / 128] >> (bit % 128) & 1 != 0
     }
 
     pub fn overlaps(self, other: Self) -> bool {
-        self.0 & other.0 != 0
+        self.0.iter().zip(other.0).any(|(left, right)| left & right != 0)
+    }
+
+    fn is_empty(self) -> bool {
+        self.0.iter().all(|word| *word == 0)
     }
 
     // The rules that read the project index, directly or through the public API, the rst targets' publicness, string
@@ -502,11 +558,8 @@ mod tests {
 
     #[test]
     fn code_digit_names_the_family_group() {
-        let misplaced: Vec<_> = Rule::ALL
-            .iter()
-            .filter(|rule| rule.group_entry().0 != rule.family())
-            .map(|rule| (rule.code(), rule.family(), rule.group_entry().0))
-            .collect();
-        assert_eq!(misplaced, Vec::new());
+        let misplaced: Vec<&str> =
+            Rule::ALL.iter().copied().filter(|rule| rule.group_entry().0 != rule.family()).map(Rule::code).collect();
+        assert_eq!(misplaced, Vec::<&str>::new());
     }
 }

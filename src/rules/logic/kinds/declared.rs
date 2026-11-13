@@ -5,8 +5,8 @@ use super::Kind;
 use super::tables::{CONTAINERS, PATH_CLASSES, items, shared};
 use crate::lint::checker::Checker;
 use crate::rules::is_class_like;
-use crate::semantic::BindingKind;
-use crate::syntax::{is_classmethod, is_name, receiver, target_leaves};
+use crate::semantic::{BindingKind, Semantic};
+use crate::syntax::{decorator_callee, is_classmethod, is_name, receiver, target_leaves};
 
 #[derive(Clone, Copy)]
 pub(super) struct Class<'a> {
@@ -24,13 +24,6 @@ pub(super) fn attribute_root(expr: &Expr) -> &Expr {
         head = value;
     }
     head
-}
-
-fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
-    match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-        expr => expr,
-    }
 }
 
 pub(super) fn self_parameter(method: &ast::StmtFunctionDef) -> Option<&str> {
@@ -53,11 +46,7 @@ pub(super) fn keeps_return(checker: &Checker, decorator: &ast::Decorator) -> boo
 }
 
 pub(super) fn is_property(checker: &Checker, decorator: &ast::Decorator) -> bool {
-    is_builtin_call(checker, &decorator.expression, &["property"])
-        || checker
-            .semantic()
-            .qualified_name(&decorator.expression)
-            .is_some_and(|name| name.segments() == ["functools", "cached_property"])
+    checker.semantic().is_decorator(decorator, Semantic::PROPERTY)
 }
 
 pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
@@ -143,7 +132,7 @@ fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
 fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     let semantic = checker.semantic();
     let name = semantic.qualified_name(expr)?;
-    let root = attribute_root(expr).as_name_expr()?;
+    let root = attribute_root(expr).as_name_expr().expect("a qualified name starts at a name");
     if !semantic.bindings(root.id.as_str()).iter().all(|binding| binding.kind == BindingKind::Import) {
         return None;
     }
@@ -155,11 +144,12 @@ fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     }
 }
 
-// Statements of a module body come in source order, so the class starting at `range` is found by a search.
-pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'a ast::StmtClassDef> {
+// An instance kind names a class of the module body, whose statements come in source order, so a search finds it.
+pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> &'a ast::StmtClassDef {
     let body = checker.body();
-    let index = body.binary_search_by_key(&range.start(), Ranged::start).ok()?;
-    body[index].as_class_def_stmt().filter(|class| class.range == range)
+    let index =
+        body.binary_search_by_key(&range.start(), Ranged::start).expect("an instance kind names a module class");
+    body[index].as_class_def_stmt().expect("an instance kind names a module class")
 }
 
 // A metaclass, a `__new__` or another decorator may return something other than an instance.
@@ -177,5 +167,7 @@ pub(super) fn instance_of(checker: &Checker, class: &ast::StmtClassDef) -> Optio
             .body
             .iter()
             .any(|stmt| stmt.as_function_def_stmt().is_some_and(|function| function.name.as_str() == "__new__"));
-    (plain && class_named(checker, &class.name).is_some()).then_some(Kind::Instance(class.range))
+    // A class a function defines may share its name with one of the module's, and only the module's is the one meant.
+    (plain && class_named(checker, &class.name).is_some_and(|named| named.range == class.range))
+        .then_some(Kind::Instance(class.range))
 }

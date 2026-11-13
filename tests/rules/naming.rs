@@ -50,6 +50,20 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
     common::assert_report_count(root.path(), "SMP105", expected);
 }
 
+// A script target names a module under the project root, so a file outside the root is never one.
+#[test]
+fn entrypoint_module_name_skips_files_outside_the_root() {
+    let source = "def run() -> None:\n    pass\n";
+    let root = common::project(&[
+        ("proj/pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"main:run\"\n"),
+        ("proj/main.py", source),
+        ("other/main.py", source),
+    ]);
+    let args = ["--no-cache", "--config", "proj/pyproject.toml", "--select", "SMP105", "proj/main.py", "other/main.py"];
+    let stdout = common::check(root.path(), &args).1;
+    assert!(stdout.contains("proj/main.py") && !stdout.contains("other/main.py"), "{stdout}");
+}
+
 #[test_case("", "main()", 0 ; "name_alone_main")]
 #[test_case("", "run()", 0 ; "name_alone_run")]
 #[test_case("", "populate_cache()", 0 ; "ordinary_cache")]
@@ -101,8 +115,7 @@ fn trailing_entrypoint_call_autofix(source: &str, expected: &str) {
     let shebang = if source.contains("\r\n") { "#!/usr/bin/env python\r\n" } else { "#!/usr/bin/env python\n" };
     let root = common::project(&[("command.py", &format!("{shebang}{source}"))]);
     let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
-    assert_eq!(code, 0, "{stdout}");
-    assert_eq!(common::read(root.path(), "command.py"), format!("{shebang}{expected}"));
+    assert_eq!((code, common::read(root.path(), "command.py")), (0, format!("{shebang}{expected}")), "{stdout}");
 }
 
 #[test_case("run(\n)\n" ; "multiline")]
@@ -111,16 +124,18 @@ fn trailing_entrypoint_call_without_fix(source: &str) {
     let source = format!("#!/usr/bin/env python\n{source}");
     let root = common::project(&[("command.py", &source)]);
     let (_, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
-    assert!(stdout.contains("SMP106"), "{stdout}");
-    assert_eq!(common::read(root.path(), "command.py"), source);
+    assert_eq!((stdout.contains("SMP106"), common::read(root.path(), "command.py")), (true, source), "{stdout}");
 }
 
 #[test]
 fn trailing_entrypoint_call_requires_unsafe_fixes() {
     let root = common::project(&[("command.py", "#!/usr/bin/env python\nrun()\n")]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106", "--fix"]);
-    assert!(stdout.contains("SMP106"), "{stdout}");
-    assert_eq!(common::read(root.path(), "command.py"), "#!/usr/bin/env python\nrun()\n");
+    assert_eq!(
+        (stdout.contains("SMP106"), common::read(root.path(), "command.py")),
+        (true, "#!/usr/bin/env python\nrun()\n".to_owned()),
+        "{stdout}"
+    );
 }
 
 #[test_case("__main__.py" ; "root")]
@@ -129,10 +144,10 @@ fn main_module_requires_guard(file: &str) {
     let root = common::project(&[(file, "from pkg.cli import launch\n\nlaunch()\n")]);
     common::assert_report_count(root.path(), "SMP106", 1);
     let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
-    assert_eq!(code, 0, "{stdout}");
     assert_eq!(
-        common::read(root.path(), file),
-        "from pkg.cli import launch\n\nif __name__ == \"__main__\":\n    launch()\n"
+        (code, common::read(root.path(), file)),
+        (0, "from pkg.cli import launch\n\nif __name__ == \"__main__\":\n    launch()\n".to_owned()),
+        "{stdout}"
     );
 }
 
@@ -158,10 +173,10 @@ fn configured_entrypoint_call_autofix() {
         ("pkg/cli.py", "def launch() -> None:\n    pass\n\n\nlaunch()\n"),
     ]);
     let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
-    assert_eq!(code, 0, "{stdout}");
     assert_eq!(
-        common::read(root.path(), "pkg/cli.py"),
-        "def launch() -> None:\n    pass\n\n\nif __name__ == \"__main__\":\n    launch()\n"
+        (code, common::read(root.path(), "pkg/cli.py")),
+        (0, "def launch() -> None:\n    pass\n\n\nif __name__ == \"__main__\":\n    launch()\n".to_owned()),
+        "{stdout}"
     );
 }
 
@@ -279,16 +294,45 @@ fn module_variable_rename_checks_whole_words_in_strings(text: &str, fixable: boo
     assert_eq!(stdout.contains("SMP102 [*]"), fixable);
 }
 
-// A string of another file may spell the name, as a test that looks a module variable up by its spelling does.
-#[test]
-fn module_variable_rename_checks_strings_of_other_files() {
-    let root = common::project(&[
-        ("config.py", "limit = 3\nprint(limit)\n"),
-        ("tests/test_config.py", "LOOKUP = \"limit\"\n"),
-    ]);
+// The rename respells the name's `__all__` entry, which it cannot do when the entry is split over concatenated strings.
+#[test_case("\"split_value\"", true ; "single_string")]
+#[test_case("\"split\" \"_value\"", false ; "concatenated_strings")]
+fn module_variable_rename_respells_its_export_entry(entry: &str, fixable: bool) {
+    let root = common::project(&[("module.py", &format!("split_value = 1\n\n__all__ = [{entry}]\n"))]);
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
-    assert!(stdout.contains("SMP102 Module-scope variable `limit`"));
-    assert!(!stdout.contains("SMP102 [*]"));
+    assert_eq!(stdout.contains("SMP102 [*]"), fixable, "{stdout}");
+}
+
+// A debug field prints its source text, and one spread over lines has no single-line spelling to keep.
+#[test]
+fn module_variable_rename_leaves_a_debug_field_over_lines() {
+    let root = common::project(&[("module.py", "limit = 3\nprint(f\"\"\"{limit\n=}\"\"\")\n")]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert!(stdout.contains("SMP102") && !stdout.contains("SMP102 [*]"), "{stdout}");
+}
+
+// A string of another file may spell the name, as a test that looks a module variable up by its spelling does. A module
+// named like a standard library module is imported from outside the run, so its names may be read unseen.
+#[test_case(
+    &[("config.py", "limit = 3\nprint(limit)\n"), ("tests/test_config.py", "LOOKUP = \"limit\"\n")],
+    "limit" ;
+    "string_of_another_file"
+)]
+#[test_case(
+    &[
+        ("typing_extensions.py", "_typing_names = [\"Any\"]\n"),
+        ("test_typing.py", "import typing_extensions\n\nNAMES = typing_extensions._typing_names\n"),
+    ],
+    "_typing_names" ;
+    "standard_library_namesake"
+)]
+fn module_variable_rename_withholds_its_fix_for_unseen_reads(files: &[(&str, &str)], name: &str) {
+    let root = common::project(files);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert_eq!(
+        (stdout.contains(&format!("SMP102 Module-scope variable `{name}`")), stdout.contains("SMP102 [*]")),
+        (true, false)
+    );
 }
 
 // Ruff's N816 skips the names its pep8-naming `ignore-names` lists, so SMP102 keeps reporting them: without a fix
@@ -356,18 +400,6 @@ fn module_variable_case_leaves_names_without_rename_to_n816(source: &str, settin
     assert_eq!(common::reported_without_and_with_ruff(&case, "Module-scope variable `myValue`"), expected);
 }
 
-// A module named like a standard library module is imported from outside the run, so its names may be read unseen.
-#[test]
-fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
-    let root = common::project(&[
-        ("typing_extensions.py", "_typing_names = [\"Any\"]\n"),
-        ("test_typing.py", "import typing_extensions\n\nNAMES = typing_extensions._typing_names\n"),
-    ]);
-    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
-    assert!(stdout.contains("SMP102 Module-scope variable `_typing_names`"));
-    assert!(!stdout.contains("SMP102 [*]"));
-}
-
 // Ruff's E741, E742 and E743 report `l`, `I` and `O` on the variables, classes and functions of their kind, so SMP101
 // leaves those letters to them whether or not the project selects them. Other letters stay with the rule, and so do
 // those three letters on an import alias, which no Ruff rule checks.
@@ -400,6 +432,9 @@ fn single_letter_name_leaves_ambiguous_names_to_ruff(source: &str, fragment: &st
 fn type_parameter_names(source: &str, single_letter: usize, variable_prefix: usize) {
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP101,SMP404"]).1;
-    assert_eq!(stdout.matches("SMP101").count(), single_letter, "{stdout}");
-    assert_eq!(stdout.matches("SMP404").count(), variable_prefix, "{stdout}");
+    assert_eq!(
+        (stdout.matches("SMP101").count(), stdout.matches("SMP404").count()),
+        (single_letter, variable_prefix),
+        "{stdout}"
+    );
 }
