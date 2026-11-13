@@ -18,7 +18,7 @@ pub(crate) fn argument_removal(checker: &Checker, call: &ast::ExprCall, range: T
         .chain(call.arguments.keywords.iter().map(Ranged::range))
         .collect();
     arguments.sort_by_key(Ranged::start);
-    let index = arguments.iter().position(|argument| *argument == range)?;
+    let index = arguments.partition_point(|argument| argument.start() < range.start());
     Some(match (index.checked_sub(1).map(|previous| arguments[previous]), arguments.get(index + 1)) {
         (_, Some(next)) => TextRange::new(range.start(), next.start()),
         (Some(previous), None) => TextRange::new(previous.end(), range.end()),
