@@ -94,22 +94,6 @@ enum Sequence {
     Auto,
 }
 
-const NUMERALS: [(&str, usize); 13] = [
-    ("m", 1000),
-    ("cm", 900),
-    ("d", 500),
-    ("cd", 400),
-    ("c", 100),
-    ("xc", 90),
-    ("l", 50),
-    ("xl", 40),
-    ("x", 10),
-    ("ix", 9),
-    ("v", 5),
-    ("iv", 4),
-    ("i", 1),
-];
-
 impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
     fn new(lines: &'l [Line<'a>], out: &'s mut [Mark], pending: &'s mut Vec<Body<'a>>, body: Body<'a>) -> Self {
         Self {
@@ -146,7 +130,6 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
     // Classifies the block that starts at `index` and returns where the next block starts.
     fn block(&mut self, index: usize) -> usize {
         let line = self.line(index);
-        let base = self.body.base;
         if line.text.is_empty() {
             if self.paragraph {
                 self.literal_from = self.literal_marker.then_some(index);
@@ -154,6 +137,7 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
             self.paragraph = false;
             return index + 1;
         }
+        let base = self.body.base;
         if let Some(from) = self.literal_from.take() {
             if line.indent > base {
                 let end = self.region_end(index);
@@ -481,13 +465,11 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
 
     fn quoted_end(&self, index: usize) -> Option<usize> {
         let quote = self.line(index).text.trim_start().chars().next().filter(char::is_ascii_punctuation)?;
-        let end = (index..self.body.end)
-            .find(|&other| {
-                let line = self.line(other);
-                line.indent != self.body.base || !line.text.trim_start().starts_with(quote)
-            })
-            .unwrap_or(self.body.end);
-        Some(end)
+        let end = (index..self.body.end).find(|&other| {
+            let line = self.line(other);
+            line.indent != self.body.base || !line.text.trim_start().starts_with(quote)
+        });
+        Some(end.unwrap_or(self.body.end))
     }
 }
 
@@ -525,6 +507,22 @@ fn enumerator(token: &str) -> Option<(Sequence, usize)> {
     }
     None
 }
+
+const NUMERALS: [(&str, usize); 13] = [
+    ("m", 1000),
+    ("cm", 900),
+    ("d", 500),
+    ("cd", 400),
+    ("c", 100),
+    ("xc", 90),
+    ("l", 50),
+    ("xl", 40),
+    ("x", 10),
+    ("ix", 9),
+    ("v", 5),
+    ("iv", 4),
+    ("i", 1),
+];
 
 // The value of a lowercase Roman numeral, when it is written the way it is rendered.
 fn roman_value(text: &str) -> Option<usize> {

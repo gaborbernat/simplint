@@ -7,9 +7,8 @@ mod unused_imports;
 use std::path::Path;
 
 use ruff_linter::settings::LinterSettings;
-use ruff_python_ast::identifier::Identifier;
-
 use ruff_python_ast::helpers::from_relative_import;
+use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::{QualifiedName, UnqualifiedName};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_semantic::analyze::logging;
@@ -451,7 +450,6 @@ fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     }
 }
 
-// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
 // What a binding names, as the rules that follow a name into the project read it.
 pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     match binding.kind {
@@ -465,6 +463,7 @@ pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     }
 }
 
+// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
     stmt.as_import_from_stmt()
         .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))
@@ -543,7 +542,6 @@ impl<'a> Index<'a> {
         body: &[Stmt],
         name: &'a ast::ExprName,
     ) {
-        let function = model.current_scopes().filter_map(|scope| function_range(scope.kind)).last();
         if let Some((receiver, class)) = enclosing_method(model)
             && let Some(attribute) = member_read(model, name, receiver, class)
         {
@@ -553,6 +551,7 @@ impl<'a> Index<'a> {
         if !resolves_to_module(model, module_bindings, name) {
             return;
         }
+        let function = model.current_scopes().filter_map(|scope| function_range(scope.kind)).last();
         // PEP 695 evaluates type parameter bounds and defaults, and `type` alias values, lazily.
         let lazy = model.in_deferred_type_definition() || model.in_deferred_type_alias_value();
         self.references.entry(name.id.as_str()).or_default().push(Reference {
@@ -678,10 +677,10 @@ fn is_receiver_instance(model: &SemanticModel, name: &ast::ExprName, receiver: O
 }
 
 fn resolves_to_module(model: &SemanticModel, module_bindings: &FxHashSet<BindingId>, name: &ast::ExprName) -> bool {
-    let id = name.id.as_str();
     if model.resolve_name(name).is_some_and(|binding_id| !module_bindings.contains(&binding_id)) {
         return false;
     }
+    let id = name.id.as_str();
     // Ruff resolves a load against the bindings made so far, but a name a function or comprehension binds anywhere is
     // local to all of it.
     model

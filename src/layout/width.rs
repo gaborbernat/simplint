@@ -79,12 +79,12 @@ pub(crate) fn fits(checker: &Checker, next: &Stmt, replace: &Edit, depth: usize)
         .collect::<Vec<_>>()
         .join("\n");
     let statement = if compound { format!("{text}\n    pass\n") } else { format!("{text}\n") };
-    let indent = checker.settings.from_ruff.indent_width * depth;
-    let limit = checker.settings.from_ruff.line_width;
     // The formatter would parse the statement the same way, so a statement that does not parse cannot be formatted.
     let Ok(parsed) = parse(&statement, ParseOptions::from(PySourceType::Python)) else {
         return false;
     };
+    let indent = checker.settings.from_ruff.indent_width * depth;
+    let limit = checker.settings.from_ruff.line_width;
     let respects_commas = checker.settings.from_ruff.magic_trailing_comma;
     if !text.contains('\n')
         && widest_format(&parsed, &statement, text.len(), respects_commas).is_some_and(|width| indent + width <= limit)

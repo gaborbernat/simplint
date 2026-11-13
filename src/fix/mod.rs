@@ -100,16 +100,6 @@ impl<'l, 'a> Fixer<'l, 'a> {
         Ok((result, withdrawn))
     }
 
-    // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
-    pub fn withdraw(source: &str, diagnostics: &mut [Diagnostic], withdrawn: &Withdrawn) {
-        let held = withdrawn.held_back(source, diagnostics);
-        for (diagnostic, held) in diagnostics.iter_mut().zip(held) {
-            if held {
-                diagnostic.remove_fix();
-            }
-        }
-    }
-
     fn run(&self, source: &str, fixes: FxHashSet<FixKey>) -> Result<(FixerResult, Withdrawn), FixBug> {
         let mut withdrawn = Withdrawn { rules: RuleSet::default(), fixes };
         let linted = Linted { source, lint: self.lint(source) };
@@ -159,6 +149,16 @@ impl<'l, 'a> Fixer<'l, 'a> {
         withdrawn.rules = withdrawn.rules.union(RuleSet::from_rules(Self::fixing_rules(&result.fixed)));
         let diagnostics = self.lint(source).diagnostics;
         (FixerResult { diagnostics, transformed: source.to_owned(), fixed: FixTable::default() }, withdrawn)
+    }
+
+    // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
+    pub fn withdraw(source: &str, diagnostics: &mut [Diagnostic], withdrawn: &Withdrawn) {
+        let held = withdrawn.held_back(source, diagnostics);
+        for (diagnostic, held) in diagnostics.iter_mut().zip(held) {
+            if held {
+                diagnostic.remove_fix();
+            }
+        }
     }
 
     // Withdraws the fixes of `rule` that `linted` reports, keeping each group of them whose result leaves no more Ruff
@@ -544,13 +544,12 @@ struct Linted<'s> {
 #[cfg(test)]
 mod tests {
     use ruff_db::diagnostic::{Diagnostic, Span};
+    use ruff_linter::linter::FixTable;
     use ruff_python_ast::{PySourceType, PythonVersion};
     use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, parse_unchecked};
     use ruff_source_file::SourceFileBuilder;
     use ruff_text_size::TextRange;
     use test_case::test_case;
-
-    use ruff_linter::linter::FixTable;
 
     use super::{
         Candidate, FixBug, FixKey, FixerResult, Settled, VersionCounts, Withdrawn, check_syntax, earlier_unless_beaten,

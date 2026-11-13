@@ -85,9 +85,11 @@ fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
         .iter()
         .filter_map(single_assignment)
         .filter(|(_, _, value)| match value {
-            Expr::Name(name) => {
-                checker.semantic().bindings(name.id.as_str()).iter().any(|binding| binding.kind == BindingKind::Function)
-            }
+            Expr::Name(name) => checker
+                .semantic()
+                .bindings(name.id.as_str())
+                .iter()
+                .any(|binding| binding.kind == BindingKind::Function),
             _ => false,
         })
         .map(|(target, _, _)| target.id.as_str())

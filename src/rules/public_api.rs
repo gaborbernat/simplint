@@ -123,10 +123,34 @@ impl<'a> PublicApi<'a> {
         api
     }
 
-    fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, exposure: Exposure<'a>) {
-        let name = target.id.to_string();
+    fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, exposure: Exposure<'a>) {
+        let range = class.name.range;
         let (via, docs) = (exposure.reexporter(), exposure.is_offered());
-        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via, docs });
+        self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via, docs });
+        // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
+        for member in module_statements(&class.body) {
+            match member {
+                Stmt::ClassDef(nested) if Visibility::of(&nested.name) == Visibility::Public => {
+                    self.class(member, nested, &format!("{name}.{}", nested.name), exposure);
+                }
+                Stmt::FunctionDef(method) => match offer(method) {
+                    Offer::Optional => {
+                        self.optional.insert(member.range());
+                    }
+                    Offer::Public(kind) => self.items.push(ApiItem {
+                        stmt: member,
+                        name: format!("{name}.{}", method.name),
+                        range: method.name.range,
+                        kind,
+                        next: None,
+                        via,
+                        docs,
+                    }),
+                    Offer::Private => {}
+                },
+                _ => {}
+            }
+        }
     }
 
     // The public methods and properties a class the file defines, such as a private mixin, that a public class of the
@@ -161,34 +185,10 @@ impl<'a> PublicApi<'a> {
         }
     }
 
-    fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, exposure: Exposure<'a>) {
-        let range = class.name.range;
+    fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, exposure: Exposure<'a>) {
+        let name = target.id.to_string();
         let (via, docs) = (exposure.reexporter(), exposure.is_offered());
-        self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via, docs });
-        // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
-        for member in module_statements(&class.body) {
-            match member {
-                Stmt::ClassDef(nested) if Visibility::of(&nested.name) == Visibility::Public => {
-                    self.class(member, nested, &format!("{name}.{}", nested.name), exposure);
-                }
-                Stmt::FunctionDef(method) => match offer(method) {
-                    Offer::Optional => {
-                        self.optional.insert(member.range());
-                    }
-                    Offer::Public(kind) => self.items.push(ApiItem {
-                        stmt: member,
-                        name: format!("{name}.{}", method.name),
-                        range: method.name.range,
-                        kind,
-                        next: None,
-                        via,
-                        docs,
-                    }),
-                    Offer::Private => {}
-                },
-                _ => {}
-            }
-        }
+        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via, docs });
     }
 
     // Whether the definition at `range` is part of the public API, as opposed to optional or possibly public: an item
@@ -215,10 +215,9 @@ impl<'a> PublicApi<'a> {
 // The module's functions, classes and class members that the documentation names by their dotted name under the
 // module's package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
 fn documented_definitions(checker: &Checker) -> FxHashSet<TextRange> {
-    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
     let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {
         Some(path) => (path.iter().map(String::as_str).collect(), true),
-        None => (vec![stem], false),
+        None => (vec![checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name())], false),
     };
     let prefix =
         module.into_iter().filter(|part| *part != "__init__").fold(String::new(), |prefix, part| prefix + part + ".");

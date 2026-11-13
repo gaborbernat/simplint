@@ -8,9 +8,6 @@ use super::punctuation::{
     CLOSER_CHARS, CLOSERS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, OPENERS, match_chars,
 };
 
-const OBJECT_ROLES: [&str; 12] =
-    ["func", "class", "meth", "attr", "data", "obj", "mod", "exc", "const", "type", "deco", "property"];
-
 // A `:role:target` with no backticks: where the role starts, where its target starts and ends, and whether backticks
 // around the target make a valid reference.
 pub(crate) struct BareRole {
@@ -480,6 +477,8 @@ fn blank(masked: &str, spans: &[Span]) -> String {
 }
 
 fn object_role(name: &str) -> bool {
+    const OBJECT_ROLES: [&str; 12] =
+        ["func", "class", "meth", "attr", "data", "obj", "mod", "exc", "const", "type", "deco", "property"];
     let name = name.to_ascii_lowercase();
     OBJECT_ROLES.contains(&name.strip_prefix("py:").unwrap_or(&name))
 }
