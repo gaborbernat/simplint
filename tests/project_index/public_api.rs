@@ -332,3 +332,22 @@ fn tuple_all_a_test_reads_keeps_its_type(reader: &str, fixed: bool) {
     assert!(stdout.contains("`__all__` is a tuple"), "{stdout}");
     assert_eq!(stdout.contains("1 unsafe fix available"), fixed, "{stdout}");
 }
+
+// Rust built beside the package, as maturin and setuptools-rust build it, can import a name by its spelling, which no
+// Python file shows, so the rename is left to the author.
+#[test_case("[build-system]\nrequires = [\"maturin>=1,<2\"]\nbuild-backend = \"maturin\"\n", false ; "maturin")]
+#[test_case("[build-system]\nrequires = [\"setuptools\", \"setuptools_rust\"]\n", false ; "setuptools_rust")]
+#[test_case("[build-system]\nrequires = [\"setuptools\"]\n", true ; "python_only")]
+fn native_build_keeps_unexported_names(build: &str, fixed: bool) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{build}\n[project]\nname = \"demo\"\n")),
+        ("demo/__init__.py", ""),
+        (
+            "demo/_ssh.py",
+            "def serialize() -> None:\n    pass\n\n\ndef load() -> None:\n    pass\n\n\n__all__ = [\n    \"load\",\n]\n",
+        ),
+    ]);
+    let stdout = check(root.path(), &["--select", "SMP403"]).1;
+    assert!(stdout.contains("`serialize` is not in `__all__`"), "{stdout}");
+    assert_eq!(stdout.contains("1 unsafe fix available"), fixed, "{stdout}");
+}

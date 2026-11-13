@@ -31,6 +31,8 @@ pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix>
         || checker.project().is_read_opaquely(old)
         // A computed write may set any name of the module, as `setattr(module, name, value)` does.
         || checker.project().is_computed_written()
+        // Compiled code can import any name by its spelling, which no index of the Python files sees.
+        || checker.settings.project.metadata.native
         || ranges.is_empty()
         || checker.name_token_count(old) != ranges.len()
     {

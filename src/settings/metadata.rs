@@ -25,6 +25,9 @@ pub struct ProjectMetadata {
     pub(crate) requirements: Vec<(String, Vec<String>)>,
     pub(crate) entry_points: Vec<String>,
     pub(crate) scripts: Vec<String>,
+    // Whether the build compiles Rust next to the Python code, which can look up any of its names by a string the run
+    // does not see, as PyO3's imports do.
+    pub(crate) native: bool,
 }
 
 impl ProjectMetadata {
@@ -143,6 +146,7 @@ impl From<ProjectTable> for ProjectMetadata {
                 .chain(project.entry_points.into_values().flat_map(BTreeMap::into_values))
                 .collect(),
             scripts,
+            native: false,
         }
     }
 }
@@ -217,6 +221,7 @@ pub(super) struct BuildConfiguration {
     // The `path` of each custom build or metadata hook of hatchling, which loads the hook's class from that file.
     pub(crate) hatch_hooks: Vec<String>,
     pdm_hook: Option<String>,
+    pub(super) native: bool,
 }
 
 impl BuildConfiguration {
@@ -249,6 +254,9 @@ impl BuildConfiguration {
             backend_path: strings(system_value("backend-path")),
             hatch_hooks: hatch_hook_paths(&hatch),
             pdm_hook: lookup(&["pdm", "build", "custom-hook"]).and_then(toml::Value::as_str).map(str::to_owned),
+            native: strings(system_value("requires")).iter().any(|requirement| {
+                matches!(canonical_name(distribution_name(requirement)).as_str(), "maturin" | "setuptools-rust")
+            }),
         }
     }
 }
