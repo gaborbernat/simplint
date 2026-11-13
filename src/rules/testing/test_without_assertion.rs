@@ -191,8 +191,8 @@ impl<'b> Checks<'_, 'b> {
         if let Some(name) = called {
             let lowered = name.to_ascii_lowercase();
             let lowered = lowered.trim_start_matches('_');
-            // Helpers such as `check_output`, `verify_signature` or Playwright's `expect` check a result, and pytester's
-            // line matchers fail the test when the output does not match.
+            // Helpers such as `check_output`, `verify_signature` or Playwright's `expect` check a result, and
+            // pytester's line matchers fail the test when the output does not match.
             if ["assert", "raises", "warns"].iter().any(|word| lowered.contains(word))
                 || ["check", "verify", "expect", "validate", "ensure", "compare", "fail"]
                     .iter()

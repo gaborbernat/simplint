@@ -357,8 +357,8 @@ fn row_id<'e>(checker: &Checker, row: &'e Expr, names: Option<Argnames>) -> Opti
     Some(Cow::Owned(ids.join("-")))
 }
 
-// Pytest uses a scalar's value as its id, but escapes non-printable ASCII and backslashes in strings and bytes, prints a number
-// as Python does, so `0x10` and `16` share an id, and suffixes ids that several rows share.
+// Pytest uses a scalar's value as its id, but escapes non-printable ASCII and backslashes in strings and bytes, prints
+// a number as Python does, so `0x10` and `16` share an id, and suffixes ids that several rows share.
 fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
     match element {
         Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {

@@ -317,8 +317,9 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
 }
 
 impl Saves<'_, '_> {
-    // The state a patcher or the monkeypatch fixture puts back once the test ends: `patch.dict(os.environ)` restores the
-    // whole mapping, and `monkeypatch.setenv`, `delenv`, `syspath_prepend` and `chdir` record the value they replace.
+    // The state a patcher or the monkeypatch fixture puts back once the test ends: `patch.dict(os.environ)` restores
+    // the whole mapping, and `monkeypatch.setenv`, `delenv`, `syspath_prepend` and `chdir` record the value they
+    // replace.
     fn restored_by(&self, call: &ast::ExprCall) -> Option<State> {
         let name = UnqualifiedName::from_expr(&call.func)?;
         match name.segments() {

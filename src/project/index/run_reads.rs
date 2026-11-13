@@ -120,8 +120,8 @@ pub(super) struct AllReads {
     // Whether a test reads `__all__`, by its name in a string as `getattr(module, "__all__")` does or as an attribute,
     // which may check what type it is.
     pub(super) in_tests: bool,
-    // Whether code outside the tests reads an `__all__` off a module it imports by a computed name, so removing or adding
-    // a listed name changes what it loads.
+    // Whether code outside the tests reads an `__all__` off a module it imports by a computed name, so removing or
+    // adding a listed name changes what it loads.
     pub(super) dynamic_in_production: bool,
 }
 
@@ -202,8 +202,8 @@ impl RunWide {
         hasher.finish()
     }
 
-    // Low protocol pickling, and writes or storage reached on objects of unknown class, concern every dataclass, so their
-    // change names `dataclass`.
+    // Low protocol pickling, and writes or storage reached on objects of unknown class, concern every dataclass, so
+    // their change names `dataclass`.
     pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes

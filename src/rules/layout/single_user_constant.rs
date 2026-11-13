@@ -182,7 +182,8 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     if !is_identifier(&local) || checker.name_token_count(&local) > 0 {
         return None;
     }
-    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before it.
+    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before
+    // it.
     let anchor =
         &function.body[function.body.partition_point(|stmt| stmt.start() <= constant.references[0].start()) - 1];
     // A body on the `def` line, as in `def f(): return _X`, has no line of its own to declare the local on, and its

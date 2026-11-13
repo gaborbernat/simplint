@@ -43,8 +43,8 @@ impl<'a> Visitor<'a> for ModuleReads<'_> {
     }
 }
 
-// The module values read by a computed attribute name, as `getattr(module, name)`, or through their `__all__`, which may
-// reach any of their names: `qualify` names the module an expression holds. Also whether an `__all__` is read off a
+// The module values read by a computed attribute name, as `getattr(module, name)`, or through their `__all__`, which
+// may reach any of their names: `qualify` names the module an expression holds. Also whether an `__all__` is read off a
 // module imported by a computed name, as `__import__(name).__all__` or `importlib.import_module(name).__all__` do.
 pub(super) fn dynamic_modules(body: &[Stmt], qualify: impl Fn(&Expr) -> Option<String>) -> DynamicReads {
     let mut found = DynamicModules::default();
@@ -101,8 +101,8 @@ impl<'a> Visitor<'a> for DynamicModules<'a> {
     }
 }
 
-// A module the code picks by a computed name: an import call, a `getattr`, or a `sys.modules` entry other than a literal
-// name or the module's own.
+// A module the code picks by a computed name: an import call, a `getattr`, or a `sys.modules` entry other than a
+// literal name or the module's own.
 fn is_computed_load(expr: &Expr) -> bool {
     match expr {
         Expr::Subscript(ast::ExprSubscript { slice, .. }) => {

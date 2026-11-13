@@ -74,8 +74,8 @@ fn definition_uses(
     eager.sort_unstable_by_key(Ranged::start);
     let import_time = import_time_functions(body, runtime_names);
     // Some decorators read the annotations they decorate while the module loads, even when Python defers them. Without
-    // lazy annotations, a `def` evaluates its own signature's annotations when it runs. A name a function only annotates
-    // with is not a helper it calls.
+    // lazy annotations, a `def` evaluates its own signature's annotations when it runs. A name a function only
+    // annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
         Evaluation::Annotation if in_ranges(&eager, reference.range) => {
             if reference.function.is_none() {

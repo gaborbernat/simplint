@@ -323,7 +323,8 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
                 // A store on a module reaches its name as `setattr` does, so the name stays a module attribute and is
-                // not localized or renamed. `cast(Any, module)` only quiets the type checker, so it reaches the module too.
+                // not localized or renamed. `cast(Any, module)` only quiets the type checker, so it reaches the module
+                // too.
                 if let Some(module) = self.qualified(uncast(value)) {
                     self.record_references(module, [attr.as_str().to_owned()]);
                 }

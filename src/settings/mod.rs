@@ -244,8 +244,8 @@ impl Projects {
 }
 
 // Whether a directory is a nested project of the run's project `main`: a test directory below it that holds a
-// `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`. Documentation reads the same test directories, so a page under
-// one belongs to its project.
+// `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`. Documentation reads the same test directories, so a page
+// under one belongs to its project.
 pub(crate) fn is_nested_root(main: &Path, dir: &Path) -> bool {
     dir.strip_prefix(main).is_ok_and(in_nested_test_directory)
         && ["conf.py", "pyproject.toml", "setup.py", "setup.cfg"].iter().any(|marker| dir.join(marker).is_file())

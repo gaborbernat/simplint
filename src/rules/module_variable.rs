@@ -83,7 +83,8 @@ pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<
 // The module-scope names bound to a callable, as `_build_cli = build_cli`, `to_json = dumps` or `encode =
 // _codec.encode`. Such an alias reads as the callable and is called like it, so it follows the callable's name as a
 // class alias does: a function the module defines, a lowercase imported name, a lowercase attribute of an imported
-// module, and a method of an instance of a class the module defines. An uppercase name or attribute reads as a constant.
+// module, and a method of an instance of a class the module defines. An uppercase name or attribute reads as a
+// constant.
 fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     checker
         .body()
