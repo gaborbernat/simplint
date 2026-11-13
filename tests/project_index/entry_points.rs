@@ -97,7 +97,7 @@ fn bare_module_future_import_is_not_public_api() {
             pytest_addoption(parser: object) -> None:\n    \"\"\"Register the flag.\"\"\"\n    print(parser)\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let imported = project(&[
         (
             "pyproject.toml",
@@ -266,7 +266,7 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
         ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
         ("b.py", consumer),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP402");
     let unread = project(&[
         ("pyproject.toml", DEMO),
         ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
@@ -366,7 +366,7 @@ fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP402");
     let unused = project(&[
         ("pyproject.toml", LIBRARY),
         ("pkg/__init__.py", ""),

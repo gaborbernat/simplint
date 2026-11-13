@@ -154,14 +154,7 @@ fn each_project_marker_makes_a_nested_test_project(marker: &str, content: &str) 
 
 fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {
     let root = project(files);
-    let stdout = check(root.path(), &["--select", "SMP530"]).1;
-    let mut reported: Vec<String> = common::reports(&stdout, "SMP530")
-        .into_iter()
-        .filter_map(|line| line.split(':').next())
-        .map(|path| path.replace(std::path::MAIN_SEPARATOR, "/"))
-        .collect();
-    reported.sort_unstable();
-    reported
+    common::report_paths(&check(root.path(), &["--select", "SMP530"]).1, "SMP530")
 }
 
 // The same statements under a different `if` are no repeat: the nesting of the code differs, though its text does not.
@@ -235,7 +228,7 @@ fn name_reached_only_from_another_project_is_unused(first: &str, second: &str, e
         (&format!("{second}/use.py"), "import support\n\n\ndef run(widget):\n    widget.helper()\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
-    let reported: Vec<&str> = stdout.lines().filter(|line| line.contains(" SMP409 ")).collect();
+    let reported = common::reports(&stdout, "SMP409");
     let expected: Vec<String> = expected.iter().map(|line| common::native(line)).collect();
     assert_eq!(reported, expected.iter().map(String::as_str).collect::<Vec<_>>());
 }

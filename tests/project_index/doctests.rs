@@ -106,7 +106,7 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
         ),
         ("p/doc.py", "\"\"\"Docs.\n\n>>> import p.util\n>>> p.util.helper()\n1\n\"\"\"\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP409");
     let without_doc = project(&[
         ("p/__init__.py", ""),
         (
@@ -125,7 +125,7 @@ fn constant_read_by_its_own_module_doctest_is_kept() {
         "_TIMEOUT = 30\n\n\ndef wait():\n    \"\"\"Wait.\n\n    >>> _TIMEOUT\n    30\n    \"\"\"\n    return \
         _TIMEOUT\n",
     )]);
-    assert_eq!(check(root.path(), &["--select", "SMP202"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP202");
     let unread = project(&[("pkg/consts.py", "_TIMEOUT = 30\n\n\ndef wait():\n    return _TIMEOUT\n")]);
     assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`_TIMEOUT` is used by one function only"));
 }

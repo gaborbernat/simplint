@@ -39,7 +39,7 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
         ("tests/test_docs.py", &test),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    common::assert_clean(root.path(), "SMP402");
     let unread = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
@@ -318,7 +318,7 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
 fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[("docs/__init__.py", ""), ("docs/tutorial.py", "LIMIT = 3\n"), ("tests/test_docs.py", &test)]);
-    assert_eq!(check(root.path(), &["--select", "SMP601"]).1, common::native(common::PASSED));
+    common::assert_clean(root.path(), "SMP601");
     let unpatched = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "LIMIT = 3\n"),

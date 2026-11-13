@@ -1067,8 +1067,7 @@ fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
         ),
         ("app/other.py", "from itertools import count\n\nprint(count)\n"),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP102,SMP404"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP102,SMP404");
 }
 
 // A name an unresolved import may read keeps its report, and only the rename is withheld.
@@ -1115,8 +1114,7 @@ fn documented_function_is_not_test_only_code() {
             "from app.mod import helper\n\n\ndef test_helper() -> None:\n    assert helper(2) == 2\n",
         ),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP408"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP408");
 }
 
 // A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
@@ -1145,6 +1143,5 @@ fn doctest_relative_import_counts_as_a_read_of_the_name() {
         ("app/mod.py", "LIMIT = 3\n\n\n__all__ = []\n"),
         ("app/cli.py", "def run() -> None:\n    \"\"\"Run.\n\n    >>> from .mod import LIMIT\n    \"\"\"\n"),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP404");
 }

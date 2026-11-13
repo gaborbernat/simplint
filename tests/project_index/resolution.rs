@@ -61,7 +61,7 @@ fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
 )]
 fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
     let root = project(files);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let production = project(&[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
@@ -122,7 +122,7 @@ fn flat_layout_module_entry_point_uses_its_public_names() {
         ("src/pkg/__init__.py", ""),
         ("plugin.py", "__all__ = []\n\n\ndef activate() -> None:\n    pass\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP403,SMP409");
     let unlisted = project(&[
         ("pyproject.toml", "[project]\n[tool.ruff]\nsrc = [\"src\"]\n"),
         ("src/pkg/__init__.py", ""),
@@ -204,7 +204,7 @@ fn stub_only_module_attribute_is_not_reported() {
         ("writers/findings.pyi", "def save() -> None: ...\n"),
         ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP304"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP304");
     let module = project(&[
         ("writers/__init__.py", ""),
         ("writers/findings.py", "def save() -> None:\n    pass\n"),
@@ -244,7 +244,7 @@ fn module_import_is_not_an_export(reference: &str) {
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401");
     let production = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/files.py", "def cwd() -> str:\n    return \"\"\n"),

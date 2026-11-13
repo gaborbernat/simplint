@@ -83,7 +83,7 @@ fn variable_reused_for_each_loaded_module_reads_each_module() {
              mod.engine\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP404");
     let unread = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "client = object()\n"),
@@ -313,7 +313,7 @@ fn spec_loaded_module_read_keeps_name_listed() {
         ("docs/tutorial.py", "__all__ = [\"client\"]\n\n\nclient = object()\n"),
         ("tests/test_docs.py", &spec_loading_test("Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    common::assert_clean(root.path(), "SMP402");
     let unread = project(&[
         ("docs/__init__.py", ""),
         ("docs/tutorial.py", "__all__ = [\"client\"]\n\n\nclient = object()\n"),

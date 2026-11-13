@@ -32,7 +32,7 @@ fn coverage_plugin_resolves_from_import_paths(paths: &str, ini: Option<(&str, &s
     let mut files = vec![("pyproject.toml", pyproject.as_str()), ("tasks/cov.py", plugin.as_str())];
     files.extend(ini);
     let root = project(&files);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP402,SMP403,SMP409");
     let without_paths = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n[tool.coverage.run]\nplugins = [\"cov\"]\n"),
         ("tasks/cov.py", &format!("{COVERAGE_PLUGIN}__all__ = []\n")),
@@ -74,7 +74,7 @@ fn coverage_plugin_init_imported_by_a_test_is_not_test_only() {
              def test_init() -> None:\n    coverage_init(object(), {})\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP408");
     let unconfigured = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n"),
         ("tasks/__init__.py", ""),

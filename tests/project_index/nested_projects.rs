@@ -63,7 +63,7 @@ fn nested_project_names_its_own_documentation() {
         ("roots/test-b/support.py", "def helper() -> None:\n    pass\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
-    let reported: Vec<&str> = stdout.lines().filter(|line| line.contains(" SMP409 ")).collect();
+    let reported = common::reports(&stdout, "SMP409");
     assert_eq!(
         reported,
         [format!(
@@ -249,8 +249,7 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
             \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
         ),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404");
     let outside = project(&[
         (
             "pyproject.toml",
@@ -444,8 +443,7 @@ fn autodoc_names_a_package_function_by_its_package() {
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autofunction:: app.helper\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP901,SMP409"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP901,SMP409");
     let undocumented = project(&[
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         (
@@ -475,8 +473,7 @@ fn autodoc_names_a_method_by_its_class() {
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autoclass:: app.mod.Foo\n   :members:\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP901"]).1;
-    assert_eq!(stdout, common::PASSED);
+    common::assert_clean(root.path(), "SMP901");
     let undocumented = project(&[
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         ("app/__init__.py", ""),
@@ -529,7 +526,7 @@ fn coverage_plugin_init_is_used(all: &str) {
         ("tasks/__init__.py", ""),
         ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP401,SMP402,SMP403,SMP409");
     let unconfigured = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n"),
         ("tasks/__init__.py", ""),
