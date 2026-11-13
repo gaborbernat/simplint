@@ -320,8 +320,8 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
                 // A store on a module reaches its name as `setattr` does, so the name stays a module attribute and is
-                // not localized or renamed.
-                if let Some(module) = self.qualified(value) {
+                // not localized or renamed. `cast(Any, module)` only quiets the type checker, so it reaches the module too.
+                if let Some(module) = self.qualified(uncast(value)) {
                     self.record_references(module, [attr.as_str().to_owned()]);
                 }
             }
@@ -719,6 +719,18 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
     let (first, rest) = segments.split_first()?;
     let module = aliases.get(first)?;
     Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
+}
+
+fn uncast(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Call(ast::ExprCall { func, arguments, .. }) if last_segment(func) == Some("cast") => {
+            match &*arguments.args {
+                [_, value] => value,
+                _ => expr,
+            }
+        }
+        _ => expr,
+    }
 }
 
 fn module_attribute(path: &str) -> Option<(&str, &str)> {

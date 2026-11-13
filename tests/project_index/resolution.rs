@@ -302,6 +302,7 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
 #[test_case("report.TABLE_JSON_DIR = Path(\"out\")\n" ; "assignment")]
 #[test_case("del report.TABLE_JSON_DIR\n" ; "deletion")]
 #[test_case("setattr(report, \"TABLE_JSON_DIR\", Path(\"out\"))\n" ; "setattr")]
+#[test_case("from typing import Any, cast\n\ncast(Any, report).TABLE_JSON_DIR = Path(\"out\")\n" ; "cast")]
 fn stored_module_variable_stays_module_level(store: &str) {
     let report = "from pathlib import Path\n\nTABLE_JSON_DIR: Path | None = None\n\n\ndef render() -> bool:\n    \
     return \
