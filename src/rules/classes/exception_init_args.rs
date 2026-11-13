@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::exceptions::{ClassKey, derives_from_base_exception, lineage};
+use crate::rules::exception_classes::{ClassKey, derives_from_base_exception, lineage};
 
 // The methods that tell `pickle` and `copy` how to rebuild an object, which replace rebuilding it from its `args`.
 const REBUILDERS: [&str; 4] = ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__"];

@@ -5,7 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::exceptions::{ClassKey, lineage};
+use crate::rules::exception_classes::{ClassKey, handled_types, lineage};
 
 // One class an `except` clause names, with the classes it derives from.
 struct Caught<'a> {
@@ -21,18 +21,12 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let mut earlier: Vec<(Caught, usize)> = Vec::new();
     for handler in handlers {
         let ast::ExceptHandler::ExceptHandler(handler) = handler;
-        let Some(type_) = handler.type_.as_deref() else {
+        let (Some(type_), Some(elements)) = (handler.type_.as_deref(), handled_types(handler)) else {
             continue;
         };
         let line = checker.line_number(handler.start()).get();
-        let elements: Vec<&Expr> = match type_ {
-            Expr::Tuple(tuple) => tuple.elts.iter().collect(),
-            single => vec![single],
-        };
-        let caught: Vec<Caught> = elements
-            .iter()
-            .filter_map(|expr| Some(Caught { expr, lineage: lineage(checker, expr)? }))
-            .collect();
+        let caught: Vec<Caught> =
+            elements.iter().filter_map(|expr| Some(Caught { expr, lineage: lineage(checker, expr)? })).collect();
         let shadowing: Vec<Option<&(Caught, usize)>> = caught
             .iter()
             .map(|entry| earlier.iter().find(|(broader, _)| is_strict_base(broader, entry.lineage[0], &entry.lineage)))
@@ -62,7 +56,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         for (index, entry) in caught.iter().enumerate() {
             let name = checker.text(entry.expr.range());
             let message = if let Some((broader, line)) = shadowing[index] {
-                let consequence = if elements.len() == 1 { "this handler never runs" } else { "this entry never matches" };
+                let consequence =
+                    if elements.len() == 1 { "this handler never runs" } else { "this entry never matches" };
                 format!(
                     "`{name}` derives from `{}`, which the handler on line {line} catches first, so {consequence}",
                     checker.text(broader.expr.range())
@@ -97,7 +92,6 @@ fn is_strict_base(broader: &Caught, own: ClassKey, lineage: &[ClassKey]) -> bool
     let base = broader.lineage[0];
     base != own && lineage.contains(&base)
 }
-
 
 // Dropping an entry from a tuple keeps what the clause catches, since its base stays in front of it. A lone class
 // leaves the clause empty, and a comment in the tuple would be lost, so neither gets a fix.

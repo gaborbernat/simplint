@@ -4,7 +4,7 @@ pub(crate) mod classes;
 pub(crate) mod comments;
 pub(crate) mod docstrings;
 pub(crate) mod edits;
-pub(crate) mod exceptions;
+pub(crate) mod exception_classes;
 mod frameworks;
 pub(crate) mod imports;
 pub(crate) mod layout;

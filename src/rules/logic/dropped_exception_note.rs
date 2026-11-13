@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::rules::exceptions::{derives_from_base_exception, lineage};
+use crate::rules::exception_classes::{derives_from_base_exception, lineage};
 
 // An exception caught by name, given a note in its handler, and then neither raised again nor read. The handler swallows
 // it, so the note reaches no one.
@@ -31,10 +31,12 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         return;
     };
     let checker = walker.checker;
-    if !lineage(checker, &call.func).is_some_and(|lineage| derives_from_base_exception(&lineage)) {
+    let name = target.id.as_str();
+    // Most assignments build no exception, and a name the file never calls `add_note` on needs no class lookup.
+    let noted = checker.state().attribute_reads(checker).get(name).is_some_and(|reads| reads.contains(&"add_note"));
+    if !noted || !lineage(checker, &call.func).is_some_and(|lineage| derives_from_base_exception(&lineage)) {
         return;
     }
-    let name = target.id.as_str();
     // A module-level name may be read by another module, so only a function's own local is followed.
     let Some(function) = walker.scopes().iter().rev().find_map(|scope| match scope {
         Scope::Function(function) => Some(*function),

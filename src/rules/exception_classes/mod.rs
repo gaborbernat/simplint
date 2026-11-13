@@ -4,6 +4,7 @@ use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
+use crate::syntax::last_segment;
 
 use self::hierarchy::{ALIASES, BASES};
 
@@ -23,6 +24,42 @@ pub(crate) fn lineage(checker: &Checker, expr: &Expr) -> Option<Vec<ClassKey>> {
 
 pub(crate) fn derives_from_base_exception(lineage: &[ClassKey]) -> bool {
     lineage.contains(&ClassKey::Known("BaseException"))
+}
+
+// The class names `expr` derives from, itself first, as a docstring names them: by their last segment. A class the
+// table and this file do not know is only its own name.
+pub(crate) fn lineage_names<'a>(checker: &Checker<'a>, expr: &'a Expr) -> Option<Vec<&'a str>> {
+    let Some(lineage) = lineage(checker, expr) else {
+        return last_segment(expr).map(|name| vec![name]);
+    };
+    Some(
+        lineage
+            .into_iter()
+            .filter_map(|key| match key {
+                ClassKey::Known(name) => Some(name.rsplit('.').next().unwrap_or(name)),
+                ClassKey::Local(range) => checker
+                    .class_defs()
+                    .iter()
+                    .copied()
+                    .find(|class| class.range() == range)
+                    .map(|class| class.name.as_str()),
+            })
+            .collect(),
+    )
+}
+
+// The last segment of the class a written name stands for, so `IOError` and `socket.error` both read `OSError`.
+pub(crate) fn canonical_name(name: &str) -> &str {
+    let target = lookup(ALIASES, name).map_or(name, |(_, target)| *target);
+    target.rsplit('.').next().unwrap_or(target)
+}
+
+// The classes an `except` clause names; `None` for a bare `except`, which catches every exception.
+pub(crate) fn handled_types(handler: &ast::ExceptHandlerExceptHandler) -> Option<Vec<&Expr>> {
+    Some(match handler.type_.as_deref()? {
+        Expr::Tuple(tuple) => tuple.elts.iter().collect(),
+        single => vec![single],
+    })
 }
 
 fn collect(checker: &Checker, expr: &Expr, found: &mut Vec<ClassKey>) -> bool {
@@ -46,7 +83,7 @@ fn collect(checker: &Checker, expr: &Expr, found: &mut Vec<ClassKey>) -> bool {
             continue;
         }
         found.push(key);
-        pending.extend(bases_of(name).iter().rev().copied());
+        pending.extend(lookup(BASES, name).into_iter().flat_map(|(_, bases)| bases.iter().rev()).copied());
     }
     true
 }
@@ -67,13 +104,10 @@ fn known_name(checker: &Checker, expr: &Expr) -> Option<&'static str> {
         ["", builtin] => (*builtin).to_owned(),
         segments => segments.join("."),
     };
-    ALIASES
-        .iter()
-        .find(|(alias, _)| *alias == dotted)
-        .map(|(_, target)| *target)
-        .or_else(|| BASES.iter().find(|(name, _)| *name == dotted).map(|(name, _)| *name))
+    lookup(ALIASES, &dotted).map(|(_, target)| *target).or_else(|| lookup(BASES, &dotted).map(|(name, _)| *name))
 }
 
-fn bases_of(name: &str) -> &'static [&'static str] {
-    BASES.iter().find(|(class, _)| *class == name).map_or(&[], |(_, bases)| bases)
+// The generator sorts both tables by name, so a lookup is a binary search.
+fn lookup<T>(table: &'static [(&'static str, T)], name: &str) -> Option<&'static (&'static str, T)> {
+    table.binary_search_by_key(&name, |(key, _)| key).ok().map(|index| &table[index])
 }
