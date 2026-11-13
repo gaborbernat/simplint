@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.12.1 (2026-11-13)
+
+<a name="release-0-12-1"></a>
+
+<a name="release-0-12-1-changes"></a>
+
+### Changes
+
+- [`comprehension-complexity`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/logic/comprehension_complexity.md)
+  allows two `for` clauses and reports from the third, as a pairing of two sequences still reads as one step
+  ([#137](https://github.com/gaborbernat/simplint/pull/137)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-12-1-fixed"></a>
+
+### Fixed
+
+- [`definition-before-use`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/layout/definition_before_use.md)
+  no longer pins a class named in the annotations of a standard decorator that never evaluates them, such as
+  `dataclass`, `property`, `contextmanager` or `functools.cache`, when annotations are lazy, and no longer reads
+  `@name.setter` as calling the getter while the class body runs
+  ([#137](https://github.com/gaborbernat/simplint/pull/137)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`empty-collection-comparison`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/logic/empty_collection_comparison.md)
+  leaves `.get(key) == []`, `.get(key, None) == []` and `getattr(obj, name, None) == ()` alone: a missing value gives
+  `None`, which a truth test would take for an empty one ([#137](https://github.com/gaborbernat/simplint/pull/137)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`iterator-reuse`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/logic/iterator_reuse.md) reads the
+  two sides of `a if test else b` as separate branches, so a generator each side consumes is no longer reported
+  ([#137](https://github.com/gaborbernat/simplint/pull/137)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`mutable-module-constant`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/typing/mutable_module_constant.md)
+  keeps a comment inside a `list[...]` annotation when its fix makes it a `tuple[..., ...]`: it renames the base and
+  adds the `, ...` instead of rewriting the whole annotation ([#137](https://github.com/gaborbernat/simplint/pull/137))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`mutable-module-constant`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/typing/mutable_module_constant.md)
+  leaves `pytestmark` and the other names pytest reads by name alone: its fix made `pytestmark` a tuple, which pytest
+  rejects as a single mark ([#137](https://github.com/gaborbernat/simplint/pull/137)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`too-many-attributes`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/classes/too_many_attributes.md)
+  and the rules that tell class attributes from instance ones read `__init_subclass__` and `__class_getitem__` as class
+  methods, which Python makes them without a decorator ([#137](https://github.com/gaborbernat/simplint/pull/137)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-dependency`](https://github.com/gaborbernat/simplint/blob/0.12.1/src/rules/imports/unused_dependency.md) no
+  longer reports the requirements of a project nested under the tests, which a fixture may list unused on purpose
+  ([#137](https://github.com/gaborbernat/simplint/pull/137)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.12.0 (2026-11-13)
 
 <a name="release-0-12-0"></a>
