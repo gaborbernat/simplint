@@ -722,15 +722,13 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
 }
 
 fn uncast(expr: &Expr) -> &Expr {
-    match expr {
-        Expr::Call(ast::ExprCall { func, arguments, .. }) if last_segment(func) == Some("cast") => {
-            match &*arguments.args {
-                [_, value] => value,
-                _ => expr,
-            }
-        }
-        _ => expr,
+    if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
+        && last_segment(func) == Some("cast")
+        && let [_, value] = &*arguments.args
+    {
+        return value;
     }
+    expr
 }
 
 fn module_attribute(path: &str) -> Option<(&str, &str)> {

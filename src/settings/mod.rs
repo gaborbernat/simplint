@@ -27,9 +27,8 @@ pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source,
 pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
-pub(crate) use crate::settings::metadata::canonical_name;
-pub(crate) use crate::settings::metadata::may_provide;
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
+pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
 use crate::settings::options::{
     ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
     SelectorLayer,

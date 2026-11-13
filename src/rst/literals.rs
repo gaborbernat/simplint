@@ -275,9 +275,11 @@ fn closes_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
 
 // The backtick runs that pair up wrongly within a paragraph, found by reading the runs in order: an opening run is
 // closed by the next run that can close it. A run of one backtick closed by two is a mismatch, and so is a run of two
-// closed by one. A literal may hold a single backtick, so a run of two closed by one is left alone only when no other
-// run of two stands between it and the first pair of double backticks after it. A closing run followed by a role's
-// colon is left to the role rules.
+// closed by one.
+//
+// A literal may hold a single backtick, so a run of two closed by one is left alone only when no other run of two
+// stands between it and the first pair of double backticks after it. A closing run followed by a role's colon is left
+// to the role rules.
 fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
     let runs = backtick_runs(units);
     let mut found = Vec::new();
