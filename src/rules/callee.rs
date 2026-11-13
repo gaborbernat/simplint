@@ -88,11 +88,7 @@ pub(crate) fn local_function<'a>(
             if namesakes.next().is_some() {
                 return None;
             }
-            let bound = !function
-                .decorator_list
-                .iter()
-                .any(|decorator| semantic.is_builtin(&decorator.expression, "staticmethod"));
-            Some((function, bound))
+            Some((function, !semantic.decorated_by(&function.decorator_list, &[&["", "staticmethod"]])))
         }
         _ => None,
     }

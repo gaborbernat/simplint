@@ -598,9 +598,11 @@ fn package_loaded(
         .filter(|(id, _)| !test_modules.contains(id))
         .filter(|(id, _)| {
             let path = files.path(*id);
-            path.file_name().is_some_and(|name| name == "__main__.py")
-                || path.file_name().is_some_and(|name| name == "__init__.py")
-                    && path.parent().and_then(Path::parent).is_none_or(|outer| !inits.contains(outer))
+            match path.file_name().and_then(|name| name.to_str()) {
+                Some("__main__.py") => true,
+                Some("__init__.py") => path.parent().and_then(Path::parent).is_none_or(|outer| !inits.contains(outer)),
+                _ => false,
+            }
         })
         .map(|(id, _)| *id)
         .collect();

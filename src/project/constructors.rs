@@ -656,7 +656,8 @@ impl RunCalls {
                                     .or_default()
                                     .push(site);
                             }
-                            shape.positional > 0 && fields.as_ref().is_none_or(|f| shape.positional as usize > f.len())
+                            shape.positional > 0
+                                && fields.as_ref().is_none_or(|known| shape.positional as usize > known.len())
                         }
                         UseKind::Opaque => true,
                     };

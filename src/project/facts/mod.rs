@@ -38,7 +38,7 @@ use self::visitor::{FactVisitor, grouped, top_level_bindings};
 pub(crate) use self::visitor::{FromImport, ImportBinding, qualified};
 use super::constructors::{CallContexts, Constructors};
 use super::receivers::{AttributeWrites, module_name};
-use crate::syntax::{Exports, dunder_all, module_statements};
+use crate::syntax::{Exports, dunder_all, module_statements, yields};
 
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
@@ -317,7 +317,7 @@ impl Signature {
         let parameters = &function.parameters;
         Self {
             name: function.name.to_string(),
-            coroutine: function.is_async && !crate::syntax::yields(&function.body),
+            coroutine: function.is_async && !yields(&function.body),
             positional: parameters
                 .posonlyargs
                 .iter()
