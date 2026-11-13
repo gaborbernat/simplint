@@ -101,8 +101,7 @@ fn library_dataclass_imported_from_a_package_keeps_its_options(init: &str) {
         ("pkg/caller.py", "from pkg import Partition\n\nPartition(\"a\")\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "dataclass-slots"]);
-    assert_eq!(stdout.matches("Dataclass is missing").count(), 1, "{stdout}");
-    assert!(stdout.contains("_impl.py:9:"), "{stdout}");
+    assert_eq!((stdout.matches("Dataclass is missing").count(), stdout.contains("_impl.py:9:")), (1, true), "{stdout}");
 }
 
 // A public dataclass nested in a public class of a library is part of the API its users construct too.
@@ -462,8 +461,7 @@ fn stub_dataclass_is_reported_under_ruff_rules(name: &str, reports: usize) {
 fn dict_access_decides_the_frozen_fix(source: &str, fixable: bool) {
     let root = common::project(&[("mod.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "dataclass-frozen"]);
-    assert_eq!(stdout.matches("Dataclass is missing").count(), 1, "{stdout}");
-    assert_eq!(stdout.contains("[*]"), fixable, "{stdout}");
+    assert_eq!((stdout.matches("Dataclass is missing").count(), stdout.contains("[*]")), (1, fixable), "{stdout}");
 }
 
 // `getattr(module, "Release")` reaches a dataclass by a name no import shows, so its positional calls may come from
@@ -529,8 +527,11 @@ fn indistinct_error_class_counts_the_classes_a_tuple_or_suppress_catches(errors_
         ("app/main.py", main),
     ]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP704"]).1;
-    assert!(stdout.contains("`PlainError`"), "{stdout}");
-    assert!(!stdout.contains("`AError`") && !stdout.contains("`BError`"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`PlainError`"), !stdout.contains("`AError`") && !stdout.contains("`BError`")),
+        (true, true),
+        "{stdout}"
+    );
 }
 
 // A base imported under another name, or bound to a name at module level, is the class it names, so `frozen` would
@@ -722,8 +723,11 @@ fn positional_call_in_an_annotation_is_rewritten() {
     let root = common::project(&[("main.py", source)]);
     common::fix_unsafe(root.path(), "dataclass-kw-only");
     let fixed = common::read(root.path(), "main.py");
-    assert!(fixed.contains("Annotated[str, Doc(text=\"where\")]"), "{fixed}");
-    assert!(fixed.contains("@dataclass(kw_only=True)"), "{fixed}");
+    assert_eq!(
+        (fixed.contains("Annotated[str, Doc(text=\"where\")]"), fixed.contains("@dataclass(kw_only=True)")),
+        (true, true),
+        "{fixed}"
+    );
 }
 
 // A class passed to a call in an annotation is a value the call may take, so the fix is withheld for it.

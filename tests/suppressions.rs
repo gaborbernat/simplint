@@ -309,8 +309,14 @@ fn add_suppression_refuses_conflicting_rules(flag: &str) {
         ("module.py", source),
     ]);
     let (code, stdout, stderr) = check(root.path(), &["--select", "SMP301", flag]);
-    assert_eq!((code, stdout, read(root.path(), "module.py")), (2, String::new(), source.to_owned()));
-    assert!(stderr.contains("SMP301 (future-annotations) and Ruff's I002"), "{stderr}");
+    assert_eq!(
+        (
+            (code, stdout, read(root.path(), "module.py")),
+            stderr.contains("SMP301 (future-annotations) and Ruff's I002")
+        ),
+        ((2, String::new(), source.to_owned()), true),
+        "{stderr}"
+    );
 }
 
 // A file without a line break gets the platform's, as in Ruff.

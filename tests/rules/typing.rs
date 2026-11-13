@@ -86,8 +86,11 @@ fn missing_final_fixes_a_parenthesized_name_only_when_annotated(source: &str, fi
     let root = common::project(&[("module.py", &format!("{source}OTHER = 4\n\nprint(LIMIT, OTHER)\n"))]);
     common::fix_unsafe(root.path(), "SMP601");
     let fixed = common::read(root.path(), "module.py");
-    assert!(fixed.contains("OTHER: Final[int] = 4"), "{fixed}");
-    assert_eq!(fixed.contains("(LIMIT): Final[int] = 3"), fixable, "{fixed}");
+    assert_eq!(
+        (fixed.contains("OTHER: Final[int] = 4"), fixed.contains("(LIMIT): Final[int] = 3")),
+        (true, fixable),
+        "{fixed}"
+    );
 }
 
 #[test_case("assert inspect.signature(callback)", 0 ; "inspected_not_called")]
@@ -226,8 +229,11 @@ fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, re
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
     let reports = common::reports(&stdout, "SMP602");
-    assert_eq!(reports.len(), reported, "{stdout}");
-    assert!(reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:"))), "{stdout}");
+    assert_eq!(
+        (reports.len(), reports.iter().all(|report| report.starts_with(&format!("module.py:{line}:")))),
+        (reported, true),
+        "{stdout}"
+    );
 }
 
 // Another module may change a constant through its import, or every name through a star import, out of this module's

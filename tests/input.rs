@@ -38,10 +38,12 @@ fn link_to_a_file_outside_the_run_is_skipped(flags: &[&str]) {
     std::os::unix::fs::symlink(&target, root.path().join("link.py")).expect("symlink");
     let (code, stdout, stderr) = check(root.path(), flags);
     assert_eq!(
-        (code, stdout.contains("helpers"), stderr.contains("Skipped symlink"), stderr.contains("link.py")),
-        (0, false, true, true)
+        (
+            (code, stdout.contains("helpers"), stderr.contains("Skipped symlink"), stderr.contains("link.py")),
+            read(outside.path(), "secret.py")
+        ),
+        ((0, false, true, true), common::SECTIONED.to_owned())
     );
-    assert_eq!(read(outside.path(), "secret.py"), common::SECTIONED);
 }
 
 // A link whose target is in the run is linted as any file is, unless the run also finds the target, which is then

@@ -134,8 +134,7 @@ fn crlf_reports_and_fixes_match_lf(select: &str, source: &str) {
     let lf = report_and_fix(select, source);
     let crlf = report_and_fix(select, &source.replace('\n', "\r\n"));
     assert_ne!(lf.1, source);
-    assert_eq!(crlf.0, lf.0);
-    assert_eq!(crlf.1, lf.1.replace('\n', "\r\n"));
+    assert_eq!((crlf.0, crlf.1), (lf.0, lf.1.replace('\n', "\r\n")));
 }
 
 #[test_case("\n" ; "lf")]

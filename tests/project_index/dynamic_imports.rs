@@ -189,8 +189,11 @@ fn name_bound_to_several_modules_reads_each_of_them(body: &str, other_reported: 
         ("tests/test_cli.py", &format!("import pytest\n\n\ndef test_app() -> None:\n{body}")),
     ]);
     let stdout = check(root.path(), &["--select", "SMP404"]).1;
-    assert!(stdout.contains("pkg/third.py:3:1: SMP404 `client`"), "{stdout}");
-    assert_eq!(stdout.contains("pkg/other.py:3:1: SMP404 `engine`"), other_reported, "{stdout}");
+    assert_eq!(
+        (stdout.contains("pkg/third.py:3:1: SMP404 `client`"), stdout.contains("pkg/other.py:3:1: SMP404 `engine`")),
+        (true, other_reported),
+        "{stdout}"
+    );
 }
 
 // The attribute of an import call's result is a name of the module the call loads, not a module itself, so a name a
