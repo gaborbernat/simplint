@@ -571,21 +571,10 @@ impl<'a> Listing<'a> {
 // name that `extend` or `append` adds.
 pub fn export_names(body: &[Stmt]) -> FxHashSet<&str> {
     let mut names = FxHashSet::default();
-    module_scope_statements(body, &mut |stmt| {
-        if let Some(value) = export_value(stmt) {
-            add_export_names(value, &mut names);
-        }
-    });
-    names
-}
-
-fn module_scope_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a Stmt)) {
-    for stmt in body {
-        visit(stmt);
-        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            for_each_child_body(stmt, &mut |child| module_scope_statements(child, visit));
-        }
+    for value in scope_statements(body).into_iter().filter_map(|stmt| all_binding(stmt)?.value) {
+        add_export_names(value, &mut names);
     }
+    names
 }
 
 // Every statement of the scope `body` opens, nested blocks included. Function and class bodies bind in their own scope,
@@ -633,17 +622,6 @@ pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt]
             }
         }
         _ => {}
-    }
-}
-
-fn export_value(stmt: &Stmt) -> Option<&Expr> {
-    match stmt {
-        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.first().is_some_and(is_all_target) => {
-            Some(value)
-        }
-        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => value.as_deref(),
-        Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) if is_all_target(target) => Some(value),
-        _ => None,
     }
 }
 
