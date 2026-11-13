@@ -210,43 +210,66 @@ it belongs.
     from ._core import *
     ```
 
-  - `from __future__` imports, which change no behavior at run time
+- **`from __future__` imports**, in any package, which change no behavior at run time:
 
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
+  ```toml config
+  [build-system]
+  requires = ["setuptools"]
+  build-backend = "setuptools.build_meta"
 
-    [project]
-    name = "demo"
-    ```
+  [project]
+  name = "demo"
+  ```
 
-    ```python ok file=demo/__init__.py
-    """HTTP client."""
+  ```python ok file=demo/__init__.py
+  """HTTP client."""
 
-    from __future__ import annotations
-    ```
+  from __future__ import annotations
+  ```
 
-  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run
+- **`__lazy_modules__`**, in any package, the modules Python 3.15 loads lazily when the package's imports run:
 
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
+  ```toml config
+  [build-system]
+  requires = ["setuptools"]
+  build-backend = "setuptools.build_meta"
 
-    [project]
-    name = "demo"
-    ```
+  [project]
+  name = "demo"
+  ```
 
-    ```python ok file=demo/__init__.py
-    """HTTP client."""
+  ```python ok file=demo/__init__.py
+  """HTTP client."""
 
-    __lazy_modules__ = ["demo._core"]
+  __lazy_modules__ = ["demo._core"]
 
-    from ._core import run
+  from ._core import run
 
-    __all__ = ["run"]
-    ```
+  __all__ = ["run"]
+  ```
+
+- **A `__version__` that build or release tooling reads**: the assignment has to stay where the tool looks. That is the
+  file setuptools' `attr:`, hatch's or pdm's version `path`, flit, bump-my-version, bump2version or tbump name, and any
+  package's `__init__.py` when `setup.py` reads `__version__` itself.
+
+  ```toml config
+  [build-system]
+  requires = ["hatchling"]
+  build-backend = "hatchling.build"
+
+  [project]
+  name = "demo"
+  dynamic = ["version"]
+
+  [tool.hatch.version]
+  path = "demo/__init__.py"
+  ```
+
+  ```python ok file=demo/__init__.py
+  """HTTP client."""
+
+  __version__ = "1.0"
+  ```
 
 - **Unused imports**: [F401](https://docs.astral.sh/ruff/rules/unused-import/) reports an import that nothing reads, so
   this rule does not report it, whether or not the run selects F401. A statement keeps its report when one of its names

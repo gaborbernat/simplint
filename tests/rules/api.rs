@@ -276,6 +276,47 @@ fn init_module_content_allows_explicit_api_in_applications() {
 }
 
 #[test]
+fn init_module_content_leaves_future_imports_alone() {
+    let root = common::project(&[
+        ("pyproject.toml", APPLICATION),
+        ("package/__init__.py", "from __future__ import annotations\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
+    assert!(common::reports(&stdout, "SMP407").is_empty(), "{stdout}");
+}
+
+const PYPROJECT_HEAD: &str = "[project]\nname = \"package\"\ndynamic = [\"version\"]\n";
+
+// The tool reads only `__version__`, so `__version_info__` is reported either way.
+const INIT_WITH_VERSION: &str =
+    "__version__ = \"1.0\"\n__version_info__: tuple[int, ...] = (1, 0)\nprint(__version__)\n";
+
+#[test_case("pyproject.toml", "[tool.setuptools.dynamic]\nversion = {attr = \"package.__version__\"}\n", 1 ; "setuptools_attr")]
+#[test_case("pyproject.toml", "[tool.hatch.version]\npath = \"package/__init__.py\"\n", 1 ; "hatch_path")]
+#[test_case("pyproject.toml", "[tool.pdm.version]\nsource = \"file\"\npath = \"package/__init__.py\"\n", 1 ; "pdm_path")]
+#[test_case("pyproject.toml", "[build-system]\nbuild-backend = \"flit_core.buildapi\"\n", 1 ; "flit")]
+#[test_case("pyproject.toml", "[tool.bumpversion]\nfiles = [{filename = \"package/__init__.py\"}]\n", 1 ; "bump_my_version")]
+#[test_case("setup.cfg", "[metadata]\nversion = attr: package.__version__\n", 1 ; "setup_cfg_attr")]
+#[test_case(".bumpversion.cfg", "[bumpversion]\ncurrent_version = 1.0\n\n[bumpversion:file:package/__init__.py]\n", 1 ; "bump2version")]
+#[test_case("tbump.toml", "[[file]]\nsrc = \"package/__init__.py\"\n", 1 ; "tbump")]
+#[test_case("setup.py", "import re\n\nVERSION = re.search(\"__version__ = (.*)\", open(\"package/__init__.py\").read())\n", 1 ; "setup_py_reads_it")]
+#[test_case("hatch.toml", "[version]\npath = \"package/__init__.py\"\n", 1 ; "hatch_toml")]
+#[test_case("tox.ini", "[tox]\n", 2 ; "nothing_reads_it")]
+#[test_case("hatch.toml", "[version]\nsource = \"vcs\"\n", 2 ; "hatch_without_path")]
+#[test_case("pyproject.toml", "[tool.bumpversion]\nfiles = [{glob = \"*.py\"}]\n", 2 ; "bump_my_version_glob")]
+fn init_module_content_keeps_the_version_tooling_reads(config: &str, content: &str, expected: usize) {
+    let pyproject =
+        if config == "pyproject.toml" { format!("{PYPROJECT_HEAD}{content}") } else { PYPROJECT_HEAD.to_owned() };
+    let mut files = vec![("pyproject.toml", pyproject.as_str()), ("package/__init__.py", INIT_WITH_VERSION)];
+    if config != "pyproject.toml" {
+        files.push((config, content));
+    }
+    let root = common::project(&files);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
+    assert_eq!(common::reports(&stdout, "SMP407").len(), expected, "{stdout}");
+}
+
+#[test]
 fn missing_from_all_allows_main_modules() {
     let root = common::project(&[
         ("package/__main__.py", common::CLEAN_MODULE),
@@ -594,7 +635,7 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
 #[test_case(
     "",
     "from __future__ import annotations\n\n\nclass C:\n    x: JSONDecoder = None\n\n\nfrom json import JSONDecoder\n",
-    &[1, 8]
+    &[8]
     ; "forward_class_annotation_kept"
 )]
 #[test_case("", "from json import dumps\n__all__ = [str()]\n", &[2] ; "dynamic_all_unused_import_left_to_f401")]

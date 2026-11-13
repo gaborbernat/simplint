@@ -28,7 +28,7 @@ pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{
-    BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks, tool_value,
+    BuildConfiguration, CoveragePlugins, ProjectMetadata, VersionReaders, build_hooks, hatch_hooks, tool_value,
 };
 pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
 use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
@@ -283,6 +283,8 @@ pub(crate) struct Settings {
     pub(crate) hatch_hooks: Vec<PathBuf>,
     // The coverage plugins and the directories they resolve from, which the index searches for them.
     pub coverage: CoveragePlugins,
+    // Where the build or release tooling reads `__version__` from.
+    pub(crate) version_readers: VersionReaders,
     // The markers pytest registers and the file names it collects tests from.
     pub(crate) pytest: PytestConfig,
     pub(crate) run: RunOptions,
@@ -379,6 +381,8 @@ impl Settings {
             // `backend-path` is relative to the `pyproject.toml` that declares the backend.
             build_hooks: build_hooks(project_dir, &build),
             hatch_hooks: hatch_hooks(project_dir, &build),
+            version_readers: project
+                .map_or_else(VersionReaders::default, |directory| VersionReaders::of(directory, pyproject)),
             coverage,
             pytest,
             metadata,
@@ -459,6 +463,8 @@ impl CacheKey for Settings {
         self.metadata.native.cache_key(state);
         self.build_hooks.cache_key(state);
         self.hatch_hooks.cache_key(state);
+        self.version_readers.files.cache_key(state);
+        self.version_readers.any_init.cache_key(state);
         self.coverage.modules.cache_key(state);
         self.coverage.search_paths.cache_key(state);
         self.pytest.cache_key(state);

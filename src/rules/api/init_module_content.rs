@@ -10,6 +10,8 @@ use crate::rules::is_type_checking;
 use crate::semantic::future_import;
 use crate::syntax::{Exports, alias_binding, all_binding, builds_all, import_aliases, is_name};
 
+// `from __future__` imports change no run-time behavior, Python 3.15 reads `__lazy_modules__` from the package's
+// globals, and a build or release tool may read `__version__`, so none of them is reported.
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
         return;
@@ -25,11 +27,16 @@ pub fn init_module_content(checker: &Checker) {
     } else {
         "`__init__.py` holds code; keep only its docstring"
     };
+    let readers = &checker.settings.project.version_readers;
+    let version_read = readers.any_init || readers.files.iter().any(|file| file.as_path() == checker.path);
     let body = body_without_leading_docstring(checker.body());
     for (index, stmt) in body.iter().enumerate() {
         let previous = index.checked_sub(1).map(|previous| &body[previous]);
         let reexport = public && is_reexport(stmt, checker.dunder_all(), facade);
         if !reexport
+            && future_import(stmt).is_none()
+            && !is_lazy_modules_binding(stmt)
+            && (!version_read || !is_version_binding(stmt))
             && !is_package_hook(stmt, checker)
             && !left_to_ruff(checker, stmt, previous)
             && !left_to_unused_import(checker, stmt, public, facade)
@@ -39,14 +46,20 @@ pub fn init_module_content(checker: &Checker) {
     }
 }
 
-// `from __future__` imports change no run-time behavior, and Python 3.15 reads `__lazy_modules__` from the package's
-// globals, so neither is reported.
 fn is_reexport(stmt: &Stmt, exports: &Exports, facade: bool) -> bool {
     match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            future_import(stmt).is_some() || names.iter().all(|alias| is_reexported_alias(alias, exports, facade))
+            names.iter().all(|alias| is_reexported_alias(alias, exports, facade))
         }
-        _ => builds_all(stmt) || is_lazy_modules_binding(stmt),
+        _ => builds_all(stmt),
+    }
+}
+
+fn is_version_binding(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().any(|target| is_name(target, "__version__")),
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => is_name(target, "__version__"),
+        _ => false,
     }
 }
 

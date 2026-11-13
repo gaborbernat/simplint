@@ -414,3 +414,83 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Vec<(PathB
     hooks.extend(names.into_iter().map(|name| (file.clone(), name)));
     hooks
 }
+
+// The `__version__` a build backend or a release tool reads from the project's code, so the assignment has to stay
+// where the tool looks: the files that setuptools' `attr:`, hatch's or pdm's version `path`, flit, bump-my-version,
+// bump2version or tbump name, and every package's `__init__.py` when `setup.py` reads it itself.
+#[derive(Default)]
+pub struct VersionReaders {
+    pub(crate) files: Vec<PathBuf>,
+    pub(crate) any_init: bool,
+}
+
+impl VersionReaders {
+    pub(super) fn of(project_dir: &Path, pyproject: Option<&toml::Table>) -> Self {
+        let read = |name: &str| std::fs::read_to_string(project_dir.join(name)).unwrap_or_default();
+        let setup_cfg = read("setup.cfg");
+        let mut modules: Vec<String> = setup_cfg
+            .lines()
+            .filter_map(|line| {
+                let (key, value) = line.split_once('=')?;
+                (key.trim() == "version").then(|| value.trim().strip_prefix("attr:")).flatten()
+            })
+            .map(|attribute| attribute.trim().to_owned())
+            .collect();
+        let mut paths: Vec<String> = [setup_cfg.as_str(), read(".bumpversion.cfg").as_str()]
+            .into_iter()
+            .flat_map(str::lines)
+            .filter_map(|line| line.trim().strip_prefix("[bumpversion:file:")?.strip_suffix(']').map(str::to_owned))
+            .collect();
+        let hatch = read("hatch.toml").parse::<toml::Table>().ok();
+        paths.extend(hatch.as_ref().and_then(|hatch| hatch.get("version")?.get("path")?.as_str()).map(str::to_owned));
+        let tbump = read("tbump.toml").parse::<toml::Table>().ok();
+        let bump_my_version = read(".bumpversion.toml").parse::<toml::Table>().ok();
+        let tables = pyproject.into_iter().chain(bump_my_version.as_ref()).chain(tbump.as_ref());
+        for table in tables {
+            modules.extend(
+                tool_value(table, &["setuptools", "dynamic", "version", "attr"])
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_owned),
+            );
+            paths.extend(
+                [&["hatch", "version", "path"][..], &["pdm", "version", "path"]]
+                    .iter()
+                    .filter_map(|path| tool_value(table, path)?.as_str().map(str::to_owned)),
+            );
+            let files = tool_value(table, &["bumpversion", "files"])
+                .into_iter()
+                .chain(tool_value(table, &["tbump", "file"]))
+                .chain(table.get("file"))
+                .filter_map(toml::Value::as_array)
+                .flatten();
+            paths.extend(
+                files.filter_map(|file| file.get("filename").or_else(|| file.get("src"))?.as_str().map(str::to_owned)),
+            );
+        }
+        if let Some(table) = pyproject {
+            let backend =
+                table.get("build-system").and_then(|system| system.get("build-backend")).and_then(toml::Value::as_str);
+            let project = table.get("project");
+            let dynamic_version = project
+                .and_then(|project| project.get("dynamic"))
+                .and_then(toml::Value::as_array)
+                .is_some_and(|fields| fields.iter().any(|field| field.as_str() == Some("version")));
+            if backend.is_some_and(|backend| backend.starts_with("flit")) && dynamic_version {
+                let module = tool_value(table, &["flit", "module", "name"])
+                    .and_then(toml::Value::as_str)
+                    .map(str::to_owned)
+                    .or_else(|| project?.get("name")?.as_str().map(|name| name.replace('-', "_")));
+                modules.extend(module.map(|module| format!("{module}.__version__")));
+            }
+        }
+        let module_files = modules.iter().flat_map(|attribute| {
+            let module = attribute.rsplit_once('.').map_or(attribute.as_str(), |(module, _)| module).replace('.', "/");
+            ["", "src/"]
+                .into_iter()
+                .flat_map(move |prefix| [format!("{prefix}{module}/__init__.py"), format!("{prefix}{module}.py")])
+        });
+        let files =
+            paths.into_iter().chain(module_files).map(|path| normalized(&absolute(&project_dir.join(path)))).collect();
+        Self { files, any_init: read("setup.py").contains("__version__") }
+    }
+}
