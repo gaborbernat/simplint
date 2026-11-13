@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 use anyhow::{Context, Result};
+use itertools::Itertools;
 use serde::Deserialize;
 
 // The `[project]` table of a `pyproject.toml`, reduced to what simplint's rules read: the project's name, the modules
@@ -102,7 +103,7 @@ impl From<ProjectTable> for ProjectMetadata {
             .flat_map(|spec| import_names(spec))
             .collect();
         Self {
-            name: project.name,
+            name: project.name.as_deref().map(canonical_name),
             // A requirement with an environment marker is conditional, so a guarded import of it is legitimate.
             dependencies: project
                 .dependencies
@@ -127,6 +128,11 @@ impl From<ProjectTable> for ProjectMetadata {
             scripts,
         }
     }
+}
+
+// The name PyPI knows a distribution by, under which `Pkg`, `pkg` and `PKG` are one.
+pub(crate) fn canonical_name(name: &str) -> String {
+    name.split(['-', '_', '.']).filter(|part| !part.is_empty()).join("-").to_ascii_lowercase()
 }
 
 fn distribution_name(requirement: &str) -> &str {

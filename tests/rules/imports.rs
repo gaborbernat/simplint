@@ -1594,6 +1594,7 @@ fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, 
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"tomli; python_version < '3.11'\"]\n", &[] ; "used")]
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"pytest-mock\"]\n", &["pytest-mock"] ; "test_only")]
 #[test_case("dependencies = [\"requests\"]\ndynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
+#[test_case("dependencies = [\"requests\", \"PKG\"]\n", &[] ; "own_name_spelled_otherwise")]
 fn unused_dependency_reports_requirements_nothing_imports(project: &str, reported: &[&str]) {
     let root = common::project(&[
         ("pyproject.toml", format!("[project]\nname = \"pkg\"\n{project}").as_str()),

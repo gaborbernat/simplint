@@ -283,6 +283,18 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("pyproject.toml", "[project]\nname = \"demo\"\n[tool.ruff]\nsrc = [\"src\"]\n"),
     (1, 0) ; "search_root_changed"
 )]
+// A project may require a distribution of its own name, which `unused-dependency` leaves alone until it is renamed.
+// The `py.typed` marker names the package, so the rename leaves it be.
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\ndependencies = [\"pkg\"]\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/py.typed", ""),
+    ],
+    "SMP313",
+    Change::Write("pyproject.toml", "[project]\nname = \"app\"\ndependencies = [\"pkg\"]\n"),
+    (0, 1) ; "project_renamed"
+)]
 // A test module beside it shows pytest collects from the directory, so the module it skips is reported.
 #[test_case(
     &[

@@ -29,6 +29,7 @@ pub use schema::config_schema;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
 pub(crate) use crate::settings::pytest::PytestConfig;
+pub(crate) use crate::settings::metadata::canonical_name;
 use crate::settings::options::{
     ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
     SelectorLayer,
@@ -429,6 +430,7 @@ impl CacheKey for Settings {
         self.root.cache_key(state);
         self.nested.cache_key(state);
         self.metadata_path.cache_key(state);
+        self.metadata.name.cache_key(state);
         self.metadata.dependencies.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.declared.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.runtime.iter().for_each(|dependency| dependency.cache_key(state));
