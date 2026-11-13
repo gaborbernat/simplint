@@ -330,3 +330,19 @@ fn startup_pth_reads_are_not_unused(prefix: &str, name: &str, rule: &str) {
     ]);
     assert!(check(without_pth.path(), &["--select", rule]).1.contains(&format!("`{name}`")));
 }
+
+// A test class another test module imports, as a suite that reruns it under another backend does, stays a class.
+#[test]
+fn test_class_imported_elsewhere_keeps_its_class() {
+    let base = "def helper() -> int:\n    return 1\n\n\nclass TestSSL:\n    def test_one(self) -> None:\n        assert helper()\n";
+    let root = project(&[
+        ("tests/__init__.py", ""),
+        ("tests/test_ssl.py", base),
+        ("tests/test_contrib.py", "from tests.test_ssl import TestSSL\n\n_ = TestSSL\n"),
+    ]);
+    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP801"]);
+    assert_eq!(common::read(root.path(), "tests/test_ssl.py"), base);
+    let alone = project(&[("tests/__init__.py", ""), ("tests/test_ssl.py", base)]);
+    check(alone.path(), &["--fix", "--unsafe-fixes", "--select", "SMP801"]);
+    assert_ne!(common::read(alone.path(), "tests/test_ssl.py"), base);
+}
