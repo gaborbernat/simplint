@@ -8,7 +8,7 @@ fields as one tuple checks them in the same order, and pytest's
 [assertion rewriting](https://docs.pytest.org/en/stable/how-to/assert.html#making-use-of-context-sensitive-comparisons)
 then prints every value on both sides and the first index that differs. The tuple also drops the repeated object name.
 Ruff's [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) asks to split `assert a and b`, since a
-combined assertion does not name the failing condition. Comparing a tuple shows every value in one failure.
+combined assertion does not name the failing condition; a tuple comparison names every value.
 
 ## Example
 

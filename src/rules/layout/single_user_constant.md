@@ -1,13 +1,10 @@
-Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow
-the function without scrolling away to find it.
+Flags module-level constants that only one function uses.
 
 ## Why is this bad?
 
-A module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code
-locality makes a function easy to read and reason about without scrolling around to find the value. In later pull
-requests the constant may not even be in the diff, which makes reviews harder. For a number, string or tuple of
-constants, nothing pays for that: with one user, there is no duplication the constant avoids, so such a constant is
-better inlined.
+A module constant that only one function uses sits away from that function, so the reader scrolls to find the value, and
+in later pull requests the constant may not be in the diff at all. For a number, string or tuple of constants, nothing
+pays for that distance: with one user, there is no duplication the constant avoids.
 
 A module-level constant also suggests the value is shared, so a reader has to search the module to learn that one
 function uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying

@@ -1,5 +1,4 @@
-Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting
-and a `self` that most tests never use, and invites shared state.
+Flags test classes in test modules: top-level `Test` classes with `test` methods.
 
 ## Why is this bad?
 

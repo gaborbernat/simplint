@@ -3,10 +3,10 @@ test.
 
 ## Why is this bad?
 
-A test without a check passes for any code that does not raise, including code that returns the wrong result. Ned
-Batchelder's [Getting Started Testing](https://nedbatchelder.com/text/test0.html) makes the point that a test is only
-worth as much as what it asserts. A test that only runs the code reads as coverage of its behavior, while it covers no
-more than the absence of an exception.
+A test without a check passes for any code that does not raise, including code that returns the wrong result, yet it
+reads as coverage of that behavior. Ned Batchelder's
+[Getting Started Testing](https://nedbatchelder.com/text/test0.html) makes the point that a test is only worth as much
+as what it asserts.
 
 ## Example
 

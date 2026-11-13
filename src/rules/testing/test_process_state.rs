@@ -8,6 +8,7 @@ use crate::lint::registry::Rule;
 use crate::rules::testing::recognize::is_fixture;
 use crate::rules::testing::{is_test_class, is_test_function};
 use crate::semantic::{Referent, binding_referent};
+use crate::syntax::is_name;
 
 pub fn test_process_state(checker: &Checker) {
     if !checker.is_test_module() {
@@ -36,75 +37,6 @@ pub fn test_process_state(checker: &Checker) {
         }
     }
 }
-
-const DICT_MUTATORS: [&str; 7] = ["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"];
-const LIST_MUTATORS: [&str; 8] = ["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"];
-
-// The state of the test process a test changes for the tests that run after it.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum State {
-    Environment,
-    WorkingDirectory,
-    SysPath,
-    SysModules,
-    SysArgv,
-    ModuleAttribute,
-}
-
-impl State {
-    // The process-wide objects whose items are the state, by their qualified name.
-    // The process-wide objects, with the methods that change each in place.
-    const OBJECTS: [([&str; 2], Self, &[&str]); 4] = [
-        (["os", "environ"], Self::Environment, &DICT_MUTATORS),
-        (["sys", "path"], Self::SysPath, &LIST_MUTATORS),
-        (["sys", "modules"], Self::SysModules, &DICT_MUTATORS),
-        (["sys", "argv"], Self::SysArgv, &LIST_MUTATORS),
-    ];
-
-    fn of_object(checker: &Checker, expr: &Expr) -> Option<Self> {
-        let semantic = checker.semantic();
-        Self::OBJECTS
-            .into_iter()
-            .find_map(|(segments, state, _)| semantic.resolves_to(expr, &segments).then_some(state))
-    }
-
-    // The object a method call such as `sys.path.append` changes in place.
-    fn mutated_by(checker: &Checker, method: &ast::ExprAttribute) -> Option<Self> {
-        let semantic = checker.semantic();
-        Self::OBJECTS.into_iter().find_map(|(segments, state, mutators)| {
-            (mutators.contains(&method.attr.as_str()) && semantic.resolves_to(&method.value, &segments))
-                .then_some(state)
-        })
-    }
-
-    fn noun(self) -> &'static str {
-        match self {
-            Self::Environment => "an environment variable",
-            Self::WorkingDirectory => "the working directory",
-            Self::SysPath => "`sys.path`",
-            Self::SysModules => "`sys.modules`",
-            Self::SysArgv => "`sys.argv`",
-            Self::ModuleAttribute => "a module attribute",
-        }
-    }
-
-    fn remedy(self) -> &'static str {
-        match self {
-            Self::Environment => "use `monkeypatch.setenv` or `monkeypatch.delenv`",
-            Self::WorkingDirectory => "use `monkeypatch.chdir`",
-            Self::SysPath => "use `monkeypatch.syspath_prepend`",
-            Self::SysModules => "use `monkeypatch.setitem` or `mock.patch.dict`",
-            Self::SysArgv => "use `monkeypatch.setattr(sys, \"argv\", ...)`",
-            Self::ModuleAttribute => "use `monkeypatch.setattr` or `mock.patch.object`",
-        }
-    }
-}
-
-// The teardown hooks that run after the tests of their class or module, so they can put back what the tests change.
-const TEARDOWNS: &[&str] =
-    &["tearDown", "tearDownClass", "teardown_method", "teardown_class", "teardown_module", "teardown_function"];
-// The fixtures that snapshot the working directory, `sys.path` and `sys.modules`, and restore them after the test.
-const SNAPSHOTTING_FIXTURES: &[&str] = &["pytester", "testdir"];
 
 // The tests, fixtures and methods of test classes, which run as part of a test. A class or module with a teardown hook,
 // or a `usefixtures` mark, may restore the state, so its functions are left out.
@@ -138,18 +70,39 @@ fn functions<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
             _ => {}
         }
     }
+    // pytester snapshots the working directory, `sys.path` and `sys.modules`, and restores them after the test.
     functions.retain(|function| {
-        !function.parameters.iter().any(|parameter| SNAPSHOTTING_FIXTURES.contains(&parameter.name().as_str()))
+        !function.parameters.iter().any(|parameter| matches!(parameter.name().as_str(), "pytester" | "testdir"))
     });
     functions
 }
 
+// A teardown hook runs after the tests of its class or module, so it can put back what they change.
 fn defines_teardown(body: &[Stmt]) -> bool {
-    body.iter().filter_map(Stmt::as_function_def_stmt).any(|function| TEARDOWNS.contains(&function.name.as_str()))
+    body.iter().filter_map(Stmt::as_function_def_stmt).any(|function| {
+        matches!(
+            function.name.as_str(),
+            "tearDown"
+                | "tearDownClass"
+                | "teardown_method"
+                | "teardown_class"
+                | "teardown_module"
+                | "teardown_function"
+        )
+    })
 }
 
-fn uses_fixtures(decorators: &[ast::Decorator]) -> bool {
-    decorators.iter().any(|decorator| is_usefixtures(&decorator.expression))
+fn is_pytestmark_usefixtures(stmt: &Stmt) -> bool {
+    let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
+        return false;
+    };
+    targets.iter().any(|target| is_name(target, "pytestmark"))
+        && match &**value {
+            Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => {
+                elts.iter().any(is_usefixtures)
+            }
+            other => is_usefixtures(other),
+        }
 }
 
 fn is_usefixtures(expr: &Expr) -> bool {
@@ -157,17 +110,8 @@ fn is_usefixtures(expr: &Expr) -> bool {
     func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "usefixtures")
 }
 
-fn is_pytestmark_usefixtures(stmt: &Stmt) -> bool {
-    let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
-        return false;
-    };
-    targets.iter().any(|target| crate::syntax::is_name(target, "pytestmark"))
-        && match &**value {
-            Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => {
-                elts.iter().any(is_usefixtures)
-            }
-            other => is_usefixtures(other),
-        }
+fn uses_fixtures(decorators: &[ast::Decorator]) -> bool {
+    decorators.iter().any(|decorator| is_usefixtures(&decorator.expression))
 }
 
 fn restores_itself(function: &ast::StmtFunctionDef) -> bool {
@@ -293,14 +237,15 @@ impl Changes<'_, '_> {
         }
     }
 
-    // A name every binding of which imports a module, as `import json` does; `from x import y` may bind anything.
     fn is_module(&self, value: &Expr) -> bool {
-        let Expr::Name(name) = value else {
-            return false;
-        };
-        let bindings = self.checker.semantic().resolved_bindings(name);
-        !bindings.is_empty() && bindings.iter().all(|binding| matches!(binding_referent(binding), Referent::Module))
+        value.as_name_expr().is_some_and(|name| binds_module(self.checker, name))
     }
+}
+
+// A name every binding of which imports a module, as `import json` does; `from x import y` may bind anything.
+fn binds_module(checker: &Checker, name: &ast::ExprName) -> bool {
+    let bindings = checker.semantic().resolved_bindings(name);
+    !bindings.is_empty() && bindings.iter().all(|binding| matches!(binding_referent(binding), Referent::Module))
 }
 
 // What the function copies before changing it, as `old = os.getcwd()` or `saved = sys.path[:]` do, to put back later.
@@ -318,12 +263,7 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
             // `original = module.attribute` keeps the value a test puts back.
             if let Expr::Attribute(attribute) = &**value
                 && let Expr::Name(name) = &*attribute.value
-                && self
-                    .checker
-                    .semantic()
-                    .resolved_bindings(name)
-                    .iter()
-                    .all(|binding| matches!(binding_referent(binding), Referent::Module))
+                && binds_module(self.checker, name)
             {
                 self.saved.insert(State::ModuleAttribute);
             }
@@ -357,5 +297,67 @@ impl Saves<'_, '_> {
             _ => return None,
         };
         State::of_object(self.checker, source)
+    }
+}
+
+// The state of the test process a test changes for the tests that run after it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum State {
+    Environment,
+    WorkingDirectory,
+    SysPath,
+    SysModules,
+    SysArgv,
+    ModuleAttribute,
+}
+
+impl State {
+    // The process-wide objects, by their qualified name, with the methods that change each in place.
+    const OBJECTS: [([&str; 2], Self, &[&str]); 4] = [
+        (["os", "environ"], Self::Environment, &Self::DICT_MUTATORS),
+        (["sys", "path"], Self::SysPath, &Self::LIST_MUTATORS),
+        (["sys", "modules"], Self::SysModules, &Self::DICT_MUTATORS),
+        (["sys", "argv"], Self::SysArgv, &Self::LIST_MUTATORS),
+    ];
+    const DICT_MUTATORS: [&str; 7] = ["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"];
+    const LIST_MUTATORS: [&str; 8] =
+        ["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"];
+
+    fn of_object(checker: &Checker, expr: &Expr) -> Option<Self> {
+        let semantic = checker.semantic();
+        Self::OBJECTS
+            .into_iter()
+            .find_map(|(segments, state, _)| semantic.resolves_to(expr, &segments).then_some(state))
+    }
+
+    // The object a method call such as `sys.path.append` changes in place.
+    fn mutated_by(checker: &Checker, method: &ast::ExprAttribute) -> Option<Self> {
+        let semantic = checker.semantic();
+        Self::OBJECTS.into_iter().find_map(|(segments, state, mutators)| {
+            (mutators.contains(&method.attr.as_str()) && semantic.resolves_to(&method.value, &segments))
+                .then_some(state)
+        })
+    }
+
+    fn noun(self) -> &'static str {
+        match self {
+            Self::Environment => "an environment variable",
+            Self::WorkingDirectory => "the working directory",
+            Self::SysPath => "`sys.path`",
+            Self::SysModules => "`sys.modules`",
+            Self::SysArgv => "`sys.argv`",
+            Self::ModuleAttribute => "a module attribute",
+        }
+    }
+
+    fn remedy(self) -> &'static str {
+        match self {
+            Self::Environment => "use `monkeypatch.setenv` or `monkeypatch.delenv`",
+            Self::WorkingDirectory => "use `monkeypatch.chdir`",
+            Self::SysPath => "use `monkeypatch.syspath_prepend`",
+            Self::SysModules => "use `monkeypatch.setitem` or `mock.patch.dict`",
+            Self::SysArgv => "use `monkeypatch.setattr(sys, \"argv\", ...)`",
+            Self::ModuleAttribute => "use `monkeypatch.setattr` or `mock.patch.object`",
+        }
     }
 }

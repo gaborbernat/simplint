@@ -9,27 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::callee::local_function;
 use crate::rules::testing::collected_tests;
-use crate::syntax::{decorator_callee, last_segment, receiver};
-
-// Prefixes of the helpers that check a result, such as `check_output`, `verify_signature` or Playwright's `expect`.
-const CHECKING_PREFIXES: &[&str] = &["check", "verify", "expect", "validate", "ensure", "compare", "fail"];
-// pytest's own calls that make a test fail, skip or expect an error.
-const PYTEST_CHECKS: &[&str] = &["deprecated_call", "fail", "skip", "xfail", "importorskip"];
-// The fixtures whose tests measure rather than check, such as pytest-benchmark's.
-const MEASURING_FIXTURES: &[&str] = &["benchmark", "aio_benchmark"];
-// The `pytester` line matchers, which fail the test when the output does not match.
-const MATCHERS: &[&str] = &[
-    "fnmatch_lines",
-    "fnmatch_lines_random",
-    "re_match_lines",
-    "re_match_lines_random",
-    "no_fnmatch_line",
-    "no_re_match_line",
-];
-// Words in a test's name, docstring or comments that say it only checks the code runs without raising, crashing or
-// warning, as a smoke or regression test does.
-const RUNS_CLEANLY: &[&str] =
-    &["smoke", "sanity", "crash", "segfault", "raise", "error", "hang", "leak", "works", "import"];
+use crate::syntax::{alias_binding, decorator_callee, docstring, last_segment, receiver};
 
 pub fn test_without_assertion(checker: &Checker) {
     // pytest never runs the tests of a module it does not collect, such as a type checker's input.
@@ -40,7 +20,8 @@ pub fn test_without_assertion(checker: &Checker) {
     let mut verdicts = FxHashMap::default();
     for test in collected_tests(checker) {
         if is_skipped(test)
-            || test.parameters.iter().any(|parameter| MEASURING_FIXTURES.contains(&parameter.name().as_str()))
+            // pytest-benchmark's fixtures measure rather than check.
+            || test.parameters.iter().any(|parameter| matches!(parameter.name().as_str(), "benchmark" | "aio_benchmark"))
             || only_runs(checker, test)
             || test
                 .decorator_list
@@ -74,37 +55,6 @@ pub fn test_without_assertion(checker: &Checker) {
     }
 }
 
-// Tests pytest always skips or expects to fail are placeholders, not checks that went missing.
-fn is_skipped(test: &ast::StmtFunctionDef) -> bool {
-    test.decorator_list.iter().any(|decorator| {
-        UnqualifiedName::from_expr(decorator_callee(decorator)).is_some_and(|name| {
-            matches!(name.segments(), [.., "mark", "skip" | "xfail"] | ["unittest", "skip"] | ["skip"])
-        })
-    })
-}
-
-fn only_runs(checker: &Checker, test: &ast::StmtFunctionDef) -> bool {
-    let docstring = crate::syntax::docstring(&test.body).map(|literal| literal.value.to_str());
-    let comments =
-        checker.comment_ranges().comments_in_range(test.range()).iter().map(|comment| checker.text(*comment));
-    std::iter::once(test.name.as_str()).chain(docstring).chain(comments).any(|text| {
-        let lowered = text.to_ascii_lowercase();
-        RUNS_CLEANLY.iter().any(|word| lowered.contains(word))
-    })
-}
-
-fn class_of<'a>(checker: &Checker<'a>, test: &ast::StmtFunctionDef) -> Option<&'a ast::StmtClassDef> {
-    checker.body().iter().filter_map(Stmt::as_class_def_stmt).find(|class| class.range().contains_range(test.range()))
-}
-
-// `function` when it is a method of `class`, whose calls through its receiver reach the other methods.
-fn method_in<'a>(
-    class: Option<&'a ast::StmtClassDef>,
-    function: &'a ast::StmtFunctionDef,
-) -> Option<&'a ast::StmtFunctionDef> {
-    class?.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, function))
-}
-
 // The names the module imports from its own test package or from a testing module, whose helpers may assert: a
 // relative import, or a module path with a segment such as `tests`, `_testutils`, `conftest` or `test_*`.
 fn support_names(body: &[Stmt]) -> FxHashSet<&str> {
@@ -121,7 +71,7 @@ fn support_names(body: &[Stmt]) -> FxHashSet<&str> {
             Stmt::Import(import) => {
                 for alias in &import.names {
                     if is_testing_path(alias.name.as_str()) {
-                        names.insert(crate::syntax::alias_binding(alias));
+                        names.insert(alias_binding(alias));
                     }
                 }
             }
@@ -133,6 +83,55 @@ fn support_names(body: &[Stmt]) -> FxHashSet<&str> {
 
 fn is_testing_path(module: &str) -> bool {
     module.split('.').any(|segment| segment != "pytest" && segment.contains("test"))
+}
+
+// Tests pytest always skips or expects to fail are placeholders, not checks that went missing.
+fn is_skipped(test: &ast::StmtFunctionDef) -> bool {
+    test.decorator_list.iter().any(|decorator| {
+        UnqualifiedName::from_expr(decorator_callee(decorator)).is_some_and(|name| {
+            matches!(name.segments(), [.., "mark", "skip" | "xfail"] | ["unittest", "skip"] | ["skip"])
+        })
+    })
+}
+
+// Words in a test's name, docstring or comments that say it only checks the code runs without raising, crashing or
+// warning, as a smoke or regression test does.
+fn only_runs(checker: &Checker, test: &ast::StmtFunctionDef) -> bool {
+    let docstring = docstring(&test.body).map(|literal| literal.value.to_str());
+    let comments =
+        checker.comment_ranges().comments_in_range(test.range()).iter().map(|comment| checker.text(*comment));
+    std::iter::once(test.name.as_str()).chain(docstring).chain(comments).any(|text| {
+        let lowered = text.to_ascii_lowercase();
+        ["smoke", "sanity", "crash", "segfault", "raise", "error", "hang", "leak", "works", "import"]
+            .iter()
+            .any(|word| lowered.contains(word))
+    })
+}
+
+// A warning filter set to `error` fails the test on any warning the code emits.
+fn escalates_warnings(call: &ast::ExprCall) -> bool {
+    let is_error =
+        |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str().starts_with("error"));
+    match last_segment(&call.func) {
+        Some("simplefilter" | "filterwarnings") => {
+            call.arguments.args.first().is_some_and(is_error)
+                || call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value))
+        }
+        Some("catch_warnings") => call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value)),
+        _ => false,
+    }
+}
+
+fn class_of<'a>(checker: &Checker<'a>, test: &ast::StmtFunctionDef) -> Option<&'a ast::StmtClassDef> {
+    checker.body().iter().filter_map(Stmt::as_class_def_stmt).find(|class| class.range().contains_range(test.range()))
+}
+
+// `function` when it is a method of `class`, whose calls through its receiver reach the other methods.
+fn method_in<'a>(
+    class: Option<&'a ast::StmtClassDef>,
+    function: &'a ast::StmtFunctionDef,
+) -> Option<&'a ast::StmtFunctionDef> {
+    class?.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, function))
 }
 
 struct Checks<'a, 'b> {
@@ -192,15 +191,30 @@ impl<'b> Checks<'_, 'b> {
         if let Some(name) = called {
             let lowered = name.to_ascii_lowercase();
             let lowered = lowered.trim_start_matches('_');
+            // Helpers such as `check_output`, `verify_signature` or Playwright's `expect` check a result, and pytester's
+            // line matchers fail the test when the output does not match.
             if ["assert", "raises", "warns"].iter().any(|word| lowered.contains(word))
-                || CHECKING_PREFIXES.iter().any(|prefix| lowered.starts_with(prefix))
-                || MATCHERS.contains(&lowered)
+                || ["check", "verify", "expect", "validate", "ensure", "compare", "fail"]
+                    .iter()
+                    .any(|prefix| lowered.starts_with(prefix))
+                || matches!(
+                    lowered,
+                    "fnmatch_lines"
+                        | "fnmatch_lines_random"
+                        | "re_match_lines"
+                        | "re_match_lines_random"
+                        | "no_fnmatch_line"
+                        | "no_re_match_line"
+                )
             {
                 return true;
             }
         }
         let semantic = self.checker.semantic();
-        if PYTEST_CHECKS.iter().any(|check| semantic.resolves_to(func, &["pytest", check])) {
+        if ["deprecated_call", "fail", "skip", "xfail", "importorskip"]
+            .iter()
+            .any(|check| semantic.resolves_to(func, &["pytest", check]))
+        {
             return true;
         }
         if escalates_warnings(call) {
@@ -275,19 +289,5 @@ impl<'b> Checks<'_, 'b> {
         }
         self.cut |= outer_cut;
         checks
-    }
-}
-
-// A warning filter set to `error` fails the test on any warning the code emits.
-fn escalates_warnings(call: &ast::ExprCall) -> bool {
-    let is_error =
-        |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str().starts_with("error"));
-    match last_segment(&call.func) {
-        Some("simplefilter" | "filterwarnings") => {
-            call.arguments.args.first().is_some_and(is_error)
-                || call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value))
-        }
-        Some("catch_warnings") => call.arguments.find_keyword("action").is_some_and(|keyword| is_error(&keyword.value)),
-        _ => false,
     }
 }

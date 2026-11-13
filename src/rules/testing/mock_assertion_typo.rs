@@ -9,48 +9,6 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::fix_of;
 use crate::rules::testing::recognize::expects_error;
 
-// The assertion methods of `unittest.mock`; a name is a typo of one of them, not of a mock attribute.
-const ASSERTIONS: &[&str] = &[
-    "assert_any_call",
-    "assert_called",
-    "assert_called_once",
-    "assert_called_once_with",
-    "assert_called_with",
-    "assert_has_calls",
-    "assert_not_called",
-    "assert_any_await",
-    "assert_awaited",
-    "assert_awaited_once",
-    "assert_awaited_once_with",
-    "assert_awaited_with",
-    "assert_has_awaits",
-    "assert_not_awaited",
-];
-
-// The prefixes `unittest.mock` rejects on a mock without `unsafe=True`, from Python 3.10.
-const GUARDED_PREFIXES: &[&str] = &["assert", "assret", "asert", "aseert", "assrt"];
-
-// The names Ruff's PGH005 reports as non-existent mock methods, bare or called.
-const RUFF_NON_EXISTENT_NAMES: &[&str] = &[
-    "any_call",
-    "called_once",
-    "called_once_with",
-    "called_with",
-    "has_calls",
-    "not_called",
-    "any_await",
-    "awaited",
-    "awaited_once",
-    "awaited_once_with",
-    "awaited_with",
-    "has_awaits",
-    "not_awaited",
-];
-
-// Two edits cover a dropped or swapped letter in a prefix and a missing or extra letter; more would match
-// unrelated names.
-const MAX_DISTANCE: usize = 2;
-
 pub fn mock_assertion_typo(checker: &Checker) {
     let mut finder = Typos { found: Vec::new(), fixable: FxHashMap::default(), ruff_reported: FxHashSet::default() };
     finder.visit_body(checker.body());
@@ -142,6 +100,22 @@ impl<'a> Visitor<'a> for Typos<'a> {
 // expression itself or the callee of a call. The operand of a `not` or `and`, or a comparison, is not checked by Ruff,
 // so it stays with this rule.
 fn ruff_reported_name(expr: &Expr) -> Option<&ast::Identifier> {
+    // The names Ruff's PGH005 reports as non-existent mock methods, bare or called.
+    const RUFF_NON_EXISTENT_NAMES: &[&str] = &[
+        "any_call",
+        "called_once",
+        "called_once_with",
+        "called_with",
+        "has_calls",
+        "not_called",
+        "any_await",
+        "awaited",
+        "awaited_once",
+        "awaited_once_with",
+        "awaited_with",
+        "has_awaits",
+        "not_awaited",
+    ];
     let attribute = match expr {
         Expr::Attribute(attribute) => attribute,
         Expr::Call(ast::ExprCall { func, .. }) => match func.as_ref() {
@@ -163,6 +137,28 @@ fn called_attribute(expr: &Expr) -> Option<&ast::Identifier> {
 // The assertion a name is meant to be: the same name with the `assert_` prefix, or the nearest assertion when the
 // name is within reach of exactly one. `called` stays out, since every mock has that attribute.
 fn intended_assertion(name: &str) -> Option<&'static str> {
+    // The assertion methods of `unittest.mock`; a name is a typo of one of them, not of a mock attribute.
+    const ASSERTIONS: &[&str] = &[
+        "assert_any_call",
+        "assert_called",
+        "assert_called_once",
+        "assert_called_once_with",
+        "assert_called_with",
+        "assert_has_calls",
+        "assert_not_called",
+        "assert_any_await",
+        "assert_awaited",
+        "assert_awaited_once",
+        "assert_awaited_once_with",
+        "assert_awaited_with",
+        "assert_has_awaits",
+        "assert_not_awaited",
+    ];
+    // The prefixes `unittest.mock` rejects on a mock without `unsafe=True`, from Python 3.10.
+    const GUARDED_PREFIXES: &[&str] = &["assert", "assret", "asert", "aseert", "assrt"];
+    // Two edits cover a dropped or swapped letter in a prefix and a missing or extra letter; more would match
+    // unrelated names.
+    const MAX_DISTANCE: usize = 2;
     if name == "called" || ASSERTIONS.contains(&name) {
         return None;
     }

@@ -1,7 +1,6 @@
 Flags an `if `[`TYPE_CHECKING`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)`:` block that holds
 only imports and no `else`, where Python 3.15 can spell each import as a
-[`lazy`](https://docs.python.org/3/reference/simple_stmts.html#lazy-imports) import. The guard is then only needed for
-names that are not imported at runtime, which `lazy` covers.
+[`lazy`](https://docs.python.org/3/reference/simple_stmts.html#lazy-imports) import.
 
 ## Why is this bad?
 

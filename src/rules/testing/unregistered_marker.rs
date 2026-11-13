@@ -5,57 +5,56 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
-// The marks pytest registers itself.
-const BUILTIN: &[&str] =
-    &["skip", "skipif", "xfail", "parametrize", "usefixtures", "filterwarnings", "tryfirst", "trylast"];
-// Marks that common plugins register when they load, so the project's configuration never lists them.
-const PLUGIN: &[&str] = &[
-    "anyio",
-    "asyncio",
-    "trio",
-    "django_db",
-    "urls",
-    "ignore_template_errors",
-    "timeout",
-    "flaky",
-    "benchmark",
-    "order",
-    "run",
-    "first",
-    "last",
-    "dependency",
-    "xdist_group",
-    "httpx_mock",
-    "respx",
-    "vcr",
-    "block_network",
-    "default_cassette",
-    "freeze_time",
-    "repeat",
-    "enable_socket",
-    "disable_socket",
-    "allow_hosts",
-    "forked",
-    "gen_test",
-    "datafiles",
-    "qt_no_exception_capture",
-    "qt_log_level_fail",
-    "qt_log_ignore",
-    "limit_memory",
-    "limit_leaks",
-    "no_cover",
-    "randomly_seed",
-    "env",
-    "mypy_testing",
-    "subtests",
-    "celery",
-    "skip_if_unavailable",
-    "thread_unsafe",
-    "parallel_threads",
-    "iterations",
-];
-
 pub fn unregistered_marker(checker: &Checker) {
+    // The marks pytest registers itself.
+    const BUILTIN: &[&str] =
+        &["skip", "skipif", "xfail", "parametrize", "usefixtures", "filterwarnings", "tryfirst", "trylast"];
+    // Marks that common plugins register when they load, so the project's configuration never lists them.
+    const PLUGIN: &[&str] = &[
+        "anyio",
+        "asyncio",
+        "trio",
+        "django_db",
+        "urls",
+        "ignore_template_errors",
+        "timeout",
+        "flaky",
+        "benchmark",
+        "order",
+        "run",
+        "first",
+        "last",
+        "dependency",
+        "xdist_group",
+        "httpx_mock",
+        "respx",
+        "vcr",
+        "block_network",
+        "default_cassette",
+        "freeze_time",
+        "repeat",
+        "enable_socket",
+        "disable_socket",
+        "allow_hosts",
+        "forked",
+        "gen_test",
+        "datafiles",
+        "qt_no_exception_capture",
+        "qt_log_level_fail",
+        "qt_log_ignore",
+        "limit_memory",
+        "limit_leaks",
+        "no_cover",
+        "randomly_seed",
+        "env",
+        "mypy_testing",
+        "subtests",
+        "celery",
+        "skip_if_unavailable",
+        "thread_unsafe",
+        "parallel_threads",
+        "iterations",
+    ];
     let Some(registered) = checker.settings.project.pytest.markers.as_ref() else {
         return;
     };

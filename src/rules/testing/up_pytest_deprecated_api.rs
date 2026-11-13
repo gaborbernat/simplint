@@ -6,22 +6,9 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::testing::is_test_class;
 use crate::rules::testing::recognize::is_fixture;
+use crate::rules::testing::{is_test_case, is_test_class};
 use crate::syntax::decorator_callee;
-
-// The `py.path` fixtures pytest keeps only in its `legacypath` plugin, and the pathlib fixture that replaces each.
-const LEGACY_FIXTURES: &[(&str, &str)] =
-    &[("tmpdir", "tmp_path"), ("tmpdir_factory", "tmp_path_factory"), ("testdir", "pytester")];
-// The nose-style hooks pytest 8 no longer calls, and the pytest hook that runs at the same point.
-const NOSE_METHODS: &[(&str, &str, &str)] =
-    &[("setup", "setup_method", "before each test method"), ("teardown", "teardown_method", "after each test method")];
-const NOSE_FUNCTIONS: &[(&str, &str, &str)] = &[
-    ("setup", "setup_module", "before the module's tests"),
-    ("teardown", "teardown_module", "after the module's tests"),
-];
-// The outcome functions whose `msg` pytest 8 removed in favor of `reason`.
-const OUTCOMES: &[&str] = &["fail", "skip", "exit"];
 
 pub fn up_pytest_deprecated_api(checker: &Checker) {
     if !checker.is_test_module() {
@@ -30,14 +17,26 @@ pub fn up_pytest_deprecated_api(checker: &Checker) {
     for stmt in checker.body() {
         match stmt {
             Stmt::FunctionDef(function) => {
-                nose_hook(checker, function, NOSE_FUNCTIONS);
+                nose_hook(
+                    checker,
+                    function,
+                    &[
+                        ("setup", "setup_module", "before the module's tests"),
+                        ("teardown", "teardown_module", "after the module's tests"),
+                    ],
+                );
                 function_checks(checker, function);
             }
-            Stmt::ClassDef(class)
-                if is_test_class(checker, class) && !crate::rules::testing::is_test_case(checker, class) =>
-            {
+            Stmt::ClassDef(class) if is_test_class(checker, class) && !is_test_case(checker, class) => {
                 for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
-                    nose_hook(checker, method, NOSE_METHODS);
+                    nose_hook(
+                        checker,
+                        method,
+                        &[
+                            ("setup", "setup_method", "before each test method"),
+                            ("teardown", "teardown_method", "after each test method"),
+                        ],
+                    );
                     function_checks(checker, method);
                 }
             }
@@ -53,6 +52,7 @@ pub fn up_pytest_deprecated_api(checker: &Checker) {
     calls.visit_body(checker.body());
 }
 
+// A nose-style hook pytest 8 no longer calls, with the pytest hook that runs at the same point.
 fn nose_hook(checker: &Checker, function: &ast::StmtFunctionDef, hooks: &[(&str, &str, &str)]) {
     let Some((name, replacement, when)) = hooks.iter().find(|(name, ..)| function.name.as_str() == *name) else {
         return;
@@ -64,13 +64,12 @@ fn nose_hook(checker: &Checker, function: &ast::StmtFunctionDef, hooks: &[(&str,
     {
         return;
     }
-    // pytest stopped calling it, so renaming it makes it run again: a change in behavior.
-    let fix = Some(Fix::unsafe_edit(Edit::range_replacement((*replacement).to_owned(), function.name.range())));
     checker.report_fix(
         Rule::PytestDeprecatedApi,
         function.name.range(),
         format!("pytest 8 no longer calls the nose-style `{name}`; name it `{replacement}` to run it {when}"),
-        fix,
+        // pytest stopped calling it, so renaming it makes it run again: a change in behavior.
+        Some(Fix::unsafe_edit(Edit::range_replacement((*replacement).to_owned(), function.name.range()))),
         format!("Rename to `{replacement}`"),
     );
 }
@@ -100,13 +99,18 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
     }
     for parameter in &function.parameters {
         let name = parameter.name().as_str();
-        if let Some((_, replacement)) = LEGACY_FIXTURES.iter().find(|(legacy, _)| *legacy == name) {
-            checker.report(
-                Rule::PytestDeprecatedApi,
-                parameter.name().range(),
-                format!("`{name}` returns a legacy `py.path` object that only pytest's `legacypath` plugin keeps; request `{replacement}` for a `pathlib` path"),
-            );
-        }
+        // The `py.path` fixtures pytest keeps only in its `legacypath` plugin, and the pathlib fixture replacing each.
+        let replacement = match name {
+            "tmpdir" => "tmp_path",
+            "tmpdir_factory" => "tmp_path_factory",
+            "testdir" => "pytester",
+            _ => continue,
+        };
+        checker.report(
+            Rule::PytestDeprecatedApi,
+            parameter.name().range(),
+            format!("`{name}` returns a legacy `py.path` object that only pytest's `legacypath` plugin keeps; request `{replacement}` for a `pathlib` path"),
+        );
     }
 }
 
@@ -152,7 +156,9 @@ impl<'a> Visitor<'a> for Calls<'_, '_> {
 impl Calls<'_, '_> {
     fn call(&self, call: &ast::ExprCall) {
         let semantic = self.checker.semantic();
-        if let Some(outcome) = OUTCOMES.iter().find(|outcome| semantic.resolves_to(&call.func, &["pytest", outcome]))
+        // pytest 8 removed the `msg` of these outcome functions in favor of `reason`.
+        if let Some(outcome) =
+            ["fail", "skip", "exit"].iter().find(|outcome| semantic.resolves_to(&call.func, &["pytest", outcome]))
             && let Some(keyword) = call.arguments.find_keyword("msg")
             && call.arguments.find_keyword("reason").is_none()
         {

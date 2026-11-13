@@ -54,7 +54,6 @@ pub fn undeclared_dependency(checker: &Checker) {
 // platform runs only where that environment provides it.
 #[derive(Default)]
 struct Imports<'a> {
-    // Each module with the range to report.
     found: Vec<(&'a str, TextRange)>,
 }
 
