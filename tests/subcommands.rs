@@ -59,8 +59,7 @@ fn rules_json_lists_parsed_examples() {
 #[test_case(
     "SMP002",
     "# long-paragraph (SMP002)",
-    "Flags comment paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and \
-     gets" ;
+    "Flags comment paragraphs longer than 100 words by default." ;
     "by_code_never"
 )]
 fn rule_explains(selector: &str, title: &str, third: &str) {
