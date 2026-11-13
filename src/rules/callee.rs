@@ -1,68 +1,52 @@
+use std::borrow::Cow;
+
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::walker::{Scope, Walker};
 use crate::project::Signature;
 use crate::semantic::Semantic;
-use crate::syntax::{receiver, yields};
+use crate::syntax::receiver;
 
 // A function that a name or a `self.method` reference reaches, by its definition in this file or by the signature the
 // index records for a function another module of the run defines.
-pub(crate) enum Callee<'a> {
-    // A `def` of this file, and whether the reference binds its first parameter, as `self.method` does.
-    Local { function: &'a ast::StmtFunctionDef, bound: bool },
-    Imported(&'a Signature),
+pub(crate) struct Callee<'a> {
+    signature: Cow<'a, Signature>,
+    // The `def` of this file, which the index's signature of an imported function does not stand in for.
+    pub(crate) function: Option<&'a ast::StmtFunctionDef>,
+    // Whether the reference binds the first parameter, as `self.method` does.
+    pub(crate) bound: bool,
 }
 
 impl<'a> Callee<'a> {
     pub(crate) fn of(walker: &Walker<'_, 'a>, expr: &'a Expr) -> Option<Self> {
         let semantic = walker.checker.semantic();
         if let Some((function, bound)) = local_function(semantic, expr, enclosing_method(walker)) {
-            return Some(Self::Local { function, bound });
+            return Some(Self { signature: Cow::Owned(Signature::of(function)), function: Some(function), bound });
         }
         let name = expr.as_name_expr()?;
         if !semantic.reads_from_import(name) {
             return None;
         }
-        walker.checker.project().imported_signature(name.id.as_str()).map(Self::Imported)
+        let signature = walker.checker.project().imported_signature(name.id.as_str())?;
+        Some(Self { signature: Cow::Borrowed(signature), function: None, bound: false })
     }
 
     pub(crate) fn name(&self) -> &str {
-        match self {
-            Self::Local { function, .. } => function.name.as_str(),
-            Self::Imported(signature) => signature.name.as_str(),
-        }
+        &self.signature.name
     }
 
     // A decorator may replace the function with anything, so what the definition says no longer holds for the name.
     pub(crate) fn is_decorated(&self) -> bool {
-        match self {
-            Self::Local { function, .. } => !function.decorator_list.is_empty(),
-            Self::Imported(signature) => signature.decorated,
-        }
+        self.signature.decorated
     }
 
     pub(crate) fn makes_coroutine(&self) -> bool {
-        match self {
-            Self::Local { function, .. } => function.is_async && !yields(&function.body),
-            Self::Imported(signature) => signature.coroutine,
-        }
+        self.signature.coroutine
     }
 
     // The names of the parameters a positional argument fills, in order, after the bound one.
     pub(crate) fn positional(&self) -> Vec<&str> {
-        match self {
-            Self::Local { function, bound } => {
-                let parameters = &function.parameters;
-                parameters
-                    .posonlyargs
-                    .iter()
-                    .chain(&parameters.args)
-                    .skip(usize::from(*bound))
-                    .map(|parameter| parameter.name().as_str())
-                    .collect()
-            }
-            Self::Imported(signature) => signature.positional.iter().map(String::as_str).collect(),
-        }
+        self.signature.positional.iter().skip(usize::from(self.bound)).map(String::as_str).collect()
     }
 }
 
