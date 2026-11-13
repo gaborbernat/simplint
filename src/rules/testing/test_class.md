@@ -143,7 +143,7 @@ No fix is offered when:
           assert Box[int]().get(1) == 1
   ```
 
-- another class extends it, or the file refers to it by name, so it must stay a class;
+- another class extends it, another module imports it, or the file refers to it by name, so it must stay a class;
 
 - a string in the run names it, such as an expected `__qualname__` or a test id, which would no longer match;
 
