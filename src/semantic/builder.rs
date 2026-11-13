@@ -27,7 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{export_names, pattern_capture, signature_annotations, type_string_words};
+use crate::syntax::{export_names, pattern_capture, signature_annotations, top_level, type_string_words};
 
 pub(super) struct Model<'a> {
     pub(super) semantic: SemanticModel<'a>,
@@ -349,7 +349,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
 impl<'a> Builder<'a> {
     fn bind_import(&mut self, import: &'a ast::StmtImport) {
         for alias in &import.names {
-            self.semantic.add_module(alias.name.split_once('.').map_or(alias.name.as_str(), |(top, _)| top));
+            self.semantic.add_module(top_level(&alias.name));
             let qualified_name = Box::new(QualifiedName::user_defined(&alias.name));
             match (&alias.asname, alias.name.split_once('.')) {
                 (None, Some((module, _))) => {
@@ -375,7 +375,7 @@ impl<'a> Builder<'a> {
         if *level == 0
             && let Some(module) = module
         {
-            self.semantic.add_module(module.split_once('.').map_or(module, |(top, _)| top));
+            self.semantic.add_module(top_level(module));
         }
         for alias in names {
             let name = alias.asname.as_ref().unwrap_or(&alias.name);
@@ -585,8 +585,7 @@ impl<'a> Builder<'a> {
     // Unlike Ruff, a `del` in a conditional branch also unbinds the name: the rules count every `del` as a rebinding.
     fn handle_node_delete(&mut self, name: &'a ast::ExprName) {
         self.semantic.resolve_del(&name.id, name.range);
-        let binding_id = self.semantic.push_binding(&name.id, name.range, BindingKind::Deletion, BindingFlags::empty());
-        self.semantic.current_scope_mut().add(&name.id, binding_id);
+        self.declare(&name.id, name.range, BindingKind::Deletion, BindingFlags::empty());
     }
 }
 

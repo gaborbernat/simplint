@@ -56,8 +56,7 @@ fn content_type(stmt: &Stmt, semantic: &SemanticModel) -> Option<ContentType> {
             {
                 return Some(ContentType::FieldDeclaration);
             }
-            let target = targets.first()?;
-            (target.as_name_expr()?.id == "objects").then_some(ContentType::ManagerDeclaration)
+            (targets.first()?.as_name_expr()?.id == "objects").then_some(ContentType::ManagerDeclaration)
         }
         Stmt::ClassDef(class) => (class.name.as_str() == "Meta").then_some(ContentType::MetaClass),
         Stmt::FunctionDef(function) => Some(match function.name.as_str() {

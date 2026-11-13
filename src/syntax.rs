@@ -113,10 +113,7 @@ pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr
 // The name an `import` binds in its scope: its `as` name, or the first part of a dotted module name, which `import a.b`
 // binds as `a`.
 pub fn alias_root_binding(alias: &ast::Alias) -> &str {
-    alias
-        .asname
-        .as_ref()
-        .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
+    alias.asname.as_ref().map_or_else(|| top_level(&alias.name), |name| name.as_str())
 }
 
 pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
@@ -151,6 +148,16 @@ pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
         [argument] if call.arguments.keywords.is_empty() => Some(argument),
         _ => None,
     }
+}
+
+pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
+    call.arguments.args.get(position).or_else(|| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
+            .map(|item| &item.value)
+    })
 }
 
 pub fn is_repeating_expr(expr: &Expr) -> bool {
@@ -216,7 +223,7 @@ pub fn dataclass_fields(body: &[Stmt]) -> impl Iterator<Item = DataclassField<'_
 // The last segment of the name an annotation subscripts or names, read inside the quotes of a string annotation too.
 pub fn annotation_name(annotation: &Expr) -> Option<&str> {
     match annotation.as_string_literal_expr() {
-        Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
+        Some(literal) => literal.value.to_str().split('[').next().map(|name| last_dotted_segment(name.trim())),
         None => last_segment(map_subscript(annotation)),
     }
 }
@@ -800,16 +807,6 @@ pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
     text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }
 
-pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
-    call.arguments.args.get(position).or_else(|| {
-        call.arguments
-            .keywords
-            .iter()
-            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
-            .map(|item| &item.value)
-    })
-}
-
 impl<'a> TypeStrings<'a> {
     fn visit_type_params(&mut self, type_params: Option<&'a ast::TypeParams>) {
         for expr in type_param_exprs(type_params) {
@@ -826,7 +823,7 @@ impl<'a> TypeStrings<'a> {
     // Ruff matches the qualified name of a subscripted value against `extend-generics`; this walk has no resolution,
     // so it matches the last name the value is written with, as it does for the typing generics.
     fn is_extended_generic(&self, name: &str) -> bool {
-        self.extend_generics.iter().any(|target| target.rsplit('.').next() == Some(name))
+        self.extend_generics.iter().any(|target| last_dotted_segment(target) == name)
     }
 }
 
@@ -1073,6 +1070,10 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
 
 pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
+}
+
+pub fn last_dotted_segment(dotted: &str) -> &str {
+    dotted.rsplit_once('.').map_or(dotted, |(_, last)| last)
 }
 
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {

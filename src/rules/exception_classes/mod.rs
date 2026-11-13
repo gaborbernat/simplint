@@ -4,7 +4,7 @@ use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
-use crate::syntax::last_segment;
+use crate::syntax::{last_dotted_segment, last_segment};
 
 use self::hierarchy::{ALIASES, BASES};
 
@@ -86,7 +86,7 @@ pub(crate) fn lineage_names<'a>(checker: &Checker<'a>, expr: &'a Expr) -> Option
         lineage
             .into_iter()
             .filter_map(|key| match key {
-                ClassKey::Known(name) => Some(name.rsplit('.').next().unwrap_or(name)),
+                ClassKey::Known(name) => Some(last_dotted_segment(name)),
                 ClassKey::Local(range) => checker
                     .class_defs()
                     .iter()
@@ -100,8 +100,7 @@ pub(crate) fn lineage_names<'a>(checker: &Checker<'a>, expr: &'a Expr) -> Option
 
 // The last segment of the class a written name stands for, so `IOError` and `socket.error` both read `OSError`.
 pub(crate) fn canonical_name(name: &str) -> &str {
-    let target = lookup(ALIASES, name).map_or(name, |(_, target)| *target);
-    target.rsplit('.').next().unwrap_or(target)
+    last_dotted_segment(lookup(ALIASES, name).map_or(name, |(_, target)| *target))
 }
 
 // The classes an `except` clause names; `None` for a bare `except`, which catches every exception.

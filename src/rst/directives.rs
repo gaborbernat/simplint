@@ -671,21 +671,6 @@ fn list_item(text: &str, base: usize) -> Option<(usize, &str)> {
     Some((indent + marker + gap, rest))
 }
 
-// The directives MyST reads the content of as code, so their lines hold no prose.
-const CODE_DIRECTIVES: [&str; 11] = [
-    "code-block",
-    "code",
-    "sourcecode",
-    "code-cell",
-    "doctest",
-    "testcode",
-    "testoutput",
-    "ipython",
-    "jupyter-execute",
-    "eval-rst",
-    "math",
-];
-
 // The lines of a MyST page with its front matter dropped and its blockquotes read as their content, so a quote's lines
 // are read as the page's own, with the indentation of that content.
 fn myst_page(text: &str) -> Vec<Line<'_>> {
@@ -824,6 +809,20 @@ fn myst_block<'a>(lines: &[Line<'a>], walked: &mut Walked<'a>) {
 // of the content is returned for the walk to read as MyST, unless the directive reads it as code; `eval-rst` holds
 // reStructuredText, which is read here as such.
 fn myst_fence<'b, 'a>(fence: Fence<'_>, content: &'b [Line<'a>], walked: &mut Walked<'a>) -> Option<&'b [Line<'a>]> {
+    // The directives MyST reads the content of as code, so their lines hold no prose.
+    const CODE_DIRECTIVES: [&str; 11] = [
+        "code-block",
+        "code",
+        "sourcecode",
+        "code-cell",
+        "doctest",
+        "testcode",
+        "testoutput",
+        "ipython",
+        "jupyter-execute",
+        "eval-rst",
+        "math",
+    ];
     let (name, argument) = directive_info(fence.info)?;
     let argument = argument.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut directive = Directive {
@@ -861,8 +860,7 @@ fn myst_options<'a, 'b>(content: &'b [Line<'a>], options: &mut Vec<(String, Stri
     };
     if first.text.starts_with("---") {
         let close = content.iter().skip(1).position(|line| line.text.starts_with("---")).map(|offset| offset + 1);
-        let block_end = close.unwrap_or(content.len());
-        options.extend(content[1..block_end].iter().filter_map(|line| yaml_option(line.text)));
+        options.extend(content[1..close.unwrap_or(content.len())].iter().filter_map(|line| yaml_option(line.text)));
         return match close {
             Some(close) => &content[close + 1..],
             None => &content[content.len()..],

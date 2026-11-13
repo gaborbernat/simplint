@@ -247,6 +247,22 @@ impl<'a> FileState<'a> {
     }
 }
 
+// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
+// the output.
+#[derive(Default)]
+struct SourceTextSpans {
+    spans: Vec<TextRange>,
+}
+
+impl<'a> Visitor<'a> for SourceTextSpans {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if matches!(expr, Expr::TString(_)) {
+            self.spans.push(expr.range());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
 // The ends of the callees of the calls in a file. A name or an attribute ends where its reference does, so a reference
 // is the callee of a call when its end is one of these, wherever the call's `(` sits.
 #[derive(Default)]
@@ -274,22 +290,6 @@ impl<'a> Visitor<'a> for AttributeReads<'a> {
             && let Expr::Name(base) = attribute.value.as_ref()
         {
             self.attributes.entry(base.id.as_str()).or_default().push(attribute.attr.as_str());
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
-// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
-// the output.
-#[derive(Default)]
-struct SourceTextSpans {
-    spans: Vec<TextRange>,
-}
-
-impl<'a> Visitor<'a> for SourceTextSpans {
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if matches!(expr, Expr::TString(_)) {
-            self.spans.push(expr.range());
         }
         visitor::walk_expr(self, expr);
     }

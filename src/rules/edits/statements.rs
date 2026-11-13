@@ -65,7 +65,6 @@ pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) ->
 // surplus it would close, which `# fmt: off` code keeps.
 fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
     let lines = source.full_lines_range(range);
-    let limit = if leading_indentation(source.full_line_str(range.start())).is_empty() { 2 } else { 1 };
     let mut before: usize = 0;
     let mut start = lines.start();
     while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty() {
@@ -78,11 +77,29 @@ fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
         end = source.full_line_end(end);
         after += 1;
     }
+    let limit = if leading_indentation(source.full_line_str(range.start())).is_empty() { 2 } else { 1 };
     let mut surplus_end = lines.end();
     for _ in 0..(before + after).saturating_sub(limit).min(after) {
         surplus_end = source.full_line_end(surplus_end);
     }
     TextRange::new(lines.start(), surplus_end)
+}
+
+fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
+    let mut end = source.full_line_end(range.end());
+    while end.to_usize() < source.len() && source.full_line_str(end).trim().is_empty() {
+        end = source.full_line_end(end);
+    }
+    let mut start = source.line_start(range.start());
+    // At the end of the file the blank lines above go too: after a module left with comments only, `ruff format` keeps
+    // them, and Ruff reports blank lines ending the file.
+    if end.to_usize() == source.len() {
+        while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty()
+        {
+            start = previous_line_start(source, start);
+        }
+    }
+    TextRange::new(start, end)
 }
 
 // Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
@@ -102,23 +119,6 @@ fn lines_keeping_separation(source: &str, range: TextRange) -> TextRange {
     } else {
         lines
     }
-}
-
-fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
-    let mut end = source.full_line_end(range.end());
-    while end.to_usize() < source.len() && source.full_line_str(end).trim().is_empty() {
-        end = source.full_line_end(end);
-    }
-    let mut start = source.line_start(range.start());
-    // At the end of the file the blank lines above go too: after a module left with comments only, `ruff format` keeps
-    // them, and Ruff reports blank lines ending the file.
-    if end.to_usize() == source.len() {
-        while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty()
-        {
-            start = previous_line_start(source, start);
-        }
-    }
-    TextRange::new(start, end)
 }
 
 pub(crate) fn statement_block(checker: &Checker, stmt: &Stmt) -> TextRange {

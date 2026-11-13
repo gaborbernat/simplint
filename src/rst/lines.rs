@@ -52,8 +52,7 @@ pub(crate) fn leading_whitespace(line: &str) -> &str {
 
 // The indentation of a line in columns, where a tab runs to the next multiple of `tab`.
 pub(crate) fn indent_columns(line: &str, tab: usize) -> usize {
-    let body = line.trim_start();
-    columns(&line[..line.len() - body.len()], tab)
+    columns(leading_whitespace(line), tab)
 }
 
 pub(crate) fn columns(text: &str, tab: usize) -> usize {

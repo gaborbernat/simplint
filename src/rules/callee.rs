@@ -94,14 +94,6 @@ pub(crate) fn local_function<'a>(
     }
 }
 
-// The method a reference sits in, directly in a class body, with that class.
-fn enclosing_method<'a>(walker: &Walker<'_, 'a>) -> Option<(&'a ast::StmtFunctionDef, &'a ast::StmtClassDef)> {
-    match walker.scopes() {
-        [.., Scope::Class(class), Scope::Function(method)] => Some((method, class)),
-        _ => None,
-    }
-}
-
 fn binds(stmt: &Stmt, name: &str) -> bool {
     match stmt {
         Stmt::FunctionDef(function) => function.name.as_str() == name,
@@ -113,5 +105,13 @@ fn binds(stmt: &Stmt, name: &str) -> bool {
             target.as_name_expr().is_some_and(|target| target.id.as_str() == name)
         }
         _ => false,
+    }
+}
+
+// The method a reference sits in, directly in a class body, with that class.
+fn enclosing_method<'a>(walker: &Walker<'_, 'a>) -> Option<(&'a ast::StmtFunctionDef, &'a ast::StmtClassDef)> {
+    match walker.scopes() {
+        [.., Scope::Class(class), Scope::Function(method)] => Some((method, class)),
+        _ => None,
     }
 }

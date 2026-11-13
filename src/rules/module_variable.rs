@@ -40,8 +40,8 @@ pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<
         .filter_map(|stmt| type_parameter_assignment(checker, stmt))
         .map(|target| target.id.as_str())
         .collect();
-    let mut variables = Vec::new();
     let stub = |binding: &Binding| checker.semantic().is_type_checking_stub(binding.range);
+    let mut variables = Vec::new();
     for (name, bindings) in checker.semantic().all_bindings() {
         let Some(first) = bindings.iter().find(|binding| !stub(binding)) else {
             continue;
@@ -80,15 +80,16 @@ pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<
 // as the function, so it follows the function's name as a class alias does. An import is left out: the semantic
 // model cannot tell whether it binds a function.
 fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
-    let semantic = checker.semantic();
     checker
         .body()
         .iter()
         .filter_map(single_assignment)
         .filter(|(_, _, value)| match value {
-            Expr::Name(name) => {
-                semantic.bindings(name.id.as_str()).iter().any(|binding| binding.kind == BindingKind::Function)
-            }
+            Expr::Name(name) => checker
+                .semantic()
+                .bindings(name.id.as_str())
+                .iter()
+                .any(|binding| binding.kind == BindingKind::Function),
             _ => false,
         })
         .map(|(target, _, _)| target.id.as_str())

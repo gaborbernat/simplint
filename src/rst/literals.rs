@@ -1,4 +1,5 @@
 use super::blocks::Classified;
+use super::lines::leading_whitespace;
 use super::punctuation::{CLOSER_CHARS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, match_chars};
 
 // What is wrong with an inline literal or a backtick run, and so what the rule says.
@@ -75,7 +76,6 @@ impl Fences {
         let Some((char, run, rest)) = fence(text) else {
             return;
         };
-        let start = at + (text.len() - text.trim_start().len());
         let line = at..at + text.len();
         if let Some((open_char, open_run)) = self.open {
             if rest.is_empty() && char == open_char && run >= open_run {
@@ -94,6 +94,7 @@ impl Fences {
             }
             return;
         }
+        let start = at + leading_whitespace(text).len();
         if rest.is_empty() {
             self.pending = Some((char, run, start, line));
         } else {
@@ -117,8 +118,8 @@ fn fence(text: &str) -> Option<(char, usize, &str)> {
 // The findings of one paragraph: the literals docutils cannot close, and backtick runs that pair up wrongly. A literal
 // that is a mismatch is reported as one, not also as unclosed.
 fn paragraph_findings(units: &[(char, usize)]) -> Vec<Finding> {
-    let mismatches = mismatches(units);
     let mut found = open_literals(units);
+    let mismatches = mismatches(units);
     found.retain(|finding| {
         finding.cause != Cause::Unclosed || !mismatches.iter().any(|mismatch| mismatch.at == finding.at)
     });
@@ -310,8 +311,7 @@ fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
             open = Some((opened_at, opened));
             continue;
         }
-        let reportable = units.get(start + len).is_none_or(|&(next, _)| next != ':');
-        if reportable {
+        if units.get(start + len).is_none_or(|&(next, _)| next != ':') {
             found.push(Finding { at: units[opened_at].1, len: opened, cause: Cause::Mismatch { opened, closed: len } });
         }
     }

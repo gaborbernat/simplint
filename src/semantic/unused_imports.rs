@@ -50,14 +50,17 @@ fn is_import(binding: &Binding) -> bool {
     matches!(binding.kind, BindingKind::Import(_) | BindingKind::FromImport(_) | BindingKind::SubmoduleImport(_))
 }
 
-// The bindings a `del` or builtin ends the copying of references at, as a rebinding does not copy from them. Ruff
-// records no `del` in a branch, so a `del` that is not at the top level does not end it.
-fn ends_copies(model: &SemanticModel, binding: &Binding) -> bool {
-    match binding.kind {
-        BindingKind::Builtin | BindingKind::UnboundException(_) => true,
-        BindingKind::Deletion => binding.source.is_some_and(|node| is_top_level(model, node)),
-        _ => false,
-    }
+fn has_simple_shadowed_bindings(model: &SemanticModel, scope: &Scope, live: BindingId) -> bool {
+    scope.shadowed_bindings(live).enumerate().all(|(index, shadow)| {
+        if index > 0 && copied_references(model, scope, shadow).next().is_some() {
+            return false;
+        }
+        let shadowed = model.binding(shadow);
+        if index > 0 && shadowed.source.is_none_or(|node| !is_top_level(model, node)) {
+            return false;
+        }
+        matches!(shadowed.kind, BindingKind::Import(_) | BindingKind::SubmoduleImport(_)) && !shadowed.is_alias()
+    })
 }
 
 // The references a name's live binding has, which a rebinding copies from the bindings it shadows.
@@ -72,22 +75,19 @@ fn copied_references<'m>(
         .flat_map(move |prior| model.binding(prior).references())
 }
 
+// The bindings a `del` or builtin ends the copying of references at, as a rebinding does not copy from them. Ruff
+// records no `del` in a branch, so a `del` that is not at the top level does not end it.
+fn ends_copies(model: &SemanticModel, binding: &Binding) -> bool {
+    match binding.kind {
+        BindingKind::Builtin | BindingKind::UnboundException(_) => true,
+        BindingKind::Deletion => binding.source.is_some_and(|node| is_top_level(model, node)),
+        _ => false,
+    }
+}
+
 // The model records no branches, so only a statement of the module body surely runs before the import that shadows it.
 fn is_top_level(model: &SemanticModel, node: NodeId) -> bool {
     model.parent_statement(node).is_none()
-}
-
-fn has_simple_shadowed_bindings(model: &SemanticModel, scope: &Scope, live: BindingId) -> bool {
-    scope.shadowed_bindings(live).enumerate().all(|(index, shadow)| {
-        let shadowed = model.binding(shadow);
-        if index > 0 && copied_references(model, scope, shadow).next().is_some() {
-            return false;
-        }
-        if index > 0 && shadowed.source.is_none_or(|node| !is_top_level(model, node)) {
-            return false;
-        }
-        matches!(shadowed.kind, BindingKind::Import(_) | BindingKind::SubmoduleImport(_)) && !shadowed.is_alias()
-    })
 }
 
 fn refined_unused(
@@ -100,11 +100,10 @@ fn refined_unused(
 ) -> Vec<BindingId> {
     let bindings: Vec<BindingId> = scope.shadowed_bindings(live).collect();
     let mut marked = Marked { used: vec![false; bindings.len()], bindings };
-    if listed {
-        let first = model.binding(live).as_any_import().map(|import| import.qualified_name().segments()[0]);
-        if let Some(first) = first {
-            marked.mark(model, &QualifiedName::user_defined(first));
-        }
+    if listed
+        && let Some(first) = model.binding(live).as_any_import().map(|import| import.qualified_name().segments()[0])
+    {
+        marked.mark(model, &QualifiedName::user_defined(first));
     }
     if annotated {
         marked.mark(model, &QualifiedName::user_defined(name));
@@ -151,14 +150,14 @@ fn rank_matches(
 ) -> (usize, std::cmp::Reverse<usize>) {
     let import = model.binding(binding).as_any_import().expect("only imports are matched against a prototype");
     let qualified = import.qualified_name();
-    let left = qualified.segments().iter().zip(prototype.segments()).take_while(|(x, y)| x == y).count();
+    let left =
+        qualified.segments().iter().zip(prototype.segments()).take_while(|(ours, theirs)| ours == theirs).count();
     (left, std::cmp::Reverse(qualified.segments().len()))
 }
 
 // The attribute chain an expression starts is maximal, so `a` in `a.b.foo()` reads `a.b.foo`.
-fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, expr_id: NodeId) -> QualifiedName<'b> {
+fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, mut expr_id: NodeId) -> QualifiedName<'b> {
     let mut builder = QualifiedNameBuilder::with_capacity(16);
-    let mut expr_id = expr_id;
     let name = model.expression(expr_id).and_then(Expr::as_name_expr).expect("a read is a name");
     builder.push(&name.id);
     while let Some(node_id) = model.parent_expression_id(expr_id) {
