@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
@@ -26,6 +27,8 @@ pub fn missing_override(checker: &Checker) {
             if is_overload(checker, method)
                 || !seen.insert(name)
                 || marked.contains(name)
+                // Every class inherits the special methods from `object`, so overriding one is how a class takes part
+                // in a protocol.
                 || is_dunder(name)
                 || !project.is_override(class.name.as_str(), name)
             {
@@ -60,9 +63,4 @@ fn is_overload(checker: &Checker, method: &ast::StmtFunctionDef) -> bool {
         .decorator_list
         .iter()
         .any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "overload"))
-}
-
-// Every class inherits the special methods from `object`, so overriding one is how a class takes part in a protocol.
-fn is_dunder(name: &str) -> bool {
-    name.len() > 4 && name.starts_with("__") && name.ends_with("__")
 }

@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::helpers::map_callable;
 use ruff_python_ast::{self as ast, CmpOp, Expr, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
 
@@ -84,9 +85,5 @@ fn rejects_type(checker: &Checker, test: &Expr, other: &str) -> bool {
 }
 
 fn raises_type_error(checker: &Checker, exc: &Expr) -> bool {
-    let class = match exc {
-        Expr::Call(call) => &call.func,
-        other => other,
-    };
-    checker.semantic().is_builtin(class, "TypeError")
+    checker.semantic().is_builtin(map_callable(exc), "TypeError")
 }

@@ -3,6 +3,7 @@ use std::ops::Bound;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -458,7 +459,7 @@ fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
         Some(Section::Constructor(rank))
     } else if factories.contains(name) {
         Some(Section::Factory)
-    } else if name.len() > 4 && name.starts_with("__") && name.ends_with("__") {
+    } else if is_dunder(name) {
         Some(Section::Dunder)
     } else if has_decorator(&function.decorator_list, &["property", "cached_property", "setter", "getter", "deleter"]) {
         Some(Section::Property)

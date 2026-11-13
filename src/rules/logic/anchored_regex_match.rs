@@ -5,6 +5,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::edits::fix_of;
 use crate::rules::logic::regex_pattern::INLINE_FLAGS;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -151,8 +152,7 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     let width = anchor_width(source, anchored.end, raw, false)?;
     edits.push(Edit::range_deletion(TextRange::new(body.end() - width, body.end())));
     let applicability = if anchored.end == Anchor::Dollar { Applicability::Unsafe } else { Applicability::Safe };
-    let first = edits.remove(0);
-    Some(Fix::applicable_edits(first, edits, applicability))
+    fix_of(edits, applicability)
 }
 
 // The source characters of an anchor: one for `^` and `$`, two for `\A` and `\Z`, three when a plain string writes

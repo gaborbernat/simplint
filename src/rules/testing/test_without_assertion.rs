@@ -192,12 +192,7 @@ impl<'b> Checks<'_, 'b> {
                     return self.follows(&helper.body, helper.range());
                 }
                 // A helper class the module defines may check in its methods.
-                self.checker
-                    .body()
-                    .iter()
-                    .filter_map(Stmt::as_class_def_stmt)
-                    .find(|class| class.name.as_str() == id)
-                    .is_some_and(|class| self.follows(&class.body, class.range()))
+                self.checker.module_classes().get(id).is_some_and(|class| self.follows(&class.body, class.range()))
             }
             // A base class's test, reached through `super()`, may assert.
             Expr::Attribute(attribute)
