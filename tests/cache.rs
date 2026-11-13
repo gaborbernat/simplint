@@ -283,6 +283,16 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("pyproject.toml", "[project]\nname = \"demo\"\n[tool.ruff]\nsrc = [\"src\"]\n"),
     (1, 0) ; "search_root_changed"
 )]
+// A test module beside it shows pytest collects from the directory, so the module it skips is reported.
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"),
+        ("tests/alpha_check.py", "def test_alpha() -> None:\n    assert True\n"),
+    ],
+    "SMP821",
+    Change::Write("tests/test_beta.py", "def test_beta() -> None:\n    assert True\n"),
+    (0, 1) ; "collected_test_module_added_beside"
+)]
 fn cached_result_is_checked_again_after_an_edit(
     files: &[(&str, &str)],
     select: &str,

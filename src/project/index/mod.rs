@@ -48,7 +48,7 @@ use self::enums::enum_classes;
 use self::exceptions::exception_classes;
 use self::files::FileIds;
 use self::hatch::hatch_hook_classes;
-use self::prefixes::{PrefixSiblings, prefix_siblings};
+use self::prefixes::{PrefixSiblings, prefix_siblings, test_directory_modules};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
@@ -90,6 +90,7 @@ pub struct Project {
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
     pub(super) prefix_siblings: FxHashMap<FileId, PrefixSiblings>,
+    pub(super) test_directory_modules: FxHashMap<PathBuf, Vec<String>>,
     // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -315,6 +316,7 @@ impl Project {
             cycles: cycle_reports,
             duplicates: duplicate_reports,
             prefix_siblings: prefix_siblings(&indexed, &resolver.files),
+            test_directory_modules: test_directory_modules(&indexed, &test_modules, &resolver.files),
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
             computed_writes,
@@ -371,6 +373,10 @@ impl Project {
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
                 prefix_siblings: entry(&self.prefix_siblings, id),
+                directory_modules: path
+                    .parent()
+                    .and_then(|directory| self.test_directory_modules.get(directory))
+                    .map_or(&[], Vec::as_slice),
                 calls: self.calls.file(id),
                 reads: &self.wide.reads,
                 computed_reads: &self.wide.computed_reads,

@@ -1,6 +1,3 @@
-use std::fs;
-use std::path::Path;
-
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -15,7 +12,7 @@ pub fn uncollected_test_module(checker: &Checker) {
         return;
     }
     let pytest = &checker.settings.project.pytest;
-    if pytest.collects(file_name) || is_run_on_purpose(checker, file_name) || !has_collected_sibling(checker.path, pytest) {
+    if pytest.collects(file_name) || is_run_on_purpose(checker, file_name) || !has_collected_sibling(checker, pytest) {
         return;
     }
     let tests = collected_tests(checker);
@@ -46,14 +43,10 @@ fn is_run_on_purpose(checker: &Checker, file_name: &str) -> bool {
 }
 
 // Outside a directory pytest collects from, such as one holding type-checker inputs, `test_*` functions are not tests.
-fn has_collected_sibling(path: &Path, pytest: &PytestConfig) -> bool {
-    let Some(directory) = path.parent() else {
-        return false;
-    };
-    let Ok(entries) = fs::read_dir(directory) else {
-        return false;
-    };
-    entries.filter_map(Result::ok).any(|entry| {
-        entry.file_name().to_str().is_some_and(|name| name.ends_with(".py") && name != "conftest.py" && pytest.collects(name))
-    })
+fn has_collected_sibling(checker: &Checker, pytest: &PytestConfig) -> bool {
+    checker
+        .project()
+        .directory_modules()
+        .iter()
+        .any(|name| name.ends_with(".py") && name != "conftest.py" && pytest.collects(name))
 }

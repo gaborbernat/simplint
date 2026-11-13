@@ -136,6 +136,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
     pub(super) prefix_siblings: Option<&'a PrefixSiblings>,
+    pub(super) directory_modules: &'a [String],
     pub(super) calls: FileCalls<'a>,
     pub(super) reads: &'a RunReads,
     pub(super) computed_reads: &'a ComputedReads,
@@ -183,6 +184,7 @@ impl CacheKey for FileIndex<'_> {
             cycle,
             duplicates,
             prefix_siblings,
+            directory_modules,
             calls,
             reads: _,
             computed_reads: _,
@@ -225,6 +227,7 @@ impl CacheKey for FileIndex<'_> {
         }
         duplicates.cache_key(state);
         prefix_siblings.cache_key(state);
+        directory_modules.cache_key(state);
         calls.cache_key(state);
     }
 }
@@ -263,6 +266,11 @@ impl<'a> FileIndex<'a> {
     // The other private modules of the run that share this module's name prefix, when a package would group them.
     pub fn prefix_siblings(&self) -> Option<PrefixSiblings> {
         self.answers.prefix_siblings.copied()
+    }
+
+    // The file names of the run beside this test module.
+    pub fn directory_modules(&self) -> &'a [String] {
+        self.answers.directory_modules
     }
 
     pub fn is_uncaught_exception(&self, name: &str) -> bool {

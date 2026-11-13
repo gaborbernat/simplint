@@ -1,5 +1,5 @@
 use std::ffi::OsStr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -57,4 +57,26 @@ pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds)
             Some((*id, PrefixSiblings { others: modules - 1, prefix_module }))
         })
         .collect()
+}
+
+// The file names of the run in each directory that holds a test module, which tell whether pytest collects from it.
+pub(super) fn test_directory_modules(
+    indexed: &[(FileId, &FileFacts)],
+    test_modules: &FxHashSet<FileId>,
+    files: &FileIds,
+) -> FxHashMap<PathBuf, Vec<String>> {
+    let directories: FxHashSet<&Path> = test_modules.iter().filter_map(|id| files.path(*id).parent()).collect();
+    let mut modules: FxHashMap<PathBuf, Vec<String>> = FxHashMap::default();
+    for (id, _) in indexed {
+        let path = files.path(*id);
+        if let (Some(directory), Some(name)) = (path.parent(), path.file_name().and_then(OsStr::to_str))
+            && directories.contains(directory)
+        {
+            modules.entry(directory.to_path_buf()).or_default().push(name.to_owned());
+        }
+    }
+    for names in modules.values_mut() {
+        names.sort_unstable();
+    }
+    modules
 }
