@@ -253,6 +253,18 @@ fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, repo
     common::assert_report_count(root.path(), "SMP605", reports);
 }
 
+// The fix wraps a dict in `types.MappingProxyType`, which it cannot import over a name the module already binds.
+#[test]
+fn mutable_module_constant_leaves_a_dict_whose_wrapper_name_is_taken() {
+    let root = common::project(&[(
+        "settings.py",
+        "MappingProxyType = dict\nLIMITS = {\"a\": 1}\n\n\ndef limit(name: str) -> int:\n    if name == \"b\":\n        \
+         return 0\n    elif name in LIMITS:\n        return LIMITS[name]\n    else:\n        return -1\n",
+    )]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--target-version", "py314", "--select", "SMP605"]).1;
+    assert!(stdout.contains("SMP605") && !stdout.contains("SMP605 [*]"), "{stdout}");
+}
+
 // A function may rebind the constant through `globals()`, where no statement names it.
 #[test]
 fn mutable_module_constant_skips_a_constant_written_through_globals() {
