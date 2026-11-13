@@ -139,9 +139,7 @@ fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
         Some(toml::Value::Array(items)) => {
             items.iter().map(|item| item.as_str().map(marker_name)).collect::<Option<BTreeSet<_>>>()
         }
-        Some(toml::Value::String(text)) => {
-            Some(text.lines().map(marker_name).filter(|name| !name.is_empty()).collect())
-        }
+        Some(toml::Value::String(text)) => Some(marker_names(text)),
         Some(_) => None,
     };
     Some(Options {
@@ -185,8 +183,7 @@ fn from_ini(text: &str, wanted: &str) -> Option<Options> {
         return None;
     }
     let value = |key: &str| values.iter().find(|(name, _)| name == key).map(|(_, value)| value.as_str());
-    let markers = value("markers")
-        .map_or_else(BTreeSet::new, |text| text.lines().map(marker_name).filter(|name| !name.is_empty()).collect());
+    let markers = value("markers").map_or_else(BTreeSet::new, marker_names);
     let words = |key: &str| value(key).map(|text| text.split_whitespace().map(str::to_owned).collect());
     Some(Options {
         markers: Some(markers),
@@ -195,6 +192,10 @@ fn from_ini(text: &str, wanted: &str) -> Option<Options> {
         pythonpath: words("pythonpath").unwrap_or_default(),
         testpaths: words("testpaths").unwrap_or_default(),
     })
+}
+
+fn marker_names(text: &str) -> BTreeSet<String> {
+    text.lines().map(marker_name).filter(|name| !name.is_empty()).collect()
 }
 
 // A marker line names the marker before its arguments or description: `slow: marks slow tests`, `env(name): ...`.
