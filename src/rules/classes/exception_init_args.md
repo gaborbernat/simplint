@@ -37,8 +37,8 @@ class ParseError(ValueError):
 
 ### Active on
 
-- **A parent `__init__` call** through `super().__init__(...)` or `Base.__init__(self, ...)` whose positional
-  arguments fall outside the number the subclass's own `__init__` accepts.
+- **A parent `__init__` call** through `super().__init__(...)`, `super(Class, self).__init__(...)` or
+  `Base.__init__(self, ...)` whose positional arguments fall outside the number the subclass's own `__init__` accepts.
 
   ```python report
   class Closed(Exception):

@@ -2,8 +2,12 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-6:9 SMP705 `Fixed.__init__` takes 0 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
-11:9 SMP705 `Dropped.__init__` takes 1 positional argument but passes 0 to its parent, so `pickle` and `copy` rebuild it with 0 and fail; pass the arguments on, or define `__reduce__`
-16:36 SMP705 `Keyword` requires the keyword `code`, which its `args` cannot carry, so `pickle` and `copy` cannot rebuild it; make it positional and pass it to the parent `__init__`, or define `__reduce__`
-23:9 SMP705 `Explicit.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
-62:9 SMP705 `LocalChild.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+8:9 SMP705 `Fixed.__init__` takes 0 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+13:9 SMP705 `Dropped.__init__` takes 1 positional argument but passes 0 to its parent, so `pickle` and `copy` rebuild it with 0 and fail; pass the arguments on, or define `__reduce__`
+18:36 SMP705 `Keyword` requires the keyword `code`, which its `args` cannot carry, so `pickle` and `copy` cannot rebuild it; make it positional and pass it to the parent `__init__`, or define `__reduce__`
+25:9 SMP705 `Explicit.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+30:9 SMP705 `Qualified.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+35:9 SMP705 `Generic.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+40:9 SMP705 `TwoArgumentSuper.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+84:9 SMP705 `LocalChild.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+101:9 SMP705 `BelowDiamond.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`

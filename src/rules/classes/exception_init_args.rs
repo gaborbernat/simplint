@@ -88,12 +88,14 @@ fn defines(stmt: &Stmt, names: &[&str]) -> bool {
     stmt.as_function_def_stmt().is_some_and(|def| names.contains(&def.name.as_str()))
 }
 
-// `super().__init__(...)`, whose arguments start after `self`, or `Base.__init__(self, ...)`.
+// `super().__init__(...)` or `super(Class, self).__init__(...)`, whose arguments start after `self`, or
+// `Base.__init__(self, ...)`.
 fn is_super_call(func: &Expr) -> bool {
     func.as_attribute_expr().is_some_and(|attribute| {
-        attribute.value.as_call_expr().is_some_and(|call| {
-            call.func.as_name_expr().is_some_and(|name| name.id == "super") && call.arguments.is_empty()
-        })
+        attribute
+            .value
+            .as_call_expr()
+            .is_some_and(|call| call.func.as_name_expr().is_some_and(|name| name.id == "super"))
     })
 }
 

@@ -1,3 +1,5 @@
+import argparse
+
 __all__ = []
 
 
@@ -21,6 +23,26 @@ class Keyword(Exception):
 class Explicit(ValueError):
     def __init__(self, path, line):
         ValueError.__init__(self, f"{path}:{line}")
+
+
+class Qualified(argparse.ArgumentTypeError):
+    def __init__(self, value, kind):
+        argparse.ArgumentTypeError.__init__(self, f"{value}: {kind}")
+
+
+class Generic(ValueError):
+    def __init__(self, path, line):
+        Exception.__init__(self, path)
+
+
+class TwoArgumentSuper(Exception):
+    def __init__(self, path, line):
+        super(TwoArgumentSuper, self).__init__(path)
+
+
+class FoundAtRuntime(Exception):
+    def __init__(self, path, line):
+        type(self).__bases__[0].__init__(self, path)
 
 
 class Optional(Exception):
@@ -58,6 +80,23 @@ class InheritsReduce(Reduced):
 
 
 class LocalChild(Dropped):
+    def __init__(self, path, line):
+        super().__init__(path)
+
+
+class Left(Dropped):
+    pass
+
+
+class Right(Dropped):
+    pass
+
+
+class Diamond(Left, Right):
+    pass
+
+
+class BelowDiamond(Diamond):
     def __init__(self, path, line):
         super().__init__(path)
 
