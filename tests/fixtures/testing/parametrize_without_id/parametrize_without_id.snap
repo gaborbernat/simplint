@@ -12,8 +12,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 56:39 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 61:34 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
 61:42 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
-61:50 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
---- fixed (1 applied, 10 remaining) ---
+--- fixed (1 applied, 9 remaining) ---
 import pytest
 
 
@@ -22,14 +21,14 @@ import pytest
     [
         pytest.param(1, 2, id="one"),
         pytest.param(2, 3),
-        (3, 4),
+        (3, [4]),
     ],
 )
 def test_values(value: int, expected: int) -> None:
     assert value + 1 == expected
 
 
-CASES = [(1, 2)]
+CASES = [(1, [2])]
 
 
 @pytest.mark.parametrize(("value", "expected"), CASES)

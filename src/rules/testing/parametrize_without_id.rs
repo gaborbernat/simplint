@@ -40,12 +40,13 @@ pub fn parametrize_without_id(checker: &Checker) {
                 continue;
             };
             let rows = rows(checker, elts);
+            let names = argnames(arguments);
             let mut id_counts = FxHashMap::default();
-            for id in rows.iter().filter_map(|row| scalar_id(checker, row)) {
+            for id in rows.iter().filter_map(|row| row_id(checker, row, names)) {
                 *id_counts.entry(id).or_insert(0) += 1;
             }
             for row in rows.iter().filter(|row| !is_param_with_id(checker.semantic(), row)) {
-                if scalar_id(checker, row).is_some_and(|id| id_counts.get(&id) == Some(&1))
+                if row_id(checker, row, names).is_some_and(|id| id_counts.get(&id) == Some(&1))
                     || !reported.insert(row.range())
                 {
                     continue;
@@ -341,13 +342,35 @@ fn is_param_with_id(semantic: &Semantic, element: &Expr) -> bool {
         && arguments.find_keyword("id").is_some_and(|keyword| !keyword.value.is_none_literal_expr())
 }
 
-// Pytest uses a scalar's value as its id, but escapes non-printable ASCII and backslashes in strings, prints a number
+// The id pytest builds for a row: a whole row's own id, or the ids of an unpacked row's values joined with `-`.
+fn row_id<'e>(checker: &Checker, row: &'e Expr, names: Option<Argnames>) -> Option<Cow<'e, str>> {
+    let Some(Argnames::Unpacked(count)) = names else {
+        return scalar_id(checker, row);
+    };
+    let (Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })) = row else {
+        return None;
+    };
+    if elts.len() != count {
+        return None;
+    }
+    let ids = elts.iter().map(|value| scalar_id(checker, value)).collect::<Option<Vec<_>>>()?;
+    Some(Cow::Owned(ids.join("-")))
+}
+
+// Pytest uses a scalar's value as its id, but escapes non-printable ASCII and backslashes in strings and bytes, prints a number
 // as Python does, so `0x10` and `16` share an id, and suffixes ids that several rows share.
 fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
     match element {
         Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
             let text = value.to_str();
             text.bytes().all(|byte| matches!(byte, b' '..=b'~') && byte != b'\\').then_some(Cow::Borrowed(text))
+        }
+        Expr::BytesLiteral(ast::ExprBytesLiteral { value, .. }) => {
+            let bytes: Vec<u8> = value.bytes().collect();
+            bytes
+                .iter()
+                .all(|byte| matches!(byte, b' '..=b'~') && *byte != b'\\')
+                .then(|| Cow::Owned(bytes.iter().map(|byte| char::from(*byte)).collect()))
         }
         Expr::BooleanLiteral(_) | Expr::NoneLiteral(_) => Some(Cow::Owned(checker.text(element).to_owned())),
         Expr::NumberLiteral(number) => Some(Cow::Owned(number_id(checker, number))),

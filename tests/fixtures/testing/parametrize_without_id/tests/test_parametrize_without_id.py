@@ -6,14 +6,14 @@ import pytest
     [
         pytest.param(1, 2, id="one"),
         pytest.param(2, 3),
-        (3, 4),
+        (3, [4]),
     ],
 )
 def test_values(value: int, expected: int) -> None:
     assert value + 1 == expected
 
 
-CASES = [(1, 2)]
+CASES = [(1, [2])]
 
 
 @pytest.mark.parametrize(("value", "expected"), CASES)
