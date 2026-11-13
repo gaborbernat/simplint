@@ -181,18 +181,24 @@ pub(crate) fn with_linter<T: Send>(
     args: &[&str],
     work: impl Fn(&crate::lint::Linter, &Path) -> T + Sync,
 ) -> T {
+    let directory = tempfile::TempDir::new().expect("temporary directory");
+    let path = directory.path().join("module.py");
+    let resolved = resolved_of(&[&["--isolated", "--no-cache"], args].concat());
+    lint_alone(&path, source, &resolved, |file| work(&file.linter, &path)).expect("the module lints")
+}
+
+// The settings the `check` arguments `args` resolve to.
+#[cfg(test)]
+fn resolved_of(args: &[&str]) -> Resolved {
     use clap::{Args, FromArgMatches};
 
     use crate::cli::args::{CheckCommand, GlobalConfigArgs};
 
-    let directory = tempfile::TempDir::new().expect("temporary directory");
-    let path = directory.path().join("module.py");
     let matches = GlobalConfigArgs::augment_args(CheckCommand::augment_args(clap::Command::new("check")))
-        .get_matches_from([&["check", "--isolated", "--no-cache"], args].concat());
+        .get_matches_from([&["check"], args].concat());
     let check = CheckCommand::from_arg_matches(&matches).expect("the check arguments parse");
     let global_options = GlobalConfigArgs::from_arg_matches(&matches).expect("the global arguments parse");
-    let resolved = Resolved::new(&check, &global_options).expect("the isolated settings resolve");
-    lint_alone(&path, source, &resolved, |file| work(&file.linter, &path)).expect("the module lints")
+    Resolved::new(&check, &global_options).expect("the settings resolve")
 }
 
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
@@ -394,3 +400,36 @@ type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
 
 // Whether a pass rewrote a file, which a later round has to index again.
 type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::{Ending, Overlay, Plumbing, for_each_file, resolved_of};
+
+    // A file another process removes once a round rewrote it has no key to cache its next pass under and no facts to
+    // index again, so the rounds go on without them.
+    #[test]
+    fn file_removed_once_rewritten_is_left_out_of_the_next_round() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let module = root.path().join("module.py");
+        fs::write(&module, "x = 1\n").expect("write the module");
+        let cache_dir = root.path().join("cache");
+        let cache_arg = cache_dir.to_string_lossy();
+        let resolved = resolved_of(&["--isolated", "--cache-dir", &cache_arg]);
+        let overlay = Overlay::default();
+        let rewrote = |removed: &bool| *removed;
+        let plumbing = Plumbing {
+            cache_dir: Some(&cache_dir),
+            rewrote: Some(&rewrote),
+            ..Plumbing::plain(Ending::Drop, &overlay, &resolved.cwd)
+        };
+        let (passes, missing) = for_each_file(std::slice::from_ref(&module), &resolved, &plumbing, |file| {
+            fs::remove_file(file.path).is_ok()
+        })
+        .expect("the run goes on");
+        assert_eq!((passes, missing.is_empty(), module.exists()), (Some(vec![vec![true]]), true, false));
+    }
+}

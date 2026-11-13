@@ -108,10 +108,8 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of. Only debug builds check, so
-    // a release build skips the bookkeeping.
+    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of in debug builds.
     pub(super) fn enter(&self, rule: Rule) {
-        #[cfg(debug_assertions)]
         self.rule.set(Some(rule));
     }
 

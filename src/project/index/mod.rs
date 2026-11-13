@@ -24,7 +24,7 @@ pub use files::FileId;
 pub use resolve::ImportResolver;
 pub use search::SearchRoots;
 
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -128,6 +128,9 @@ pub struct External {
     pub opaque: FxHashSet<String>,
     pub computed: ComputedReads,
 }
+
+// A file that does not parse or cannot be read has no module facts, so it binds no module of the run.
+static NO_MODULES: FxHashMap<String, FileId> = FxHashMap::with_hasher(FxBuildHasher);
 
 impl Project {
     #[expect(clippy::too_many_lines, reason = "the stages of the index pipeline share the gathered inputs")]
@@ -366,7 +369,10 @@ impl Project {
                 enum_types: self.enum_types.get(&id),
                 hook_classes: self.hook_classes.get(&id),
                 run_imports: self.run_imports.get(&id),
-                run_modules: RunModules { modules: &self.run_modules[&id], members: &self.run_members },
+                run_modules: RunModules {
+                    modules: self.run_modules.get(&id).unwrap_or(&NO_MODULES),
+                    members: &self.run_members,
+                },
                 run_signatures: self.run_signatures.get(&id),
                 api_reached: self.api_reached.get(&id),
                 library_reached: self.library_reached.get(&id),

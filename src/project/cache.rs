@@ -128,12 +128,23 @@ fn remove_stale(current: &Path) {
 
 // The time of the newest file a directory holds; an empty one, or one whose files cannot be stat'd, goes by its own.
 fn last_written(directory: &Path) -> Option<SystemTime> {
-    fs::read_dir(directory)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
-        .max()
-        .or_else(|| directory.metadata().ok()?.modified().ok())
+    newest(fs::read_dir(directory).into_iter().flatten()).or_else(|| directory.metadata().ok()?.modified().ok())
+}
+
+// The newest time of the entries a directory listing gave; an entry the listing failed on, or one that cannot be stat'd,
+// has none.
+fn newest<E: Modified>(entries: impl Iterator<Item = io::Result<E>>) -> Option<SystemTime> {
+    entries.filter_map(|entry| entry.ok()?.modified().ok()).max()
+}
+
+trait Modified {
+    fn modified(&self) -> io::Result<SystemTime>;
+}
+
+impl Modified for fs::DirEntry {
+    fn modified(&self) -> io::Result<SystemTime> {
+        self.metadata()?.modified()
+    }
 }
 
 // Only a real directory named as a build, holding nothing but cache files, is removed, so a directory a user put in the
@@ -204,7 +215,7 @@ mod tests {
     use tempfile::TempDir;
     use test_case::test_case;
 
-    use super::{init, is_build_name, last_written, read_aligned, write_atomically};
+    use super::{Modified, init, is_build_name, last_written, newest, read_aligned, write_atomically};
 
     #[test_case("0.11.1-0123456789abcdef", true ; "release")]
     #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
@@ -304,5 +315,21 @@ mod tests {
     fn directory_removed_since_listing_has_no_time() {
         let root = TempDir::new().expect("create a temporary directory");
         assert_eq!(last_written(&root.path().join("0.0.1-00000000000000a1")), None);
+    }
+
+    struct Written(std::time::SystemTime);
+
+    impl Modified for Written {
+        fn modified(&self) -> std::io::Result<std::time::SystemTime> {
+            Ok(self.0)
+        }
+    }
+
+    // An entry the listing failed on, as on a disk error, has no time, so the others decide.
+    #[test]
+    fn entry_the_listing_failed_on_is_skipped() {
+        let time = std::time::SystemTime::UNIX_EPOCH;
+        let entries = [Err(std::io::Error::other("disk error")), Ok(Written(time))];
+        assert_eq!(newest(entries.into_iter()), Some(time));
     }
 }

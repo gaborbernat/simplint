@@ -88,10 +88,12 @@ impl<'l, 'a> Fixer<'l, 'a> {
             let (result, run_withdrawn) = self.run(&current, std::mem::take(&mut withdrawn.fixes))?;
             withdrawn = run_withdrawn;
             add_fixes(&mut fixed, &result.fixed);
+            // A later run only finds work in fixes of a rule an earlier run withdrew whole. Such a fix that gives Ruff
+            // work again has its rule withdrawn again, which leaves the source as it was, so the runs end without a
+            // bound of their own; each run's fix and cleanup loops have theirs.
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
                 break result;
             }
-            errors::ensure_converging(seen.len(), &result.diagnostics)?;
             current.clone_from(&result.transformed);
         };
         result.fixed = fixed;
@@ -559,14 +561,36 @@ mod tests {
     use test_case::test_case;
 
     use super::{
-        Candidate, FixBug, FixKey, Fixer, FixerResult, Settled, VersionCounts, Withdrawn, check_syntax,
-        earlier_unless_beaten, version_counts,
+        Candidate, ENTRIES, FixBug, FixKey, Fixer, FixerResult, Memo, Settled, Sources, VersionCounts, Withdrawn,
+        check_syntax, earlier_unless_beaten, version_counts,
     };
     use crate::lint::Lint;
     use crate::lint::registry::{Rule, RuleSet};
     use crate::run::with_linter;
 
     const NESTED_QUOTE: &str = "print(f\"{x[\"a\"]}\")\n";
+
+    // A full memo starts over, so the entry past its bound is the only one it holds and an earlier one is computed again.
+    #[test]
+    fn full_memo_starts_over() {
+        let memo = Memo::default();
+        for key in 0..=ENTRIES {
+            memo.keep(key, key);
+        }
+        let held = memo.entries().len();
+        assert_eq!((held, memo.get_or(0, || usize::MAX)), (1, usize::MAX));
+    }
+
+    // Full of sources, the interner starts over, so a source met before is held anew rather than shared.
+    #[test]
+    fn full_interner_starts_over() {
+        let sources = Sources::default();
+        let first = sources.intern("0");
+        for source in 1..=ENTRIES {
+            sources.intern(&source.to_string());
+        }
+        assert!(!std::sync::Arc::ptr_eq(&first, &sources.intern("0")));
+    }
 
     #[test_case(
         "x = 1\n",
