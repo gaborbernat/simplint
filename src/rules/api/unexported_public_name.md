@@ -497,6 +497,10 @@ No fix is offered when:
 - a file of the run sets an attribute of the module under a computed name, as
   [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does
 
+- the build compiles Rust beside the package, with [maturin](https://www.maturin.rs/) or
+  [setuptools-rust](https://setuptools-rust.readthedocs.io/), whose code can import a name by its spelling, as PyO3
+  does, where no Python file shows it
+
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a
   keyword argument or an attribute access
 

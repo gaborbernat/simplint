@@ -404,6 +404,10 @@ impl<'a> FileIndex<'a> {
         self.is_referenced(name) || self.is_api_reached(name)
     }
 
+    pub fn tests_read_all(&self) -> bool {
+        self.project.wide.reads.tests_read_all
+    }
+
     pub fn is_all_read(&self) -> bool {
         self.is_imported("__all__") || self.answers.referenced.is_some_and(|names| names.contains("__all__"))
     }

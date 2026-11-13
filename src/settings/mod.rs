@@ -297,6 +297,7 @@ impl Settings {
                     table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
                 project.project.add_groups(&project.dependency_groups);
                 project.project.add_tool_references(table);
+                project.project.native = build.native;
                 (Some(path), project.project, build)
             }
             None => (None, ProjectMetadata::default(), BuildConfiguration::default()),
@@ -444,6 +445,7 @@ impl CacheKey for Settings {
         }
         self.metadata.entry_points.cache_key(state);
         self.metadata.scripts.cache_key(state);
+        self.metadata.native.cache_key(state);
         self.build_hooks.cache_key(state);
         self.hatch_hooks.cache_key(state);
         self.coverage.modules.cache_key(state);

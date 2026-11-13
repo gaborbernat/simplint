@@ -435,6 +435,10 @@ No fix is offered when:
 - a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` or
   `mock.patch(f"module.{name}")` does
 
+- the build compiles Rust beside the package, with [maturin](https://www.maturin.rs/) or
+  [setuptools-rust](https://setuptools-rust.readthedocs.io/), whose code can import a name by its spelling, as PyO3
+  does, where no Python file shows it
+
 - the new name is already used as a name in the file
 
   ```python report

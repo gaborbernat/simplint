@@ -110,6 +110,7 @@ fn single_read<'a>(
         || names.rebound.contains(name)
         || names.string_reads.contains(name)
         || names.reads_locals
+        || is_weak_reference(checker, value)
     {
         return None;
     }
@@ -142,4 +143,14 @@ fn single_read<'a>(
         return None;
     }
     Some((use_range, reading))
+}
+
+// A weak reference counts for nothing once its last name is gone: inlined, it is dropped right after the read, and a
+// later `weakref.getweakrefcount` or callback sees it missing.
+fn is_weak_reference(checker: &Checker, value: &Expr) -> bool {
+    value.as_call_expr().is_some_and(|call| {
+        checker.semantic().qualified_name(&call.func).is_some_and(|name| {
+            matches!(name.segments(), ["weakref", "ref" | "proxy" | "WeakMethod" | "ReferenceType" | "ProxyType"])
+        })
+    })
 }

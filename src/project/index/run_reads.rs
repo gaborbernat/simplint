@@ -109,15 +109,23 @@ pub(super) struct RunReads {
     pub(super) class_names: bool,
     pub(super) reflected: FxHashSet<String>,
     pub(super) string_words: FxHashMap<String, u32>,
+    // Whether a test reads `__all__`, by its name in a string as `getattr(module, "__all__")` does or as an attribute,
+    // which may check what type it is.
+    pub(super) tests_read_all: bool,
 }
 
 impl RunReads {
-    pub(super) fn collect(indexed: &[(FileId, &FileFacts)]) -> Self {
+    pub(super) fn collect(indexed: &[(FileId, &FileFacts)], test_modules: &FxHashSet<FileId>) -> Self {
         Self {
             docstrings: indexed.iter().any(|(_, facts)| facts.reads_docstrings),
             class_names: indexed.iter().any(|(_, facts)| facts.reads_class_names),
             reflected: indexed.iter().flat_map(|(_, facts)| facts.reflected_names.iter().cloned()).collect(),
             string_words: string_word_counts(indexed),
+            tests_read_all: indexed.iter().any(|(id, facts)| {
+                test_modules.contains(id)
+                    && (facts.string_words.lines().any(|word| word == "__all__")
+                        || facts.attribute_loads.contains_key("__all__"))
+            }),
         }
     }
 }
@@ -152,6 +160,7 @@ impl RunWide {
         docs.cache_key(&mut hasher);
         self.computed_reads.cache_key(&mut hasher);
         string_words_key(&self.reads.string_words).cache_key(&mut hasher);
+        self.reads.tests_read_all.cache_key(&mut hasher);
         // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
         for names in [
             &self.assigned_attributes,
@@ -188,6 +197,7 @@ impl RunWide {
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
             .map(|class| unqualified(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
+        let all_read = (self.reads.tests_read_all != other.reads.tests_read_all).then_some("__all__");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.module_reads.symmetric_difference(&other.module_reads))
@@ -204,6 +214,7 @@ impl RunWide {
             )
             .chain(classes)
             .chain(pickling)
+            .chain(all_read)
             .chain(self.string_word_changes(other))
             .collect()
     }
