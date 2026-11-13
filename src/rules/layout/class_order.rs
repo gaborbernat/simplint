@@ -141,8 +141,7 @@ impl<'a> ClassOrder<'a> {
 // name the other binds, so a constructor never moves past a statement that its defaults or decorators read.
 pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> ClassOrder<'a> {
     let body = &class.body;
-    let lazy = checker.semantic().annotations_are_lazy();
-    let reads: Vec<FxHashSet<&str>> = body.iter().map(|stmt| creation_reads(stmt, lazy)).collect();
+    let reads: Vec<FxHashSet<&str>> = body.iter().map(|stmt| creation_reads(checker, stmt)).collect();
     let binds: Vec<FxHashSet<&str>> = body.iter().map(|stmt| bound_names(stmt).into_iter().collect()).collect();
     let (mut units, unit_of, by_name) = units_of(class, &alternative_constructors(class));
     let swaps = Swaps::new(&reads, &binds, &unit_of);
@@ -162,7 +161,7 @@ pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -
     ClassOrder { units, unit_of, ranges, owner, children }
 }
 
-fn creation_reads(stmt: &Stmt, lazy: bool) -> FxHashSet<&str> {
+fn creation_reads<'a>(checker: &Checker, stmt: &'a Stmt) -> FxHashSet<&'a str> {
     let mut reads = ExprCollector::new(|expr| {
         expr.as_name_expr().filter(|name| name.ctx == ExprContext::Load).map(|name| name.id.as_str())
     });
@@ -171,8 +170,8 @@ fn creation_reads(stmt: &Stmt, lazy: bool) -> FxHashSet<&str> {
             for expr in definition_time_exprs(function) {
                 reads.visit_expr(expr);
             }
-            // Decorators read the annotations they decorate even under lazy annotations, as SMP201 assumes.
-            if !lazy || !function.decorator_list.is_empty() {
+            let semantic = checker.semantic();
+            if !semantic.annotations_are_lazy() || semantic.reads_annotations(&function.decorator_list) {
                 for expr in signature_annotations(function) {
                     reads.visit_expr(expr);
                 }

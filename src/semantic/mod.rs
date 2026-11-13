@@ -22,7 +22,7 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::syntax::{decorator_callee, first_positional, is_name, receiver, statement_index};
+use crate::syntax::{decorator_callee, first_positional, is_name, is_property_accessor, receiver, statement_index};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
@@ -189,6 +189,37 @@ impl<'a> Semantic<'a> {
     }
 
     pub const PROPERTY: &[&[&str]] = &[&["", "property"], &["functools", "cached_property"]];
+
+    // Standard decorators that never evaluate the annotations of what they wrap; `dataclass` reads its fields' as
+    // strings or forward references.
+    const KEEPS_ANNOTATIONS_LAZY: &[&[&str]] = &[
+        &["", "classmethod"],
+        &["", "property"],
+        &["", "staticmethod"],
+        &["abc", "abstractmethod"],
+        &["contextlib", "asynccontextmanager"],
+        &["contextlib", "contextmanager"],
+        &["dataclasses", "dataclass"],
+        &["functools", "cache"],
+        &["functools", "cached_property"],
+        &["functools", "lru_cache"],
+        &["functools", "total_ordering"],
+        &["functools", "wraps"],
+        &["typing", "final"],
+        &["typing", "overload"],
+        &["typing", "override"],
+        &["typing_extensions", "final"],
+        &["typing_extensions", "overload"],
+        &["typing_extensions", "override"],
+    ];
+
+    // Whether a decorator may read the annotations of what it decorates while the module loads, as FastAPI routes,
+    // pydantic's `validate_call` or `functools.singledispatch` do, even when Python defers them.
+    pub fn reads_annotations(&self, decorators: &[ast::Decorator]) -> bool {
+        decorators.iter().any(|decorator| {
+            !is_property_accessor(&decorator.expression) && !self.is_decorator(decorator, Self::KEEPS_ANNOTATIONS_LAZY)
+        })
+    }
 
     // Whether a decorator, or the factory a called decorator comes from, resolves to one of `names`.
     pub fn is_decorator(&self, decorator: &ast::Decorator, names: &[&[&str]]) -> bool {

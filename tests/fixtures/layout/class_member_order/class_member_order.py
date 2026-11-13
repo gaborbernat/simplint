@@ -86,7 +86,7 @@ class CtorAliased:
     ALIAS = __init__
 
 
-class CtorOverloadStuck:
+class CtorOverloadAfterAlias:
     def load(self) -> int:
         return 1
 
