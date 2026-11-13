@@ -11,7 +11,7 @@ real code. Raising a built-in such as [`ValueError`](https://docs.python.org/3/b
 keeps the program to the types Python already has. A
 [style-guide discussion](https://github.com/amontalenti/elements-of-python-style/issues/9) records David Beazley and
 others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs. A class that no handler
-names gives no such protection: no caller tells it apart from a built-in.
+names gives no such protection.
 
 ## Example
 

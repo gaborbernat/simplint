@@ -1,4 +1,4 @@
-Flags module-level functions and classes that only test modules use, since they belong in the tests.
+Flags module-level functions and classes that only test modules use.
 
 ## Why is this bad?
 

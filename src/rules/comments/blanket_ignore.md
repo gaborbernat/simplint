@@ -1,6 +1,5 @@
 Flags suppression comments that name no error code, except the forms Ruff's PGH003, PGH004 and RUF103 report, such as a
-bare `# noqa`, `# type: ignore` or `# ruff: ignore`. It covers the rest, such as `# ty: ignore`. A blanket suppression
-hides every error on its line or in its file, including errors that appear there later.
+bare `# noqa`, `# type: ignore` or `# ruff: ignore`. It covers the rest, such as `# ty: ignore`.
 
 ## Why is this bad?
 
