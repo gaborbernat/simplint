@@ -82,6 +82,19 @@ fn check_watch_ignores_unrelated_changes() {
     assert_eq!((code, rest.iter().any(|line| line.contains("File change detected"))), (Some(2), false));
 }
 
+// A nested configuration is read per file during the check rather than when the run resolves its settings, so a
+// broken one ends the run from inside the check.
+#[test]
+fn check_watch_ends_when_a_nested_configuration_breaks() {
+    let root = project(&[("module.py", "x = 1\n"), ("sub/other.py", "y = 1\n")]);
+    let mut watched = Watched::start(root.path(), &[]);
+    watched.wait_for("Watching for file changes.");
+    fs::write(root.path().join("broken.txt"), "[tool.simplint\n").expect("write configuration");
+    fs::rename(root.path().join("broken.txt"), root.path().join("sub/pyproject.toml")).expect("rename");
+    let (code, rest) = watched.finish();
+    assert_eq!((code, rest.iter().any(|line| line.contains("File change detected"))), (Some(2), true));
+}
+
 #[test]
 fn check_watch_quiet_prints_only_diagnostics() {
     let root = project(&[("module.py", "x = 1\n")]);
@@ -131,9 +144,11 @@ impl Watched {
         }
     }
 
-    // Watch mode runs until a check cannot run, so a configuration simplint cannot read ends it.
+    // Watch mode runs until a check cannot run, so a configuration simplint cannot read ends it. It arrives whole by a
+    // rename, as a run that read it half written would fail at a different step on each run.
     fn stop(mut self, root: &Path) -> (Option<i32>, String) {
-        fs::write(root.join("pyproject.toml"), "[tool.simplint\n").expect("write configuration");
+        fs::write(root.join("broken.txt"), "[tool.simplint\n").expect("write configuration");
+        fs::rename(root.join("broken.txt"), root.join("pyproject.toml")).expect("rename");
         self.drain();
         let output = self.child.wait_with_output().expect("exits");
         (output.status.code(), String::from_utf8(output.stderr).expect("utf-8 stderr"))
