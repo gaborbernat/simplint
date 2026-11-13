@@ -33,7 +33,7 @@ import requests
 ## What it does
 
 The rule collects every absolute import in the run's files outside the tests, in any scope, deferred and guarded ones
-included, and matches them to the requirements the way [`undeclared-dependency`](undeclared_dependency.md) does. The
+included, and matches them to the requirements the way [`undeclared-dependency`](SMP312.html) does. The
 project has no Python file for `pyproject.toml`, so the reports sit at the start of the `__init__.py` of its first
 top-level package.
 

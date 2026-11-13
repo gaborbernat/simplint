@@ -60,7 +60,7 @@ default of the parameter it fills.
   print(scale(2), scale(2, 1, 5))
   ```
 
-- **Parameters every call passes**: [`unused-default`](unused_default.md) reports their default instead, since the
+- **Parameters every call passes**: [`unused-default`](SMP506.html) reports their default instead, since the
   default is then never used.
 
   ```python ok
