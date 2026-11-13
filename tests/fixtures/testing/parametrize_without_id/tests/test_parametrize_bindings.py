@@ -41,3 +41,12 @@ for LEFT, RIGHT in [(1, 2)]:
 @pytest.mark.parametrize("value", [SEEN, LEFT, UNBOUND])
 def test_unreadable_and_unbound(value: int) -> None:
     assert value
+
+
+for TUPLED in (pytest.param(10),):
+    pass
+
+
+@pytest.mark.parametrize("value", [TUPLED])
+def test_tuple_loop(value: int) -> None:
+    assert value
