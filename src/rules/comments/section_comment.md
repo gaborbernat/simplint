@@ -127,10 +127,10 @@ def parse_header(line: str) -> str:
 
 ### Fix
 
-What the fix does depends on the text left once the decoration is gone:
+The fix is safe, since comments do not affect behavior. What it does depends on the text left once the decoration is
+gone:
 
-- **Decoration only, or a title of up to three words**, as in `# === helpers ===`: the fix deletes the comment. It is
-  safe for a bare divider. **Unsafe fix:** a title's words may still say something about the code below.
+- **Decoration only, or a title of up to three words**, as in `# === helpers ===`: the fix deletes the comment.
 
   ```python report
   # === helpers ===

@@ -119,8 +119,8 @@ No fix is offered, since where to split a paragraph depends on its meaning.
       """Open a connection.
 
       Args:
-          host: Network interface the client connects to, as a name or an address.
-          port: TCP port the server listens on, between one and 65535.
+          host: Name or address the client connects to.
+          port: TCP port the server listens on.
       """
   ```
 

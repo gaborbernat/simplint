@@ -1,6 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_source_file::LineRanges;
-use ruff_text_size::TextRange;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -47,7 +46,7 @@ pub fn section_comment(checker: &Checker) {
                 Rule::SectionComment,
                 range,
                 "Section comment groups code; extract a named function or class instead",
-                Some(deletion(source, range)),
+                Some(Fix::safe_edit(Edit::range_deletion(source.full_line_range(range.start())))),
                 "Remove the section comment",
             ),
         }
@@ -105,12 +104,6 @@ fn left_to_ruff(comment: &str) -> bool {
 
 fn is_title(content: &str) -> bool {
     !content.contains("://") && !content.contains(['(', ')', '[', ']', '{', '}', '=', '<', '>', '`'])
-}
-
-// Removing a bare divider loses nothing, but a title's words may still say something, so its removal is unsafe.
-fn deletion(source: &str, range: TextRange) -> Fix {
-    let edit = Edit::range_deletion(source.full_line_range(range.start()));
-    if source[range].chars().any(char::is_alphanumeric) { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) }
 }
 
 // Up to three words are a title that labels the code below, so the fix removes the comment with them.

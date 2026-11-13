@@ -141,7 +141,7 @@ fn target_names<'a>() -> ExprCollector<impl FnMut(&'a Expr) -> Option<&'a str>, 
 fn receives(iter: &Expr) -> bool {
     match iter {
         Expr::List(_) | Expr::Tuple(_) | Expr::Set(_) | Expr::Dict(_) => false,
-        Expr::Call(ast::ExprCall { func, .. }) => !func.as_name_expr().is_some_and(|name| name.id == "range"),
+        Expr::Call(ast::ExprCall { func, .. }) => func.as_name_expr().is_none_or(|name| name.id != "range"),
         _ => true,
     }
 }
