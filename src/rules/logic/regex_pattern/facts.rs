@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
-use crate::syntax::alias_binding;
+use crate::syntax::{alias_binding, is_comprehension_condition};
 
 const MODULES: [&str; 2] = ["re", "regex"];
 
@@ -403,16 +403,16 @@ impl<'a> Walk<'_, 'a> {
             }
             Some(Expr::Compare(compare)) if is_none_test(compare, child) => Context::Test,
             Some(Expr::If(ast::ExprIf { test, .. })) if ptr::eq(test.as_ref(), child) => Context::Test,
-            Some(Expr::ListComp(ast::ExprListComp { generators, .. })) if is_condition(generators, child) => {
+            Some(Expr::ListComp(ast::ExprListComp { generators, .. })) if is_comprehension_condition(generators, child) => {
                 Context::Test
             }
-            Some(Expr::SetComp(ast::ExprSetComp { generators, .. })) if is_condition(generators, child) => {
+            Some(Expr::SetComp(ast::ExprSetComp { generators, .. })) if is_comprehension_condition(generators, child) => {
                 Context::Test
             }
-            Some(Expr::Generator(ast::ExprGenerator { generators, .. })) if is_condition(generators, child) => {
+            Some(Expr::Generator(ast::ExprGenerator { generators, .. })) if is_comprehension_condition(generators, child) => {
                 Context::Test
             }
-            Some(Expr::DictComp(ast::ExprDictComp { generators, .. })) if is_condition(generators, child) => {
+            Some(Expr::DictComp(ast::ExprDictComp { generators, .. })) if is_comprehension_condition(generators, child) => {
                 Context::Test
             }
             Some(_) => Context::Other,
@@ -601,11 +601,6 @@ fn subscript_reads(slice: &Expr) -> Reads {
         Some(_) => Reads::NUMBERED,
         None => Reads::NAMED,
     }
-}
-
-// Whether an expression is the condition of one of a comprehension's `if` clauses, which Ruff reads as a boolean test.
-fn is_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
-    generators.iter().any(|generator| generator.ifs.iter().any(|condition| ptr::eq(condition, expr)))
 }
 
 // `expr is None` or `expr is not None`, which a match object reaches only as a truth test.

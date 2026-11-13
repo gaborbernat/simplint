@@ -19,3 +19,14 @@ def literal_both_sides():
 
 def string(text):
     return text == ""
+
+
+def tests(items, flag):
+    if not items == []:
+        return [item for item in items if item != []]
+    if flag and items != ():
+        return bool(items == {})
+    match flag:
+        case True if items == []:
+            return None
+    return None

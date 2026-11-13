@@ -902,6 +902,11 @@ impl<'a> Visitor<'a> for ReturnVisitor<'a> {
     }
 }
 
+// Whether an expression is the condition of one of a comprehension's `if` clauses.
+pub fn is_comprehension_condition(generators: &[ast::Comprehension], expr: &Expr) -> bool {
+    generators.iter().any(|generator| generator.ifs.iter().any(|condition| std::ptr::eq(condition, expr)))
+}
+
 pub fn is_main_guard(stmt: &Stmt) -> bool {
     stmt.as_if_stmt().is_some_and(|stmt| is_main_test(&stmt.test))
 }
