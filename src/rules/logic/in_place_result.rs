@@ -6,13 +6,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Container {
-    List,
-    Dict,
-    Set,
-}
-
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(call) = expr else {
         return;
@@ -55,6 +48,13 @@ fn is_result_used(walker: &Walker, expr: &Expr) -> bool {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Container {
+    List,
+    Dict,
+    Set,
+}
+
 fn in_place_call(checker: &Checker, call: &ast::ExprCall) -> Option<String> {
     if checker.semantic().resolves_to(&call.func, &["random", "shuffle"]) {
         return Some("random.shuffle()".to_owned());
@@ -62,9 +62,7 @@ fn in_place_call(checker: &Checker, call: &ast::ExprCall) -> Option<String> {
     let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = call.func.as_ref() else {
         return None;
     };
-    let method = attr.as_str();
-    let container = container(checker, value)?;
-    let in_place = match container {
+    let in_place = match container(checker, value)? {
         Container::List => ["append", "extend", "insert", "remove", "reverse", "clear", "sort"].as_slice(),
         Container::Dict => ["update", "clear"].as_slice(),
         Container::Set => [
@@ -79,7 +77,7 @@ fn in_place_call(checker: &Checker, call: &ast::ExprCall) -> Option<String> {
         ]
         .as_slice(),
     };
-    in_place.contains(&method).then(|| format!("{}.{method}()", checker.text(value.as_ref())))
+    in_place.contains(&attr.as_str()).then(|| format!("{}.{attr}()", checker.text(value.as_ref())))
 }
 
 // What the receiver provably is: a display, a comprehension, a builtin constructor call, a name whose only binding is
@@ -107,9 +105,8 @@ fn container(checker: &Checker, value: &Expr) -> Option<Container> {
 }
 
 fn builtin(checker: &Checker, expr: &Expr) -> Option<Container> {
-    let semantic = checker.semantic();
     [("list", Container::List), ("dict", Container::Dict), ("set", Container::Set)]
         .into_iter()
-        .find(|(name, _)| semantic.is_builtin(expr, name))
+        .find(|(name, _)| checker.semantic().is_builtin(expr, name))
         .map(|(_, container)| container)
 }

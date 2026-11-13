@@ -29,10 +29,6 @@ pub(super) fn first_exit(body: &[Stmt]) -> Option<(usize, Exit)> {
     body.iter().enumerate().find_map(|(index, stmt)| exit_of(stmt).map(|exit| (index, exit)))
 }
 
-fn block_exit(body: &[Stmt]) -> Option<Exit> {
-    body.iter().find_map(exit_of)
-}
-
 // A `with` never counts: its context manager may swallow an exception, even one raised while a `return` builds its
 // value, and the code after the `with` then runs.
 fn exit_of(stmt: &Stmt) -> Option<Exit> {
@@ -63,6 +59,10 @@ fn exit_of(stmt: &Stmt) -> Option<Exit> {
         }
         _ => None,
     }
+}
+
+fn block_exit(body: &[Stmt]) -> Option<Exit> {
+    body.iter().find_map(exit_of)
 }
 
 pub(super) fn is_true_constant(expr: &Expr) -> bool {

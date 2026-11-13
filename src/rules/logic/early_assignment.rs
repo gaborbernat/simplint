@@ -35,6 +35,13 @@ pub fn early_assignment(checker: &Checker) {
     });
 }
 
+// The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
+fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
+    let target = sole_name_target(assign)?;
+    let name = target.id.as_str();
+    (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
+}
+
 // The ranges of the string tokens of the file in source order, which may hold a name the rule must not move past.
 fn string_tokens(checker: &Checker) -> Vec<TextRange> {
     checker
@@ -44,18 +51,6 @@ fn string_tokens(checker: &Checker) -> Vec<TextRange> {
         .filter(|token| matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle))
         .map(Ranged::range)
         .collect()
-}
-
-// The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
-fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
-    let target = sole_name_target(assign)?;
-    let name = target.id.as_str();
-    (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
-}
-
-// Whether the text holds the name as a whole identifier, so `out` is in `"out.append(1)"` but not in `"output"`.
-fn spells(text: &str, name: &str) -> bool {
-    identifier_words(text).any(|word| word == name)
 }
 
 // Moving the assignment down to its first use cannot change what the function does: nothing reads or binds the name
@@ -122,6 +117,11 @@ fn check_assign<'a>(
         checker.comment_above(assign).is_none().then(|| move_fix(checker, assign, next)).flatten(),
         "Move the assignment down",
     );
+}
+
+// Whether the text holds the name as a whole identifier, so `out` is in `"out.append(1)"` but not in `"output"`.
+fn spells(text: &str, name: &str) -> bool {
+    identifier_words(text).any(|word| word == name)
 }
 
 fn is_constant_assign(stmt: &Stmt) -> bool {

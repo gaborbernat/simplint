@@ -9,14 +9,13 @@ use crate::rules::edits::fix_of;
 use crate::rules::logic::regex_pattern::INLINE_FLAGS;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(call) = expr else {
         return;
     };
+    let checker = walker.checker;
     let Some(anchored) = anchored_call(checker, call) else {
         return;
     };
-    let fix = fix(checker, call, &anchored);
     checker.report_fix(
         Rule::AnchoredRegexMatch,
         call.func.range(),
@@ -25,7 +24,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         } else {
             format!("`re.{}` with a pattern anchored at its end is `re.fullmatch`", anchored.function)
         },
-        fix,
+        fix(checker, call, &anchored),
         "Use `re.fullmatch`",
     );
 }
@@ -33,7 +32,6 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 pub(crate) struct Anchored<'a> {
     function: &'static str,
     pattern: &'a ast::ExprStringLiteral,
-    // How many characters of the pattern's value the anchors take at its start and at its end.
     start: Option<Anchor>,
     end: Anchor,
 }
@@ -71,16 +69,6 @@ pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> O
         return None;
     }
     Some(Anchored { function, pattern, start, end })
-}
-
-fn leading_anchor(value: &str) -> Option<Anchor> {
-    if value.starts_with('^') {
-        Some(Anchor::Caret)
-    } else if value.starts_with("\\A") {
-        Some(Anchor::Absolute)
-    } else {
-        None
-    }
 }
 
 // The anchor at the end of a pattern with no flag group and no `|` outside a group or class.
@@ -125,6 +113,16 @@ fn trailing_anchor(value: &str) -> Option<Anchor> {
     last.filter(|_| !in_class)
 }
 
+fn leading_anchor(value: &str) -> Option<Anchor> {
+    if value.starts_with('^') {
+        Some(Anchor::Caret)
+    } else if value.starts_with("\\A") {
+        Some(Anchor::Absolute)
+    } else {
+        None
+    }
+}
+
 // Renaming the function and dropping the anchors keeps the match, except for a string that ends in a newline, which `$`
 // lets through and `re.fullmatch` does not.
 fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<Fix> {
@@ -133,7 +131,6 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     };
     let literal = checker.text(anchored.pattern);
     let quote_start = literal.find(['"', '\''])?;
-    let prefix = &literal[..quote_start];
     let quote =
         if literal[quote_start..].starts_with("\"\"\"") || literal[quote_start..].starts_with("'''") { 3 } else { 1 };
     let body = TextRange::new(
@@ -141,16 +138,14 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
         anchored.pattern.end() - TextSize::try_from(quote).ok()?,
     );
     let source = checker.text(body);
-    let raw = prefix.contains(['r', 'R']);
+    let raw = literal[..quote_start].contains(['r', 'R']);
     let mut edits = vec![Edit::range_replacement("fullmatch".to_owned(), attribute.attr.range())];
     if let Some(start) = anchored.start {
-        let width = anchor_width(source, start, raw, true)?;
-        edits.push(Edit::range_deletion(TextRange::at(body.start(), width)));
+        edits.push(Edit::range_deletion(TextRange::at(body.start(), anchor_width(source, start, raw, true)?)));
     }
     let width = anchor_width(source, anchored.end, raw, false)?;
     edits.push(Edit::range_deletion(TextRange::new(body.end() - width, body.end())));
-    let applicability = if anchored.end == Anchor::Dollar { Applicability::Unsafe } else { Applicability::Safe };
-    fix_of(edits, applicability)
+    fix_of(edits, if anchored.end == Anchor::Dollar { Applicability::Unsafe } else { Applicability::Safe })
 }
 
 // The source characters of an anchor: one for `^` and `$`, two for `\A` and `\Z`, three when a plain string writes

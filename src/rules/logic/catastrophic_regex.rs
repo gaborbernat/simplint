@@ -3,8 +3,7 @@ use crate::lint::registry::Rule;
 use crate::rules::logic::regex_pattern::{INLINE_FLAGS, bounds, class_length, scan};
 
 pub fn catastrophic_regex(checker: &Checker) {
-    let facts = checker.state().regex_facts(checker);
-    for (literal, call) in facts.sites() {
+    for (literal, call) in checker.state().regex_facts(checker).sites() {
         let pattern = literal.decoded();
         let Some(scan) = scan(&pattern, call.verbose) else {
             continue;
@@ -26,82 +25,6 @@ pub fn catastrophic_regex(checker: &Checker) {
             ),
         );
     }
-}
-
-// A verbose pattern drops its comments and the whitespace around its pieces, so the message keeps to one line.
-fn shown(repeat: &[u8], verbose: bool) -> String {
-    let text = String::from_utf8_lossy(repeat);
-    if !verbose {
-        return text.into_owned();
-    }
-    let mut shown = String::with_capacity(text.len());
-    let mut characters = text.chars();
-    while let Some(character) = characters.next() {
-        match character {
-            '\\' => {
-                shown.push(character);
-                shown.extend(characters.next());
-            }
-            '#' => {
-                characters.by_ref().find(|character| *character == '\n');
-            }
-            character if character.is_ascii_whitespace() => {}
-            character => shown.push(character),
-        }
-    }
-    shown
-}
-
-// A piece of the pattern, with the byte span it covers.
-enum Node {
-    // A character, class, escape, anchor or backreference: something that matches without backtracking inside.
-    Atom,
-    // A group's alternatives, each a sequence of nodes. An atomic group never backtracks into itself.
-    Group { alternatives: Vec<Vec<Node>>, atomic: bool },
-    Repeat { node: Box<Node>, min: u32, unbounded: bool, possessive: bool, span: (usize, usize) },
-}
-
-impl Node {
-    fn is_optional(&self) -> bool {
-        match self {
-            Node::Atom => false,
-            Node::Group { alternatives, .. } => {
-                alternatives.iter().any(|sequence| sequence.iter().all(Node::is_optional))
-            }
-            Node::Repeat { node, min, .. } => *min == 0 || node.is_optional(),
-        }
-    }
-}
-
-// The first repeat that the input can drive into exponential backtracking: an unbounded repeat of a group where one
-// alternative is a single unbounded repeat with everything else around it optional, as `(a+)+`, `(\w+\s*)*` or
-// `(x|y+)+` are. A string of `y`s then splits between the outer and inner repeat in exponentially many ways.
-fn find_nested(node: &Node) -> Option<(usize, usize)> {
-    match node {
-        Node::Atom => None,
-        Node::Group { alternatives, .. } => alternatives.iter().flatten().find_map(find_nested),
-        Node::Repeat { node: inner, unbounded, possessive, span, .. } => {
-            if *unbounded
-                && !possessive
-                && let Node::Group { alternatives, atomic: false } = inner.as_ref()
-                && alternatives.iter().any(|sequence| splits(sequence))
-            {
-                return Some(*span);
-            }
-            find_nested(inner)
-        }
-    }
-}
-
-fn splits(sequence: &[Node]) -> bool {
-    sequence.iter().enumerate().any(|(index, node)| {
-        let unbounded = match node {
-            Node::Repeat { unbounded, possessive, node, .. } => *unbounded && !possessive && !node.is_optional(),
-            Node::Group { alternatives, atomic: false } => alternatives.iter().any(|inner| splits(inner)),
-            _ => false,
-        };
-        unbounded && sequence.iter().enumerate().all(|(other, node)| other == index || node.is_optional())
-    })
 }
 
 struct Parser<'p> {
@@ -135,8 +58,7 @@ impl<'p> Parser<'p> {
                 Some(_) => {
                     let start = self.index;
                     let node = self.item()?;
-                    let node = self.quantified(node, start)?;
-                    alternatives.last_mut()?.push(node);
+                    alternatives.last_mut()?.push(self.quantified(node, start)?);
                 }
             }
         }
@@ -247,7 +169,81 @@ impl<'p> Parser<'p> {
             _ => false,
         };
         let span = (start, self.index);
-        let repeated = Node::Repeat { node: Box::new(node), min, unbounded, possessive, span };
-        self.quantified(repeated, start)
+        self.quantified(Node::Repeat { node: Box::new(node), min, unbounded, possessive, span }, start)
     }
+}
+
+enum Node {
+    // A character, class, escape, anchor or backreference: something that matches without backtracking inside.
+    Atom,
+    // A group's alternatives, each a sequence of nodes. An atomic group never backtracks into itself.
+    Group { alternatives: Vec<Vec<Node>>, atomic: bool },
+    Repeat { node: Box<Node>, min: u32, unbounded: bool, possessive: bool, span: (usize, usize) },
+}
+
+impl Node {
+    fn is_optional(&self) -> bool {
+        match self {
+            Node::Atom => false,
+            Node::Group { alternatives, .. } => {
+                alternatives.iter().any(|sequence| sequence.iter().all(Node::is_optional))
+            }
+            Node::Repeat { node, min, .. } => *min == 0 || node.is_optional(),
+        }
+    }
+}
+
+// The first repeat that the input can drive into exponential backtracking: an unbounded repeat of a group where one
+// alternative is a single unbounded repeat with everything else around it optional, as `(a+)+`, `(\w+\s*)*` or
+// `(x|y+)+` are. A string of `y`s then splits between the outer and inner repeat in exponentially many ways.
+fn find_nested(node: &Node) -> Option<(usize, usize)> {
+    match node {
+        Node::Atom => None,
+        Node::Group { alternatives, .. } => alternatives.iter().flatten().find_map(find_nested),
+        Node::Repeat { node: inner, unbounded, possessive, span, .. } => {
+            if *unbounded
+                && !possessive
+                && let Node::Group { alternatives, atomic: false } = inner.as_ref()
+                && alternatives.iter().any(|sequence| splits(sequence))
+            {
+                return Some(*span);
+            }
+            find_nested(inner)
+        }
+    }
+}
+
+fn splits(sequence: &[Node]) -> bool {
+    sequence.iter().enumerate().any(|(index, node)| {
+        let unbounded = match node {
+            Node::Repeat { unbounded, possessive, node, .. } => *unbounded && !possessive && !node.is_optional(),
+            Node::Group { alternatives, atomic: false } => alternatives.iter().any(|inner| splits(inner)),
+            _ => false,
+        };
+        unbounded && sequence.iter().enumerate().all(|(other, node)| other == index || node.is_optional())
+    })
+}
+
+// A verbose pattern drops its comments and the whitespace around its pieces, so the message keeps to one line.
+fn shown(repeat: &[u8], verbose: bool) -> String {
+    let text = String::from_utf8_lossy(repeat);
+    if !verbose {
+        return text.into_owned();
+    }
+    let mut shown = String::with_capacity(text.len());
+    let mut characters = text.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '\\' => {
+                shown.push(character);
+                shown.extend(characters.next());
+            }
+            '#' => {
+                characters.by_ref().find(|character| *character == '\n');
+            }
+            character if character.is_ascii_whitespace() => {}
+            character => shown.push(character),
+        }
+    }
+    shown
 }

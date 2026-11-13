@@ -20,17 +20,6 @@ pub fn iterator_reuse(checker: &Checker) {
     }
 }
 
-fn is_iterator_annotation(checker: &Checker, annotation: &Expr) -> bool {
-    let base = match annotation {
-        Expr::Subscript(subscript) => subscript.value.as_ref(),
-        _ => annotation,
-    };
-    let semantic = checker.semantic();
-    ["Iterator", "Generator"]
-        .into_iter()
-        .any(|name| semantic.match_typing_expr(base, name) || semantic.resolves_to(base, &["collections", "abc", name]))
-}
-
 fn check_scope<'a>(checker: &Checker<'a>, scope: &LocalScope<'a>) {
     let mut walk = Walk { checker, bindings: Vec::new(), sites: Vec::new(), path: Vec::new() };
     walk.visit_body(scope.body);
@@ -59,6 +48,17 @@ fn check_scope<'a>(checker: &Checker<'a>, scope: &LocalScope<'a>) {
         }
         report(checker, name, binding_path, &sites);
     }
+}
+
+fn is_iterator_annotation(checker: &Checker, annotation: &Expr) -> bool {
+    let base = match annotation {
+        Expr::Subscript(subscript) => subscript.value.as_ref(),
+        _ => annotation,
+    };
+    let semantic = checker.semantic();
+    ["Iterator", "Generator"]
+        .into_iter()
+        .any(|name| semantic.match_typing_expr(base, name) || semantic.resolves_to(base, &["collections", "abc", name]))
 }
 
 fn report(checker: &Checker, name: &str, binding_path: &[Branch], sites: &[&Site]) {
@@ -136,8 +136,7 @@ impl<'a> Walk<'_, 'a> {
             self.site(&first.iter, false);
             self.visit_expr(&first.iter);
         }
-        let id = expr.start().to_usize();
-        self.path.push(Branch { statement: id, arm: 0, is_loop: true, exits: false });
+        self.path.push(Branch { statement: expr.start().to_usize(), arm: 0, is_loop: true, exits: false });
         for (index, generator) in generators.iter().enumerate() {
             if index > 0 {
                 self.site(&generator.iter, false);
@@ -189,13 +188,16 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
                 self.site(iter, has_own_break(body));
                 self.visit_expr(iter);
                 self.visit_expr(target);
-                let id = stmt.start().to_usize();
-                self.arm(id, 0, true, body, ruff_python_ast::visitor::Visitor::visit_body);
+                self.arm(stmt.start().to_usize(), 0, true, body, Self::visit_body);
                 self.visit_body(orelse);
             }
             Stmt::While(ast::StmtWhile { test, body, orelse, .. }) => {
-                let id = stmt.start().to_usize();
-                self.path.push(Branch { statement: id, arm: 0, is_loop: true, exits: exits(body) });
+                self.path.push(Branch {
+                    statement: stmt.start().to_usize(),
+                    arm: 0,
+                    is_loop: true,
+                    exits: exits(body),
+                });
                 self.visit_expr(test);
                 self.visit_body(body);
                 self.path.pop();
@@ -204,27 +206,27 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 self.visit_expr(test);
                 let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body, ruff_python_ast::visitor::Visitor::visit_body);
+                self.arm(id, 0, false, body, Self::visit_body);
                 for (index, clause) in elif_else_clauses.iter().enumerate() {
                     if let Some(test) = &clause.test {
                         self.visit_expr(test);
                     }
-                    self.arm(id, index + 1, false, &clause.body, ruff_python_ast::visitor::Visitor::visit_body);
+                    self.arm(id, index + 1, false, &clause.body, Self::visit_body);
                 }
             }
             Stmt::Match(ast::StmtMatch { subject, cases, .. }) => {
                 self.visit_expr(subject);
                 let id = stmt.start().to_usize();
                 for (index, case) in cases.iter().enumerate() {
-                    self.arm(id, index, false, &case.body, ruff_python_ast::visitor::Visitor::visit_body);
+                    self.arm(id, index, false, &case.body, Self::visit_body);
                 }
             }
             Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
                 let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body, ruff_python_ast::visitor::Visitor::visit_body);
+                self.arm(id, 0, false, body, Self::visit_body);
                 for (index, handler) in handlers.iter().enumerate() {
                     let ast::ExceptHandler::ExceptHandler(handler) = handler;
-                    self.arm(id, index + 1, false, &handler.body, ruff_python_ast::visitor::Visitor::visit_body);
+                    self.arm(id, index + 1, false, &handler.body, Self::visit_body);
                 }
                 self.visit_body(orelse);
                 self.visit_body(finalbody);

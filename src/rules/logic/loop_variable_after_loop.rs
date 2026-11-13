@@ -36,7 +36,7 @@ fn check_target(checker: &Checker, names: &FunctionNames, for_loop: &ast::StmtFo
         return;
     }
     let mut mentions = names.mentions(name);
-    // A name bound or read before the loop has a value of its own when the loop runs no time.
+    // A name bound or read before the loop keeps a value of its own when the loop runs zero times.
     if mentions.clone().any(|(range, _)| range.start() < for_loop.target.start()) {
         return;
     }

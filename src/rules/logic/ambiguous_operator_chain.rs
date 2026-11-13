@@ -14,8 +14,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
     // A bitwise operator binds tighter than a comparison, so `a > 1 & b < 2` is `a > (1 & b) < 2`, not the
     // `(a > 1) & (b < 2)` a mask written without parentheses means.
-    let middle = &compare.operands[1..compare.operands.len() - 1];
-    if let Some(operand) = middle.iter().find(|operand| is_bare_bitwise(walker, compare, operand)) {
+    if let Some(operand) =
+        compare.operands[1..compare.operands.len() - 1].iter().find(|operand| is_bare_bitwise(walker, compare, operand))
+    {
         checker.report(
             Rule::AmbiguousOperatorChain,
             expr.range(),

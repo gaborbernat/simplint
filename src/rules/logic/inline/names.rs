@@ -10,13 +10,6 @@ use crate::syntax::{alias_root_binding, last_segment, pattern_capture};
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
 pub(crate) const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
 
-// Whether a name or an attribute may run code that reads a name by its text: a locals reader, `globals`, or an
-// `exec`-like function such as `six.exec_`. Wider than the locals readers, for a rule that moves code rather than
-// removing a name.
-fn reads_by_text(name: &str) -> bool {
-    LOCALS_READERS.contains(&name) || name == "globals" || name.ends_with("exec") || name.ends_with("exec_")
-}
-
 // Walked once per function, not once per assignment.
 pub(in crate::rules::logic) struct Names<'a> {
     pub(in crate::rules::logic) mentions: FxHashMap<&'a str, Vec<(TextRange, ExprContext)>>,
@@ -103,6 +96,13 @@ impl<'a> Visitor<'a> for Names<'a> {
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+// Whether a name or an attribute may run code that reads a name by its text: a locals reader, `globals`, or an
+// `exec`-like function such as `six.exec_`. Wider than the locals readers, for a rule that moves code rather than
+// removing a name.
+fn reads_by_text(name: &str) -> bool {
+    LOCALS_READERS.contains(&name) || name == "globals" || name.ends_with("exec") || name.ends_with("exec_")
 }
 
 impl Names<'_> {
