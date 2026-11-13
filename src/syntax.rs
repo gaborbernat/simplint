@@ -113,10 +113,7 @@ pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr
 // The name an `import` binds in its scope: its `as` name, or the first part of a dotted module name, which `import a.b`
 // binds as `a`.
 pub fn alias_root_binding(alias: &ast::Alias) -> &str {
-    alias
-        .asname
-        .as_ref()
-        .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
+    alias.asname.as_ref().map_or_else(|| top_level(&alias.name), |name| name.as_str())
 }
 
 pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
@@ -151,6 +148,16 @@ pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
         [argument] if call.arguments.keywords.is_empty() => Some(argument),
         _ => None,
     }
+}
+
+pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
+    call.arguments.args.get(position).or_else(|| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
+            .map(|item| &item.value)
+    })
 }
 
 pub fn is_repeating_expr(expr: &Expr) -> bool {
@@ -798,16 +805,6 @@ fn last_name(expr: &Expr) -> Option<&str> {
 // either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
 pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
     text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
-}
-
-pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
-    call.arguments.args.get(position).or_else(|| {
-        call.arguments
-            .keywords
-            .iter()
-            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
-            .map(|item| &item.value)
-    })
 }
 
 impl<'a> TypeStrings<'a> {
