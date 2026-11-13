@@ -10,7 +10,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 21:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple
 23:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
 25:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple
---- fixed (5 applied, 3 remaining) ---
+53:15 SMP544 The message has `%` placeholders, but the exception keeps its arguments apart and never fills them, so it shows a tuple [unsafe fix: Format the message before passing it]
+--- fixed (6 applied, 3 remaining) ---
 class ProjectError(Exception):
     pass
 
@@ -55,3 +56,12 @@ def fine(value, values):
     if value < 5:
         raise ValueError("bad %s")
     raise ValueError("{{literal}}", value)
+
+
+def structured(value, details, errors):
+    if value < 0:
+        raise SyntaxError("bad %s", details)
+    if value < 1:
+        raise ExceptionGroup("bad {}", errors)
+    if value < 2:
+        raise UserWarning("bad %s" % (value,))

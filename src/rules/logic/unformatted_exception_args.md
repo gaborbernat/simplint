@@ -49,6 +49,10 @@ def check(value):
 ### Exceptions
 
 - **The project's own exceptions**, whose `__init__` may format the message.
+
+- **[`SyntaxError`](https://docs.python.org/3/library/exceptions.html#SyntaxError) and its subclasses, and exception
+  groups**: their second argument is the error's location or the grouped exceptions, not part of the message.
+
 - **No fix** for named placeholders such as `%(name)s` or `{name}`, a count that differs from the arguments, or an
   implicitly concatenated message.
 
@@ -60,8 +64,9 @@ def check(value):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/)
-  (EM101) asks to move the literal to a variable, which keeps the bug.
+- **[Ruff](https://github.com/astral-sh/ruff):**
+  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) (EM101) asks to move the literal
+  to a variable, which keeps the bug.
 - **[pylint](https://github.com/pylint-dev/pylint):**
   [raising-format-tuple](https://pylint.readthedocs.io/en/stable/user_guide/messages/warning/raising-format-tuple.html)
   (W0715).

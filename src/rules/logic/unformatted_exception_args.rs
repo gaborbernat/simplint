@@ -1,44 +1,15 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_stdlib::builtins::is_exception;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 
-// The builtin exceptions, whose `str()` shows every positional argument as a tuple when there is more than one.
-const BUILTIN_EXCEPTIONS: [&str; 30] = [
-    "ArithmeticError",
-    "AssertionError",
-    "AttributeError",
-    "BufferError",
-    "ConnectionError",
-    "EOFError",
-    "Exception",
-    "FileExistsError",
-    "FileNotFoundError",
-    "ImportError",
-    "IndexError",
-    "KeyError",
-    "LookupError",
-    "ModuleNotFoundError",
-    "NameError",
-    "NotADirectoryError",
-    "NotImplementedError",
-    "OSError",
-    "OverflowError",
-    "PermissionError",
-    "RecursionError",
-    "ReferenceError",
-    "RuntimeError",
-    "StopIteration",
-    "SystemError",
-    "TimeoutError",
-    "TypeError",
-    "UnicodeError",
-    "ValueError",
-    "ZeroDivisionError",
-];
+// The builtin exceptions whose second positional argument is not part of the message: a syntax error's location and
+// an exception group's exceptions. Every other builtin exception shows its positional arguments as a tuple.
+const STRUCTURED: [&str; 5] = ["SyntaxError", "IndentationError", "TabError", "BaseExceptionGroup", "ExceptionGroup"];
 
 #[derive(Clone, Copy)]
 enum Style {
@@ -54,8 +25,11 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         return;
     };
     let checker = walker.checker;
-    let semantic = checker.semantic();
-    if !BUILTIN_EXCEPTIONS.iter().any(|name| semantic.is_builtin(func, name)) {
+    let is_builtin_exception = checker.semantic().qualified_name(func).is_some_and(|name| match name.segments() {
+        ["", builtin] => is_exception(builtin, checker.target_version().minor) && !STRUCTURED.contains(builtin),
+        _ => false,
+    });
+    if !is_builtin_exception {
         return;
     }
     let [Expr::StringLiteral(message), rest @ ..] = arguments.args.as_ref() else {

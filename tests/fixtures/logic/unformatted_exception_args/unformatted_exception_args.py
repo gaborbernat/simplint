@@ -42,3 +42,12 @@ def fine(value, values):
     if value < 5:
         raise ValueError("bad %s")
     raise ValueError("{{literal}}", value)
+
+
+def structured(value, details, errors):
+    if value < 0:
+        raise SyntaxError("bad %s", details)
+    if value < 1:
+        raise ExceptionGroup("bad {}", errors)
+    if value < 2:
+        raise UserWarning("bad %s", value)
