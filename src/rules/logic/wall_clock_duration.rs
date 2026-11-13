@@ -19,7 +19,6 @@ pub fn wall_clock_duration(checker: &Checker) {
 
 fn check_scope(checker: &Checker, scope: &LocalScope) {
     let nodes = scope.nodes();
-    // The names the scope binds once to `time.time()`, with the call each binds.
     let clocks: Vec<(&str, &ast::ExprCall)> = nodes
         .statements
         .iter()
