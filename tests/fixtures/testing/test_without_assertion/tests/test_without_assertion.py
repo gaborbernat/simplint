@@ -90,6 +90,35 @@ def test_marked_warnings_as_errors() -> None:
     compute()
 
 
+def test_simplefilter_strict() -> None:
+    warnings.simplefilter("error")
+    compute()
+
+
+def test_filterwarnings_keyword() -> None:
+    warnings.filterwarnings(action="error")
+    compute()
+
+
+def test_filterwarnings_ignore() -> None:
+    warnings.filterwarnings("ignore")
+    compute()
+
+
+def test_optional_dependency() -> None:
+    pytest.importorskip("numpy")
+    compute()
+
+
+class TestDerived(TestComputation):
+    def test_method(self) -> None:
+        super().test_method()
+
+
+def test_recursive_helpers() -> None:
+    ping(3)
+
+
 def test_smoke() -> None:
     compute()
 
@@ -149,3 +178,12 @@ def local_helper() -> None:
 
 def noop_helper() -> None:
     compute()
+
+
+def ping(count: int) -> None:
+    if count:
+        pong(count - 1)
+
+
+def pong(count: int) -> None:
+    ping(count)
