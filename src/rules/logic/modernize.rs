@@ -6,8 +6,10 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::argument_removal;
 
-// The attribute `expr` reads from a module the name is only ever bound to, as `re.error` is read from `re`. An
-// assignment or `del` patches the module, so only reads count.
+// The attribute `expr` reads from a module the name is only ever bound to, as `re.error` is read from `re`, so a fix
+// can rename the attribute. A name imported from the module is left alone, since renaming it would also rename its
+// uses. An assignment or `del` patches the module, where a rename would patch the other name, so only reads count. A
+// name bound to another module as well may be that one.
 pub fn module_attribute_read<'e>(checker: &Checker, expr: &'e Expr, path: &[&str]) -> Option<&'e ast::ExprAttribute> {
     let Expr::Attribute(attribute) = expr else {
         return None;
