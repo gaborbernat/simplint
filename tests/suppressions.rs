@@ -4,14 +4,19 @@ use test_case::test_case;
 
 use common::{check, project, read};
 
-#[test]
-fn check_noqa_suppresses_listed_code() {
-    let root = project(&[("module.py", "x = 1  # noqa: SMP101\ny = 2  # noqa\nz = 3  # noqa: E501\n")]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP101"]).1,
-        "module.py:3:1: SMP101 Single-letter name `z`; use a descriptive name\nFound 1 \
-         error.\n"
-    );
+#[test_case(
+    "x = 1  # noqa: SMP101\ny = 2  # noqa\nz = 3  # noqa: E501\n",
+    "module.py:3:1: SMP101 Single-letter name `z`; use a descriptive name\nFound 1 error.\n" ;
+    "noqa"
+)]
+#[test_case(
+    "x = 1  # simplint: ignore[SMP101, SMP601]\ny = 2  # simplint:ignore[SMP601]\n",
+    "module.py:2:1: SMP101 Single-letter name `y`; use a descriptive name\nFound 1 error.\n" ;
+    "simplint_ignore"
+)]
+fn suppression_comment_suppresses_its_codes(source: &str, expected: &str) {
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).1, expected);
 }
 
 #[test_case("x = 1  # noqa: SMP101\n" ; "line_noqa")]
@@ -94,16 +99,6 @@ fn blanket_file_level_noqa_keeps_its_reason_report() {
     );
 }
 
-#[test]
-fn simplint_ignore_comment_suppresses_its_codes() {
-    let root =
-        project(&[("module.py", "x = 1  # simplint: ignore[SMP101, SMP601]\ny = 2  # simplint:ignore[SMP601]\n")]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP101"]).1,
-        "module.py:2:1: SMP101 Single-letter name `y`; use a descriptive name\nFound 1 error.\n"
-    );
-}
-
 #[test_case(
     &["--add-noqa"],
     "x = 1  # noqa: E501, SMP101 long\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101\nz = 1  # noqa\n\
@@ -128,22 +123,29 @@ fn add_noqa_adds_directives(flags: &[&str], expected: &str) {
     );
 }
 
-#[test]
-fn add_ignore_merges_into_ignore_comments() {
-    let root = project(&[(
-        "module.py",
-        "x = 1  # simplint: ignore[SMP601] kept\n# simplint: ignore[SMP002]\ny = 1  # noqa: SMP601\n",
-    )]);
-    let result = check(root.path(), &["--select", "SMP101,SMP003", "--add-ignore"]);
+// The merge renames the comment's numeric codes, which leaves nothing for a `numeric-ignore` selector to silence there.
+#[test_case(
+    "SMP101,SMP003",
+    "x = 1  # simplint: ignore[SMP601] kept\n# simplint: ignore[SMP002]\ny = 1  # noqa: SMP601\n",
+    "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
+     # simplint: ignore[long-paragraph, suppression-without-reason]\n\
+     y = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n" ;
+    "into_ignore_comments"
+)]
+#[test_case(
+    "SMP101,SMP008",
+    "x = 1  # simplint: ignore[SMP601] kept\ny = 2  # simplint: ignore[SMP101] kept\n# simplint: ignore[SMP101]\n",
+    "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
+     y = 2  # simplint: ignore[single-letter-name] kept\n\
+     # simplint: ignore[single-letter-name]\n" ;
+    "without_naming_the_numeric_codes_it_renames"
+)]
+fn add_ignore_merges(select: &str, source: &str, expected: &str) {
+    let root = project(&[("module.py", source)]);
+    let result = check(root.path(), &["--select", select, "--add-ignore"]);
     assert_eq!(
         (result, read(root.path(), "module.py")),
-        (
-            (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
-             # simplint: ignore[long-paragraph, suppression-without-reason]\n\
-             y = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n"
-                .to_owned()
-        )
+        ((0, String::new(), "Added 3 ignore comments.\n".to_owned()), expected.to_owned())
     );
 }
 
@@ -217,37 +219,16 @@ fn add_suppression_handles_a_line_with_a_blanket_noqa(flag: &str, expected: &str
     "x = 1  # simplint: ignore[missing-final, single-letter-name] paper  # pragma: no cover\n" ;
     "ignore_replaces_reason"
 )]
+#[test_case(
+    "--add-ignore",
+    "x = 1  # simplint: ignore[SMP999] kept\n",
+    "x = 1  # simplint: ignore[SMP999, single-letter-name] kept\n" ;
+    "ignore_keeps_a_code_no_rule_has"
+)]
 fn add_suppression_keeps_what_follows_the_codes(flag: &str, source: &str, expected: &str) {
     let root = project(&[("module.py", source)]);
     check(root.path(), &["--select", "SMP101", flag]);
     assert_eq!(read(root.path(), "module.py"), expected);
-}
-
-// The merge renames the comment's numeric codes, which leaves nothing for a `numeric-ignore` selector to silence there.
-#[test]
-fn add_ignore_does_not_name_the_numeric_codes_it_renames() {
-    let root = project(&[(
-        "module.py",
-        "x = 1  # simplint: ignore[SMP601] kept\ny = 2  # simplint: ignore[SMP101] kept\n# simplint: ignore[SMP101]\n",
-    )]);
-    let result = check(root.path(), &["--select", "SMP101,SMP008", "--add-ignore"]);
-    assert_eq!(
-        (result, read(root.path(), "module.py")),
-        (
-            (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
-             y = 2  # simplint: ignore[single-letter-name] kept\n\
-             # simplint: ignore[single-letter-name]\n"
-                .to_owned()
-        )
-    );
-}
-
-#[test]
-fn add_ignore_keeps_a_code_no_rule_has() {
-    let root = project(&[("module.py", "x = 1  # simplint: ignore[SMP999] kept\n")]);
-    check(root.path(), &["--select", "SMP101", "--add-ignore"]);
-    assert_eq!(read(root.path(), "module.py"), "x = 1  # simplint: ignore[SMP999, single-letter-name] kept\n");
 }
 
 #[test]

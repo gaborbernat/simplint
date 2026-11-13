@@ -627,13 +627,15 @@ fn hinted_imports(message: &str) -> Vec<&str> {
 fn private_import_path_hint(report: &[(&str, &str)], fixed: &[(&str, &str)], hint: &str) {
     let root = common::project(report);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
-    assert!(stdout.contains(hint), "{stdout}");
     let written: Vec<&str> = fixed.iter().flat_map(|(_, content)| content.lines()).collect();
-    for import in hinted_imports(hint) {
-        assert!(written.contains(&import), "the hint writes `{import}`, which the fix does not contain:\n{stdout}");
-    }
-    let root = common::project(&[report, fixed].concat());
-    common::assert_report_count(root.path(), "SMP310", 0);
+    let unwritten: Vec<&str> = hinted_imports(hint).into_iter().filter(|import| !written.contains(import)).collect();
+    let fixed_root = common::project(&[report, fixed].concat());
+    let after = common::check(fixed_root.path(), &["--no-cache", "--select", "SMP310"]).1;
+    assert_eq!(
+        (stdout.contains(hint), unwritten, common::reports(&after, "SMP310")),
+        (true, Vec::<&str>::new(), Vec::<&str>::new()),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -651,11 +653,8 @@ fn lazy_private_name_hint_applies_its_import() {
     let args = ["--no-cache", "--select", "SMP310", "--target-version", "py315"];
     let hint = "re-export `what` in `_a/__init__.py` and import it with `lazy from ._a import what as w`";
     let stdout = common::check(common::project(report).path(), &args).1;
-    assert!(stdout.contains(hint), "{stdout}");
-    let written: Vec<&str> = fixed.iter().flat_map(|(_, content)| content.lines()).collect();
-    assert!(written.contains(&"lazy from ._a import what as w"), "{written:?}");
-    let stdout = common::check(common::project(&[report, fixed].concat()).path(), &args).1;
-    assert!(common::reports(&stdout, "SMP310").is_empty(), "{stdout}");
+    let after = common::check(common::project(&[report, fixed].concat()).path(), &args).1;
+    assert_eq!((stdout.contains(hint), common::reports(&after, "SMP310")), (true, Vec::<&str>::new()), "{stdout}");
 }
 
 #[test]
@@ -726,14 +725,11 @@ fn flattened_package_moves_a_conflicting_prefix_module_into_the_package(extensio
     let root =
         common::project(&[(module.as_str(), ""), ("pkg/_csv_a.py", ""), ("pkg/_csv_b.py", ""), ("pkg/_csv_c.py", "")]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP311"]).1;
-    assert!(
-        stdout.contains(&format!(
-            "SMP311 `_csv_a.py` shares the `_csv_` prefix with 2 other modules; move `_csv.{extension}` into a `_csv` \
-             package as its `__init__.py`, which re-exports their names"
-        )),
-        "{stdout}"
+    let message = format!(
+        "SMP311 `_csv_a.py` shares the `_csv_` prefix with 2 other modules; move `_csv.{extension}` into a `_csv` \
+         package as its `__init__.py`, which re-exports their names"
     );
-    assert_eq!(common::reports(&stdout, "SMP311").len(), 3, "{stdout}");
+    assert_eq!((stdout.contains(&message), common::reports(&stdout, "SMP311").len()), (true, 3), "{stdout}");
 }
 
 #[test]
@@ -824,9 +820,15 @@ fn private_module_object_import_reports_both_import_and_attribute() {
         ("package/consumer.py", "import package._api as api\n\nvalue = api.make()\n"),
     ]);
     let stdout = common::check(root.path(), &["--no-cache", "--unsafe-fixes", "--select", "SMP304,SMP310"]).1;
-    assert!(stdout.contains("SMP310 Private import `package._api`"), "{stdout}");
-    assert!(stdout.contains("SMP304 Import `make` from `package._api`"), "{stdout}");
-    assert!(!stdout.contains("unsafe fix available"), "{stdout}");
+    assert_eq!(
+        (
+            stdout.contains("SMP310 Private import `package._api`"),
+            stdout.contains("SMP304 Import `make` from `package._api`"),
+            stdout.contains("unsafe fix available"),
+        ),
+        (true, true, false),
+        "{stdout}"
+    );
 }
 
 // Ruff's PLC2701 reports a private import that a module or function uses at runtime, or never uses, and leaves the
@@ -1107,8 +1109,7 @@ fn module_attribute_import_keeps_names_a_function_rebinds_through_global() {
         ("pkg/setters.py", "from . import config\n\n\ndef check() -> bool:\n    return config._run\n"),
     ]);
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP304"]).1;
-    assert!(stdout.contains("SMP304 Import `_run`"));
-    assert!(!stdout.contains("SMP304 [*]"));
+    assert_eq!((stdout.contains("SMP304 Import `_run`"), stdout.contains("SMP304 [*]")), (true, false), "{stdout}");
 }
 
 // An attribute read off a module bound by `__import__` or a plain import is an import of that attribute, not a patch of
@@ -1147,8 +1148,14 @@ fn module_attribute_import_reports_each_same_named_module_read_through_an_import
         ),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-    assert!(stdout.contains("pkg/gen.py:5:12: SMP304 Import `TABLE`"), "{stdout}");
-    assert!(stdout.contains("tools/gen.py:5:12: SMP304 Import `TABLE`"), "{stdout}");
+    assert_eq!(
+        (
+            stdout.contains("pkg/gen.py:5:12: SMP304 Import `TABLE`"),
+            stdout.contains("tools/gen.py:5:12: SMP304 Import `TABLE`")
+        ),
+        (true, true),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -1183,8 +1190,7 @@ fn module_attribute_import_withholds_the_fix_in_an_import_cycle(partner: &str, f
         ("pkg/b.py", partner),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-    assert_eq!(stdout.matches("SMP304 Import").count(), 2, "{stdout}");
-    assert_eq!(stdout.contains("unsafe fix"), fixable, "{stdout}");
+    assert_eq!((stdout.matches("SMP304 Import").count(), stdout.contains("unsafe fix")), (2, fixable), "{stdout}");
 }
 
 // The fix rewrites the reads of the module only, so a parameter, local, loop or comprehension variable of the same name
@@ -1223,14 +1229,15 @@ fn module_attribute_import_leaves_aliased_top_level_package_reads_alone() {
         ("aliased_package.py", "import pkg.core as core\n\n\ndef check() -> int:\n    return core.helper()\n"),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-    assert!(!stdout.contains("aliased_top.py"), "{stdout}");
-    for location in [
+    let missing: Vec<&str> = [
         "same_name.py:5:12: SMP304 Import `NAT`",
         "aliased_submodule.py:5:12: SMP304 Import `helper`",
         "aliased_package.py:5:12: SMP304 Import `helper`",
-    ] {
-        assert!(stdout.contains(&common::native(location)), "{stdout}");
-    }
+    ]
+    .into_iter()
+    .filter(|location| !stdout.contains(&common::native(location)))
+    .collect();
+    assert_eq!((stdout.contains("aliased_top.py"), missing), (false, Vec::<&str>::new()), "{stdout}");
 }
 
 #[test_case("" ; "ruff_unselected")]
@@ -1368,12 +1375,17 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
         ("tests/test_other.py", "from pkg import main\n\n\nclass Other(Exception):\n    limit: main._Limit\n"),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-    for location in ["tests/test_routes.py:9:18:", "tests/test_routes.py:14:19:", "tests/test_models.py:7:12:"] {
-        assert!(stdout.contains(&common::native(location)), "{stdout}");
-    }
-    for location in ["tests/test_unlisted.py:9:20:", "tests/test_other.py:5:12:"] {
-        assert!(stdout.contains(&common::native(location)), "{stdout}");
-    }
+    let missing: Vec<&str> = [
+        "tests/test_routes.py:9:18:",
+        "tests/test_routes.py:14:19:",
+        "tests/test_models.py:7:12:",
+        "tests/test_unlisted.py:9:20:",
+        "tests/test_other.py:5:12:",
+    ]
+    .into_iter()
+    .filter(|location| !stdout.contains(&common::native(location)))
+    .collect();
+    assert_eq!(missing, Vec::<&str>::new(), "{stdout}");
 }
 
 // The builtins define these names, so their import goes. Ruff's A004 reports an unaliased import of a builtin that
@@ -1409,9 +1421,15 @@ fn backport_import_follows_builtin_import_shadowing(compat: &str, consumer: &str
         ("pkg/run.py", consumer),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
-    assert_eq!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), reported, "{stdout}");
     common::fix_unsafe(root.path(), "SMP305");
-    assert_eq!(!common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), removed);
+    assert_eq!(
+        (
+            stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")),
+            !common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"),
+        ),
+        (reported, removed),
+        "{stdout}"
+    );
 }
 
 // The builtins ignorelist names a builtin that Ruff's A004 lets an import shadow, so the import keeps this rule's
@@ -1507,9 +1525,15 @@ fn module_attribute_import_keeps_an_import_with_a_comment(import: &str, fixable:
         ("pkg/use.py", &format!("{import}\n\ndef limit() -> int:\n    return config.LIMIT\n")),
     ]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304", "pkg"]).1;
-    assert!(stdout.contains(&common::native("pkg/use.py:")), "{stdout}");
     common::fix_unsafe(root.path(), "SMP304");
-    assert_eq!(common::read(root.path(), "pkg/use.py").contains("config.LIMIT"), !fixable);
+    assert_eq!(
+        (
+            stdout.contains(&common::native("pkg/use.py:")),
+            common::read(root.path(), "pkg/use.py").contains("config.LIMIT")
+        ),
+        (true, !fixable),
+        "{stdout}"
+    );
 }
 
 // A comment anywhere in the guard, including its handler, would be deleted with the guard, so the guard keeps its
@@ -1523,9 +1547,12 @@ fn module_attribute_import_keeps_an_import_with_a_comment(import: &str, fixable:
 fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bool) {
     let root = common::project(&[("mod.py", guard)]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303", "mod.py"]).1;
-    assert!(stdout.contains("mod.py:1:1: SMP303"), "{stdout}");
     common::fix_unsafe(root.path(), "SMP303");
-    assert_eq!(common::read(root.path(), "mod.py").contains("except ImportError"), !fixable);
+    assert_eq!(
+        (stdout.contains("mod.py:1:1: SMP303"), common::read(root.path(), "mod.py").contains("except ImportError")),
+        (true, !fixable),
+        "{stdout}"
+    );
 }
 
 // A platform-only module raises `ImportError` on the other platforms, and CPython guards its C accelerators with a
@@ -1624,8 +1651,11 @@ fn unused_dependency_reports_requirements_nothing_imports(project: &str, reporte
         ("tests/test_core.py", "import pytest_mock\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "unused-dependency"]);
-    let found: Vec<&str> =
-        stdout.lines().filter(|line| line.contains("SMP313")).filter_map(|line| line.split('`').nth(1)).collect();
-    assert_eq!(found, reported, "{stdout}");
-    assert!(stdout.lines().filter(|line| line.contains("SMP313")).all(|line| line.starts_with("pkg/__init__.py:1:1:")));
+    let lines: Vec<&str> = stdout.lines().filter(|line| line.contains("SMP313")).collect();
+    let found: Vec<&str> = lines.iter().filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(
+        (found, lines.iter().all(|line| line.starts_with("pkg/__init__.py:1:1:"))),
+        (reported.to_vec(), true),
+        "{stdout}"
+    );
 }
