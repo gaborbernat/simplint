@@ -157,22 +157,18 @@ would leave the name unbound when it is read:
     ```
 
 - **Names read from an import placed below the first definition**, such as a default value: the import is bound only
-  where it sits, so the definition reading it and the helpers it calls stay where they are.
+  where it sits, so the definition reading it stays below it.
 
   ```python ok
   def main() -> object:
       return _load("{}")
 
 
-  def _check(text: str) -> str:
-      return text.strip()
-
-
   import json
 
 
   def _load(text: str, loads=json.loads) -> object:
-      return loads(_check(text))
+      return loads(text)
   ```
 
 - **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and
@@ -189,18 +185,23 @@ would leave the name unbound when it is read:
           self._size = value
   ```
 
-- **At module level, definitions whose own statement evaluates another module-level name that is not an import**, for
-  example in a decorator or default value: that name has to be bound first.
+- **At module level, a definition whose own statement reads another module-level name that is not an import**, for
+  example in a decorator or default value, moves only where that name is still bound above it.
 
   ```python ok
-  def load(limit: int = DEFAULT_LIMIT) -> int:
+  def main() -> int:
+      return _load()
+
+
+  LIMIT = 3
+
+
+  def _load(limit: int = LIMIT) -> int:
       return limit
-
-
-  DEFAULT_LIMIT = 3
   ```
 
-- **Everything these call**: it runs at import time too.
+- **Everything a definition that runs at import time calls**: it runs at import time too. Naming a definition as a base
+  class or a default value does not run its body, so the helpers a base class's methods call still move.
 
   ```python ok
   def _base() -> int:
@@ -212,30 +213,6 @@ would leave the name unbound when it is read:
 
 
   LIMIT = _scaled()
-  ```
-
-- **Mutually recursive helpers**: each is the other's first user, so no order puts both directly below their user.
-
-  ```python ok
-  def _even(n: int) -> bool:
-      return True if n == 0 else _odd(n - 1)
-
-
-  def _odd(n: int) -> bool:
-      return False if n == 0 else _even(n - 1)
-  ```
-
-- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` are entry points, never helpers, so a
-  method that calls one does not pull it below that method. [class-member-order](SMP203.html) keeps each constructor in
-  its section, above the methods.
-
-  ```python ok
-  class Cache:
-      def __init__(self) -> None:
-          self.items = {}
-
-      def reset(self) -> None:
-          self.__init__()
   ```
 
 ### Annotations

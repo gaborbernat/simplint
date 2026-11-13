@@ -5,6 +5,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 26:5 SMP201 `_render_cell` is defined before its first use in `render_row`; move it below `render_row` [unsafe fix: Move `_render_cell` below `render_row`]
 34:5 SMP201 `_bound_lambda_helper` is defined before its first use in the statement on line 38; move it below the statement on line 38
 41:5 SMP201 `_method_helper` is defined before its first use in `NeverCalledInBody`; move it below `NeverCalledInBody`
+50:5 SMP201 `_base_helper` is defined before its first use in `Base`; move it below `Base`
+66:5 SMP201 `_default_helper` is defined before its first use in `with_default`; move it below `with_default`
+82:5 SMP201 `_from_constant` is defined before its first use in `entry`; move it below `entry`
 --- fixed (1 applied, 0 remaining) ---
 def _called_lambda_helper():
     return {}
@@ -53,3 +56,81 @@ class NeverCalledInBody:
 
 def _method_helper():
     return 2
+
+
+class Base:
+    def run(self):
+        return _base_helper()
+
+
+def _base_helper():
+    return 3
+
+
+class Child(Base):
+    pass
+
+
+LIMIT = 3
+
+
+def with_default(count=LIMIT):
+    return _default_helper() + count
+
+
+def _default_helper():
+    return 4
+
+
+def main():
+    return _limited()
+
+
+def _limited(count=LIMIT):
+    return count
+
+
+def entry():
+    return _from_constant()
+
+
+def _from_constant(count=LIMIT):
+    return count
+
+
+def _scaled_part():
+    return 2
+
+
+def _scaled():
+    return _scaled_part() * 2
+
+
+SCALED = _scaled()
+
+
+def _left():
+    return 1
+
+
+def _right():
+    return 2
+
+
+def pick(sides=(_left, _right)):
+    return [side() for side in sides]
+
+
+def _shared_step():
+    return 5
+
+
+def _first_step():
+    return _shared_step()
+
+
+def _second_step():
+    return _shared_step()
+
+
+STEPS = (_first_step(), _second_step())
