@@ -68,18 +68,19 @@ def main(arguments: list[str]) -> int:
     listing = subprocess.run(
         [options.simplint, "rules", "--output-format", "json"], capture_output=True, text=True, check=True
     ).stdout
-    blocks = [
-        Block(
-            name=f"{rule['code']}:{block['line']}:{block['role']}",
-            source=block["source"],
-            floor=block_floor(group["config"]),
-        )
-        for rule in json.loads(listing)
-        for group in rule["examples"]["parsed"]
-        for block in group["blocks"]
-        # a page shows documentation files, such as a reStructuredText page a rule reads, next to its Python
-        if block["language"] == "python"
-    ]
+    blocks: list[Block] = []
+    for rule in json.loads(listing):
+        for group in rule["examples"]["parsed"]:
+            blocks.extend(
+                Block(
+                    name=f"{rule['code']}:{block['line']}:{block['role']}",
+                    source=block["source"],
+                    floor=block_floor(group["config"]),
+                )
+                for block in group["blocks"]
+                # a page shows documentation files, such as a reStructuredText page a rule reads, next to its Python
+                if block["language"] == "python"
+            )
     failures = _check(blocks, [resolve(minor) for minor in options.versions])
     for failure in failures:
         print(failure)

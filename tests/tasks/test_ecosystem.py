@@ -343,7 +343,7 @@ def test_check_drops_ruff_environment_overrides(
     check(package, archive, "simplint", None)
 
     environments = [call.kwargs["env"] for call in run.call_args_list]
-    assert {key for environment in environments for key in environment if key.startswith("RUFF_")} == {"RUFF_CACHE_DIR"}
+    assert {key for key in set().union(*environments) if key.startswith("RUFF_")} == {"RUFF_CACHE_DIR"}
 
 
 def test_check_keeps_ruff_cache_in_the_workspace(
@@ -413,12 +413,15 @@ def _fake(behavior: _Behavior, command: list[str], cwd: Path) -> subprocess.Comp
 def _ruff_report(command: list[str], cwd: Path) -> str:
     markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
     ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []
-    return json.dumps([
-        {"filename": str(path.resolve()), "code": rule}
-        for path in cwd.rglob("*.py")
-        for marker, rule in markers.items()
-        if marker in path.read_text() and rule not in ignored
-    ])
+    reports: list[dict[str, str]] = []
+    for path in cwd.rglob("*.py"):
+        text = path.read_text()
+        reports.extend(
+            {"filename": str(path.resolve()), "code": rule}
+            for marker, rule in markers.items()
+            if marker in text and rule not in ignored
+        )
+    return json.dumps(reports)
 
 
 def _marked(cwd: Path, marker: str) -> bool:

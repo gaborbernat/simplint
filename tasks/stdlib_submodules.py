@@ -9,20 +9,21 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 
 _ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _TABLE: Final[Path] = _ROOT / "src" / "rules" / "imports" / "stdlib_submodules.rs"
 # The CPython release tag or branch each minor version's Lib/ tree is read from. A new release adds its line here,
 # and the newest minor is read from its branch until its tag exists.
-_REFS: Final[dict[int, str]] = {
+_REFS: Final[MappingProxyType[int, str]] = MappingProxyType({
     10: "v3.10.0",
     11: "v3.11.0",
     12: "v3.12.0",
     13: "v3.13.0",
     14: "v3.14.0",
     15: "origin/3.15",
-}
+})
 _LATEST: Final[int] = max(_REFS)
 # os.py registers os.path in sys.modules rather than shipping a file of that name, so the file listing never shows it.
 _REGISTERED: Final[frozenset[str]] = frozenset({"os.path"})

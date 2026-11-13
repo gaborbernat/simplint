@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 import textwrap
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from rules_data import Block, Example, Fence, RuleEntry, rule_entries
@@ -167,12 +168,13 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
             if start < line <= stop and any(block["role"] == "report" for block in example["blocks"])
         ]
         split = max(example["end_line"] for example in reported)
-        fixed = [
-            "\n".join(_fence_lines("", block["language"], _label(block), _body(lines, block)))
-            for example in reported
-            for block in example["blocks"]
-            if block["role"] == "fixed"
-        ]
+        fixed: list[str] = []
+        for example in reported:
+            fixed.extend(
+                "\n".join(_fence_lines("", block["language"], _label(block), _body(lines, block)))
+                for block in example["blocks"]
+                if block["role"] == "fixed"
+            )
         flagged = _numbered(lines, start, split, by_line, hidden="fixed")
         preferred = "\n\n".join(part for part in (*fixed, _numbered(lines, split, stop, by_line)) if part)
     body = ["::::{grid} 1", ":gutter: 2", ""]
@@ -400,8 +402,8 @@ _ABSOLUTE_PAGE_LINK_PATTERN: Final[re.Pattern[str]] = re.compile(
 _SIMPLINT_DOCS_URL_PATTERN: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/")
 
 
-_FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
+_FIX_BADGES: Final[MappingProxyType[str, tuple[str, str]]] = MappingProxyType({
     "Always": ("fix-always", "🛠️ Fix always available"),
     "Sometimes": ("fix-sometimes", "🔧 Fix sometimes available"),
     "None": ("fix-none", "No fix"),
-}
+})
