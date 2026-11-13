@@ -605,6 +605,7 @@ fn star_importing_conf_py_elsewhere_does_not_disable_the_rule() {
 #[test_case("from shared import autoclass_content\n", common::PASSED ; "imported_name")]
 #[test_case("exec(\"autoclass_content = 'init'\")\n", common::PASSED ; "exec")]
 #[test_case("globals()[\"autoclass_content\"] = \"init\"\n", common::PASSED ; "globals_store")]
+#[test_case("loaded: object = exec(\"autoclass_content = 'init'\")\n", common::PASSED ; "exec_in_annotated_value")]
 #[test_case("match autoclass_content:\n    case _:\n        pass\n", common::PASSED ; "bound_by_match")]
 #[test_case("try:\n    pass\nexcept ImportError as autoclass_content:\n    pass\n", common::PASSED ; "bound_by_except")]
 #[test_case("import autoclass_content.sub\n", common::PASSED ; "bound_by_dotted_import")]
