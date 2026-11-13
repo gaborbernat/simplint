@@ -15,7 +15,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 96:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
 99:9 SMP203 `__init__` belongs with the constructors, above `load`
 101:9 SMP203 `__init__` belongs with the constructors, above `load`
---- fixed (6 applied, 2 remaining) ---
+111:11 SMP203 `Item` belongs with the nested classes, above `size` [unsafe fix: Move `Item` above `size`]
+--- fixed (7 applied, 2 remaining) ---
 from typing import overload
 
 
@@ -118,3 +119,13 @@ class CtorOverloadAfterAlias:
 
     def load(self) -> int:
         return 1
+
+
+class AnnotatedField:
+    class Item:
+        pass
+
+    items: list[Item]
+
+    def size(self) -> int:
+        return len(self.items)
