@@ -202,3 +202,44 @@ def ping(count: int) -> None:
 
 def pong(count: int) -> None:
     ping(count)
+
+
+class Bus:
+    def __init__(self) -> None:
+        self.handlers: list = []
+
+    def emit(self, value: int) -> None:
+        for handler in self.handlers:
+            handler(value)
+
+
+def _check_value(value: int) -> None:
+    assert value == 1
+
+
+def _log_value(value: int) -> None:
+    print(value)
+
+
+class TestBus(unittest.TestCase):
+    def test_method_callback(self) -> None:
+        bus = Bus()
+        bus.handlers.append(self._receive)
+        bus.emit(1)
+
+    def test_function_callback(self) -> None:
+        bus = Bus()
+        bus.handlers.append(_check_value)
+        bus.emit(1)
+
+    def test_callback_that_does_not_check(self) -> None:
+        bus = Bus()
+        bus.handlers.append(_log_value)
+        bus.handlers.append(handler=self._quiet)
+        bus.emit(1)
+
+    def _receive(self, value: int) -> None:
+        self.assertEqual(value, 1)
+
+    def _quiet(self, value: int) -> None:
+        print(value)

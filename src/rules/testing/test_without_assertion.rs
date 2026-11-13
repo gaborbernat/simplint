@@ -171,7 +171,7 @@ impl<'b> Visitor<'b> for Checks<'_, 'b> {
             return;
         }
         if let Expr::Call(call) = expr
-            && self.call_checks(call)
+            && (self.call_checks(call) || self.passes_check(call))
         {
             self.checked = true;
             return;
@@ -261,6 +261,26 @@ impl<'b> Checks<'_, 'b> {
             }
             _ => false,
         }
+    }
+
+    // A local function or a method of the test's class handed to a call as a callback, such as an event handler,
+    // runs its checks when the code under test calls it.
+    fn passes_check(&mut self, call: &'b ast::ExprCall) -> bool {
+        let semantic = self.checker.semantic();
+        call.arguments.args.iter().chain(call.arguments.keywords.iter().map(|keyword| &keyword.value)).any(|value| {
+            let method = match value {
+                Expr::Name(_) => None,
+                Expr::Attribute(ast::ExprAttribute { value: root, .. })
+                    if self
+                        .method
+                        .is_some_and(|method| receiver(method) == root.as_name_expr().map(|name| name.id.as_str())) =>
+                {
+                    self.method.zip(self.class)
+                }
+                _ => return false,
+            };
+            local_function(semantic, value, method).is_some_and(|(function, _)| self.follows_function(function))
+        })
     }
 
     fn follows_function(&mut self, function: &'b ast::StmtFunctionDef) -> bool {

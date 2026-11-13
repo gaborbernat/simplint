@@ -44,7 +44,9 @@ These count as checks:
   package (a relative import, or a module path with `test` in it, such as `conftest` or `numpy.testing`), and a call
   through `super()`, which runs a base class's test;
 - a call of a function, class or method the module defines whose body checks, followed through further calls; a method
-  of `self` the class does not define is taken to check, as a base test class's helpers do.
+  of `self` the class does not define is taken to check, as a base test class's helpers do;
+- a function the module defines, or a method of the test's class, passed to a call as a callback, such as
+  `bus.handlers.append(self._check)`, when its body checks, since the code under test calls it.
 
 ```python report file=tests/test_helpers.py
 def test_runs():
