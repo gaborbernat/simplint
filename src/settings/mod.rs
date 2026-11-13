@@ -27,7 +27,9 @@ pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source,
 pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
-use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
+use crate::settings::metadata::{
+    BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks, tool_value,
+};
 pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
 use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
 pub(crate) use crate::settings::pytest::PytestConfig;
@@ -171,7 +173,7 @@ impl Discovery {
 
 // Whether a `pyproject.toml` has a `[tool.<name>]` table.
 fn configures(table: &toml::Table, name: &str) -> bool {
-    table.get("tool").and_then(|tool| tool.get(name)).is_some()
+    tool_value(table, &[name]).is_some()
 }
 
 // Whether a `pyproject.toml` describes a project: a `[project]` table, or a `[build-system]` that installs it.

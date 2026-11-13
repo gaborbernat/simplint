@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
+use crate::settings::metadata::tool_value;
+
 // The parts of the project's pytest configuration that simplint reads: the markers it registers, the files it collects
 // tests from, the plugins `addopts` loads and the directories `pythonpath` adds to the import path. pytest reads the
 // first of `pytest.ini`, `.pytest.ini`, `pyproject.toml`, `tox.ini` and `setup.cfg` that configures it, so the others
@@ -75,7 +77,7 @@ impl PytestConfig {
     // Whether a run of pytest without arguments collects tests from the file: its name matches `python_files`, under
     // one of the `testpaths` when the configuration sets them.
     pub(crate) fn collects_path(&self, path: &Path) -> bool {
-        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| self.collected.is_match(name))
+        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| self.collects(name))
             && (self.testpaths.is_empty() || self.testpaths.iter().any(|directory| path.starts_with(directory)))
     }
 
@@ -117,36 +119,6 @@ fn read(directory: &Path, pyproject: Option<&toml::Table>) -> Option<PytestConfi
     [("tox.ini", "pytest"), ("setup.cfg", "tool:pytest")].iter().find_map(|(name, section)| {
         let text = std::fs::read_to_string(directory.join(name)).ok()?;
         Some(PytestConfig::with(directory, from_ini(&text, section)?))
-    })
-}
-
-fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
-    let pytest = pyproject.get("tool")?.get("pytest")?;
-    // pytest 9 reads its options from `[tool.pytest]` itself; earlier versions from its `ini_options` table.
-    let options = pytest.get("ini_options").unwrap_or(pytest);
-    let strings = |key: &str| -> Option<Vec<String>> {
-        match options.get(key)? {
-            toml::Value::String(text) => Some(text.split_whitespace().map(str::to_owned).collect()),
-            toml::Value::Array(items) => {
-                Some(items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect())
-            }
-            _ => None,
-        }
-    };
-    let markers = match options.get("markers") {
-        None => Some(BTreeSet::new()),
-        Some(toml::Value::Array(items)) => {
-            items.iter().map(|item| item.as_str().map(marker_name)).collect::<Option<BTreeSet<_>>>()
-        }
-        Some(toml::Value::String(text)) => Some(marker_names(text)),
-        Some(_) => None,
-    };
-    Some(Options {
-        markers,
-        python_files: strings("python_files"),
-        addopts: strings("addopts").unwrap_or_default(),
-        pythonpath: strings("pythonpath").unwrap_or_default(),
-        testpaths: strings("testpaths").unwrap_or_default(),
     })
 }
 
@@ -200,4 +172,34 @@ fn marker_names(text: &str) -> BTreeSet<String> {
 // A marker line names the marker before its arguments or description: `slow: marks slow tests`, `env(name): ...`.
 fn marker_name(line: &str) -> String {
     line.split([':', '(']).next().unwrap_or_default().trim().to_owned()
+}
+
+fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
+    let pytest = tool_value(pyproject, &["pytest"])?;
+    // pytest 9 reads its options from `[tool.pytest]` itself; earlier versions from its `ini_options` table.
+    let options = pytest.get("ini_options").unwrap_or(pytest);
+    let strings = |key: &str| -> Option<Vec<String>> {
+        match options.get(key)? {
+            toml::Value::String(text) => Some(text.split_whitespace().map(str::to_owned).collect()),
+            toml::Value::Array(items) => {
+                Some(items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect())
+            }
+            _ => None,
+        }
+    };
+    let markers = match options.get("markers") {
+        None => Some(BTreeSet::new()),
+        Some(toml::Value::Array(items)) => {
+            items.iter().map(|item| item.as_str().map(marker_name)).collect::<Option<BTreeSet<_>>>()
+        }
+        Some(toml::Value::String(text)) => Some(marker_names(text)),
+        Some(_) => None,
+    };
+    Some(Options {
+        markers,
+        python_files: strings("python_files"),
+        addopts: strings("addopts").unwrap_or_default(),
+        pythonpath: strings("pythonpath").unwrap_or_default(),
+        testpaths: strings("testpaths").unwrap_or_default(),
+    })
 }
