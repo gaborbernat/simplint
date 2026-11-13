@@ -5,6 +5,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::regex_pattern::INLINE_FLAGS;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
@@ -106,7 +107,7 @@ fn trailing_anchor(value: &str) -> Option<Anchor> {
                 if chars.peek() == Some(&'?') {
                     let mut ahead = chars.clone();
                     ahead.next();
-                    if ahead.peek().is_some_and(|flag| "aiLmsux-".contains(*flag)) {
+                    if ahead.peek().is_some_and(|flag| u8::try_from(*flag).is_ok_and(|flag| INLINE_FLAGS.contains(&flag))) {
                         return None;
                     }
                 }

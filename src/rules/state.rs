@@ -14,7 +14,7 @@ use crate::rules::comments::Comment;
 use crate::rules::docstrings::rst::{Target, collect_targets};
 use crate::rules::edits::DebugFields;
 use crate::rules::layout::{ClassOrder, class_order};
-use crate::rules::logic::KindsCache;
+use crate::rules::logic::{KindsCache, RegexFacts};
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
 use crate::rules::public_api::PublicApi;
@@ -50,6 +50,7 @@ pub(crate) struct FileState<'a> {
     // The comments that stand on a line of their own, which the comment rules read in runs.
     own_line_comments: OnceCell<Vec<TextRange>>,
     expected_to_raise: OnceCell<FxHashSet<&'a str>>,
+    regex_facts: OnceCell<RegexFacts<'a>>,
 }
 
 impl<'a> FileState<'a> {
@@ -140,6 +141,11 @@ impl<'a> FileState<'a> {
         self.comments.get_or_init(|| {
             checker.comment_ranges().into_iter().map(|range| (range, Comment::at(checker.source, range))).collect()
         })
+    }
+
+    // The `re` calls with literal patterns, and the names their results flow to, which the regex rules share.
+    pub(crate) fn regex_facts(&self, checker: &Checker<'a>) -> &RegexFacts<'a> {
+        self.regex_facts.get_or_init(|| RegexFacts::collect(checker))
     }
 
     pub(crate) fn overload_implementations(&self, checker: &Checker<'a>) -> &FxHashSet<TextSize> {

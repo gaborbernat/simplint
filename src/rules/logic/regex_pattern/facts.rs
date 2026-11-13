@@ -119,22 +119,29 @@ pub(crate) struct Call<'a> {
     pub(crate) flags: Option<ArgOrKeyword<'a>>,
 }
 
-// The calls, bindings and name uses of a module, gathered in one walk so the decisions read them without another.
-pub(crate) struct Facts<'c, 'a> {
-    checker: &'c Checker<'a>,
+// The calls, bindings and name uses of a module, gathered in one walk the regex rules share.
+pub(crate) struct Facts<'a> {
     calls: FxHashMap<TextRange, Call<'a>>,
     // How many times each name is bound in each scope.
     bindings: FxHashMap<(Scope, &'a str), usize>,
     // The bindings a read the walk does not follow may reach: class attributes, and names a function declares `global`
     // or `nonlocal`.
     escaping: FxHashSet<(Scope, &'a str)>,
+    usages: FxHashMap<(Scope, &'a str), Vec<Usage>>,
+    // The names whose match objects the code reads by index, which each group site of a name asks about.
+    read_by_index: FxHashSet<(Scope, &'a str)>,
+}
+
+struct Walk<'c, 'a> {
+    checker: &'c Checker<'a>,
+    calls: FxHashMap<TextRange, Call<'a>>,
+    bindings: FxHashMap<(Scope, &'a str), usize>,
+    escaping: FxHashSet<(Scope, &'a str)>,
     // Whether the walk is directly in a class body, where a name it binds is an attribute.
     class_body: bool,
     // Each name use with the scopes it sits in, innermost first, until it is resolved to the scope that binds it.
     pending: Vec<(Vec<Scope>, &'a str, Usage)>,
     usages: FxHashMap<(Scope, &'a str), Vec<Usage>>,
-    // The names whose match objects the code reads by index, which each group site of a name asks about.
-    read_by_index: FxHashSet<(Scope, &'a str)>,
     // The expressions holding the current one, outermost first, ending with the current one.
     exprs: Vec<&'a Expr>,
     // The statements holding the current expression, innermost last.
@@ -143,9 +150,9 @@ pub(crate) struct Facts<'c, 'a> {
     scopes: Vec<Scope>,
 }
 
-impl<'c, 'a> Facts<'c, 'a> {
-    pub(crate) fn collect(checker: &'c Checker<'a>) -> Self {
-        let mut facts = Facts {
+impl<'a> Facts<'a> {
+    pub(crate) fn collect(checker: &Checker<'a>) -> Self {
+        let mut walk = Walk {
             checker,
             calls: FxHashMap::default(),
             bindings: FxHashMap::default(),
@@ -153,7 +160,6 @@ impl<'c, 'a> Facts<'c, 'a> {
             class_body: false,
             pending: Vec::new(),
             usages: FxHashMap::default(),
-            read_by_index: FxHashSet::default(),
             exprs: Vec::new(),
             stmts: Vec::new(),
             scopes: vec![None],
@@ -161,11 +167,18 @@ impl<'c, 'a> Facts<'c, 'a> {
         // A `re` function resolves only through an import that spells its module, so a file that never spells `re` or
         // `regex` has no pattern to read.
         if MODULES.iter().any(|module| checker.name_token_count(module) > 0) {
-            facts.visit_body(checker.body());
-            facts.resolve_usages();
-            facts.read_by_index =
-                facts.usages.keys().copied().filter(|&(scope, name)| facts.reads_index_of(scope, name)).collect();
+            walk.visit_body(checker.body());
+            walk.resolve_usages();
         }
+        let mut facts = Facts {
+            calls: walk.calls,
+            bindings: walk.bindings,
+            escaping: walk.escaping,
+            usages: walk.usages,
+            read_by_index: FxHashSet::default(),
+        };
+        facts.read_by_index =
+            facts.usages.keys().copied().filter(|&(scope, name)| facts.reads_index_of(scope, name)).collect();
         facts
     }
 
@@ -178,7 +191,7 @@ impl<'c, 'a> Facts<'c, 'a> {
     }
 }
 
-impl<'a> Visitor<'a> for Facts<'_, 'a> {
+impl<'a> Visitor<'a> for Walk<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         // The expressions of an enclosing statement are not parents of this one's, so they wait outside.
         let exprs = std::mem::take(&mut self.exprs);
@@ -269,7 +282,7 @@ impl<'a> Visitor<'a> for Facts<'_, 'a> {
     }
 }
 
-impl<'a> Facts<'_, 'a> {
+impl<'a> Walk<'_, 'a> {
     // The expression `up` levels above the current one, where 0 is the current one.
     fn ancestor(&self, up: usize) -> Option<&'a Expr> {
         self.exprs.len().checked_sub(up + 1).map(|index| self.exprs[index])
@@ -442,25 +455,28 @@ impl<'a> Facts<'_, 'a> {
         }
     }
 
+}
+
+impl<'a> Facts<'a> {
     // Whether the value of a context reaches the code only as a truth test, a discarded value, or a name whose uses
     // read no group. A name has one binding, so the names followed from a call form a tree and never loop.
-    fn result_flows(&self, context: Context<'a>) -> bool {
+    fn result_flows(&self, checker: &Checker, context: Context<'a>) -> bool {
         match context {
             Context::Test | Context::Discard => true,
-            Context::Bind { name, scope } => self.name_flows(scope, name),
+            Context::Bind { name, scope } => self.name_flows(checker, scope, name),
             Context::Other => false,
         }
     }
 
-    fn name_flows(&self, scope: Scope, name: &'a str) -> bool {
+    fn name_flows(&self, checker: &Checker, scope: Scope, name: &'a str) -> bool {
         // Asked only here, since reading the project is a cross-file read that the other rules sharing the walk do not
         // declare. A module name another module imports or `__all__` lists has reads this file does not all contain.
-        !(self.escaping.contains(&(scope, name)) || (scope.is_none() && self.checker.is_exported(name)))
+        !(self.escaping.contains(&(scope, name)) || (scope.is_none() && checker.is_exported(name)))
             && self.bindings.get(&(scope, name)) == Some(&1)
             && self.usages_of(scope, name).iter().all(|usage| match usage {
                 Usage::Test => true,
                 Usage::Method { call, reads } => {
-                    !reads.groups && self.calls.get(call).is_some_and(|call| self.call_flows(call))
+                    !reads.groups && self.calls.get(call).is_some_and(|call| self.call_flows(checker, call))
                 }
                 Usage::Subscript(reads) => !reads.groups,
                 Usage::Other => false,
@@ -468,9 +484,9 @@ impl<'a> Facts<'_, 'a> {
     }
 
     // Whether a call, a `re` function or a method on a name, leaves no group readable beyond the fix's reach.
-    pub(crate) fn call_flows(&self, call: &Call<'a>) -> bool {
+    pub(crate) fn call_flows(&self, checker: &Checker, call: &Call<'a>) -> bool {
         match call.attr {
-            "compile" | "match" | "prefixmatch" | "search" | "fullmatch" => self.result_flows(call.context),
+            "compile" | "match" | "prefixmatch" | "search" | "fullmatch" => self.result_flows(checker, call.context),
             "sub" | "subn" => call.plain_replacement,
             attr => GROUP_READS.contains(&attr),
         }
