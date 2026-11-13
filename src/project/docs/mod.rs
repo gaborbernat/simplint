@@ -205,3 +205,18 @@ impl CacheKey for DocReferences {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::DocReferences;
+
+    #[test_case("mod.Class.method", true ; "module_under_the_scope_package")]
+    #[test_case("other.Class.method", false ; "other_module")]
+    fn scope_under_an_unknown_package_covers_its_members(qualified: &str, covered: bool) {
+        let mut references = DocReferences::default();
+        references.add_scope("pkg.mod.Class.".to_owned());
+        assert_eq!(references.covers(qualified, false), covered);
+    }
+}

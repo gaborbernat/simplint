@@ -155,19 +155,16 @@ struct Listing {
 fn list(directory: &Path, exclusions: &Exclusions, main: &Path) -> Listing {
     let mut stats = vec![(directory.to_path_buf(), stat(directory))];
     let mut below = Vec::new();
-    for entry in fs::read_dir(directory).into_iter().flatten().filter_map(Result::ok) {
+    let entries = fs::read_dir(directory).into_iter().flatten().filter_map(Result::ok);
+    for (entry, file_type) in entries.filter_map(|entry| entry.file_type().ok().map(|file_type| (entry, file_type))) {
         let (path, name) = (entry.path(), entry.file_name());
-        let Ok(file_type) = entry.file_type() else { continue };
         if file_type.is_dir() {
             if enters(&path, &name, exclusions, main) {
                 below.push(path);
             }
-        } else if is_configuration(&path) {
-            if file_type.is_file() || file_type.is_symlink() {
-                let stat = stat(&path);
-                stats.push((path, stat));
-            }
-        } else if file_type.is_file() && (is_page(&path) || WATCHED.iter().any(|watched| name == *watched)) {
+        } else if (is_configuration(&path) && (file_type.is_file() || file_type.is_symlink()))
+            || (file_type.is_file() && (is_page(&path) || WATCHED.iter().any(|watched| name == *watched)))
+        {
             let stat = stat(&path);
             stats.push((path, stat));
         }

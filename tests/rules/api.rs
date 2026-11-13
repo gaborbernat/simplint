@@ -486,6 +486,8 @@ fn unused_definitions(body: &str) -> String {
 #[test_case("f'_handle_{kind}'", false, false ; "other_file_matching_fstring_prefix")]
 #[test_case("f'{kind}_handle'", false, true ; "other_file_fstring_without_prefix")]
 #[test_case("'_visit_' + kind", false, true ; "other_file_other_prefix")]
+#[test_case("kind + '_handle_'", false, true ; "other_file_computed_left_operand")]
+#[test_case("f''", false, true ; "other_file_empty_fstring")]
 fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_file: bool, reported: bool) {
     let (core, other) = handler_and_dispatch(name, same_file);
     let root = common::project(&[

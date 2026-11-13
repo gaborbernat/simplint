@@ -141,3 +141,29 @@ fn starred_exception_names<'a>(
     }
     names
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::Arc;
+
+    use rustc_hash::FxHashMap;
+
+    use super::expand_tuples;
+    use crate::project::index::FileIds;
+
+    // A tuple named twice inside another expands once, so its classes are caught once.
+    #[test]
+    fn tuple_named_twice_expands_once() {
+        let mut ids = Arc::new(FileIds::default());
+        let file = FileIds::intern(&mut ids, Path::new("/project/errors.py"));
+        let key = |name: &str| (file, name.to_owned());
+        let tuples = FxHashMap::from_iter([
+            (key("ERRORS"), vec![key("ValueError")]),
+            (key("BOTH"), vec![key("ERRORS"), key("ERRORS")]),
+        ]);
+        let mut caught = vec![key("BOTH")];
+        expand_tuples(&mut caught, &tuples);
+        assert_eq!(caught, vec![key("ValueError")]);
+    }
+}

@@ -36,6 +36,20 @@ fn dataclass_kw_only_leaves_cross_file_calls_to_the_class_report(caller: &str) {
     );
 }
 
+// A field option the rule cannot read leaves the order of the `__init__` parameters unknown, so a positional call
+// keeps the class reported, and nothing is rewritten.
+#[test_case("init" ; "init")]
+#[test_case("kw_only" ; "kw_only")]
+fn dataclass_kw_only_with_a_computed_field_option_is_not_fixed(option: &str) {
+    let models = format!(
+        "from dataclasses import dataclass, field\n\nFLAG = True\n\n\n@dataclass\nclass Partition:\n    topic: str\n    \
+         number: int = field({option}=FLAG, default=0)\n"
+    );
+    let root = project(&[("models.py", &models), ("caller.py", "from models import Partition\n\nPartition(\"a\")\n")]);
+    let first = check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1;
+    assert_eq!((first.contains("Found 1 error.\n"), common::read(root.path(), "models.py") == models), (true, true));
+}
+
 // The report names the positional calls of another file as related locations, in full output, and says they need
 // converting by hand, since no fix reaches them.
 #[test]
@@ -268,6 +282,10 @@ fn relative_import_from_namespace_package_counts_as_imported() {
 )]
 #[test_case("def test_app(mod: ModuleType) -> None:\n    assert mod.client\n" ; "module_type_parameter")]
 #[test_case(
+    "import types\n\n\ndef test_app(mod: types.ModuleType) -> None:\n    assert mod.client\n" ;
+    "qualified_module_type_parameter"
+)]
+#[test_case(
     concat!(
         "def test_app(mod: ModuleType) -> None:\n",
         "    assert getattr(mod, \"client\")\n",
@@ -285,6 +303,28 @@ fn relative_import_from_namespace_package_counts_as_imported() {
         "    alias = cast(Any, loaded)\n",
         "    alias.client = None\n"
     ) ; "fixture_alias"
+)]
+#[test_case(
+    concat!(
+        "@pytest.fixture\n",
+        "def loaded():\n",
+        "    return importlib.import_module(f\"docs.{_NAME}\")\n",
+        "\n",
+        "\n",
+        "def test_app(loaded) -> None:\n",
+        "    loaded.client = None\n"
+    ) ; "bare_fixture"
+)]
+#[test_case(
+    concat!(
+        "@pytest.fixture(name=_NAME)\n",
+        "def loaded():\n",
+        "    return importlib.import_module(f\"docs.{_NAME}\")\n",
+        "\n",
+        "\n",
+        "def test_app(loaded) -> None:\n",
+        "    loaded.client = None\n"
+    ) ; "fixture_named_by_a_variable"
 )]
 fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
     let root = project(&[

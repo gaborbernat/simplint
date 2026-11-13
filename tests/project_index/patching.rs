@@ -48,6 +48,20 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
     assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`engine` is in `__all__`"));
 }
 
+// A loop at module level unpacks its string rows into each name of its target, a list target as a tuple one.
+#[test_case("for name, value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "tuple_target")]
+#[test_case("for [name, value] in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "list_target")]
+#[test_case("for name, holder.value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "attribute_in_the_target")]
+fn names_read_in_module_level_loops_are_used(header: &str) {
+    let test = format!("from docs import tutorial\n\n{header}    setattr(tutorial, name, None)\n");
+    let root = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
+        ("tests/test_docs.py", &test),
+    ]);
+    common::assert_clean(root.path(), "SMP402");
+}
+
 // A loop over anything but string rows of the same width, whose items the run cannot know, names no attribute, and
 // neither does a name rebound to something else after it held string literals, or a computed name.
 #[test_case("for name in names():\n        monkeypatch.setattr(tutorial, name, None)\n" ; "call")]

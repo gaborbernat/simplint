@@ -133,3 +133,19 @@ fn statement_tokens<'s>(
         .skip_while(move |token| token.kind() == TokenKind::Dedent && token.start() == range.start())
         .map(|token| compared_text(token, source))
 }
+
+#[cfg(test)]
+mod tests {
+    use rustc_hash::FxHashSet;
+    use tempfile::TempDir;
+
+    use super::statement_texts;
+
+    #[test]
+    fn file_that_no_longer_parses_has_no_texts() {
+        let root = TempDir::new().expect("create a temporary directory");
+        let path = root.path().join("module.py");
+        std::fs::write(&path, "def (\n").expect("write the module");
+        assert!(statement_texts(&path, &FxHashSet::default(), &[]).is_none());
+    }
+}

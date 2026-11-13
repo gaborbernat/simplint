@@ -289,6 +289,16 @@ fn attributes_of_spec_loaded_modules_keep_their_names(path: &str) {
 #[test_case("\"/elsewhere/docs/tutorial.py\"" ; "outside_project")]
 #[test_case("\"docs/tutorial.txt\"" ; "not_python_file")]
 #[test_case("os.getcwd()" ; "unknown_call")]
+#[test_case("location=\"docs/tutorial.py\"" ; "location_keyword")]
+#[test_case("Path(__file__).parent / os.environ[\"DOCS\"]" ; "computed_right_operand")]
+#[test_case("os.getcwd().parent / \"tutorial.py\"" ; "parent_of_unknown_call")]
+#[test_case("Path(__file__).parents[DEPTH] / \"tutorial.py\"" ; "parents_by_name")]
+#[test_case("Path(__file__).parents[1.5] / \"tutorial.py\"" ; "parents_by_float")]
+#[test_case("Path(__file__).parents[99999999999999999999999] / \"tutorial.py\"" ; "parents_past_any_index")]
+#[test_case("Path(__file__).parents[18446744073709551615] / \"tutorial.py\"" ; "parents_at_the_largest_index")]
+#[test_case("os.getcwd().parents[0] / \"tutorial.py\"" ; "parents_of_unknown_call")]
+#[test_case("os.path.join(os.path.dirname(os.getcwd()), \"tutorial.py\")" ; "dirname_of_unknown_call")]
+#[test_case("Path(__file__).parents[1]" ; "project_root")]
 fn attributes_of_unresolved_spec_loaded_modules_keep_every_name(path: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),

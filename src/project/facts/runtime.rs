@@ -234,3 +234,22 @@ fn literal_constant(value: &Expr) -> Option<bool> {
         .is_literal_expr()
         .then(|| matches!(Truthiness::from_expr(value, |_| false), Truthiness::True | Truthiness::Truthy))
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_expression;
+    use test_case::test_case;
+
+    use super::version_branches;
+
+    #[test_case("sys.version_info >= [3]" ; "list_bound")]
+    #[test_case("sys.version_info >= (3.0,)" ; "float_major")]
+    #[test_case("sys.version_info >= (MAJOR,)" ; "named_major")]
+    #[test_case("sys.version_info >= (MAJOR, 11)" ; "named_major_with_minor")]
+    #[test_case("sys.version_info >= (3, MINOR)" ; "named_minor")]
+    #[test_case("sys.version_info >= (255,)" ; "major_without_a_next")]
+    fn version_check_the_scan_cannot_read_gates_nothing(test: &str) {
+        let parsed = parse_expression(test).expect("a valid expression");
+        assert!(version_branches(parsed.expr()).is_none());
+    }
+}

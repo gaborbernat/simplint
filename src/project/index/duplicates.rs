@@ -227,3 +227,41 @@ fn sharers(file: FileId, block: &Block, windows: &[(usize, usize)], sets: &[Vec<
     others.remove(&file);
     others.len()
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use tempfile::TempDir;
+    use test_case::test_case;
+
+    use super::duplicate_runs;
+    use crate::project::FileFacts;
+    use crate::project::facts::Parts;
+    use crate::project::index::FileIds;
+
+    // The statements after a block start at the dedent that closes it. A file that no longer holds the statements its
+    // facts record has no texts to compare, so its windows match nothing.
+    #[test_case(false, 2 ; "both_files_read")]
+    #[test_case(true, 0 ; "file_gone")]
+    fn windows_match_by_their_texts(removed: bool, files_with_runs: usize) {
+        let source = "if FLAG:\n    first = 1\n    second = 2\nthird = 3\nfourth = 4\n";
+        let root = TempDir::new().expect("create a temporary directory");
+        let mut ids = Arc::new(FileIds::default());
+        let files: Vec<_> = ["a.py", "b.py"]
+            .into_iter()
+            .map(|name| {
+                let path = root.path().join(name);
+                std::fs::write(&path, source).expect("write the module");
+                let parts = Parts::default().with(Parts::STATEMENTS);
+                let facts = FileFacts::collect(&path, source, None, None, parts).expect("facts");
+                (FileIds::intern(&mut ids, &path), facts)
+            })
+            .collect();
+        if removed {
+            std::fs::remove_file(root.path().join("b.py")).expect("remove the module");
+        }
+        let files: Vec<_> = files.iter().map(|(id, facts)| (*id, facts)).collect();
+        assert_eq!(duplicate_runs(&files, &ids, 2).len(), files_with_runs);
+    }
+}

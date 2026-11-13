@@ -340,6 +340,18 @@ fn star_reexport_keeps_names_of_the_package() {
     );
 }
 
+// A star import takes only what the module's `__all__` lists, so a listed name read through the package is in use.
+#[test]
+fn star_reexport_reaches_the_names_all_lists() {
+    let root = project(&[
+        ("lib/__init__.py", ""),
+        ("lib/humio/__init__.py", "from ._types import *\n"),
+        ("lib/humio/_types.py", "__all__ = [\"parse\"]\n\n\ndef parse() -> None:\n    pass\n"),
+        ("app.py", "from lib.humio import parse, missing\n\n_USED = (parse, missing)\n"),
+    ]);
+    common::assert_clean(root.path(), "SMP402");
+}
+
 // `oci_test_init` resolves only through a `sys.path` entry a `conftest.py` adds, so any module of the run by that name
 // may be the one star-imported and keeps its names, while modules by other names cannot be.
 #[test]
@@ -371,6 +383,31 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ; "namesake"
 )]
 #[test_case(
+    "result = Result(log=\"\")\n    result.log.upper = log\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "write_on_a_member_of_an_instance"
+)]
+#[test_case(
+    "pass\n\n\ndef patch(thing: Unknown, key: str) -> None:\n    setattr(thing, key, 1)\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "computed_write_on_an_unknown_class"
+)]
+#[test_case(
+    "pass\n\n\ndef test_patch(monkeypatch) -> None:\n    monkeypatch.setattr(\"log\", None)\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "patch_of_a_path_without_a_dot"
+)]
+#[test_case(
+    "pass\n\n\nclass Base:\n    pass\n\n\nclass Left(Base):\n    pass\n\n\nclass Right(Base):\n    pass\n\n\n\
+     class Both(Left, Right):\n    pass\n\n\nBoth.level = 1\n",
+    "[*] ",
+    "@dataclass(frozen=True)"
+    ; "class_write_through_a_diamond"
+)]
+#[test_case(
     concat!(
         "import pickle\n",
         "\n",
@@ -391,6 +428,17 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ),
     "",
     "@dataclass" ; "low_protocol_aliased_pickle"
+)]
+#[test_case(
+    concat!(
+        "import pickle\n",
+        "\n",
+        "    result = Result(log=\"\")\n",
+        "    result.log = log\n",
+        "    pickle.dump(result, open(\"result.pickle\", \"wb\"), 1)\n"
+    ),
+    "",
+    "@dataclass" ; "low_protocol_pickle_to_a_file"
 )]
 #[test_case(
     concat!(

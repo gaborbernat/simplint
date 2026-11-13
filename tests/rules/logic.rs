@@ -648,6 +648,23 @@ fn single_use_fstring_value_follows_magic_trailing_comma(format: &str, fixed: &s
     assert_eq!(read(root.path(), "module.py"), fixed);
 }
 
+// A function another module defines on both sides of a version check is the same function when both definitions
+// agree, and has no single signature when they do not.
+#[test_case("def ready() -> bool:\n        return True", true ; "same_shape")]
+#[test_case("def ready(strict: bool) -> bool:\n        return strict", false ; "other_shape")]
+fn function_as_condition_reads_a_twice_defined_import(other: &str, reported: bool) {
+    let checks = format!(
+        "import sys\n\nif sys.version_info >= (3, 12):\n\n    def ready() -> bool:\n        return True\n\nelse:\n\n    \
+         {other}\n"
+    );
+    let root = common::project(&[
+        ("checks.py", checks.as_str()),
+        ("main.py", "from checks import ready\n\nif ready:\n    print(1)\n"),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP558"]).1;
+    assert_eq!(stdout.contains("main.py:3:4"), reported, "{stdout}");
+}
+
 // A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
 // naming an undefined name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
