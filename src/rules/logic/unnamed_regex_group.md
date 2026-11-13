@@ -49,7 +49,7 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
   [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
   other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
 
-  - **Two or more unnamed groups** are reported at the pattern.
+  - **Two or more unnamed groups** are reported at the pattern, unless the call is `findall` or `split`.
   - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call
     with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound
     once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop
@@ -204,6 +204,17 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
 
   def words(text):
       return re.split(r"(\s+)", text)
+  ```
+
+- **Groups of a `findall` or `split` call**, or of a compiled pattern only called with those: the code receives the
+  groups as tuple members or list items by position, so a name would not reach it.
+
+  ```python ok
+  import re
+
+
+  def natural_key(value):
+      return [(text, int(digits or 0)) for text, digits in re.findall(r"(\D*)(\d*)", value)]
   ```
 
 - **Named groups** are what the rule asks for.

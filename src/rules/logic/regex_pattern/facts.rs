@@ -499,6 +499,26 @@ impl<'a> Facts<'a> {
         }
     }
 
+    // Whether every group a call's pattern captures reaches the code only by position: `findall` returns the groups as
+    // tuples and `split` puts them in its list, so a name would not reach the reader. A compiled pattern counts when
+    // these are the only methods its name is called with.
+    pub(crate) fn positional_only(&self, call: &Call<'a>) -> bool {
+        match (call.attr, call.context) {
+            ("findall" | "split", _) => true,
+            ("compile", Context::Bind { name, scope }) => {
+                let usages = self.usages_of(scope, name);
+                !usages.is_empty()
+                    && usages.iter().all(|usage| match usage {
+                        Usage::Method { call, .. } => {
+                            self.calls.get(call).is_some_and(|method| matches!(method.attr, "findall" | "split"))
+                        }
+                        _ => false,
+                    })
+            }
+            _ => false,
+        }
+    }
+
     fn usages_of(&self, scope: Scope, name: &'a str) -> &[Usage] {
         self.usages.get(&(scope, name)).map_or(&[], Vec::as_slice)
     }
