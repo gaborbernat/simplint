@@ -287,7 +287,8 @@ pub struct SimplintOptions {
     pub(crate) show_fixes: Option<bool>,
 
     /// A list of rule codes, prefixes or names to enable. Prefixes can specify exact rules (like `SMP601`), entire
-    /// groups (like `SMP1`), or anything in between.
+    /// groups (like `SMP1`), or anything in between. An opt-in rule runs only when an entry names it by code or name;
+    /// `ALL` and prefixes leave it out.
     ///
     /// When breaking ties between enabled and disabled rules (via `select` and `ignore`, respectively), more specific
     /// prefixes override less specific prefixes. `ignore` takes precedence over `select` if the same prefix appears in

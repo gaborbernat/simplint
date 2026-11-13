@@ -22,7 +22,7 @@ simplint's own settings live in ``[tool.simplint]``:
     * - Key
       - Effect
     * - ``select``
-      - Enables rules. The default, ``ALL``, enables every rule.
+      - Enables rules. The default, ``ALL``, enables every rule that is not opt-in.
     * - ``extend-select``
       - Adds rules to ``select``.
     * - ``ignore``
@@ -50,6 +50,16 @@ On the command line:
 - ``--extend-select`` adds rules.
 - ``--ignore`` removes rules from whatever is selected.
 - ``--per-file-ignores`` replaces ``per-file-ignores``, and ``--extend-per-file-ignores`` adds to it.
+
+.. _opt-in-rules:
+
+Opt-in rules
+------------
+
+An opt-in rule runs only when an entry names it by code or name, as in ``extend-select = ["init-module-content"]``.
+``ALL`` and code prefixes such as ``SMP4`` leave it out, so a broad selection does not pick up a rule that fits few
+projects. The :doc:`rules list </rules>` marks these rules with ✗ in its *Default* column, and each one's page carries
+an *Opt-in* badge.
 
 Fixes
 =====

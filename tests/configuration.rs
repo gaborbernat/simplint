@@ -192,6 +192,29 @@ fn member_metadata_comes_from_its_own_pyproject(root_pyproject: &str, member_pyp
     assert_eq!(check(root.path(), &["--select", "SMP407"]).0, exit);
 }
 
+// An ignore for an opt-in rule the project leaves off suppresses nothing, so it is stale.
+#[test]
+fn ignore_for_an_unselected_opt_in_rule_is_unused() {
+    let root = project(&[("demo/__init__.py", "import os  # simplint: ignore[init-module-content]  # public\n")]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--extend-select", "SMP009"]);
+    assert_eq!(common::reports(&stdout, "SMP009").len(), 1, "{stdout}");
+}
+
+// An opt-in rule runs only when a selector names it, by code or by name; `ALL` and prefixes leave it out.
+#[test_case("", &[], false ; "default")]
+#[test_case("", &["--select", "ALL"], false ; "all")]
+#[test_case("", &["--select", "SMP4"], false ; "prefix")]
+#[test_case("", &["--select", "SMP407"], true ; "code")]
+#[test_case("", &["--select", "init-module-content"], true ; "name")]
+#[test_case("", &["--extend-select", "SMP407"], true ; "extend_select")]
+#[test_case("[tool.simplint]\nextend-select = [\"init-module-content\"]\n", &[], true ; "configuration")]
+#[test_case("[tool.simplint]\nextend-select = [\"SMP407\"]\nignore = [\"SMP4\"]\n", &[], true ; "named_beats_prefix")]
+fn opt_in_rule_runs_only_when_named(pyproject: &str, args: &[&str], reported: bool) {
+    let root = project(&[("pyproject.toml", pyproject), ("demo/__init__.py", "import os\n\nSEPARATOR = os.sep\n")]);
+    let (_, stdout, _) = check(root.path(), &[&["--no-cache"], args].concat());
+    assert_eq!(common::reports(&stdout, "SMP407").is_empty(), !reported, "{stdout}");
+}
+
 #[cfg(unix)]
 #[test]
 fn unreadable_pyproject_fails() {

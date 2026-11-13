@@ -54,7 +54,7 @@ def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> 
     )
     rows: list[str] = []
     for family, (group, _) in groups.items():
-        rows.append(f'<tr class="group-row" data-group="{family}"><td colspan="5">{html.escape(group)}</td></tr>')
+        rows.append(f'<tr class="group-row" data-group="{family}"><td colspan="6">{html.escape(group)}</td></tr>')
         rows.extend(_rule_row(rule) for rule in rules if rule["family"] == family)
     body = "\n".join(rows)
     markup = (
@@ -69,12 +69,16 @@ def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> 
         '<select id="rule-scope" aria-label="Files read"><option value="">All rules</option>'
         '<option value="cross-file">Cross-file only</option>'
         '<option value="single-file">Single-file only</option></select>'
+        '<select id="rule-default" aria-label="Default"><option value="">On or off by default</option>'
+        '<option value="on">On by default</option><option value="opt-in">Opt-in only</option></select>'
         # the count, like the rows, is final in the markup, so a page without filters needs no script to settle
         f'<span id="rule-count" class="rule-count">{len(rules)} rules</span></div>'
         '<table class="rules"><thead><tr><th class="rule-code">Code</th><th class="rule-name">Name</th>'
         '<th class="rule-summary">Checks</th><th class="rule-fix">Fix</th>'
         '<th class="rule-scope"><a href="explanation/how-it-works.html#cross-file-rules"'
         ' title="Other files of the run can change what the rule reports">Cross-file</a></th>'
+        '<th class="rule-default"><a href="how-to/select-rules.html#opt-in-rules"'
+        ' title="Runs without being selected by its code or name">Default</a></th>'
         f"</tr></thead><tbody>\n{body}\n</tbody></table>"
         '<p id="rule-empty" class="rule-empty" hidden>No rule matches these filters.</p>'
     )
@@ -97,13 +101,15 @@ def _rule_row(rule: RuleEntry) -> str:
     return (
         f'<tr class="rule-row" id="{rule["name"]}" data-group="{rule["family"]}" data-fix="{rule["fix"]}"'
         f' data-scope="{"cross-file" if rule["cross_file"] else "single-file"}"'
+        f' data-default="{"opt-in" if rule["opt_in"] else "on"}"'
         f' data-text="{searchable}">'
         f'<td class="rule-code" id="{rule["code"]}">'
         f'<a href="rules/{rule["code"]}.html">{rule["code"]}</a></td>'
         f'<td class="rule-name">{rule["name"]}</td>'
         f'<td class="rule-summary">{summary}</td>'
         f'<td class="rule-fix">{fix}</td>'
-        f'<td class="rule-scope">{"✓" if rule["cross_file"] else "✗"}</td></tr>'
+        f'<td class="rule-scope">{"✓" if rule["cross_file"] else "✗"}</td>'
+        f'<td class="rule-default">{"✗" if rule["opt_in"] else "✓"}</td></tr>'
     )
 
 
@@ -127,10 +133,16 @@ def _rule_page(rule: RuleEntry) -> str:
         if rule["cross_file"]
         else ""
     )
+    opt_in = (
+        '<a class="badge opt-in" href="../how-to/select-rules.html#opt-in-rules"'
+        ' title="Runs only when selected by its code or name">Opt-in</a>'
+        if rule["opt_in"]
+        else ""
+    )
     badges = (
         f'<div class="badges"><span class="badge code">{rule["code"]}</span>'
         f'<span class="badge {badge_class}">{badge_text}</span><span class="badge">{html.escape(rule["group"])}</span>'
-        f"{cross_file}"
+        f"{cross_file}{opt_in}"
         '<a class="badge" href="../rules.html">All rules</a></div>'
     )
     explanation = _RULE_CODE_LINK_PATTERN.sub(r"](\1.md)", rule["explanation"])

@@ -103,8 +103,18 @@ def test_rule_entries_reads_the_registry_row(tmp_path: Path) -> None:
             "group": "Public API",
             "short_group": "Public API",
             "cross_file": False,
+            "opt_in": False,
         }
     ]
+
+
+def test_rule_entries_reads_an_opt_in_row(registry: Path, tmp_path: Path) -> None:
+    text = registry.read_text(encoding="utf-8")
+    registry.write_text(text.replace("{ module }),", "{ module } default off),"), encoding="utf-8")
+    (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
+    (tmp_path / "src" / "rules" / "api" / "all_format.md").write_text("Flags it.\n", encoding="utf-8")
+
+    assert rule_entries(tmp_path)[0]["opt_in"] is True
 
 
 @pytest.mark.usefixtures("registry")
