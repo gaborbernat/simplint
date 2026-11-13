@@ -89,6 +89,19 @@ lower case, or in upper case as a constant spells it, with or without leading or
 
 ### Exceptions
 
+- **Fields of model classes**: names in the body of a dataclass, an attrs class, a pydantic model, a `TypedDict`, a
+  `NamedTuple` or a msgspec `Struct`. Each field is also a key of the data the class reads and writes, so the data's
+  schema sets its name.
+
+  ```python ok
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Payload:
+      foo: str
+  ```
+
 - **Overrides**: the parameters of a method decorated with
   [`@override`](https://docs.python.org/3/library/typing.html#typing.override) keep the names of the method they
   replace.

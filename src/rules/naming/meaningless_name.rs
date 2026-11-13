@@ -5,11 +5,11 @@ use ruff_text_size::TextRange;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::rules::naming::{NameSite, current, except_name, parameters, pattern_name};
-use crate::syntax::receiver;
+use crate::syntax::{decorator_callee, last_segment, receiver};
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     match expr {
-        Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, range, .. }) => {
+        Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, range, .. }) if !is_model_field(walker) => {
             check(walker, current(walker), NameSite { text: id.as_str(), range: *range });
         }
         Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store, range, .. })
@@ -19,6 +19,24 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         }
         _ => {}
     }
+}
+
+// A field of a model class, such as a dataclass, a pydantic model or a `TypedDict`, is also a key of the data it reads
+// and writes, so its name is set by that data's schema.
+fn is_model_field(walker: &Walker) -> bool {
+    let [.., Scope::Class(class)] = walker.scopes() else {
+        return false;
+    };
+    let decorated = class.decorator_list.iter().any(|decorator| {
+        last_segment(decorator_callee(decorator))
+            .is_some_and(|name| matches!(name, "dataclass" | "define" | "frozen" | "mutable" | "s" | "attrs" | "sequence"))
+    });
+    decorated
+        || class.bases().iter().any(|base| {
+            last_segment(base).is_some_and(|name| {
+                matches!(name, "BaseModel" | "BaseSettings" | "RootModel" | "SQLModel" | "TypedDict" | "NamedTuple" | "Struct")
+            })
+        })
 }
 
 // `self.data = ...` in a method, or `cls.data = ...` in a classmethod, declares an attribute of the class, which the

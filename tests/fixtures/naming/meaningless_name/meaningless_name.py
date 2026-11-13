@@ -78,3 +78,26 @@ def names() -> None:
     Foo = type("Foo", (), {})
     bar = data = 4
     print(foo_count, FOO, _baz, Foo, bar, data)
+
+
+from dataclasses import dataclass  # noqa: E402
+from typing import TypedDict  # noqa: E402
+
+from pydantic import BaseModel  # noqa: E402
+
+
+@dataclass
+class Payload:
+    foo: str
+
+
+class Model(BaseModel):
+    bar: int
+
+
+class Row(TypedDict):
+    baz: str
+
+
+class Plain:
+    foo: str
