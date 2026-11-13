@@ -222,15 +222,15 @@ fn instance_attributes_of(
         })
         .collect();
     for (name, range) in instance_attributes(class) {
-        let unread = !(members.contains(&name)
+        if !(members.contains(&name)
             || is_protocol_name(name)
             || public_class && Visibility::of(name) == Visibility::Public
             || project.calls().attribute_loads(name) != 0
             || project.string_word_count(name) != 0
-            || computed_read_hides(checker, name, local_reads))
-            && !project.is_referenced(name)
-            && !is_in_strings(strings, name, TextRange::empty(range.start()));
-        if unread {
+            || computed_read_hides(checker, name, local_reads)
+            || project.is_referenced(name)
+            || is_in_strings(strings, name, TextRange::empty(range.start())))
+        {
             checker.report(
                 Rule::UnusedDefinition,
                 range,
@@ -273,39 +273,37 @@ fn reads_instance_whole(class: &ast::StmtClassDef) -> bool {
 // A function defined inside another function that the enclosing function never reads: it is never called, returned or
 // passed on. A `locals()` or `vars()` call, or a `global` or `nonlocal` statement naming it, can reach it by name.
 fn nested_functions(checker: &Checker) {
-    for function in checker.function_defs() {
-        report_nested(checker, function);
-    }
-}
-
-fn report_nested(checker: &Checker, outer: &ast::StmtFunctionDef) {
-    // A function that holds only definitions runs none of them; it is source text another tool reads, such as a
-    // plugin a test writes out.
-    let holds_only_definitions = outer.body.iter().all(|stmt| {
-        matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Pass(_))
-            || stmt.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr())
-    });
-    if holds_only_definitions || !defines_function(&outer.body) {
-        return;
-    }
-    let mut scope = Scope::default();
-    scope.visit_body(&outer.body);
-    if scope.dynamic {
-        return;
-    }
-    for inner in scope.functions {
-        let name = inner.name.as_str();
-        let read =
-            scope.loads.get(name).is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
-        if inner.decorator_list.is_empty() && !read && !scope.declared.contains(&name) && name != "_" {
-            checker.report(
-                Rule::UnusedDefinition,
-                inner.name.range(),
-                format!(
-                    "`{}.{name}` is defined inside `{}` but never called or read; remove it",
-                    outer.name, outer.name
-                ),
-            );
+    for outer in checker.function_defs() {
+        // A function that holds only definitions runs none of them; it is source text another tool reads, such as a
+        // plugin a test writes out.
+        if outer.body.iter().all(|stmt| {
+            matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Pass(_))
+                || stmt.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr())
+        }) || !defines_function(&outer.body)
+        {
+            continue;
+        }
+        let mut scope = Scope::default();
+        scope.visit_body(&outer.body);
+        if scope.dynamic {
+            continue;
+        }
+        for inner in scope.functions {
+            let name = inner.name.as_str();
+            let read = scope
+                .loads
+                .get(name)
+                .is_some_and(|ranges| ranges.iter().any(|load| !inner.range().contains_range(*load)));
+            if inner.decorator_list.is_empty() && !read && !scope.declared.contains(&name) && name != "_" {
+                checker.report(
+                    Rule::UnusedDefinition,
+                    inner.name.range(),
+                    format!(
+                        "`{}.{name}` is defined inside `{}` but never called or read; remove it",
+                        outer.name, outer.name
+                    ),
+                );
+            }
         }
     }
 }
@@ -337,15 +335,12 @@ struct Scope<'a> {
 impl<'a> Visitor<'a> for Scope<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::FunctionDef(function) => {
-                if self.depth == 0 {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {
+                if let Stmt::FunctionDef(function) = stmt
+                    && self.depth == 0
+                {
                     self.functions.push(function);
                 }
-                self.depth += 1;
-                walk_stmt(self, stmt);
-                self.depth -= 1;
-            }
-            Stmt::ClassDef(_) => {
                 self.depth += 1;
                 walk_stmt(self, stmt);
                 self.depth -= 1;
@@ -359,12 +354,10 @@ impl<'a> Visitor<'a> for Scope<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Name(name) = expr {
-            if name.ctx.is_load() {
-                if LOCALS_READERS.contains(&name.id.as_str()) {
-                    self.dynamic = true;
-                }
-                self.loads.entry(name.id.as_str()).or_default().push(name.range);
-            } else if name.ctx.is_del() {
+            if name.ctx.is_load() && LOCALS_READERS.contains(&name.id.as_str()) {
+                self.dynamic = true;
+            }
+            if name.ctx.is_load() || name.ctx.is_del() {
                 self.loads.entry(name.id.as_str()).or_default().push(name.range);
             }
         }

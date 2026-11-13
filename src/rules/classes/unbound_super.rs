@@ -4,10 +4,6 @@ use ruff_text_size::Ranged;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-// Comprehensions run inline in their function from Python 3.12 (PEP 709), so `super()` in one finds the method's
-// arguments there.
-const INLINED_COMPREHENSIONS: PythonVersion = PythonVersion::PY312;
-
 // Zero-argument `super()` reads the `__class__` cell and the first argument of the function it runs in. A generator
 // expression's first argument is the iterator it loops over, a lambda or nested function without parameters has none,
 // and a function outside a class has no `__class__` cell, so each call fails when it runs.
@@ -19,7 +15,6 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !arguments.is_empty() || !checker.semantic().is_builtin(func, "super") {
         return;
     }
-    let target = checker.target_version();
     // The innermost function-like node around the call decides what `super()` binds to.
     for outer in walker.expressions().iter().rev().skip(1) {
         // The first iterable of a comprehension is evaluated in the enclosing scope, before the comprehension runs.
@@ -30,7 +25,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         }
         let reason = match outer {
             Expr::Generator(_) => "a generator expression passes `super()` its iterator instead of the instance",
-            Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) if target < INLINED_COMPREHENSIONS => {
+            // Comprehensions run inline in their function from Python 3.12 (PEP 709), so `super()` in one finds the
+            // method's arguments there.
+            Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_)
+                if checker.target_version() < PythonVersion::PY312 =>
+            {
                 "before Python 3.12 a comprehension passes `super()` its iterator instead of the instance"
             }
             Expr::Lambda(lambda) if lambda.parameters.as_ref().is_none_or(|parameters| !has_positional(parameters)) => {

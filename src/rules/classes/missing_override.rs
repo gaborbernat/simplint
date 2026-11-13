@@ -2,7 +2,7 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 use rustc_hash::FxHashSet;
@@ -52,17 +52,17 @@ fn fix(checker: &Checker, method: &ast::StmtFunctionDef) -> Option<Fix> {
     Some(with_import(edit, import, Applicability::Safe))
 }
 
-// The names of the methods already marked with `@override`.
 fn marked_names<'a>(checker: &Checker, methods: &[&'a ast::StmtFunctionDef]) -> FxHashSet<&'a str> {
     methods
         .iter()
-        .filter(|method| method.decorator_list.iter().any(|decorator| is_override(checker, &decorator.expression)))
+        .filter(|method| {
+            method
+                .decorator_list
+                .iter()
+                .any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "override"))
+        })
         .map(|method| method.name.as_str())
         .collect()
-}
-
-fn is_override(checker: &Checker, decorator: &Expr) -> bool {
-    checker.semantic().match_typing_expr(decorator, "override")
 }
 
 fn is_overload(checker: &Checker, method: &ast::StmtFunctionDef) -> bool {

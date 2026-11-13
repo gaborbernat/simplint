@@ -71,7 +71,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             Stmt::Return(ast::StmtReturn { value: Some(value), .. }) if value.is_boolean_literal_expr() => {
                 format!("returns `{}`", checker.text(value.range()))
             }
-            Stmt::Raise(ast::StmtRaise { exc: Some(exc), cause: None, .. }) if raises_type_error(checker, exc) => {
+            Stmt::Raise(ast::StmtRaise { exc: Some(exc), cause: None, .. })
+                if checker.semantic().is_builtin(map_callable(exc), "TypeError") =>
+            {
                 "raises `TypeError`".to_owned()
             }
             _ => continue,
@@ -112,8 +114,4 @@ fn rejects_type(checker: &Checker, test: &Expr, other: &str) -> bool {
         }
         _ => false,
     }
-}
-
-fn raises_type_error(checker: &Checker, exc: &Expr) -> bool {
-    checker.semantic().is_builtin(map_callable(exc), "TypeError")
 }

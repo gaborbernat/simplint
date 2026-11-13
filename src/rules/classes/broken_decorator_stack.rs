@@ -5,9 +5,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-// Python 3.11 deprecated `classmethod` wrapping another descriptor, and Python 3.13 removed it.
-const CLASS_PROPERTY_DEPRECATED: PythonVersion = PythonVersion::PY311;
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Property,
@@ -60,8 +57,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             continue;
         };
         let message = match (outer, inner) {
+            // Python 3.11 deprecated `classmethod` wrapping another descriptor, and Python 3.13 removed it.
             (Kind::ClassMethod, Kind::Property | Kind::CachedProperty)
-                if checker.target_version() >= CLASS_PROPERTY_DEPRECATED =>
+                if checker.target_version() >= PythonVersion::PY311 =>
             {
                 format!(
                     "`@classmethod` over `@{}` stopped returning the value in Python 3.13, so `{name}` reads as a \
