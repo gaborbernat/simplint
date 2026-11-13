@@ -112,3 +112,49 @@ def tabs() -> None:
 	shard of
 	the queue
 	"""
+
+
+def google(host, port):
+    """Open a connection.
+
+    Args:
+        host: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+        port: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+        verify (bool): word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+
+    Returns:
+        word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    """
+
+
+def numpydoc(host, port):
+    """
+    Open a connection.
+
+    Parameters
+    ----------
+    host : str
+        word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    port : int
+        word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    """
+
+
+def structured():
+    """
+    - word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    - word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    1. word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    #. word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    .. note:: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    :param path: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    :returns: word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    """
+
+
+def aside():
+    """
+    host (the name) word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word word
+    """

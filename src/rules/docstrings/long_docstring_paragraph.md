@@ -105,6 +105,25 @@ No fix is offered, since where to split a paragraph depends on its meaning.
       return value * 2
   ```
 
+- **Structured blocks**: a list item, an RST field such as `:param path:`, a directive, a Google section header or
+  entry, and a numpydoc entry each start a new paragraph, and a heading underline ends one, so each item counts on its
+  own.
+
+  ```toml config
+  [tool.simplint]
+  max-paragraph-words = 10
+  ```
+
+  ```python ok
+  def connect(host: str, port: int) -> None:
+      """Open a connection.
+
+      Args:
+          host: Network interface the client connects to, as a name or an address.
+          port: TCP port the server listens on, between one and 65535.
+      """
+  ```
+
 ### Report range
 
 The report spans from the paragraph's first line to the line where it passes `max-paragraph-words` words.

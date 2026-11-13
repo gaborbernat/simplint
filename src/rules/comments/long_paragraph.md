@@ -54,9 +54,12 @@ No fix is offered, since where to split a paragraph depends on its meaning.
 - **Own-line comment paragraphs**: a **paragraph** is a run of own-line comments on consecutive lines at the same
   indentation, and it is reported once it passes `max-paragraph-words` words. Any of these ends it:
 
-  - an empty `#` line
+  - an empty `#` or `#:` line
   - a line of code
   - a comment at another indentation
+
+  A list item, an RST field or directive, or a line such as `Args:` starts a new paragraph, so each item counts on its
+  own.
 
   ```python report
   # The cache keeps one entry per manifest, keyed by path and modification time, because parsing a manifest dominates
