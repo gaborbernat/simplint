@@ -2,7 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-38:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller` [unsafe fix: Move `Helper` below `caller`]
+15:7 SMP201 `Payload` is defined before its first use in `Envelope`; move it below `Envelope` [unsafe fix: Move `Payload` below `Envelope`]
+38:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller`
 --- fixed (1 applied, 0 remaining) ---
 from dataclasses import dataclass
 
@@ -18,16 +19,16 @@ def read_item() -> Item:
     return Item()
 
 
-class Payload:
-    pass
-
-
 @dataclass
 class Envelope:
     payload: Payload
 
     def wrap(self) -> object:
         return Payload()
+
+
+class Payload:
+    pass
 
 
 class Token:
@@ -47,3 +48,15 @@ def caller() -> object:
 
 class Helper:
     pass
+
+
+class Column:
+    pass
+
+
+@router.model
+class Row:
+    cell: Column
+
+    def fill(self) -> object:
+        return Column()

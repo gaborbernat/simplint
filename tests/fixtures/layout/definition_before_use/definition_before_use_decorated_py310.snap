@@ -47,3 +47,15 @@ def caller() -> object:
 
 class Helper:
     pass
+
+
+class Column:
+    pass
+
+
+@router.model
+class Row:
+    cell: Column
+
+    def fill(self) -> object:
+        return Column()
