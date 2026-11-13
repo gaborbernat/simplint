@@ -28,13 +28,17 @@ fn is_model_field(walker: &Walker) -> bool {
         return false;
     };
     let decorated = class.decorator_list.iter().any(|decorator| {
-        last_segment(decorator_callee(decorator))
-            .is_some_and(|name| matches!(name, "dataclass" | "define" | "frozen" | "mutable" | "s" | "attrs" | "sequence"))
+        last_segment(decorator_callee(decorator)).is_some_and(|name| {
+            matches!(name, "dataclass" | "define" | "frozen" | "mutable" | "s" | "attrs" | "sequence")
+        })
     });
     decorated
         || class.bases().iter().any(|base| {
             last_segment(base).is_some_and(|name| {
-                matches!(name, "BaseModel" | "BaseSettings" | "RootModel" | "SQLModel" | "TypedDict" | "NamedTuple" | "Struct")
+                matches!(
+                    name,
+                    "BaseModel" | "BaseSettings" | "RootModel" | "SQLModel" | "TypedDict" | "NamedTuple" | "Struct"
+                )
             })
         })
 }

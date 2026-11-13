@@ -2,16 +2,16 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-6:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
+6:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
 7:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
 9:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
-10:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
-11:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
-12:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
-20:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
+10:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
+11:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
+12:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
+20:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
 25:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
-27:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
-28:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
+27:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
+28:1 SMP001 Section comment groups code; extract a named function or class instead [unsafe fix: Remove the section comment]
 29:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
 30:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
 31:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
@@ -40,3 +40,23 @@ VALUE = os.sep  # ---- trailing is fine
 # the lock must hold
 # __getattribute__ triggered through __getattr__
 # __init__ wires the parser
+
+
+def negotiate(requested: bool, configured: bool) -> bool:
+    #   Config  Req.    Resp.
+    #   ------  ------  ------
+    #   False   False   False
+    return requested or configured
+
+
+def flow(column: int, indent: int) -> bool:
+    ## The stricter condition would reject intuitively correct
+    ## constructions such as
+    ## a mapping that opens on the key line.
+    return indent > column
+
+
+## https://yaml.org/spec/1.2.2/
+## tokens.append(token)
+## Remove this
+LAST = 1

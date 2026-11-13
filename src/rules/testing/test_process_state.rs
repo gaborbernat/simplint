@@ -115,7 +115,8 @@ fn is_restoring_autouse(stmt: &Stmt) -> bool {
 // base `setUp` that starts a patcher and a `tearDown` that stops it.
 fn inherits_hooks(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     class.bases().iter().any(|base| {
-        !checker.semantic().resolves_to(base, &["unittest", "TestCase"]) && !checker.semantic().is_builtin(base, "object")
+        !checker.semantic().resolves_to(base, &["unittest", "TestCase"])
+            && !checker.semantic().is_builtin(base, "object")
     })
 }
 

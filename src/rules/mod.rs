@@ -81,12 +81,15 @@ fn is_underline(text: &str) -> bool {
 // A bullet or enumerated item, an RST field or directive, a Google section header or entry, or a numpydoc entry.
 fn opens_block(text: &str) -> bool {
     let (head, rest) = text.split_once(' ').unwrap_or((text, ""));
-    let enumerated = head
-        .strip_suffix(['.', ')'])
-        .is_some_and(|number| number == "#" || (!number.is_empty() && number.chars().all(|char| char.is_ascii_digit())));
+    let enumerated = head.strip_suffix(['.', ')']).is_some_and(|number| {
+        number == "#" || (!number.is_empty() && number.chars().all(|char| char.is_ascii_digit()))
+    });
     let field = text.strip_prefix(':').is_some_and(|field| field.contains(':'));
     let typed = rest.starts_with(':')
-        || rest.strip_prefix('(').and_then(|typed| typed.split_once(')')).is_some_and(|(_, after)| after.starts_with(':'));
+        || rest
+            .strip_prefix('(')
+            .and_then(|typed| typed.split_once(')'))
+            .is_some_and(|(_, after)| after.starts_with(':'));
     let entry = head.strip_suffix(':').is_some_and(is_identifier) || (is_identifier(head) && typed);
     let section = text.strip_suffix(':').is_some_and(|title| {
         title.starts_with(char::is_uppercase) && title.chars().all(|char| char.is_alphabetic() || char == ' ')
