@@ -52,16 +52,14 @@ fn fix(checker: &Checker, method: &ast::StmtFunctionDef) -> Option<Fix> {
 }
 
 fn is_override(checker: &Checker, decorator: &Expr) -> bool {
-    let semantic = checker.semantic();
-    semantic.resolves_to(decorator, &["typing", "override"])
-        || semantic.resolves_to(decorator, &["typing_extensions", "override"])
+    checker.semantic().match_typing_expr(decorator, "override")
 }
 
 fn is_overload(checker: &Checker, method: &ast::StmtFunctionDef) -> bool {
-    method.decorator_list.iter().any(|decorator| {
-        checker.semantic().resolves_to(&decorator.expression, &["typing", "overload"])
-            || checker.semantic().resolves_to(&decorator.expression, &["typing_extensions", "overload"])
-    })
+    method
+        .decorator_list
+        .iter()
+        .any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "overload"))
 }
 
 // Every class inherits the special methods from `object`, so overriding one is how a class takes part in a protocol.

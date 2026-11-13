@@ -2,7 +2,7 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::{self as ast, Expr};
 
 use crate::semantic::Semantic;
-use crate::syntax::{MOCK_CLASSES, last_segment};
+use crate::syntax::{MOCK_CLASSES, decorator_callee, last_segment};
 
 const PATCHERS: &[&[&str]] = &[
     &["unittest", "mock", "patch"],
@@ -44,8 +44,7 @@ pub(crate) fn is_patch_by_name(func: &Expr) -> bool {
 }
 
 pub(crate) fn is_fixture(decorator: &ast::Decorator) -> bool {
-    let func = decorator.expression.as_call_expr().map_or(&decorator.expression, |call| &call.func);
-    last_segment(func) == Some("fixture")
+    last_segment(decorator_callee(decorator)) == Some("fixture")
 }
 
 pub(crate) fn expects_error(expr: &Expr) -> bool {

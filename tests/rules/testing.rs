@@ -145,6 +145,22 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
+// A plugin outside the tests registers fixtures pytest resolves, so a fixture it requests is used, whether the plugin's
+// decorator is called or not.
+#[test_case("@pytest.fixture" ; "bare")]
+#[test_case("@pytest.fixture(scope=\"session\")" ; "called")]
+fn unused_fixture_counts_requests_of_plugin_fixtures(decorator: &str) {
+    let fixture = "import pytest\n\n\n@pytest.fixture\ndef base() -> str:\n    return \"value\"\n";
+    let plugin = format!("import pytest\n\n\n{decorator}\ndef app(base: str) -> str:\n    return base\n");
+    let root = common::project(&[
+        ("tests/conftest.py", fixture),
+        ("src/example/plugin.py", &plugin),
+        ("tests/test_app.py", "def test_app(app: str) -> None:\n    assert app\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP815"]);
+    assert!(!stdout.contains("`base`"), "{stdout}");
+}
+
 // Ruff's PGH005 reports a non-existent mock method in the test of an assert and in a statement of its own, and PGH005
 // offers no fix. SMP814 leaves a name it has no fix for to Ruff, and reports the names it can fix, whether or not the
 // project selects PGH005.
@@ -202,7 +218,8 @@ fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP808", reports);
 }
 
-const MARKED: &str = "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.skip\ndef test_marked() -> None:\n    assert True\n";
+const MARKED: &str =
+    "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.skip\ndef test_marked() -> None:\n    assert True\n";
 
 // pytest knows the marks the configuration registers, its own, and the ones common plugins register; without a
 // configuration the registered marks are unknown.
@@ -238,7 +255,10 @@ fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\n"),
         (file, configuration),
-        ("tests/test_marks.py", "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.fast\ndef test_marked() -> None:\n    assert True\n"),
+        (
+            "tests/test_marks.py",
+            "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.fast\ndef test_marked() -> None:\n    assert True\n",
+        ),
     ]);
     common::assert_report_count(root.path(), "SMP820", 1);
 }

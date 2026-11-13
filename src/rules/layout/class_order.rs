@@ -11,7 +11,7 @@ use super::constructors::alternative_constructors;
 use super::definition_time::{bound_names, definition_name, definition_time_exprs};
 use super::reorder::{Read, depth_first};
 use crate::lint::checker::Checker;
-use crate::syntax::{ExprCollector, decorator_names, signature_annotations};
+use crate::syntax::{ExprCollector, has_decorator, signature_annotations};
 
 // A method that is in none of them sorts after all of them.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -460,10 +460,7 @@ fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
         Some(Section::Factory)
     } else if name.len() > 4 && name.starts_with("__") && name.ends_with("__") {
         Some(Section::Dunder)
-    } else if decorator_names(&function.decorator_list)
-        .iter()
-        .any(|name| matches!(*name, "property" | "cached_property" | "setter" | "getter" | "deleter"))
-    {
+    } else if has_decorator(&function.decorator_list, &["property", "cached_property", "setter", "getter", "deleter"]) {
         Some(Section::Property)
     } else {
         None

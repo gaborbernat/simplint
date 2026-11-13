@@ -23,7 +23,7 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::syntax::{first_positional, is_name, receiver, statement_index};
+use crate::syntax::{decorator_callee, first_positional, is_name, receiver, statement_index};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
 #[derive(Clone, Copy, Default)]
@@ -187,6 +187,18 @@ impl<'a> Semantic<'a> {
             return false;
         }
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
+    }
+
+    pub const PROPERTY: &[&[&str]] = &[&["", "property"], &["functools", "cached_property"]];
+
+    // Whether a decorator, or the factory a called decorator comes from, resolves to one of `names`.
+    pub fn is_decorator(&self, decorator: &ast::Decorator, names: &[&[&str]]) -> bool {
+        let callee = decorator_callee(decorator);
+        names.iter().any(|segments| self.resolves_to(callee, segments))
+    }
+
+    pub fn decorated_by(&self, decorators: &[ast::Decorator], names: &[&[&str]]) -> bool {
+        decorators.iter().any(|decorator| self.is_decorator(decorator, names))
     }
 
     // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.

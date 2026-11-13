@@ -1,9 +1,9 @@
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::Stmt;
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::yields;
+use crate::syntax::{decorator_callee, yields};
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::FunctionDef(function) = stmt else {
@@ -15,15 +15,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let checker = walker.checker;
     let semantic = checker.semantic();
     let instance_method = matches!(walker.scopes().last(), Some(Scope::Class(_)))
-        && !function.decorator_list.iter().any(|decorator| {
-            semantic.is_builtin(&decorator.expression, "staticmethod")
-                || semantic.is_builtin(&decorator.expression, "classmethod")
-        });
+        && !semantic.decorated_by(&function.decorator_list, &[&["", "staticmethod"], &["", "classmethod"]]);
     for decorator in &function.decorator_list {
-        let callee = match &decorator.expression {
-            Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-            expression => expression,
-        };
+        let callee = decorator_callee(decorator);
         let Some(name) = ["cache", "lru_cache", "cached_property"]
             .into_iter()
             .find(|name| semantic.resolves_to(callee, &["functools", name]))

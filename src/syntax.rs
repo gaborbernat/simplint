@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 
 use ruff_python_ast::AnyParameterRef;
-use ruff_python_ast::helpers::{any_over_expr, is_dunder};
+use ruff_python_ast::helpers::{any_over_expr, is_dunder, map_callable};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
@@ -96,7 +96,8 @@ pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
     has_decorator(decorators, &["overload"])
 }
 
-// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`.
+// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`, and a called decorator by its
+// factory, so `pytest.fixture(scope="module")` matches `"fixture"`.
 pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
     decorator_names(decorators).iter().any(|name| names.contains(name))
 }
@@ -173,8 +174,8 @@ pub fn dataclass_decorator<'a>(
     class
         .decorator_list
         .iter()
+        .find(|decorator| is_dataclass(decorator_callee(decorator)))
         .map(|decorator| &decorator.expression)
-        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
 }
 
 // An attribute a method writes on its instance through its receiver, with the statement that writes it, the one after
@@ -240,7 +241,7 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
 }
 
 pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
-    if decorator_names(&method.decorator_list).contains(&"staticmethod") {
+    if has_decorator(&method.decorator_list, &["staticmethod"]) {
         return None;
     }
     first_positional(&method.parameters)
@@ -329,11 +330,15 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
 }
 
 pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
-    decorator_names(&method.decorator_list).contains(&"classmethod")
+    has_decorator(&method.decorator_list, &["classmethod"])
 }
 
 pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
-    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
+    decorators.iter().filter_map(|decorator| last_segment(decorator_callee(decorator))).collect()
+}
+
+pub fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
+    map_callable(&decorator.expression)
 }
 
 pub fn statement_index(body: &[Stmt], offset: TextSize) -> usize {

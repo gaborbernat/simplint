@@ -69,7 +69,7 @@ fn ruff_reports_empty_docstring(checker: &Checker, literal: &ast::ExprStringLite
 }
 
 fn raised_class(exc: &Expr) -> &Expr {
-    exc.as_call_expr().map_or(exc, |call| call.func.as_ref())
+    map_callable(exc)
 }
 
 // Sphinx autodoc reads a string after a variable, or a `#:` comment above it or at the end of its line.

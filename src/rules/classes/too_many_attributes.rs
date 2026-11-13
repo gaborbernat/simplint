@@ -4,7 +4,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{dataclass_decorator, decorator_names, instance_writes, last_segment};
+use crate::syntax::{dataclass_decorator, instance_writes, is_classmethod, last_segment};
 
 // A class holding many attributes mixes several responsibilities, which smaller classes it holds would each name.
 pub fn too_many_attributes(checker: &Checker) {
@@ -12,7 +12,7 @@ pub fn too_many_attributes(checker: &Checker) {
     for class in checker.class_defs() {
         let mut attributes: FxHashSet<&str> = instance_writes(class)
             .into_iter()
-            .filter(|write| !decorator_names(&write.method.decorator_list).contains(&"classmethod"))
+            .filter(|write| !is_classmethod(write.method))
             .map(|write| write.attr)
             .collect();
         if is_dataclass(checker, class) {
