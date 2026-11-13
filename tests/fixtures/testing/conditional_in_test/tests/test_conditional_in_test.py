@@ -2,7 +2,7 @@ import sys
 
 
 def test_branches() -> None:
-    if sys.platform == "win32":
+    if sys.maxsize > 2:
         assert True is not False
     value = 1 if sys.maxsize else 2
     match value:

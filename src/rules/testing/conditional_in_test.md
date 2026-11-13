@@ -2,43 +2,37 @@ Flags `if` statements, `match` statements and conditional expressions in test fu
 
 ## Why is this bad?
 
-A branching test runs a different check depending on its input or environment, so a passing run does not say which path
-was verified. Google's testing guide asks for tests that are
+A branching test runs a different check depending on its input, so a passing run does not say which path was verified.
+Google's testing guide asks for tests that are
 [correct at a glance, with no conditionals or loops](https://abseil.io/resources/swe-book/html/ch12.html), since a bug
 in test logic is easy to miss. With one [parametrized](https://docs.pytest.org/en/stable/how-to/parametrize.html) case
 per path, pytest reports each path on its own.
 
 ## Example
 
-```python report file=tests/test_paths.py
-import sys
-
-
-def test_separator() -> None:
-    if sys.platform == "win32":
-        assert separator() == "\\"
+```python report file=tests/test_parse.py
+def test_parse(text: str) -> None:
+    if text.startswith("-"):
+        assert parse(text) < 0
     else:
-        assert separator() == "/"
+        assert parse(text) >= 0
 ```
 
 Use instead:
 
-```python ok file=tests/test_paths.py
-import sys
-
+```python ok file=tests/test_parse.py
 import pytest
 
 
 @pytest.mark.parametrize(
-    ("platform", "expected"),
+    ("text", "negative"),
     [
-        pytest.param("win32", "\\", id="windows"),
-        pytest.param("linux", "/", id="linux"),
+        pytest.param("-1", True, id="negative"),
+        pytest.param("1", False, id="positive"),
     ],
 )
-def test_separator(monkeypatch: pytest.MonkeyPatch, platform: str, expected: str) -> None:
-    monkeypatch.setattr(sys, "platform", platform)
-    assert separator() == expected
+def test_parse(text: str, negative: bool) -> None:
+    assert (parse(text) < 0) is negative
 ```
 
 ## What it does
@@ -52,11 +46,11 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
   which check runs.
 
   ```python report file=tests/test_if.py
-  def test_separator() -> None:
-      if sys.platform == "win32":
-          assert separator() == "\\"
+  def test_parse(text: str) -> None:
+      if text.startswith("-"):
+          assert parse(text) < 0
       else:
-          assert separator() == "/"
+          assert parse(text) >= 0
   ```
 
   ```python report file=tests/test_match.py
@@ -69,8 +63,8 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
   ```
 
   ```python report file=tests/test_ternary.py
-  def test_length() -> None:
-      assert (1 if sys.platform == "win32" else 2) == separator_length()
+  def test_length(text: str) -> None:
+      assert (1 if text else 2) == width(text)
   ```
 
 ### Exceptions
@@ -91,6 +85,31 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
       assert (lambda value: 1 if value else 2)(0) == 2
       check(1)
       assert Helper().pick(0) == 2
+  ```
+
+- **Branches on the interpreter or its environment**: a test whose condition reads only `sys.platform`,
+  `sys.version_info`, `sys.implementation`, `os.name`, `os.environ`, `os.getenv`, the `platform` module, literals, or a
+  constant that names such a check, such as `IS_WINDOWS` or `ON_PYPY`. The branch follows the machine running the test,
+  so it cannot become a parameter.
+
+  ```python ok file=tests/test_exe.py
+  import sys
+
+
+  def test_exe_name() -> None:
+      name = f"python{'.exe' if sys.platform == 'win32' else ''}"
+      assert name.startswith("python")
+  ```
+
+- **Branches on what a loop received**: inside a `while` loop, a condition that reads a name the loop body assigns;
+  inside a `for` loop over anything but a literal collection or `range()`, a condition that reads the loop variable.
+  Such a loop drives an exchange, such as a handshake or a stream of events, and its branches follow what arrives.
+
+  ```python ok file=tests/test_stream.py
+  def test_stream(connection: Connection) -> None:
+      for event in connection.events():
+          if event.type == "delta":
+              assert event.text
   ```
 
 - **`if` clauses and conditional items in comprehensions**: they shape the items a comprehension builds, rather than

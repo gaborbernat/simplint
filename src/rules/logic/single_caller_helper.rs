@@ -65,7 +65,7 @@ fn check_helper<'a>(
         return;
     }
     // Inlining a branching helper into a test would make conditional-in-test's (SMP803) report fire there.
-    if is_test_module_function(checker, caller) && !conditionals(&helper.body).is_empty() {
+    if is_test_module_function(checker, caller) && !conditionals(checker.semantic(), &helper.body).is_empty() {
         return;
     }
     let knobs = &checker.settings.project.knobs;
