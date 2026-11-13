@@ -403,16 +403,24 @@ impl<'a> Walk<'_, 'a> {
             }
             Some(Expr::Compare(compare)) if is_none_test(compare, child) => Context::Test,
             Some(Expr::If(ast::ExprIf { test, .. })) if ptr::eq(test.as_ref(), child) => Context::Test,
-            Some(Expr::ListComp(ast::ExprListComp { generators, .. })) if is_comprehension_condition(generators, child) => {
+            Some(Expr::ListComp(ast::ExprListComp { generators, .. }))
+                if is_comprehension_condition(generators, child) =>
+            {
                 Context::Test
             }
-            Some(Expr::SetComp(ast::ExprSetComp { generators, .. })) if is_comprehension_condition(generators, child) => {
+            Some(Expr::SetComp(ast::ExprSetComp { generators, .. }))
+                if is_comprehension_condition(generators, child) =>
+            {
                 Context::Test
             }
-            Some(Expr::Generator(ast::ExprGenerator { generators, .. })) if is_comprehension_condition(generators, child) => {
+            Some(Expr::Generator(ast::ExprGenerator { generators, .. }))
+                if is_comprehension_condition(generators, child) =>
+            {
                 Context::Test
             }
-            Some(Expr::DictComp(ast::ExprDictComp { generators, .. })) if is_comprehension_condition(generators, child) => {
+            Some(Expr::DictComp(ast::ExprDictComp { generators, .. }))
+                if is_comprehension_condition(generators, child) =>
+            {
                 Context::Test
             }
             Some(_) => Context::Other,
