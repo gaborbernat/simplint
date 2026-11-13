@@ -5,15 +5,20 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::name_uses::{NameUses, ScopeNodes, scopes};
+use crate::rules::logic::name_uses::LocalScope;
 
 pub fn wall_clock_duration(checker: &Checker) {
-    for (body, uses) in scopes(checker.body(), checker.function_defs()) {
-        check_scope(checker, &uses, &ScopeNodes::of(body));
+    // `time.time` is spelled `time` wherever it is imported or called.
+    if checker.state().unqualified_name_count(checker, "time") == 0 {
+        return;
+    }
+    for scope in checker.state().local_scopes(checker).iter() {
+        check_scope(checker, scope);
     }
 }
 
-fn check_scope(checker: &Checker, uses: &NameUses, nodes: &ScopeNodes) {
+fn check_scope(checker: &Checker, scope: &LocalScope) {
+    let nodes = scope.nodes();
     // The names the scope binds once to `time.time()`, with the call each binds.
     let clocks: Vec<(&str, &ast::ExprCall)> = nodes
         .statements
@@ -26,7 +31,7 @@ fn check_scope(checker: &Checker, uses: &NameUses, nodes: &ScopeNodes) {
                 return None;
             };
             let call = value.as_call_expr().filter(|call| is_wall_clock(checker, call))?;
-            uses.is_single_binding(target.id.as_str()).then_some((target.id.as_str(), call))
+            scope.uses().is_single_binding(target.id.as_str()).then_some((target.id.as_str(), call))
         })
         .collect();
     if clocks.is_empty() {
@@ -53,6 +58,7 @@ fn check_scope(checker: &Checker, uses: &NameUses, nodes: &ScopeNodes) {
         .iter()
         .filter(|(name, _)| subtractions.iter().any(|bin_op| mentions(bin_op, name)))
         .collect();
+    let uses = scope.uses();
     let only_durations = involved
         .iter()
         .all(|(name, _)| uses.loads(name).iter().all(|load| operands.contains(&load.range)));

@@ -4,14 +4,14 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::name_uses::{NameUses, for_each_suite, scopes};
+use crate::rules::logic::name_uses::{LocalScope, NameUses, for_each_suite};
 use crate::syntax::{expr_mentions, target_names};
 
 pub fn accumulator_loop(checker: &Checker) {
-    for (body, uses) in scopes(checker.body(), checker.function_defs()) {
-        for_each_suite(body, &mut |suite| {
+    for scope in checker.state().local_scopes(checker).iter() {
+        for_each_suite(scope.body, &mut |suite| {
             for pair in suite.windows(2) {
-                check_pair(checker, &pair[0], &pair[1], &uses);
+                check_pair(checker, &pair[0], &pair[1], scope);
             }
         });
     }
@@ -28,7 +28,7 @@ struct Accumulation<'a> {
     value: &'a Expr,
 }
 
-fn check_pair(checker: &Checker, init: &Stmt, next: &Stmt, uses: &NameUses) {
+fn check_pair(checker: &Checker, init: &Stmt, next: &Stmt, scope: &LocalScope) {
     let Stmt::Assign(ast::StmtAssign { targets, value: start, .. }) = init else {
         return;
     };
@@ -48,6 +48,7 @@ fn check_pair(checker: &Checker, init: &Stmt, next: &Stmt, uses: &NameUses) {
     let Some(accumulation) = accumulation(&loop_stmt.body, name) else {
         return;
     };
+    let uses = scope.uses();
     if expr_mentions(&loop_stmt.iter, name)
         || expr_mentions(&loop_stmt.target, name)
         || uses.is_opaque(name)

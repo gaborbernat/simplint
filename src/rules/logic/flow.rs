@@ -1,9 +1,5 @@
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextRange};
-
-use crate::rules::logic::inline::Names;
-use crate::syntax::Nesting;
 
 // How a statement leaves the block it sits in, if it always does.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -138,89 +134,5 @@ impl<'a> Visitor<'a> for ScopeMarkers {
             Expr::Lambda(_) => {}
             _ => visitor::walk_expr(self, expr),
         }
-    }
-}
-
-// What a function's body binds and reads, walked once per function.
-pub(super) struct FunctionNames<'a> {
-    pub(super) names: Names<'a>,
-    deferred: Nesting,
-    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
-}
-
-impl<'a> FunctionNames<'a> {
-    pub(super) fn of(body: &'a [Stmt]) -> Self {
-        let mut walk = NestedScopes::default();
-        walk.visit_body(body);
-        Self { names: Names::of(body), deferred: Nesting::new(walk.deferred), comprehensions: walk.comprehensions }
-    }
-
-    // Whether the rule can follow the name: the function binds it only by assignment, reads no local by its text, and no
-    // nested function, class or lambda mentions it, since that may read it at any time.
-    pub(super) fn is_plain_local(&self, name: &str) -> bool {
-        let names = &self.names;
-        !names.reads_locals
-            && !names.declared_outer.contains(name)
-            && !names.rebound.contains(name)
-            && !names.string_reads.contains(name)
-            && self.mentions(name).all(|(range, _)| self.deferred.holders(range).next().is_none())
-    }
-
-    // The mentions of the function's own name, in source order, leaving out those of a comprehension that binds a name
-    // of the same spelling.
-    pub(super) fn mentions(&self, name: &str) -> impl Iterator<Item = (TextRange, ast::ExprContext)> + Clone {
-        self.names.mentions.get(name).map_or(&[][..], Vec::as_slice).iter().copied().filter(move |(range, _)| {
-            !self.comprehensions.iter().any(|(scope, bound)| scope.contains_range(*range) && bound.contains(&name))
-        })
-    }
-}
-
-#[derive(Default)]
-struct NestedScopes<'a> {
-    deferred: Vec<TextRange>,
-    comprehensions: Vec<(TextRange, Vec<&'a str>)>,
-}
-
-impl<'a> Visitor<'a> for NestedScopes<'a> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            self.deferred.push(stmt.range());
-        }
-        visitor::walk_stmt(self, stmt);
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        let generators = match expr {
-            Expr::Lambda(_) => {
-                self.deferred.push(expr.range());
-                None
-            }
-            Expr::ListComp(ast::ExprListComp { generators, .. })
-            | Expr::SetComp(ast::ExprSetComp { generators, .. })
-            | Expr::Generator(ast::ExprGenerator { generators, .. }) => Some(generators.as_slice()),
-            Expr::DictComp(ast::ExprDictComp { generators, .. }) => Some(&generators[..]),
-            _ => None,
-        };
-        if let Some(generators) = generators {
-            let mut bound = Vec::new();
-            for generator in generators {
-                collect_names(&generator.target, &mut bound);
-            }
-            self.comprehensions.push((expr.range(), bound));
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
-pub(super) fn collect_names<'a>(target: &'a Expr, into: &mut Vec<&'a str>) {
-    match target {
-        Expr::Name(name) => into.push(name.id.as_str()),
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            for element in elts {
-                collect_names(element, into);
-            }
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => collect_names(value, into),
-        _ => {}
     }
 }

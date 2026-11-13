@@ -83,6 +83,8 @@ pub(crate) use forwarding_function::forwarding_function;
 pub(crate) use inline_regex::inline_regex;
 pub(crate) use iterator_reuse::iterator_reuse;
 pub(crate) use kinds::KindsCache;
+pub(crate) use inline::LOCALS_READERS;
+pub(crate) use name_uses::LocalScopes;
 pub(crate) use range_len_loop::range_len_loop;
 pub(crate) use loop_variable_after_loop::loop_variable_after_loop;
 pub(crate) use side_effect_expression::side_effect_expression;

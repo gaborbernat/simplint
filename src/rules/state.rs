@@ -14,7 +14,7 @@ use crate::rules::comments::Comment;
 use crate::rules::docstrings::rst::{Target, collect_targets};
 use crate::rules::edits::DebugFields;
 use crate::rules::layout::{ClassOrder, class_order};
-use crate::rules::logic::KindsCache;
+use crate::rules::logic::{KindsCache, LocalScopes};
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
 use crate::rules::public_api::PublicApi;
@@ -28,6 +28,7 @@ pub(crate) struct FileState<'a> {
     module_variables: OnceCell<Vec<ModuleVariable<'a>>>,
     rst_targets: OnceCell<Vec<Target<'a>>>,
     kinds: KindsCache<'a>,
+    local_scopes: OnceCell<LocalScopes<'a>>,
     reported_names: ReportedNames<'a>,
     // The string literals of the `__all__` assignments, which renames of a name also rewrite.
     export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
@@ -78,6 +79,11 @@ impl<'a> FileState<'a> {
     // What `string-concatenation` reads off the module to tell the types of its operands.
     pub(crate) fn kinds(&self) -> &KindsCache<'a> {
         &self.kinds
+    }
+
+    // What the local-variable rules read off the module and each function, built per scope as the rules ask.
+    pub(crate) fn local_scopes(&self, checker: &Checker<'a>) -> &LocalScopes<'a> {
+        self.local_scopes.get_or_init(|| LocalScopes::of(checker.body(), checker.function_defs()))
     }
 
     // The names the single-letter and meaningless name rules reported so far.
