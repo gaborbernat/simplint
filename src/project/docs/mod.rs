@@ -162,14 +162,12 @@ fn configuration(root: &Path, path: &Path) -> Option<Rendered> {
     if is_foreign(root, path) {
         return None;
     }
-    let directory = path.parent()?;
-    let has_index = INDEXES.iter().any(|index| directory.join(index).is_file());
     let text = fs::metadata(path)
         .ok()
         .filter(|metadata| metadata.len() <= 8 << 20)
         .and_then(|_| fs::read_to_string(path).ok());
     match text {
-        Some(text) => conf::class_doc_from(&text, has_index),
+        Some(text) => conf::class_doc_from(&text, INDEXES.iter().any(|index| path.with_file_name(index).is_file())),
         None => Some(Rendered::UNKNOWN),
     }
 }

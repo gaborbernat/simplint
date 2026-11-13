@@ -197,8 +197,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 for parameter in parameters.into_iter().flat_map(|parameters| parameters.iter()) {
                     scan.bind(parameter.name().as_str(), Receiver::Unknown);
                 }
-                let bindings = scan.bound;
-                self.scopes.push(Scope { kind: ScopeKind::Plain, bindings });
+                self.scopes.push(Scope { kind: ScopeKind::Plain, bindings: scan.bound });
                 visitor::walk_expr(self, expr);
                 self.scopes.pop();
                 return;
@@ -251,12 +250,10 @@ impl<'a> Collector<'a, '_> {
                 continue;
             };
             if self.is_instance_of(container, "weakref.WeakKeyDictionary") {
-                let stored = self.stored(slice);
-                self.record_on(stored, "__weakref__");
+                self.record_on(self.stored(slice), "__weakref__");
             }
             if self.is_instance_of(container, "weakref.WeakValueDictionary") {
-                let stored = self.stored(value);
-                self.record_on(stored, "__weakref__");
+                self.record_on(self.stored(value), "__weakref__");
             }
         }
     }
@@ -350,11 +347,8 @@ impl<'a> Collector<'a, '_> {
                     return None;
                 };
                 let name = name.as_string_literal_expr()?.value.to_str();
-                let function = func.as_name_expr()?.id.as_str();
-                matches!(function, "getattr" | "setattr" | "delattr").then(|| {
-                    let class = self.class_of(target).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned());
-                    (class, name.to_owned())
-                })
+                matches!(func.as_name_expr()?.id.as_str(), "getattr" | "setattr" | "delattr")
+                    .then(|| (self.class_of(target).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned()), name.to_owned()))
             }
             _ => None,
         }
@@ -365,8 +359,7 @@ impl<'a> Collector<'a, '_> {
     }
 
     fn record(&mut self, receiver: &Expr, attribute: &str) {
-        let receiver = self.receiver(receiver);
-        self.record_on(receiver, attribute);
+        self.record_on(self.receiver(receiver), attribute);
     }
 
     fn record_dict_store(&mut self, receiver: &Expr) {
@@ -400,8 +393,7 @@ impl<'a> Collector<'a, '_> {
             _ => None,
         };
         if let Some(item) = item {
-            let stored = self.stored(item);
-            self.record_on(stored, "__weakref__");
+            self.record_on(self.stored(item), "__weakref__");
         }
     }
 
@@ -469,8 +461,7 @@ impl<'a> Collector<'a, '_> {
             "pickle.dump" => 2,
             _ => return false,
         };
-        let protocol = call.arguments.find_argument_value("protocol", position);
-        protocol.is_some_and(|protocol| match protocol {
+        call.arguments.find_argument_value("protocol", position).is_some_and(|protocol| match protocol {
             Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(value), .. }) => {
                 value.as_u8().is_none_or(|value| value < 2)
             }
@@ -639,8 +630,7 @@ fn assigned(value: &Expr) -> Receiver {
         return Receiver::Unknown;
     };
     let segments = name.segments();
-    let last = segments.last().copied().unwrap_or_default();
-    if MOCK_CLASSES.contains(&last) || segments.starts_with(&["mocker", "patch"]) {
+    if segments.last().is_some_and(|last| MOCK_CLASSES.contains(last)) || segments.starts_with(&["mocker", "patch"]) {
         Receiver::Mock
     } else {
         class_name(&segments.join(".")).map_or(Receiver::Unknown, Receiver::Instance)
@@ -652,8 +642,7 @@ fn assigned(value: &Expr) -> Receiver {
 // one- or two-letter capital is more likely a type variable such as `T` or `KT`. The name keeps its module, as
 // `models.Release`, so the import that binds the module qualifies it.
 fn class_name(written: &str) -> Option<String> {
-    let last = written.rsplit('.').next().unwrap_or_default();
-    let bare = last.trim_start_matches('_');
+    let bare = written.rsplit('.').next().unwrap_or_default().trim_start_matches('_');
     let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())
         && (bare.chars().any(|character| character.is_ascii_lowercase()) || bare.len() >= 3);
     is_class.then(|| written.to_owned())
@@ -688,9 +677,8 @@ fn annotated(annotation: &Expr) -> Receiver {
 // A patch helper writes an attribute of its first argument: `monkeypatch.setattr(obj, "name", value)`, or
 // `mock.patch.object(obj, "name")` however `patch` is imported.
 fn is_patch_helper(func: &Expr) -> bool {
-    let setter =
-        func.as_attribute_expr().is_some_and(|attribute| matches!(attribute.attr.as_str(), "setattr" | "delattr"));
-    setter || UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().ends_with(&["patch", "object"]))
+    func.as_attribute_expr().is_some_and(|attribute| matches!(attribute.attr.as_str(), "setattr" | "delattr"))
+        || UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().ends_with(&["patch", "object"]))
 }
 
 fn class_mentions(class: &ast::StmtClassDef, name: &str) -> bool {

@@ -90,9 +90,7 @@ impl FactVisitor<'_> {
 pub(super) fn named_attribute_call(func: &Expr) -> bool {
     match last_segment(func) {
         Some("setattr" | "delattr") => true,
-        Some("object") => {
-            matches!(func, Expr::Attribute(ast::ExprAttribute { value, .. }) if last_segment(value) == Some("patch"))
-        }
+        Some("object") => FactVisitor::patch_object(func),
         _ => false,
     }
 }

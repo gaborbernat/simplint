@@ -60,11 +60,9 @@ impl Writes {
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
-        let mut namesakes: FxHashMap<String, usize> = FxHashMap::default();
         for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
-            *namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
+            *writes.namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
         }
-        writes.namesakes = namesakes;
         writes
     }
 }

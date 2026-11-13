@@ -224,7 +224,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                         self.imported_modules.insert(alias.name.to_string());
                     }
                     if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
-                        let module = alias.name.as_str().to_owned();
+                        let module = alias.name.to_string();
                         self.runtime_sites.push(ImportSite::new(module, Vec::new(), stmt.range(), runtime));
                     }
                     let full = alias.name.as_str();
@@ -471,8 +471,10 @@ impl<'a> FactVisitor<'a> {
     }
 
     pub(super) fn loaded_named(&self, name: &str) -> Vec<String> {
-        let mut scopes = self.scopes.iter().rev().chain(std::iter::once(&self.module_scope));
-        scopes
+        self.scopes
+            .iter()
+            .rev()
+            .chain(std::iter::once(&self.module_scope))
             .find_map(|scope| scope.loaded.get(name))
             .map_or_else(Vec::new, |modules| modules.iter().cloned().collect())
     }
@@ -531,11 +533,10 @@ impl<'a> FactVisitor<'a> {
                 if self.parts.has(Parts::FIXTURES) {
                     self.fixture_requests.insert(alias.name.to_string());
                 }
-                self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
-                self.aliases.insert(alias_binding(alias), format!("{resolved}.{}", alias.name.as_str()));
-            }
-            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                self.record_nested(top_level, alias_binding(alias), &format!("{resolved}.{}", alias.name.as_str()));
+                self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.to_string());
+                let path = format!("{resolved}.{}", alias.name);
+                self.record_nested(top_level, alias_binding(alias), &path);
+                self.aliases.insert(alias_binding(alias), path);
             }
             self.from_statements.push(FromImport { module: resolved, names, top_level });
         }
@@ -706,8 +707,7 @@ impl FactVisitor<'_> {
 
     fn base_class(&self, base: &Expr) -> Option<String> {
         let written = UnqualifiedName::from_expr(base)?;
-        let bound = self.qualified(base).unwrap_or_else(|| written.segments().join("."));
-        bound.rsplit('.').next().map(str::to_owned)
+        self.qualified(base).unwrap_or_else(|| written.segments().join(".")).rsplit('.').next().map(str::to_owned)
     }
 
     pub(super) fn qualified(&self, expr: &Expr) -> Option<String> {

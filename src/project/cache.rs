@@ -123,9 +123,9 @@ fn remove_stale(current: &Path) {
             .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
             .max()
             .or_else(|| sibling.metadata().ok()?.modified().ok());
-        let now = SystemTime::now();
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
-        if newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN)) {
+        if newest.is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
+        {
             let _ = fs::remove_dir_all(&sibling);
         }
     }

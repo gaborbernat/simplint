@@ -132,8 +132,13 @@ pub(super) fn library_api(
                 facts.defined.iter().map(String::as_str).filter(starred).for_each(&mut add);
             }
             if unknown == ExportsUnknown::No {
-                let redundant = facts.bindings.iter().filter(|binding| binding.redundant).map(|binding| &binding.bound);
-                redundant.map(String::as_str).filter(starred).for_each(&mut add);
+                facts
+                    .bindings
+                    .iter()
+                    .filter(|binding| binding.redundant)
+                    .map(|binding| binding.bound.as_str())
+                    .filter(starred)
+                    .for_each(&mut add);
                 for source in by_importer.get(path).into_iter().flatten() {
                     star_exports[source].iter().copied().for_each(&mut add);
                 }

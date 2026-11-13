@@ -175,8 +175,7 @@ impl<'a> Scan<'a> {
     fn close(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
-                let returns = self.returns.pop().unwrap_or_default();
-                if returns.into_iter().any(|value| self.is_module(value)) {
+                if self.returns.pop().unwrap_or_default().into_iter().any(|value| self.is_module(value)) {
                     self.modules.insert(function.name.to_string());
                     self.modules.extend(
                         function

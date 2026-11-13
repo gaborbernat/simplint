@@ -156,8 +156,7 @@ impl ImportResolver {
             })
             .collect();
         for (id, facts) in fresh.into_iter().flatten() {
-            let facts = facts.map_files(|path| FileIds::intern(&mut self.files, &path));
-            self.modules.insert(id, facts);
+            self.modules.insert(id, facts.map_files(|path| FileIds::intern(&mut self.files, &path)));
         }
         ids
     }

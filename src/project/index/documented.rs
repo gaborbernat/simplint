@@ -50,8 +50,7 @@ pub(super) fn documented_members(
 
 // Sphinx renders underscore and dunder names only when the directive's flags take them in.
 fn is_rendered(name: &str, module: &Module) -> bool {
-    let special = name.len() > 4 && name.starts_with("__") && name.ends_with("__");
-    if special {
+    if name.len() > 4 && name.starts_with("__") && name.ends_with("__") {
         module.special
     } else if name.starts_with('_') {
         module.private

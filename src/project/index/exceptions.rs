@@ -96,9 +96,9 @@ fn expand_tuples(caught: &mut Vec<ClassKey>, tuples: &FxHashMap<ClassKey, Vec<Cl
 }
 
 fn is_exception_name(module: &str, name: &str, minor: u8) -> bool {
-    let standard = is_stdlib_root(minor, module);
     is_exception(name, minor)
-        || standard && ["Error", "Exception", "Warning"].iter().any(|suffix| name.ends_with(suffix))
+        || is_stdlib_root(minor, module)
+            && ["Error", "Exception", "Warning"].iter().any(|suffix| name.ends_with(suffix))
 }
 
 // A file that reaches a star-import cycle is walked, since a cycle leaves the file out of its own names.

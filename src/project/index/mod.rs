@@ -199,7 +199,7 @@ impl Project {
             .collect();
         // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
         // steps, so they are worked out alongside them.
-        let (aside, ()) = rayon::join(
+        let ((cycle_reports, duplicate_reports, reads), ()) = rayon::join(
             || {
                 let (cycles, duplicates) = rayon::join(
                     || runtime_cycles(runtime, &test_modules),
@@ -223,7 +223,6 @@ impl Project {
                 uses.reexport(&stars, &sources);
             },
         );
-        let (cycle_reports, duplicate_reports, reads) = aside;
         let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files, &production);
         let mut wide = run_names(&indexed, &test_modules, reads, opaque_names, &external.assigned);
@@ -396,9 +395,10 @@ fn interned_inputs(
     resolver: &mut ImportResolver,
     inputs: &IndexInputs,
 ) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
-    let test_modules = inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect();
-    let roles = inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect();
-    (test_modules, roles)
+    (
+        inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect(),
+        inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect(),
+    )
 }
 
 fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
@@ -475,7 +475,6 @@ impl<'r> Gathered<'r> {
             for (file, names) in &module.written {
                 gathered.written.entry(*file).or_default().extend(names.iter().cloned());
             }
-            let uses = module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect();
             let production = production.contains(&id);
             if production {
                 gathered.read_whole.extend(module.values.iter().copied());
@@ -485,7 +484,7 @@ impl<'r> Gathered<'r> {
                 path: resolver.files.path(id).to_path_buf(),
                 digest: facts.source_digest,
                 production,
-                modules: uses,
+                modules: module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect(),
             });
             gathered.bindings.extend(module.bindings.iter().map(|(source, binding)| (id, *source, binding)));
             let origin = if test_modules.contains(&id) { Origin::Test } else { Origin::Other };

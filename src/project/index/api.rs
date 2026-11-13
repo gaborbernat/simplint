@@ -539,16 +539,19 @@ pub(super) fn module_uses(
         let Some(facts) = sources.get(&target) else {
             continue;
         };
-        let patched = referenced.get(&target).cloned().unwrap_or_default();
-        let rebound = facts.global_names.iter().cloned().collect();
-        let defined = facts.defined.iter().cloned().collect();
-        let computed_written = computed_writes.contains(&target);
-        let top_level_package = !module.contains('.') && files.path(target).ends_with("__init__.py");
-        let cyclic =
-            cycles.get(&importer).zip(cycles.get(&target)).is_some_and(|(from, to)| from.component == to.component);
-        let module =
-            ModuleUse { bound, module, patched, defined, rebound, computed_written, top_level_package, cyclic };
-        uses.entry(importer).or_default().push(module);
+        uses.entry(importer).or_default().push(ModuleUse {
+            bound,
+            patched: referenced.get(&target).cloned().unwrap_or_default(),
+            defined: facts.defined.iter().cloned().collect(),
+            rebound: facts.global_names.iter().cloned().collect(),
+            computed_written: computed_writes.contains(&target),
+            top_level_package: !module.contains('.') && files.path(target).ends_with("__init__.py"),
+            cyclic: cycles
+                .get(&importer)
+                .zip(cycles.get(&target))
+                .is_some_and(|(from, to)| from.component == to.component),
+            module,
+        });
     }
     uses
 }

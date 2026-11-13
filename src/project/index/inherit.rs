@@ -41,10 +41,10 @@ fn collect<'a>(
         let Some(key) = file.and_then(|file| home(file, name)) else {
             continue;
         };
-        let (base_bases, methods) = classes[&key];
         if !visited.insert(key.clone()) {
             continue;
         }
+        let (base_bases, methods) = classes[&key];
         for method in methods.iter().filter(|method| Visibility::of(method) == Visibility::Public) {
             if !overridden.contains(method.as_str()) {
                 inherited.entry(key.0).or_default().entry(key.1.clone()).or_default().insert(method.clone());
@@ -64,9 +64,9 @@ pub(super) fn overridden_methods(
     let home = graph.home(reexports);
     let mut overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>> = FxHashMap::default();
     for (key, (bases, methods)) in &graph.classes {
+        let base_key = |(file, _, name): &ClassBase| file.and_then(|file| home(file, name));
+        let mut pending: Vec<ClassKey> = bases.iter().filter_map(base_key).collect();
         let mut visited: FxHashSet<ClassKey> = FxHashSet::default();
-        let mut pending: Vec<ClassKey> =
-            bases.iter().filter_map(|(file, _, name)| file.and_then(|file| home(file, name))).collect();
         let mut ancestors: FxHashSet<&str> = FxHashSet::default();
         while let Some(base) = pending.pop() {
             if !visited.insert(base.clone()) {
@@ -74,7 +74,7 @@ pub(super) fn overridden_methods(
             }
             let (base_bases, base_methods) = graph.classes[&base];
             ancestors.extend(base_methods.iter().map(String::as_str));
-            pending.extend(base_bases.iter().filter_map(|(file, _, name)| file.and_then(|file| home(file, name))));
+            pending.extend(base_bases.iter().filter_map(base_key));
         }
         let found: FxHashSet<String> =
             methods.iter().filter(|method| ancestors.contains(method.as_str())).cloned().collect();

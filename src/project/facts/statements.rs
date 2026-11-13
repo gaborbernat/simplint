@@ -86,12 +86,11 @@ fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
 fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stmt)) {
     let mut bodies = 0;
     for_each_body(body, &mut |statements, _| {
-        let compared = statements.iter().filter(|stmt| match stmt {
+        for stmt in statements.iter().filter(|stmt| match stmt {
             Stmt::Import(_) | Stmt::ImportFrom(_) => false,
             Stmt::Expr(ast::StmtExpr { value, .. }) => !value.is_string_literal_expr(),
             _ => true,
-        });
-        for stmt in compared {
+        }) {
             visit(bodies, stmt);
         }
         bodies += 1;
