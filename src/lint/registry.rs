@@ -377,7 +377,7 @@ rules! {
     RejectedOperand => ("SMP709", "rejected-operand", "Operator methods that reject an unknown operand instead of returning `NotImplemented`", Sometimes, classes::rejected_operand { statement }),
     MissingOverride => ("SMP710", "missing-override", "Methods that override a base class method without `@override`", Always, classes::missing_override { module } since PY312 reads [cross_file]),
     TooManyAttributes => ("SMP711", "too-many-attributes", "Classes whose instances hold more attributes than the limit", None, classes::too_many_attributes { module }),
-    TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
+    TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file, STRING_WORDS]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", Sometimes, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
     ConstantAssert => ("SMP804", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),

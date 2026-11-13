@@ -145,6 +145,14 @@ No fix is offered when:
 
 - another class extends it, or the file refers to it by name, so it must stay a class;
 
+- a string in the run names it, such as an expected `__qualname__` or a test id, which would no longer match;
+
+  ```python report file=tests/test_qualname.py
+  class TestQualname:
+      def test_name(self) -> None:
+          assert self.test_name.__qualname__ == "TestQualname.test_name"
+  ```
+
 - a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would
   replace it;
 
