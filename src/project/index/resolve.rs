@@ -480,7 +480,8 @@ fn star_targets<'f>(
 }
 
 // A module that resolves to no file, such as `distutils.log` where the standard library has no `distutils` and the
-// run shims its own `log`, may be the run's file of the same last name, so its calls read that file.
+// run shims its own `log`, may be the run's file of the same last name, so its calls read that file. A call that drops
+// its value counts too: the rules that judge a function by the arguments of its calls would otherwise miss it.
 fn constructor_reads<'f>(
     module: &'f str,
     uses: &[NameUse],
@@ -491,8 +492,7 @@ fn constructor_reads<'f>(
     if let Some(file) = resolved(module) {
         return vec![(file, uses.to_vec())];
     }
-    let reads: Vec<NameUse> =
-        uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
+    let reads: Vec<NameUse> = uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_))).cloned().collect();
     if reads.is_empty() {
         return Vec::new();
     }

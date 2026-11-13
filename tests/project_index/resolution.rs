@@ -434,3 +434,27 @@ fn dataclass_frozen_reads_writes_in_other_files(body: &str, marker: &str, decora
         )
     );
 }
+
+// A test imports `changelog` by its bare name from a directory pytest's `pythonpath` adds, which the index does not
+// search, so the module is the namesake of the run's file. The test's call drops its value, but its arguments still
+// count: it leaves `full` at its default.
+#[test]
+fn namesake_call_that_drops_its_value_counts_its_arguments() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\n"),
+        ("demo/__init__.py", ""),
+        (
+            "scripts/changelog.py",
+            "def validate(*, top: str | None = None, full: bool = False) -> None:\n    print(top, full)\n\n\n\
+             validate(top=\"1\", full=True)\n",
+        ),
+        ("tests/test_changelog.py", "from changelog import validate\n\n\ndef test_validate() -> None:\n    validate(top=\"1\")\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP410,SMP506"]).1,
+        common::native(
+            "scripts/changelog.py:1:35: SMP506 Every call to `validate` passes `top`; drop its default `None`\nFound 1 \
+             error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}
