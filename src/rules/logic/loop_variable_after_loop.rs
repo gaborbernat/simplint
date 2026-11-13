@@ -62,7 +62,7 @@ fn check_target(checker: &Checker, names: &FunctionNames, for_loop: &ast::StmtFo
         read,
         format!(
             "`{name}` is read after the loop on line {line} ends: it holds the last item, and is unbound when the loop \
-             runs no time"
+             never runs"
         ),
     );
 }
