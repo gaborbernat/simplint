@@ -13,7 +13,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 99:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
 128:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
 135:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
---- fixed (9 applied, 2 remaining) ---
+142:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+145:5 SMP547 `doubled` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+--- fixed (11 applied, 2 remaining) ---
 def join(parts):
     text = "".join(parts)
     return text
@@ -132,3 +134,9 @@ def lone_iterables(first, second, flag):
 def lone_yield():
     total = sum((yield))
     return total
+
+
+def comprehension_iterables(first, second, flag):
+    total = sum(value * 2 for value in (first if flag else second))
+    doubled = sum(item * 2 for item in (first, second))
+    return total, doubled

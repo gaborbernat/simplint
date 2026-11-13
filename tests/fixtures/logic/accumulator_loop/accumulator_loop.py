@@ -135,3 +135,13 @@ def lone_yield():
     for value in (yield):
         total += value
     return total
+
+
+def comprehension_iterables(first, second, flag):
+    total = 0
+    for value in first if flag else second:
+        total += value * 2
+    doubled = 0
+    for item in first, second:
+        doubled += item * 2
+    return total, doubled
