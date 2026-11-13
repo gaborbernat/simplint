@@ -6,17 +6,18 @@ use super::raised_class;
 use super::rst_missing_raises::builtin_bases;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::callee::local_function;
 use crate::rules::docstrings::rst::{FieldKind, Owner};
+use crate::semantic::Semantic;
 use crate::syntax::last_segment;
 
 pub fn rst_unraised_exception(checker: &Checker) {
-    let functions = module_functions(checker.body());
     for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
         let Owner::Function { def, class } = target.owner else {
             continue;
         };
-        let mut effects = Effects::default();
-        effects.collect(def, &functions, class, &mut FxHashSet::default());
+        let mut effects = Effects::new(checker.semantic(), class);
+        effects.collect(def);
         if effects.unknown {
             continue;
         }
@@ -40,16 +41,10 @@ pub fn rst_unraised_exception(checker: &Checker) {
     }
 }
 
-// The module's functions by name, which a call by name reaches, so their raises count as the caller's.
-fn module_functions(body: &[Stmt]) -> FxHashMap<&str, &ast::StmtFunctionDef> {
-    body.iter().filter_map(Stmt::as_function_def_stmt).map(|function| (function.name.as_str(), function)).collect()
-}
-
 // What a function body can raise: the exceptions its `raise` statements name, and the operations that raise built-in
 // exceptions on their own. A call this module does not define, a loop over an unknown iterable, a `with`, an `await` or
 // a `raise` of a value whose class is unknown can raise anything, so the body is then unknown.
-#[derive(Default)]
-struct Effects<'a> {
+struct Effects<'a, 's> {
     raised: FxHashSet<&'a str>,
     subscript: bool,
     attribute: bool,
@@ -58,24 +53,40 @@ struct Effects<'a> {
     unknown: bool,
     caught: Vec<Vec<&'a str>>,
     bound: FxHashMap<&'a str, Vec<&'a str>>,
-    functions: Option<&'a FxHashMap<&'a str, &'a ast::StmtFunctionDef>>,
+    semantic: &'s Semantic<'a>,
+    // The class of the documented method, whose methods a call through its receiver reaches.
     class: Option<&'a ast::StmtClassDef>,
+    // The method of that class whose body the walk is in.
+    method: Option<&'a ast::StmtFunctionDef>,
     pending: Vec<&'a ast::StmtFunctionDef>,
 }
 
-impl<'a> Effects<'a> {
-    fn collect(
-        &mut self,
-        function: &'a ast::StmtFunctionDef,
-        functions: &'a FxHashMap<&'a str, &'a ast::StmtFunctionDef>,
-        class: Option<&'a ast::StmtClassDef>,
-        seen: &mut FxHashSet<*const ast::StmtFunctionDef>,
-    ) {
-        self.functions = Some(functions);
-        self.class = class;
+impl<'a, 's> Effects<'a, 's> {
+    fn new(semantic: &'s Semantic<'a>, class: Option<&'a ast::StmtClassDef>) -> Self {
+        Self {
+            raised: FxHashSet::default(),
+            subscript: false,
+            attribute: false,
+            arithmetic: false,
+            asserts: false,
+            unknown: false,
+            caught: Vec::new(),
+            bound: FxHashMap::default(),
+            semantic,
+            class,
+            method: None,
+            pending: Vec::new(),
+        }
+    }
+
+    fn collect(&mut self, function: &'a ast::StmtFunctionDef) {
+        let mut seen = FxHashSet::default();
         self.pending.push(function);
         while let Some(next) = self.pending.pop() {
             if seen.insert(std::ptr::from_ref(next)) {
+                self.method = self.class.and_then(|class| {
+                    class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, next))
+                });
                 // Python checks the defaults and decorators when it defines the function, not when it calls it.
                 self.visit_body(&next.body);
             }
@@ -93,34 +104,23 @@ impl<'a> Effects<'a> {
     }
 
     fn call(&mut self, call: &'a ast::ExprCall) {
-        let resolved = match call.func.as_ref() {
-            Expr::Name(name) => {
-                let name = name.id.as_str();
-                if matches!(
-                    name,
-                    "isinstance" | "issubclass" | "len" | "repr" | "id" | "type" | "callable" | "hasattr" | "print"
-                ) {
-                    return;
-                }
-                self.functions.and_then(|functions| functions.get(name).copied())
-            }
-            Expr::Attribute(ast::ExprAttribute { value, attr, .. })
-                if value.as_name_expr().is_some_and(|value| matches!(value.id.as_str(), "self" | "cls")) =>
-            {
-                self.class.and_then(|class| {
-                    class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| method.name.as_str() == attr.as_str())
-                })
-            }
-            _ => None,
-        };
-        match resolved {
-            Some(function) if function.decorator_list.is_empty() => self.pending.push(function),
+        if call.func.as_name_expr().is_some_and(|name| {
+            matches!(
+                name.id.as_str(),
+                "isinstance" | "issubclass" | "len" | "repr" | "id" | "type" | "callable" | "hasattr" | "print"
+            )
+        }) {
+            return;
+        }
+        let method = self.method.zip(self.class);
+        match local_function(self.semantic, &call.func, method) {
+            Some((function, _)) if function.decorator_list.is_empty() => self.pending.push(function),
             _ => self.unknown = true,
         }
     }
 }
 
-impl<'a> Visitor<'a> for Effects<'a> {
+impl<'a> Visitor<'a> for Effects<'a, '_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
