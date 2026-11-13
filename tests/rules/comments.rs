@@ -57,9 +57,11 @@ fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
     );
 }
 
-#[test]
-fn named_ignore_needs_no_migration() {
-    let root = common::project(&[("module.py", "x = 1  # simplint: ignore[single-letter-name] # external name\n")]);
+#[test_case("x = 1  # simplint: ignore[single-letter-name] # external name\n" ; "named")]
+#[test_case("x = 1  # simplint: disable[SMP101]\n" ; "other_action")]
+#[test_case("x = 1  # simplint: ignore[SMP101\n" ; "unclosed_selector_list")]
+fn ignore_without_numeric_selectors_needs_no_migration(source: &str) {
+    let root = common::project(&[("module.py", source)]);
     common::assert_clean(root.path(), "SMP008");
 }
 
@@ -232,6 +234,11 @@ fn unused_ignore_drops_standalone_directive_without_hiding_later_reports() {
     "standalone_directive_leaves_no_line"
 )]
 #[test_case("value = 1  # simplint: ignore[SMP101]\r\nnext_value = 2\r\n", "value = 1\r\nnext_value = 2\r\n" ; "crlf")]
+#[test_case(
+    "x = 1  # noqa: E501\nvalue = 2  # simplint: ignore[SMP101]\n",
+    "x = 1  # noqa: E501\nvalue = 2\n" ;
+    "report_under_another_noqa"
+)]
 fn unused_ignore_removes_only_the_directive_and_its_reason(source: &str, expected: &str) {
     let root = common::project(&[("module.py", source)]);
     common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
@@ -269,6 +276,19 @@ fn unused_ignore_fixes_every_stale_selector(select: &str, source: &str, expected
     assert_eq!(
         (common::check(root.path(), &["--select", select, "--fix"]).0, common::read(root.path(), "module.py")),
         (0, expected.to_owned())
+    );
+}
+
+// The numeric selector the removal shifts is reported where it was, so the report is no new one.
+#[test]
+fn unused_ignore_keeps_the_numeric_report_of_a_selector_it_shifts() {
+    let root = common::project(&[("module.py", "x = 1  # simplint: ignore[SMP602, SMP101]\n")]);
+    assert_eq!(
+        (
+            common::check(root.path(), &["--select", "SMP008,SMP009,SMP101", "--unfixable", "SMP008", "--fix"]).0,
+            common::read(root.path(), "module.py"),
+        ),
+        (1, "x = 1  # simplint: ignore[SMP101]\n".to_owned())
     );
 }
 

@@ -108,12 +108,9 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of. Only debug builds check, so
-    // a release build skips the bookkeeping.
+    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of.
     pub(super) fn enter(&self, rule: Rule) {
-        if cfg!(debug_assertions) {
-            self.rule.set(Some(rule));
-        }
+        self.rule.set(Some(rule));
     }
 
     fn report_unused_ignores(&self, suppressions: &Suppressions) {
@@ -165,21 +162,21 @@ impl<'a> Checker<'a> {
         related: Vec<Related>,
     ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
-        for location in related {
+        let annotations = related.into_iter().filter_map(|location| {
             let file = if location.path == self.path {
                 Some(self.file.clone())
             } else {
                 let mut files = self.related_files.borrow_mut();
                 files.entry(location.path).or_insert_with_key(|path| source_file_at(path)).clone()
             };
-            if let Some(file) = file {
-                let span = Span::from(file).with_range(location.range);
-                diagnostic.annotate(Annotation::secondary(span).message(location.message));
-            }
+            file.map(|file| {
+                Annotation::secondary(Span::from(file).with_range(location.range)).message(location.message)
+            })
+        });
+        for annotation in annotations {
+            diagnostic.annotate(annotation);
         }
-        // Applying a fix and rendering its diff both walk its edits in order, which unsorted or overlapping
-        // edits break.
-        debug_assert!(fix.as_ref().is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
+        assert_disjoint_edits(rule, fix.as_ref());
         if fix.is_some() {
             diagnostic.help(title.into());
             diagnostic.set_optional_fix(self.settings.project.fix_for(rule, fix));
@@ -454,12 +451,46 @@ impl<'a> Checker<'a> {
 
 // The source of a file of the run, read for a location in it, under the name the run gives the file.
 pub(crate) fn source_file_at(path: &Path) -> Option<SourceFile> {
-    let source = std::fs::read_to_string(path).ok()?;
-    Some(SourceFileBuilder::new(path.to_string_lossy(), source).finish())
+    std::fs::read_to_string(path).ok().map(|source| SourceFileBuilder::new(path.to_string_lossy(), source).finish())
 }
 
 // Edits of a fix are sorted and disjoint as `Fix` requires. Touching edits, such as an insertion at the end of a
 // deletion, do not overlap.
 fn disjoint_edits(fix: &Fix) -> bool {
     fix.edits().windows(2).all(|pair| pair[1].start() >= pair[0].end())
+}
+
+// Applying a fix and rendering its diff both walk its edits in order, which overlapping edits break.
+fn assert_disjoint_edits(rule: Rule, fix: Option<&Fix>) {
+    debug_assert!(fix.is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_diagnostics::{Edit, Fix};
+    use ruff_text_size::TextSize;
+
+    use super::assert_disjoint_edits;
+    use crate::lint::registry::Rule;
+
+    #[test]
+    fn touching_edits_are_disjoint() {
+        let fix = Fix::safe_edits(
+            Edit::deletion(TextSize::new(0), TextSize::new(2)),
+            [Edit::insertion("x".to_owned(), TextSize::new(2))],
+        );
+
+        assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
+    }
+
+    #[test]
+    #[should_panic(expected = "unused-ignore built a fix with overlapping edits")]
+    fn overlapping_edits_fail_the_check() {
+        let fix = Fix::safe_edits(
+            Edit::deletion(TextSize::new(0), TextSize::new(3)),
+            [Edit::deletion(TextSize::new(2), TextSize::new(4))],
+        );
+
+        assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
+    }
 }

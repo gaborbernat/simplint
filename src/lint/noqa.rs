@@ -200,8 +200,7 @@ impl<'a> Suppressions<'a> {
                 let before = &self.source[line];
                 let mut after = before.to_owned();
                 for selector in selectors {
-                    let (edit, replacement) = remove_ignore_selector(&after, start - line.start(), selector)
-                        .expect("a parsed selector exists in its comment");
+                    let (edit, replacement) = remove_ignore_selector(&after, start - line.start(), selector);
                     after.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
                 }
                 let (range, replacement) = changed_region(before, &after);
@@ -457,8 +456,7 @@ fn apply(source: &str, edits: &[(TextRange, String)]) -> String {
 fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRange, String)]) -> bool {
     let mut known: FxHashMap<(&str, &str, usize), usize> = FxHashMap::default();
     for report in before {
-        let Some(range) = report.range() else { return false };
-        let position = range.start();
+        let position = report.range().expect("a rule report has a range").start();
         let index = edits.partition_point(|(edit, _)| edit.end() <= position);
         let mapped =
             edits.get(index).filter(|(edit, _)| edit.contains(position)).map_or(position, |(edit, _)| edit.start());
@@ -478,8 +476,7 @@ fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRan
         .collect();
     let mut observed = FxHashMap::default();
     after.iter().all(|report| {
-        let Some(range) = report.range() else { return false };
-        let position = range.start().to_usize();
+        let position = report.range().expect("a rule report has a range").start().to_usize();
         let index = shifted.partition_point(|(new_start, ..)| *new_start <= position);
         let mapped = match index.checked_sub(1).map(|index| shifted[index]) {
             None => position,
@@ -493,14 +490,14 @@ fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRan
     })
 }
 
-fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
+fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> (TextRange, String) {
     let comment = &source[TextRange::new(start, source.line_end(start))];
-    let (offset, contents) = ignore_contents(comment)?;
+    let (offset, contents) = ignore_contents(comment).expect("a parsed selector sits in an ignore comment");
     let mut codes: Vec<&str> = code_list(contents).collect();
-    codes.remove(codes.iter().position(|code| *code == selector)?);
+    codes.remove(codes.iter().position(|code| *code == selector).expect("the comment holds the selector"));
     if !codes.is_empty() {
         let from = start + offset;
-        return Some((TextRange::new(from, from + TextSize::of(contents)), codes.join(", ")));
+        return (TextRange::new(from, from + TextSize::of(contents)), codes.join(", "));
     }
     let line_start = source.line_start(start);
     let prefix = &source[TextRange::new(line_start, start)];
@@ -509,16 +506,16 @@ fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Opti
     let rest = &source[TextRange::new(directive_end, source.line_end(start))];
     let next = comment_start(rest).map(|index| directive_end + TextSize::of(&rest[..index]));
     if prefix.trim().is_empty() {
-        return Some(match next {
+        return match next {
             Some(next) => (TextRange::new(start, next), String::new()),
             None => (TextRange::new(line_start, source.full_line_end(start)), String::new()),
-        });
+        };
     }
     let code_end = line_start + TextSize::of(prefix.trim_end());
-    Some(match next {
+    match next {
         Some(next) => (TextRange::new(code_end, next), "  ".to_owned()),
         None => (TextRange::new(code_end, source.line_end(start)), String::new()),
-    })
+    }
 }
 
 pub(crate) fn ignore_contents(comment: &str) -> Option<(TextSize, &str)> {
