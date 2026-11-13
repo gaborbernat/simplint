@@ -128,7 +128,8 @@ would leave the name unbound when it is read:
       build(skip=lambda case: is_slow(case))
       ```
 
-  - a function a class body calls, such as `tokens = [state(1)]`
+  - a function a class body calls, such as `tokens = [state(1)]`; reading a method, as `__str__ = __repr__` or
+    `property(_get)` do, calls nothing
 
     ```python ok
     def state(value: int) -> int:

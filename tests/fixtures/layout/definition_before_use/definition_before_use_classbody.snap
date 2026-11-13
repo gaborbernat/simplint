@@ -2,4 +2,49 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
+13:5 SMP201 `_describe` is defined before its first use in `Box`; move it below `Box` [unsafe fix: Move `_describe` below `Box`]
+24:5 SMP201 `_measure` is defined before its first use in `Ruler`; move it below `Ruler`
+--- fixed (1 applied, 0 remaining) ---
+class Interrupted(Exception):
+    pass
 
+
+class Session:
+    Interrupted = Interrupted
+
+
+def main() -> type:
+    return Interrupted
+
+
+class Box:
+    def __repr__(self) -> str:
+        return _describe(self)
+
+    __str__ = __repr__
+
+
+def _describe(value: object) -> str:
+    return f"<{value}>"
+
+
+class Ruler:
+    def _get(self) -> int:
+        return _measure(self)
+
+    size = property(_get)
+
+
+def _measure(value: object) -> int:
+    return len(str(value))
+
+
+def _token(value: int) -> int:
+    return value
+
+
+class Tokens:
+    def make(value: int) -> int:
+        return _token(value)
+
+    first = make(1)

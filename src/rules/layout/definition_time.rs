@@ -3,22 +3,59 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{ExprCollector, alias_binding, import_aliases, is_property_accessor, pattern_capture};
+use crate::syntax::{alias_binding, import_aliases, is_property_accessor, last_segment, pattern_capture};
 
+// The names a class body calls while it runs, directly, as a decorator, or by handing them to a call that may call
+// them. Reading a method, as `__str__ = __repr__` or `property(_get)` do, runs nothing.
 pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
-    let mut runtime_names = ExprCollector::new(|expr| expr.as_name_expr().map(|name| name.id.as_str()));
+    let mut called = CalledNames::default();
     for stmt in &class.body {
         match stmt {
             // `@name.setter` hands the property a new accessor without calling the getter `name` holds.
             Stmt::FunctionDef(function) => {
-                for expr in definition_time_exprs(function).filter(|expr| !is_property_accessor(expr)) {
-                    runtime_names.visit_expr(expr);
+                for decorator in
+                    function.decorator_list.iter().filter(|decorator| !is_property_accessor(&decorator.expression))
+                {
+                    if let Expr::Name(name) = &decorator.expression {
+                        called.names.insert(name.id.as_str());
+                    }
+                    called.visit_expr(&decorator.expression);
+                }
+                let defaults =
+                    function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref());
+                for default in defaults {
+                    called.visit_expr(default);
                 }
             }
-            other => runtime_names.visit_stmt(other),
+            other => called.visit_stmt(other),
         }
     }
-    runtime_names.found.into_iter().collect()
+    called.names
+}
+
+#[derive(Default)]
+struct CalledNames<'a> {
+    names: FxHashSet<&'a str>,
+}
+
+impl<'a> Visitor<'a> for CalledNames<'a> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Call(call) = expr {
+            if let Expr::Name(callee) = &*call.func {
+                self.names.insert(callee.id.as_str());
+            }
+            // These wrap the function they are given without calling it.
+            let wraps = last_segment(&call.func).is_some_and(|name| {
+                matches!(name, "property" | "staticmethod" | "classmethod" | "partialmethod" | "cached_property")
+            });
+            if !wraps {
+                let values =
+                    call.arguments.args.iter().chain(call.arguments.keywords.iter().map(|keyword| &keyword.value));
+                self.names.extend(values.filter_map(|value| value.as_name_expr()).map(|name| name.id.as_str()));
+            }
+        }
+        visitor::walk_expr(self, expr);
+    }
 }
 
 pub(super) fn definition_time_exprs(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
