@@ -55,6 +55,9 @@ pub(super) struct AttributeWrites {
     // The classes the file defines with each base they name, as (qualified class, qualified base), so an access through
     // a subclass reaches the base's attributes.
     pub(super) class_bases: Vec<(String, String)>,
+    // The attributes the file's classes give their instances or themselves: the names their bodies bind and the ones
+    // their methods set on the instance. An untyped write of any other name is to an object no class of the run makes.
+    pub(super) members: Vec<String>,
 }
 
 impl AttributeWrites {
@@ -129,6 +132,11 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                     .collect();
                 let qualified_class = format!("{}.{}", self.module, class.name);
                 self.writes.class_bases.extend(bases.iter().map(|base| (qualified_class.clone(), base.clone())));
+                self.writes.members.extend(
+                    class_body_names(class)
+                        .chain(instance_writes(class).iter().map(|write| write.attr))
+                        .map(str::to_owned),
+                );
                 let members = members(class);
                 if !members.is_empty() {
                     self.writes.stateful_bases.extend(bases.iter().cloned());
@@ -173,8 +181,10 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.weakly_stored_by_call(call);
                 match (&*arguments.args, func.as_name_expr().map(|name| name.id.as_str())) {
                     ([target, attribute, ..], Some("setattr" | "delattr")) => self.record_write(target, attribute),
-                    ([target], Some("vars")) => self.record(target, "__dict__"),
-                    ([target, ..], _) if self.weakly_references(func) => self.record(target, "__weakref__"),
+                    ([target], Some("vars")) => self.record_on(self.stored(target), "__dict__"),
+                    ([target, ..], _) if self.weakly_references(func) => {
+                        self.record_on(self.stored(target), "__weakref__");
+                    }
                     // `monkeypatch.setattr("pkg.Class.name", value)` names the object and the attribute in one path.
                     ([Expr::StringLiteral(path), ..], _) if is_patch_helper(func) => {
                         if let Some((_, name)) = path.value.to_str().rsplit_once('.') {
@@ -675,6 +685,22 @@ fn annotated(annotation: &Expr) -> Receiver {
 fn is_patch_helper(func: &Expr) -> bool {
     func.as_attribute_expr().is_some_and(|attribute| matches!(attribute.attr.as_str(), "setattr" | "delattr"))
         || UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().ends_with(&["patch", "object"]))
+}
+
+fn class_body_names(class: &ast::StmtClassDef) -> impl Iterator<Item = &str> {
+    class.body.iter().flat_map(|stmt| -> Vec<&str> {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => {
+                target.as_name_expr().map(|name| name.id.as_str()).into_iter().collect()
+            }
+            Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+                targets.iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
+            }
+            Stmt::FunctionDef(function) => vec![function.name.as_str()],
+            Stmt::ClassDef(nested) => vec![nested.name.as_str()],
+            _ => Vec::new(),
+        }
+    })
 }
 
 fn class_mentions(class: &ast::StmtClassDef, name: &str) -> bool {

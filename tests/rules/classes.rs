@@ -465,6 +465,43 @@ fn dict_access_decides_the_frozen_fix(source: &str, fixable: bool) {
     assert_eq!((stdout.matches("Dataclass is missing").count(), stdout.contains("[*]")), (1, fixable), "{stdout}");
 }
 
+// Code that writes or reaches the storage of an object of unknown class may be handed any dataclass: a name no class
+// of the run declares makes both fixes unsafe, and an untyped `__dict__` or weak reference makes the slots fix unsafe.
+// Reaching the storage of an instance whose class is known withholds the slots fix.
+#[test_case("dataclass-slots", "", "safe" ; "slots_without_untyped_access")]
+#[test_case("dataclass-slots", "weakref.ref(Node(\"a\"))\n", "none" ; "slots_weak_reference_to_a_new_instance")]
+#[test_case("dataclass-slots", "vars(Node(\"a\"))\n", "none" ; "slots_vars_of_a_new_instance")]
+#[test_case("dataclass-slots", "def dump(obj):\n    return vars(obj)\n", "unsafe" ; "slots_untyped_vars")]
+#[test_case("dataclass-slots", "def track(obj):\n    return weakref.ref(obj)\n", "unsafe" ; "slots_untyped_weak_reference")]
+#[test_case("dataclass-slots", "dump = lambda obj: obj.__dict__\n", "unsafe" ; "slots_untyped_dict_read")]
+#[test_case("dataclass-frozen", "def dump(obj):\n    return vars(obj)\n", "safe" ; "frozen_untyped_vars")]
+#[test_case("dataclass-frozen", "def tag(obj):\n    obj.extra = 1\n", "unsafe" ; "frozen_untyped_stranger_write")]
+#[test_case("dataclass-slots", "def tag(obj):\n    obj.extra = 1\n", "unsafe" ; "slots_untyped_stranger_write")]
+#[test_case(
+    "dataclass-frozen",
+    "class Job:\n    def __init__(self) -> None:\n        self.extra = 0\n\n\ndef tag(obj):\n    obj.extra = 1\n",
+    "safe"
+    ; "frozen_untyped_write_of_a_member"
+)]
+#[test_case("dataclass-frozen", "class Job:\n    extra = 0\n\n\ndef tag(obj):\n    obj.extra = 1\n", "safe" ; "frozen_untyped_write_of_a_class_attribute")]
+#[test_case("dataclass-frozen", "Job.extra = 0\n\n\ndef tag(obj):\n    obj.extra = 1\n", "safe" ; "frozen_untyped_write_of_a_name_set_on_a_class")]
+#[test_case("dataclass-frozen", "def tag(func):\n    func.__wrapped__ = 1\n", "safe" ; "frozen_untyped_dunder_write")]
+fn untyped_access_decides_the_fix(rule: &str, code: &str, fix: &str) {
+    let source = format!(
+        "import weakref\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Node:\n    name: str\n\n\n{code}"
+    );
+    let root = common::project(&[("mod.py", &source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", rule]);
+    let found = if stdout.contains("[*]") {
+        "safe"
+    } else if stdout.contains("unsafe fix") {
+        "unsafe"
+    } else {
+        "none"
+    };
+    assert_eq!((stdout.matches("Dataclass is missing").count(), found), (1, fix), "{stdout}");
+}
+
 // `getattr(module, "Release")` reaches a dataclass by a name no import shows, so its positional calls may come from
 // anywhere, and no file gets the keyword-only fix. Without such a call the fix goes through.
 #[test_case("import models\n", true ; "not_reached_by_getattr")]

@@ -194,10 +194,12 @@ impl RunWide {
         self.writes.on_class.cache_key(&mut hasher);
         self.writes.class_attributes.cache_key(&mut hasher);
         self.writes.pickles_low_protocol.cache_key(&mut hasher);
+        self.writes.strangers.cache_key(&mut hasher);
         hasher.finish()
     }
 
-    // Low protocol pickling concerns every dataclass, so its change names `dataclass`.
+    // Low protocol pickling, and writes or storage reached on objects of unknown class, concern every dataclass, so their
+    // change names `dataclass`.
     pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -210,7 +212,10 @@ impl RunWide {
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
             .map(|class| last_dotted_segment(class));
-        let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
+        let dataclass = (writes.pickles_low_protocol != others.pickles_low_protocol
+            || writes.strangers != others.strangers
+            || writes.reaches_untyped_storage() != others.reaches_untyped_storage())
+        .then_some("dataclass");
         let all_read = (self.reads.all != other.reads.all).then_some("__all__");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
@@ -227,7 +232,7 @@ impl RunWide {
                     .map(|path| last_dotted_segment(path)),
             )
             .chain(classes)
-            .chain(pickling)
+            .chain(dataclass)
             .chain(all_read)
             .chain(self.string_word_changes(other))
             .collect()

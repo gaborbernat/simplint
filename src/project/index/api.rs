@@ -508,6 +508,15 @@ impl<'a> FileIndex<'a> {
         self.project.wide.writes.untyped.contains(name)
     }
 
+    // Code sets an attribute no class of the run declares on an object of unknown class, which may be a dataclass.
+    pub fn writes_strangers(&self) -> bool {
+        self.project.wide.writes.strangers
+    }
+
+    pub fn reaches_untyped_storage(&self) -> bool {
+        self.project.wide.writes.reaches_untyped_storage()
+    }
+
     pub fn is_class_attribute_accessed(&self, class: &str, name: &str) -> bool {
         let accessed = |class: &str| {
             self.project.wide.writes.class_attributes.get(class).is_some_and(|names| names.contains(name))

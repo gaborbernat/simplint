@@ -760,6 +760,35 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
+- code sets an attribute no class of the checked files declares on an object simplint cannot tie to a class, as the
+  object may be an instance of this class;
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+
+  def tag(item):
+      item.label = "x"
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  def tag(item):
+      item.label = "x"
+  ```
+
 - the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
   anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
   `__setattr__` or `__delattr__`.
@@ -861,8 +890,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
           super().__setattr__("version", version)
   ```
 
-Code outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to
-the class, is not detected, and breaks once the fix is applied.
+Code outside the checked files, and code that sets an attribute another class declares on an object simplint cannot tie
+to this class, is not detected, and breaks once the fix is applied.
 
 ### Related rules
 

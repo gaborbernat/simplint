@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-5:2 SMP702 Dataclass is missing slots; set `slots=True` [fix: Pass `slots=True` to `@dataclass`]
+5:2 SMP702 Dataclass is missing slots; set `slots=True` [unsafe fix: Pass `slots=True` to `@dataclass`]
 18:2 SMP702 Dataclass is missing slots; set `slots=True`
 29:2 SMP702 Dataclass is missing slots; set `slots=True`
 --- fixed (1 applied, 2 remaining) ---

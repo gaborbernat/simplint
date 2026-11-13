@@ -7,7 +7,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 19:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 24:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 35:2 SMP701 Dataclass is missing frozen; set `frozen=True`
-74:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+74:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 80:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 88:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 121:2 SMP701 Dataclass is missing frozen; set `frozen=True`

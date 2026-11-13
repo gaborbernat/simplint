@@ -9,7 +9,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 30:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 35:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 43:2 SMP701 Dataclass is missing frozen; set `frozen=True`
-48:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+48:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
 53:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 --- fixed (2 applied, 7 remaining) ---
 from dataclasses import dataclass
