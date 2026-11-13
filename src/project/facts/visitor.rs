@@ -90,6 +90,7 @@ pub(super) struct FactVisitor<'a> {
     pub(super) module_writes: BTreeMap<String, BTreeSet<String>>,
     pub(super) computed_writes: BTreeSet<String>,
     pub(super) base_classes: Vec<String>,
+    pub(super) mixins: Vec<String>,
     pub(super) stars: BTreeSet<String>,
     pub(super) from_statements: Vec<FromImport<'a>>,
     pub(super) top_level: bool,
@@ -153,6 +154,7 @@ impl<'a> FactVisitor<'a> {
             module_writes: BTreeMap::new(),
             computed_writes: BTreeSet::new(),
             base_classes: Vec::new(),
+            mixins: Vec::new(),
             stars: BTreeSet::new(),
             from_statements: Vec::new(),
             top_level: true,
@@ -710,6 +712,9 @@ impl FactVisitor<'_> {
 impl FactVisitor<'_> {
     fn record_bases(&mut self, class: &ast::StmtClassDef) {
         let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
+        if bases.len() > 1 {
+            self.mixins.extend(bases.iter().cloned());
+        }
         self.base_classes.extend(bases);
     }
 

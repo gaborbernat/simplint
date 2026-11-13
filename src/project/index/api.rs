@@ -436,6 +436,10 @@ impl<'a> FileIndex<'a> {
         self.project.wide.base_classes.contains(name)
     }
 
+    pub fn is_mixin(&self, name: &str) -> bool {
+        self.project.wide.mixins.contains(name)
+    }
+
     pub fn computed_reads(&self) -> &'a ComputedReads {
         self.answers.computed_reads
     }

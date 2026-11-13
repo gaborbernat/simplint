@@ -49,6 +49,7 @@ pub struct FileFacts {
     pub(super) module_writes: Vec<ModuleNames>,
     pub(super) module_reads: Vec<String>,
     pub(super) base_classes: Vec<String>,
+    pub(super) mixins: Vec<String>,
     pub(super) star_imports: Vec<String>,
     pub(super) exports: Option<Vec<String>>,
     pub(super) exports_unknown: ExportsUnknown,
@@ -168,6 +169,7 @@ impl FileFacts {
             module_writes: grouped(visitor.module_writes),
             module_reads: reads,
             base_classes: visitor.base_classes,
+            mixins: visitor.mixins,
             star_imports: visitor.stars.into_iter().collect(),
             exports,
             exports_unknown: match (dynamic_exports, module_getattr) {

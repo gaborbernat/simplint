@@ -19,6 +19,8 @@ pub(in crate::project) struct RunWide {
     pub(super) assigned_attributes: FxHashSet<String>,
     pub(super) module_reads: FxHashSet<String>,
     pub(super) base_classes: FxHashSet<String>,
+    // The classes some class of the run lists beside another base, whose methods the other bases may call.
+    pub(super) mixins: FxHashSet<String>,
     pub(super) fixture_requests: FxHashSet<String>,
     // Names the index cannot follow: those read from a module that resolves to no file of the run, and doctest uses.
     pub(super) opaque_names: FxHashSet<String>,
@@ -75,6 +77,7 @@ pub(super) fn run_names(
         writes,
         class_namesakes: class_namesakes(indexed),
         bound_marks: every(indexed, |facts| &facts.bound_marks),
+        mixins: every(indexed, |facts| &facts.mixins),
     }
 }
 
@@ -180,6 +183,7 @@ impl RunWide {
             &self.assigned_attributes,
             &self.module_reads,
             &self.base_classes,
+            &self.mixins,
             &self.fixture_requests,
             &self.opaque_names,
             &self.referenced_paths,
@@ -221,6 +225,7 @@ impl RunWide {
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.module_reads.symmetric_difference(&other.module_reads))
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
+            .chain(self.mixins.symmetric_difference(&other.mixins))
             .chain(self.fixture_requests.symmetric_difference(&other.fixture_requests))
             .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
             .chain(self.bound_marks.symmetric_difference(&other.bound_marks))
