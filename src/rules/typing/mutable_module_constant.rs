@@ -8,7 +8,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import};
-use crate::syntax::{is_name, last_segment, single_assignment};
+use crate::syntax::{last_segment, single_assignment};
 
 pub fn mutable_module_constant(checker: &Checker) {
     let project = checker.project();
@@ -16,6 +16,7 @@ pub fn mutable_module_constant(checker: &Checker) {
     if project.is_star_imported() || project.is_computed_written() {
         return;
     }
+    let mut candidates = Vec::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
@@ -33,8 +34,18 @@ pub fn mutable_module_constant(checker: &Checker) {
             || project.is_used_elsewhere(name)
             || project.is_read_opaquely(name)
             || project.is_module_written(name)
-            || !Reads::only_reads(checker, name)
         {
+            continue;
+        }
+        candidates.push((target, annotation, value, kind));
+    }
+    if candidates.is_empty() {
+        return;
+    }
+    let escaped = Reads::escaped(checker, candidates.iter().map(|(target, ..)| target.id.as_str()).collect());
+    for (target, annotation, value, kind) in candidates {
+        let name = target.id.as_str();
+        if escaped.contains(name) {
             continue;
         }
         let immutable = kind.immutable(checker.target_version());
@@ -177,25 +188,27 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
     Some(Some(Edit::range_replacement(text, declared.range())))
 }
 
-// Whether every load of `name` in the module only reads the value: subscripts it, calls a method that leaves it as it
+// Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method that leaves it as it
 // is, iterates it, tests it, compares it, or passes it to a built-in that copies or reads it. Anything else, such as
 // passing it to another function or returning it, may hand it to code that changes it.
 struct Reads<'a> {
-    name: &'a str,
+    names: FxHashSet<&'a str>,
     reading: FxHashSet<TextRange>,
-    escapes: bool,
+    escaped: FxHashSet<&'a str>,
 }
 
 impl<'a> Reads<'a> {
-    fn only_reads(checker: &Checker<'a>, name: &'a str) -> bool {
-        let mut reads = Self { name, reading: FxHashSet::default(), escapes: false };
+    fn escaped(checker: &Checker<'a>, names: FxHashSet<&'a str>) -> FxHashSet<&'a str> {
+        let mut reads = Self { names, reading: FxHashSet::default(), escaped: FxHashSet::default() };
         reads.visit_body(checker.body());
-        !reads.escapes
+        reads.escaped
     }
 
     fn read(&mut self, expr: &Expr) {
-        if is_name(expr, self.name) {
-            self.reading.insert(expr.range());
+        if let Expr::Name(name) = expr
+            && self.names.contains(name.id.as_str())
+        {
+            self.reading.insert(name.range);
         }
     }
 }
@@ -285,11 +298,11 @@ impl<'a> Visitor<'a> for Reads<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
-            Expr::Name(ast::ExprName { id, ctx, range, .. }) if id.as_str() == self.name => {
+            Expr::Name(ast::ExprName { id, ctx, range, .. }) if self.names.contains(id.as_str()) => {
                 // The one store is the definition, as the name is not rebound.
                 if matches!(ctx, ExprContext::Del) || matches!(ctx, ExprContext::Load) && !self.reading.contains(range)
                 {
-                    self.escapes = true;
+                    self.escaped.insert(id.as_str());
                 }
             }
             Expr::Subscript(ast::ExprSubscript { value, ctx: ExprContext::Load, .. }) => self.read(value),
