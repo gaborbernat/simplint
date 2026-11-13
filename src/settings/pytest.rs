@@ -13,7 +13,7 @@ pub struct PytestConfig {
     // `None` when no file configures pytest, or the one that does cannot be read, so registration is unknown.
     pub(crate) markers: Option<BTreeSet<String>>,
     python_files: Vec<String>,
-    collected: Option<GlobSet>,
+    collected: GlobSet,
     pub(crate) plugins: Vec<String>,
     pub(crate) pythonpath: Vec<PathBuf>,
     testpaths: Vec<PathBuf>,
@@ -58,7 +58,8 @@ impl PytestConfig {
         let relative = |paths: Vec<String>| paths.into_iter().map(|path| directory.join(path)).collect();
         Self {
             markers: options.markers,
-            collected: builder.build().ok(),
+            // A set too large to compile counts as matching no file, so no rule treats a file as collected on a guess.
+            collected: builder.build().unwrap_or_else(|_| GlobSet::empty()),
             python_files,
             plugins,
             pythonpath: relative(options.pythonpath),
@@ -68,15 +69,13 @@ impl PytestConfig {
 
     // Whether pytest collects tests from a file of this name, as its `python_files` patterns match the base name.
     pub(crate) fn collects(&self, file_name: &str) -> bool {
-        self.collected.as_ref().is_none_or(|set| set.is_match(file_name))
+        self.collected.is_match(file_name)
     }
 
     // Whether a run of pytest without arguments collects tests from the file: its name matches `python_files`, under
     // one of the `testpaths` when the configuration sets them.
     pub(crate) fn collects_path(&self, path: &Path) -> bool {
-        path.file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| self.collected.as_ref().is_some_and(|set| set.is_match(name)))
+        path.file_name().and_then(|name| name.to_str()).is_some_and(|name| self.collected.is_match(name))
             && (self.testpaths.is_empty() || self.testpaths.iter().any(|directory| path.starts_with(directory)))
     }
 

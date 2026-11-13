@@ -309,6 +309,20 @@ fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &s
     common::assert_report_count(root.path(), "SMP817", reports);
 }
 
+// A `python_files` pattern too large to compile matches no file, so pytest collects nothing and no test rule applies.
+#[test]
+fn uncompilable_python_files_collect_nothing() {
+    let pyproject = format!(
+        "[project]\nname = \"example\"\nversion = \"1\"\n\n[tool.pytest.ini_options]\npython_files = \"{}\"\n",
+        "?".repeat(1 << 20)
+    );
+    let root = common::project(&[
+        ("pyproject.toml", pyproject.as_str()),
+        ("tests/test_value.py", "def test_value() -> int:\n    return 1\n"),
+    ]);
+    common::assert_report_count(root.path(), "SMP817", 0);
+}
+
 const CHECKED: &str = "def test_value() -> None:\n    assert True\n";
 
 // pytest collects `test_*.py` and `*_test.py` unless `python_files` says otherwise; a module it skips on purpose is
