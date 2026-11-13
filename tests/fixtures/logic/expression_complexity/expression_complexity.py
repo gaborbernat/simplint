@@ -23,3 +23,13 @@ def score(values: list[int], limit: int) -> int:
     while (total := sum(value**2 for value in values if value % 2 == 0)) > limit * (limit - 1) // 2 or -(-limit):
         limit += total
     return limit
+
+
+def chained(session: object, data: dict) -> tuple[object, object]:
+    query = session.query("a").filter("b").join("c").order_by("d").group_by("e").limit(1).offset(2).having("f").all()
+    path = data["a"]["b"]["c"]["d"]["e"]["f"]["g"]["h"]["i"]["j"]
+    return query, path
+
+
+def chained_arguments(session: object) -> object:
+    return session.query(abs(round(float(int(str(len(repr(sorted(set(session)))))))))).all()
