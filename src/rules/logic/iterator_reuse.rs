@@ -249,6 +249,15 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
                 self.site(value, false);
                 walk_expr(self, expr);
             }
+            // Only one side of `a if test else b` runs, so each is an arm of its own.
+            Expr::If(ast::ExprIf { test, body, orelse, .. }) => {
+                self.visit_expr(test);
+                for (arm, side) in [body, orelse].into_iter().enumerate() {
+                    self.path.push(Branch { statement: expr.start().to_usize(), arm, is_loop: false, exits: false });
+                    self.visit_expr(side);
+                    self.path.pop();
+                }
+            }
             Expr::ListComp(ast::ExprListComp { elt, generators, .. })
             | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
             | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {
