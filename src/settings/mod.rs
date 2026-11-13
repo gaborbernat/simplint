@@ -18,6 +18,7 @@ use ruff_diagnostics::{Applicability, Fix};
 use ruff_linter::settings::types::GlobPath;
 use ruff_linter::warn_user_once_by_message;
 use ruff_macros::CacheKey;
+use ruff_python_ast::PythonVersion;
 use rustc_hash::FxHashMap;
 use serde::Deserialize;
 
@@ -28,7 +29,8 @@ pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{
-    BuildConfiguration, CoveragePlugins, ProjectMetadata, VersionReaders, build_hooks, hatch_hooks, tool_value,
+    BuildConfiguration, CoveragePlugins, ProjectMetadata, VersionReaders, build_hooks, declared_python, hatch_hooks,
+    tool_value,
 };
 pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
 use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
@@ -281,6 +283,8 @@ pub(crate) struct Settings {
     pub(crate) build_hooks: Vec<(PathBuf, String)>,
     // The files hatchling loads its custom build and metadata hooks from, whose hook class no import reaches.
     pub(crate) hatch_hooks: Vec<PathBuf>,
+    // The oldest Python the project declares where Ruff does not look, which stands in for Ruff's default target.
+    pub(crate) declared_python: Option<PythonVersion>,
     // The coverage plugins and the directories they resolve from, which the index searches for them.
     pub coverage: CoveragePlugins,
     // Where the build or release tooling reads `__version__` from.
@@ -383,6 +387,7 @@ impl Settings {
             hatch_hooks: hatch_hooks(project_dir, &build),
             version_readers: project
                 .map_or_else(VersionReaders::default, |directory| VersionReaders::of(directory, pyproject)),
+            declared_python: if isolated { None } else { declared_python(project_dir, pyproject) },
             coverage,
             pytest,
             metadata,
@@ -465,6 +470,7 @@ impl CacheKey for Settings {
         self.hatch_hooks.cache_key(state);
         self.version_readers.files.cache_key(state);
         self.version_readers.any_init.cache_key(state);
+        self.declared_python.cache_key(state);
         self.coverage.modules.cache_key(state);
         self.coverage.search_paths.cache_key(state);
         self.pytest.cache_key(state);

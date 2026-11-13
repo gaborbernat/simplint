@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 
 use itertools::Itertools;
+use ruff_python_ast::PythonVersion;
 use serde::Deserialize;
 
 use crate::syntax::top_level;
@@ -200,6 +201,59 @@ pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Cl
 }
 
 // A value under `[tool]`, by the keys leading to it.
+// The oldest Python a project declares outside `requires-python`, which is all Ruff reads: Poetry's `python`
+// dependency, or the `python_requires` setuptools takes from `setup.cfg` or a literal in `setup.py`. A missing file
+// declares nothing.
+pub(super) fn declared_python(dir: &Path, pyproject: Option<&toml::Table>) -> Option<PythonVersion> {
+    pyproject
+        .and_then(|table| tool_value(table, &["poetry", "dependencies", "python"]))
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+        .or_else(|| std::fs::read_to_string(dir.join("setup.cfg")).ok().and_then(|text| setup_cfg_requires(&text)))
+        .or_else(|| std::fs::read_to_string(dir.join("setup.py")).ok().and_then(|text| setup_py_requires(&text)))
+        .and_then(|specifier| oldest_python(&specifier))
+}
+
+fn setup_cfg_requires(text: &str) -> Option<String> {
+    let mut in_options = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_options = line == "[options]";
+        } else if in_options
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "python_requires"
+        {
+            return Some(value.trim().to_owned());
+        }
+    }
+    None
+}
+
+fn setup_py_requires(text: &str) -> Option<String> {
+    let value = text.split_once("python_requires")?.1.trim_start().strip_prefix('=')?.trim_start();
+    let quote = value.chars().next().filter(|first| matches!(first, '"' | '\''))?;
+    Some(value[1..].split_once(quote)?.0.to_owned())
+}
+
+// The lowest version a PEP 440 or Poetry specifier admits, raised to the oldest version Ruff knows.
+fn oldest_python(specifier: &str) -> Option<PythonVersion> {
+    let oldest = specifier
+        .split([',', '|'])
+        .filter_map(|clause| {
+            let clause = clause.trim();
+            let version = [">=", "~=", "==", ">", "^", "~"]
+                .iter()
+                .find_map(|operator| clause.strip_prefix(operator))
+                .or_else(|| clause.starts_with(|first: char| first.is_ascii_digit()).then_some(clause))?;
+            let mut parts = version.trim().split('.');
+            let major: u8 = parts.next()?.parse().ok()?;
+            let minor: u8 = parts.next().map_or(Some(0), |minor| minor.parse().ok())?;
+            Some((major, minor))
+        })
+        .min()?;
+    PythonVersion::iter().find(|version| (version.major, version.minor) >= oldest)
+}
+
 pub(super) fn tool_value<'a>(pyproject: &'a toml::Table, path: &[&str]) -> Option<&'a toml::Value> {
     path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key))
 }
