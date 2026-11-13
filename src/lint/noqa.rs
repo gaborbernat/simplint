@@ -15,6 +15,7 @@ use ruff_source_file::{LineEnding, LineRanges};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::lint::Parse;
 use crate::lint::registry::Rule;
 
 // The `noqa` and `simplint: ignore` comments of one file, by the line they sit on, and the file-level `ruff: noqa`
@@ -42,13 +43,8 @@ struct Line {
 }
 
 impl<'a> Suppressions<'a> {
-    pub fn new(
-        path: &'a Path,
-        source: &'a str,
-        parsed: &'a Parsed<ModModule>,
-        indexer: &'a Indexer,
-        stylist: &'a Stylist<'a>,
-    ) -> Self {
+    pub fn new(Parse { path, file, parsed, indexer, stylist }: Parse<'a>) -> Self {
+        let source = file.source_text();
         let mut lines: FxHashMap<TextSize, Line> = FxHashMap::default();
         let mut file = Vec::new();
         for range in indexer.comment_ranges() {

@@ -15,10 +15,10 @@ use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
-use crate::lint::Linter;
 use crate::lint::noqa::Suppressions;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::lint::{Linter, Parse};
 use crate::project::FileIndex;
 use crate::rules::FileState;
 use crate::semantic::{RuffMatches, Semantic};
@@ -59,11 +59,7 @@ pub struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(
-        path: &'a Path,
-        file: &'a SourceFile,
-        parsed: &'a Parsed<ModModule>,
-        indexer: &'a Indexer,
-        stylist: &'a Stylist<'a>,
+        Parse { path, file, parsed, indexer, stylist }: Parse<'a>,
         linter: &'a Linter<'a>,
         suppressions: &'a Suppressions<'a>,
     ) -> Self {
