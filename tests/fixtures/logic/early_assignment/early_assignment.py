@@ -48,3 +48,16 @@ def text_not_a_name(items: list[int]) -> list[int]:
     items.sort()
     print("output")
     return out
+
+
+def use_before_comment(items: list[int]) -> int:
+    limit = 3
+    items.sort()
+    return len(items) + limit  # keeps the fix away
+
+
+def use_before_lone_semicolon(items: list[int]) -> int:
+    limit = 3
+    items.sort()
+    print(limit);
+    return len(items)

@@ -132,10 +132,9 @@ impl<'a> Walk<'_, 'a> {
 
     fn comprehension(&mut self, expr: &'a Expr, generators: &'a [ast::Comprehension], elements: [Option<&'a Expr>; 2]) {
         // The first iterable is read once, where the comprehension runs; the rest run once per item.
-        if let Some(first) = generators.first() {
-            self.site(&first.iter, false);
-            self.visit_expr(&first.iter);
-        }
+        let first = &generators[0].iter;
+        self.site(first, false);
+        self.visit_expr(first);
         self.path.push(Branch { statement: expr.start().to_usize(), arm: 0, is_loop: true, exits: false });
         for (index, generator) in generators.iter().enumerate() {
             if index > 0 {

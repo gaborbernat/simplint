@@ -98,3 +98,19 @@ class Unrelated:
 
 def visit_Num(node):
     return node
+
+
+def text_kind():
+    return ast.Str
+
+
+def make_unpacked(fields):
+    return ast.Str(**fields)
+
+
+def first_is_kind(check):
+    return check(ast.Str)
+
+
+def kind_by_keyword(check):
+    return check(kind=ast.Str)

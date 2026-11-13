@@ -84,3 +84,23 @@ def weak_target(scratch: Scratch) -> int:
 def weak_method(scratch: Scratch) -> object:
     method = WeakMethod(scratch.describe)
     return method()
+
+
+def weak_reference_type(scratch: Scratch) -> object:
+    reference = weakref.ReferenceType(scratch)
+    return reference()
+
+
+def weak_proxy_type(scratch: Scratch) -> object:
+    proxy = weakref.ProxyType(scratch)
+    return proxy.describe()
+
+
+def described_each(items: list[Scratch]) -> bool:
+    described = [item.describe() for item in items]
+    return any(described)
+
+
+def positive_each(items: list[int]) -> bool:
+    positive = [item > 0 for item in items]
+    return all(positive)

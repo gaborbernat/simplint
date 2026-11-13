@@ -12,7 +12,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 13:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
 14:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch` [unsafe fix: Use `re.fullmatch`]
 15:16 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch`
---- fixed (9 applied, 1 remaining) ---
+32:13 SMP550 `re.search` with a pattern anchored at both ends is `re.fullmatch`
+33:14 SMP550 `re.match` with a pattern anchored at its end is `re.fullmatch`
+--- fixed (9 applied, 3 remaining) ---
 import re
 from re import match
 
@@ -41,3 +43,16 @@ def not_anchored(text):
     search_open_start = re.search(r"\d+$", text)
     compiled = re.compile(r"\d+$").match(text)
     return open_end, alternation, flags, inline_flag, escaped, in_class, search_open_start, compiled
+
+
+def anchor_escaped_in_source(text):
+    caret = re.search("\x5e\\d+$", text)
+    dollar = re.match("\\d+\x24", text)
+    return caret, dollar
+
+
+def pattern_not_a_single_literal(text, pattern):
+    keyword_string_only = re.match(string=text, flags=0)
+    variable = re.match(pattern, text)
+    concatenated = re.match(r"\d+" r"$", text)
+    return keyword_string_only, variable, concatenated

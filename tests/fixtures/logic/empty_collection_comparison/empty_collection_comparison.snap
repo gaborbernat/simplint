@@ -15,7 +15,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 29:21 SMP548 Comparing with an empty `{}` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
 31:22 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
 33:16 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead [unsafe fix: Test the value's truth]
---- fixed (10 applied, 3 remaining) ---
+37:12 SMP548 Comparing with an empty `[]` builds a new object; test whether the value is falsy instead
+--- fixed (10 applied, 4 remaining) ---
 def check(items, mapping, pair, value, flag):
     if not items:
         return 1
@@ -49,3 +50,7 @@ def tests(items, flag):
         case True if not items:
             return None
     return bool(items)
+
+
+def compared_with_a_name(items, fallback):
+    return items == [] or items == fallback

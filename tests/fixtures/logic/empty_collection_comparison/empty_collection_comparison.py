@@ -31,3 +31,7 @@ def tests(items, flag):
         case True if items == []:
             return None
     return not items == []
+
+
+def compared_with_a_name(items, fallback):
+    return items == [] or items == fallback

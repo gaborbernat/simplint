@@ -152,7 +152,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 }
                 let checker = self.walker.checker;
                 if let Some(Kind::Instance(range)) = receiver {
-                    let members = members_of(checker, class_at(checker, range)?, attr);
+                    let members = members_of(checker, class_at(checker, range), attr);
                     return members.only_methods().and_then(|methods| self.returns(methods));
                 }
                 if let Some((members, _)) = self.members(value, attr, depth) {
@@ -258,7 +258,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
         if let Some(Kind::Instance(range)) = receiver {
             let checker = self.walker.checker;
-            let members = members_of(checker, class_at(checker, range)?, attr);
+            let members = members_of(checker, class_at(checker, range), attr);
             // What its methods set on the instance comes from scopes this spot does not see.
             if members.opaque || !members.methods.is_empty() {
                 return None;

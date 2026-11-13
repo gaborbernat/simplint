@@ -131,7 +131,7 @@ fn brace_fields(text: &str) -> Option<usize> {
 }
 
 fn format_fix(checker: &Checker, style: Style, message: TextRange, rest: &[Expr]) -> Option<Fix> {
-    let range = message.cover(rest.last()?.range());
+    let range = message.cover(rest.last().expect("the call passes values after the message").range());
     if checker.has_comment_in(range) {
         return None;
     }

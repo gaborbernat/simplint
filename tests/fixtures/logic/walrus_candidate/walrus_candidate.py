@@ -115,3 +115,10 @@ def nested(text: str, flag: bool) -> str:
         if size > 3:
             return text
     return ""
+
+
+def trailing_semicolon(text: str) -> str:
+    size = len(text);
+    if size > 3:
+        return text
+    return ""

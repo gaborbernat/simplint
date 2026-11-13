@@ -132,7 +132,7 @@ fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
 fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     let semantic = checker.semantic();
     let name = semantic.qualified_name(expr)?;
-    let root = attribute_root(expr).as_name_expr()?;
+    let root = attribute_root(expr).as_name_expr().expect("a qualified name starts at a name");
     if !semantic.bindings(root.id.as_str()).iter().all(|binding| binding.kind == BindingKind::Import) {
         return None;
     }
@@ -144,11 +144,12 @@ fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     }
 }
 
-// Statements of a module body come in source order, so the class starting at `range` is found by a search.
-pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'a ast::StmtClassDef> {
+// An instance kind names a class of the module body, whose statements come in source order, so a search finds it.
+pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> &'a ast::StmtClassDef {
     let body = checker.body();
-    let index = body.binary_search_by_key(&range.start(), Ranged::start).ok()?;
-    body[index].as_class_def_stmt().filter(|class| class.range == range)
+    let index =
+        body.binary_search_by_key(&range.start(), Ranged::start).expect("an instance kind names a module class");
+    body[index].as_class_def_stmt().expect("an instance kind names a module class")
 }
 
 // A metaclass, a `__new__` or another decorator may return something other than an instance.

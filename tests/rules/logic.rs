@@ -238,6 +238,7 @@ use crate::common::{self, check, read};
 )]
 #[test_case("long-tuple-return", "long_tuple_return.py", None ; "long_tuple_return")]
 #[test_case("long-tuple-return", "long_tuple_return_quoted.py", None ; "long_tuple_return_quoted")]
+#[test_case("long-tuple-return", "long_tuple_return_class_body.py", None ; "long_tuple_return_class_body")]
 #[test_case("cognitive-complexity", "cognitive_complexity.py", None ; "cognitive_complexity")]
 #[test_case(
     "collection-built-by-statements", "collection_built_by_statements.py", None ; "collection_built_by_statements"
@@ -273,11 +274,21 @@ use crate::common::{self, check, read};
 #[test_case("inline-regex", "inline_regex_names.py", None ; "inline_regex_constant_names")]
 #[test_case("inline-regex", "inline_regex_nested.py", None ; "inline_regex_nested_calls")]
 #[test_case("inline-regex", "inline_regex_alias.py", None ; "inline_regex_alias")]
+#[test_case("inline-regex", "inline_regex_final_taken.py", Some("py311") ; "inline_regex_final_taken")]
 #[test_case("iterator-reuse", "iterator_reuse.py", None ; "iterator_reuse")]
 #[test_case("range-len-loop", "range_len_loop.py", None ; "range_len_loop")]
 #[test_case("accumulator-loop", "accumulator_loop.py", None ; "accumulator_loop")]
 #[test_case("empty-collection-comparison", "empty_collection_comparison.py", None ; "empty_collection_comparison")]
 #[test_case("slice-affix-comparison", "slice_affix_comparison.py", None ; "slice_affix_comparison")]
+#[test_case("slice-affix-comparison", "slice_affix_comparison_kinds.py", None ; "slice_affix_comparison_kinds")]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_walrus_annotation.py", Some("py311") ;
+    "slice_affix_comparison_walrus_annotation"
+)]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_unpacked_comprehension.py", Some("py315") ;
+    "slice_affix_comparison_unpacked_comprehension"
+)]
 #[test_case("anchored-regex-match", "anchored_regex_match.py", None ; "anchored_regex_match")]
 #[test_case("wall-clock-duration", "wall_clock_duration.py", None ; "wall_clock_duration")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
@@ -631,6 +642,7 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
 // naming an undefined name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
 #[test_case("box = Generic[T]\n    ref = ForwardRef(\"list[T]\")\n    return box, ref" ; "forward_ref")]
+#[test_case("box = Generic[T]\n    refs = ForwardRef(str(box)), ForwardRef(\"list[T]\")\n    return refs" ; "forward_ref_among_other_arguments")]
 fn single_use_string_annotation_is_a_read(body: &str) {
     let source = format!(
         "from typing import ForwardRef, Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    \
@@ -1049,6 +1061,7 @@ fn single_caller_helper_respects_other_ruff_rules(rule: &str, option: &str, call
 #[test_case("raise ValueError('bad')", "except ValueError:" ; "constructed_exception")]
 #[test_case("raise ValueError", "except:" ; "catch_all")]
 #[test_case("raise ValueError", "except (ValueError, TypeError):" ; "tuple_handler")]
+#[test_case("raise ValueError", "except Exception:" ; "broad_handler")]
 fn single_caller_helper_keeps_caught_raises_outside_try(raised: &str, handler: &str) {
     let root = common::project(&[
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"TRY301\"]\n"),

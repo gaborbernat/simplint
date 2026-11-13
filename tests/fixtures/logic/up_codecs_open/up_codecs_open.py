@@ -45,3 +45,7 @@ def read_commented(path):
 
 def read_positional(path):
     return codecs.open(path, "r", "utf-8", "strict", 1).read()
+
+
+def read_without_filename(path):
+    return codecs.open(encoding="utf-8").read(), path

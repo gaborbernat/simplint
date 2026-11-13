@@ -76,3 +76,15 @@ def single(size):
     rows = [[]] * 1
     rows[0].append(size)
     return rows
+
+
+def repeated_on_the_left(size):
+    grid = [size * [0]] * size
+    grid[0][0] = 1
+    return grid
+
+
+def sum_element(size):
+    grid = [(1 + 2)] * size
+    grid[0] = 1
+    return grid

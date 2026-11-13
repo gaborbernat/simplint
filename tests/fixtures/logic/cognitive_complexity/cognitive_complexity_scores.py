@@ -105,3 +105,8 @@ def with_block_3(path, flag):
         if flag:
             if path:
                 pass
+
+
+def grouped_same_operator_2(first, second, third):
+    if first and (second and third):
+        pass

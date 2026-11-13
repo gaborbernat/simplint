@@ -58,3 +58,26 @@ def yielded(path):
     error = ValueError(path)
     error.add_note("built here")
     yield error
+
+
+def handler_declares(path):
+    try:
+        return open(path).read()
+    except OSError as error:
+        global last_path
+        last_path = path
+        error.add_note(path)
+
+
+def handler_declares_nonlocal(path):
+    last = None
+
+    def read():
+        try:
+            return open(path).read()
+        except OSError as error:
+            nonlocal last
+            last = path
+            error.add_note(path)
+
+    return read(), last

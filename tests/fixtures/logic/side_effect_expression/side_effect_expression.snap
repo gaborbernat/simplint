@@ -16,7 +16,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 46:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if`
 50:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if`
 56:5 SMP538 This `and` is used as a statement to decide whether to run its last part; write an `if` [fix: Write an `if`]
---- fixed (10 applied, 4 remaining) ---
+67:5 SMP538 This list comprehension is built only for the calls in it; write a `for` loop [unsafe fix: Write a `for` loop]
+--- fixed (11 applied, 4 remaining) ---
 def comprehension(users: list[str]) -> None:
     for user in users:
         print(user)
@@ -93,3 +94,8 @@ def pure(values: list[int], flag: bool) -> None:
     result = flag and print("x")
     print(result)
     print("x") and flag
+
+
+async def drained(stream) -> None:
+    async for item in stream:
+        print(item)

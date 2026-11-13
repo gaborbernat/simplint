@@ -136,6 +136,7 @@ fn field_value(
         });
     }
     let quote = quotes.first().filter(|first| quotes.iter().all(|quote| quote == *first))?;
-    let text = requoted_text(checker, value, *quote)?;
-    Some(if parenthesize { format!("({text})") } else { text })
+    // Requoting frees the quote only of a string or f-string, which is an atom: the use rejects a value that nests one,
+    // and a bytes literal keeps its quote.
+    requoted_text(checker, value, *quote)
 }

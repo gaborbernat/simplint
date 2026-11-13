@@ -9,7 +9,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 22:5 SMP546 Loop over `items` itself instead of its indexes
 29:5 SMP546 Loop over `tasks` itself instead of its indexes [unsafe fix: Loop over `tasks`]
 40:5 SMP546 Loop over `rows` itself instead of its indexes
---- fixed (3 applied, 4 remaining) ---
+65:5 SMP546 Loop over `data` itself instead of its indexes
+76:13 SMP546 Loop over `items` itself instead of its indexes [unsafe fix: Loop over `items`]
+--- fixed (4 applied, 5 remaining) ---
 def show(items):
     for item in items:
         print(item)
@@ -71,3 +73,24 @@ def call_result(load):
 def counted(items, count):
     for i in range(count(items)):
         print(items[i])
+
+
+def no_singular(data):
+    for i in range(len(data)):
+        print(data[i])
+
+
+def counter(items):
+    total = 0
+
+    def bump():
+        nonlocal total
+        global LAST
+        try:
+            for item in items:
+                total += item
+        except ValueError:
+            LAST = None
+
+    bump()
+    return total

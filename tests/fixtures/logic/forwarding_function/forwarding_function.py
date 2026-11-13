@@ -70,3 +70,11 @@ def _make_lock(path: str, *, timeout: float = 0.1) -> str:
 
 def use_lock() -> str:
     return _make_lock("a")
+
+
+def _show(text: str) -> None:
+    print(text)
+
+
+def show_all() -> None:
+    _show("a")

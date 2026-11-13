@@ -3,8 +3,9 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 5:9 SMP557 `wrapper` replaces the decorated `func` without `functools.wraps`, so it loses `func`'s name, docstring and signature [unsafe fix: Decorate `wrapper` with `@functools.wraps(func)`]
---- fixed (1 applied, 0 remaining) ---
-from functools import wraps
+28:9 SMP557 `wrapper` replaces the decorated `func` without `functools.wraps`, so it loses `func`'s name, docstring and signature
+--- fixed (1 applied, 1 remaining) ---
+from functools import update_wrapper, wraps
 
 
 def logged(func):
@@ -20,4 +21,20 @@ def kept(func):
     def wrapper(*args, **kwargs):
         return func(*args, **kwargs)
 
+    return wrapper
+
+
+def updated(func):
+    def wrapper(*args):
+        return func(*args)
+
+    update_wrapper(wrapper, func)
+    return wrapper
+
+
+def shadowed(func, wraps):
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+
+    print(wraps)
     return wrapper

@@ -55,3 +55,8 @@ def joined_operand(items: list[str]) -> str:
         + 1
     )
     return f"{total * 2} items"
+
+
+def chosen(flag: bool) -> str:
+    choice = "a" if flag else "b"
+    return f"[{choice * 2}]"

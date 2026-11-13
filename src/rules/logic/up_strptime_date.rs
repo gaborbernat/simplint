@@ -84,16 +84,15 @@ fn time_of_day(format: &str) -> bool {
 // A class imported by name gets `date` or `time` added to its import line, unless the file already spells `date` or
 // `time` outside an attribute.
 fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(String, Option<Edit>)> {
-    match class {
-        Expr::Name(name) => {
-            if checker.state().unqualified_name_count(checker, member) > 0 {
-                return None;
-            }
-            let alias = class_alias(checker.body(), name.id.as_str())?;
-            Some((member.to_owned(), Some(Edit::insertion(format!("{member}, "), alias.start()))))
-        }
-        _ => Some((format!("{}.{member}", checker.text(class.as_attribute_expr()?.value.as_ref())), None)),
+    let Expr::Name(name) = class else {
+        let attribute = class.as_attribute_expr().expect("a resolved `strptime` hangs off a name or an attribute");
+        return Some((format!("{}.{member}", checker.text(attribute.value.as_ref())), None));
+    };
+    if checker.state().unqualified_name_count(checker, member) > 0 {
+        return None;
     }
+    let alias = class_alias(checker.body(), name.id.as_str())?;
+    Some((member.to_owned(), Some(Edit::insertion(format!("{member}, "), alias.start()))))
 }
 
 fn class_alias<'b>(body: &'b [Stmt], local: &str) -> Option<&'b ast::Alias> {
