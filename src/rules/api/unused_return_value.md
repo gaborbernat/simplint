@@ -209,12 +209,14 @@ code calls it and no production call reads the value, whether or not tests read 
   ```
 
 - **Decorated functions**: a decorator may wrap the function or use its value, so its calls may not be the ones written.
+  A decorator that passes each call on unchanged keeps the function judged: `functools.cache`, `lru_cache` and `wraps`,
+  `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and `override`.
 
   ```python ok
-  from functools import cache
+  from atexit import register
 
 
-  @cache
+  @register
   def save_order(order: str) -> str:
       return order
 

@@ -233,13 +233,15 @@ unpacks `**kwargs`, which may pass any keyword.
       send("a@b.c", urgent=True)
   ```
 
-- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.
+- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
+  decorator that passes each call on unchanged keeps the function judged: `functools.cache`, `lru_cache` and `wraps`,
+  `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and `override`.
 
   ```python ok
-  from functools import cache
+  from atexit import register
 
 
-  @cache
+  @register
   def send(address: str, urgent: bool = False) -> None:
       print(address, urgent)
 

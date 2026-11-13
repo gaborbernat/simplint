@@ -37,14 +37,31 @@ pub(crate) fn module_candidate(checker: &Checker, function: &ast::StmtFunctionDe
     resolvable(checker, function) && !is_public(checker, function)
 }
 
-// A module-level function whose name reaches its definition in each call of this file. A decorator may register or wrap
-// it and Python calls dunders itself, so the calls written out are not all the calls it gets.
+// A module-level function whose name reaches its definition in each call of this file. Any other decorator may register
+// or wrap it and Python calls dunders itself, so the calls written out are not all the calls it gets.
 pub(crate) fn resolvable(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
-    plain(function) && !checker.semantic().is_rebound(function.name.as_str())
+    plain(checker, function) && !checker.semantic().is_rebound(function.name.as_str())
 }
 
-fn plain(function: &ast::StmtFunctionDef) -> bool {
-    function.decorator_list.is_empty() && Visibility::of(function.name.as_str()) != Visibility::Dunder
+// Decorators that pass each call on to the function unchanged and keep no reference that calls it later. A
+// `staticmethod` takes no receiver, which the calls of a method skip, so it is not one of them.
+const FORWARDS_CALLS: &[&[&str]] = &[
+    &["", "classmethod"],
+    &["abc", "abstractmethod"],
+    &["contextlib", "asynccontextmanager"],
+    &["contextlib", "contextmanager"],
+    &["functools", "cache"],
+    &["functools", "lru_cache"],
+    &["functools", "wraps"],
+    &["typing", "final"],
+    &["typing", "override"],
+    &["typing_extensions", "final"],
+    &["typing_extensions", "override"],
+];
+
+fn plain(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
+    function.decorator_list.iter().all(|decorator| checker.semantic().is_decorator(decorator, FORWARDS_CALLS))
+        && Visibility::of(function.name.as_str()) != Visibility::Dunder
 }
 
 // Code outside the run may call a public function without the argument.
@@ -120,7 +137,9 @@ pub(crate) fn method_uses<'a>(
 }
 
 pub(crate) fn method_candidate(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
-    plain(function) && !is_public(checker, function) && !checker.project().is_attribute_assigned(function.name.as_str())
+    plain(checker, function)
+        && !is_public(checker, function)
+        && !checker.project().is_attribute_assigned(function.name.as_str())
 }
 
 pub(crate) fn add_use(sites: &mut CallSites, found: &Use) {

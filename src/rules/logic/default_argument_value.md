@@ -72,7 +72,9 @@ default of the parameter it fills.
   ```
 
 - **Decorated or rebound functions**: a decorator may change the signature a call reaches, and a rebound name may reach
-  another function.
+  another function. A decorator that passes each call on unchanged keeps the function judged: `functools.cache`,
+  `lru_cache` and `wraps`, `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and
+  `override`.
 
 - **Calls that unpack `*args` or `**kwargs`**, and calls of functions in other modules.
 

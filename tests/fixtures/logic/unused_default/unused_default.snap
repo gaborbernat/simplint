@@ -8,10 +8,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 12:25 SMP506 Every call to `_fetch` passes `retries`; drop its default `2` [unsafe fix: Remove the default of `retries`]
 16:17 SMP506 Every call to `_pair` passes `first`; drop its default `1` [unsafe fix: Remove the default of `first`]
 16:27 SMP506 Every call to `_pair` passes `second`; drop its default `2`
-41:37 SMP506 Every call to `_last_param_default` passes `flag`; drop its default `True` [unsafe fix: Remove the default of `flag`]
-45:29 SMP506 Every call to `_annotated` passes `value`; drop its default `1` [unsafe fix: Remove the default of `value`]
-68:39 SMP506 Every call to `send_frames` passes `flush`; drop its default `False` [unsafe fix: Remove the default of `flush`]
---- fixed (9 applied, 0 remaining) ---
+37:21 SMP506 Every call to `_memoized` passes `value`; drop its default `1` [unsafe fix: Remove the default of `value`]
+46:37 SMP506 Every call to `_last_param_default` passes `flag`; drop its default `True` [unsafe fix: Remove the default of `flag`]
+50:29 SMP506 Every call to `_annotated` passes `value`; drop its default `1` [unsafe fix: Remove the default of `value`]
+74:39 SMP506 Every call to `send_frames` passes `flush`; drop its default `False` [unsafe fix: Remove the default of `flush`]
+--- fixed (10 applied, 0 remaining) ---
 import functools
 
 
@@ -48,7 +49,12 @@ def _passed_as_value(value=1):
 
 
 @functools.cache
-def _memoized(value=1):
+def _memoized(value):
+    return value
+
+
+@functools.singledispatch
+def _dispatched(value=1):
     return value
 
 
@@ -71,6 +77,7 @@ _mapping(**{"value": 2})
 _spread(1)
 _mapping(1)
 _memoized(1)
+_dispatched(1)
 _last_param_default("x", False)
 _last_param_default("y", flag=True)
 list(map(_passed_as_value, [1]))
