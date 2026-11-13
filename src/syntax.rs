@@ -216,7 +216,7 @@ pub fn dataclass_fields(body: &[Stmt]) -> impl Iterator<Item = DataclassField<'_
 // The last segment of the name an annotation subscripts or names, read inside the quotes of a string annotation too.
 pub fn annotation_name(annotation: &Expr) -> Option<&str> {
     match annotation.as_string_literal_expr() {
-        Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
+        Some(literal) => literal.value.to_str().split('[').next().map(|name| last_dotted_segment(name.trim())),
         None => last_segment(map_subscript(annotation)),
     }
 }
@@ -826,7 +826,7 @@ impl<'a> TypeStrings<'a> {
     // Ruff matches the qualified name of a subscripted value against `extend-generics`; this walk has no resolution,
     // so it matches the last name the value is written with, as it does for the typing generics.
     fn is_extended_generic(&self, name: &str) -> bool {
-        self.extend_generics.iter().any(|target| target.rsplit('.').next() == Some(name))
+        self.extend_generics.iter().any(|target| last_dotted_segment(target) == name)
     }
 }
 
@@ -1070,6 +1070,10 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
 
 pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
+}
+
+pub fn last_dotted_segment(dotted: &str) -> &str {
+    dotted.rsplit_once('.').map_or(dotted, |(_, last)| last)
 }
 
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
