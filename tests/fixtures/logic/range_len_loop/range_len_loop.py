@@ -25,6 +25,16 @@ def index_after(items):
     return i
 
 
+def name_taken_elsewhere(tasks):
+    for i in range(len(tasks)):
+        print(tasks[i])
+
+
+def bind_task():
+    task = 1
+    return task
+
+
 def name_taken(rows):
     row = None
     for i in range(len(rows)):

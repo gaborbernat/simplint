@@ -7,8 +7,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 12:5 SMP546 Loop over `items` itself instead of its indexes
 17:5 SMP546 Loop over `items` itself instead of its indexes
 22:5 SMP546 Loop over `items` itself instead of its indexes
-30:5 SMP546 Loop over `rows` itself instead of its indexes
---- fixed (2 applied, 4 remaining) ---
+29:5 SMP546 Loop over `tasks` itself instead of its indexes [unsafe fix: Loop over `tasks`]
+40:5 SMP546 Loop over `rows` itself instead of its indexes
+--- fixed (3 applied, 4 remaining) ---
 def show(items):
     for item in items:
         print(item)
@@ -34,6 +35,16 @@ def index_after(items):
         if items[i]:
             break
     return i
+
+
+def name_taken_elsewhere(tasks):
+    for task in tasks:
+        print(task)
+
+
+def bind_task():
+    task = 1
+    return task
 
 
 def name_taken(rows):

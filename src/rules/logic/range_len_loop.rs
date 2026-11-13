@@ -137,7 +137,6 @@ fn item_name(checker: &Checker, last: &str, uses: &NameUses) -> Option<String> {
         && uses.stores(singular).is_empty()
         && uses.loads(singular).is_empty()
         && !uses.is_opaque(singular)
-        && !checker.semantic().is_bound_in_file(singular)
         && !ruff_python_stdlib::builtins::is_python_builtin(singular, checker.target_version().minor, false);
     free.then(|| singular.to_owned())
 }

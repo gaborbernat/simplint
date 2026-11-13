@@ -30,8 +30,9 @@ def show(names):
 - **`for` loops over `range(len(seq))`**, where `seq` is a name or an attribute chain, whose body reads `seq[i]`.
   **Unsafe fix:** the loop iterates `seq` and binds the singular of its name, `names` giving `name`, which replaces each
   `seq[i]`. It is offered when `i` is read only as `seq[i]` and nowhere after the loop, the body does not rebind, assign
-  to or call a method of `seq`, and the singular is a name the file does not use yet. It is unsafe because a class may
-  define `__getitem__` and `__len__` with an `__iter__` that yields something else, as a mapping does.
+  to or call a method of `seq`, and the singular is a name the loop's function, or the module for a module-level loop,
+  does not use yet. It is unsafe because a class may define `__getitem__` and `__len__` with an `__iter__` that yields
+  something else, as a mapping does.
 
   ```python report
   def show(names):
