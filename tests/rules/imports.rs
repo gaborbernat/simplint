@@ -887,6 +887,12 @@ fn private_module_object_import_reports_both_import_and_attribute() {
     ; "listed_in_all"
 )]
 #[test_case(
+    "consumer.py",
+    "from pkg._api import API\n\n__all__ = (\"API\",)\n\n\ndef run(value: API) -> None:\n    return None\n",
+    false
+    ; "listed_in_a_tuple_all"
+)]
+#[test_case(
     "consumer.py", "\"\"\"Uses API.\"\"\"\nfrom pkg._api import API\n\nVALUE = 1\n", false
     ; "docstring_mention"
 )]

@@ -17,3 +17,10 @@ def forgotten() -> int:
 __all__ = ["listed"]
 __all__.extend(["extended"])
 __all__.append("appended")
+
+
+def tupled() -> int:
+    return 5
+
+
+__all__.extend(("tupled",))
