@@ -5,7 +5,8 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::name_uses::{NameUses, comprehension_generators};
+use crate::rules::logic::flow::has_own_break;
+use crate::rules::logic::name_uses::{LocalScope, comprehension_generators};
 
 // The builtins that return a one-pass iterator.
 const ITERATOR_BUILTINS: [&str; 5] = ["map", "filter", "zip", "reversed", "enumerate"];
@@ -14,17 +15,8 @@ const CONSUMERS: [&str; 12] =
     ["list", "tuple", "set", "frozenset", "sorted", "sum", "min", "max", "any", "all", "dict", "len"];
 
 pub fn iterator_reuse(checker: &Checker) {
-    let module = NameUses::of_body(checker.body());
-    check_scope(checker, checker.body(), &module, &[]);
-    for function in checker.function_defs() {
-        let uses = NameUses::of_function(function);
-        let parameters: Vec<&str> = function
-            .parameters
-            .iter()
-            .filter(|parameter| parameter.annotation().is_some_and(|annotation| is_iterator_annotation(checker, annotation)))
-            .map(|parameter| parameter.name().as_str())
-            .collect();
-        check_scope(checker, &function.body, &uses, &parameters);
+    for scope in checker.state().local_scopes(checker).iter() {
+        check_scope(checker, scope);
     }
 }
 
@@ -40,23 +32,26 @@ fn is_iterator_annotation(checker: &Checker, annotation: &Expr) -> bool {
     })
 }
 
-fn check_scope<'a>(checker: &Checker<'a>, body: &'a [Stmt], uses: &NameUses<'a>, parameters: &[&'a str]) {
-    let mut walk = Walk { checker, candidates: FxHashMap::default(), sites: Vec::new(), path: Vec::new() };
-    for parameter in parameters {
-        if uses.is_single_binding(parameter) {
-            walk.candidates.insert(parameter, Vec::new());
-        }
-    }
-    walk.find_candidates(body, uses);
-    if walk.candidates.is_empty() {
+fn check_scope<'a>(checker: &Checker<'a>, scope: &LocalScope<'a>) {
+    let mut walk = Walk { checker, bindings: Vec::new(), sites: Vec::new(), path: Vec::new() };
+    walk.visit_body(scope.body);
+    let parameters = scope.function.into_iter().flat_map(|function| function.parameters.iter()).filter(|parameter| {
+        parameter.annotation().is_some_and(|annotation| is_iterator_annotation(checker, annotation))
+    });
+    let mut bindings = parameters.map(|parameter| (parameter.name().as_str(), Vec::new())).chain(walk.bindings).peekable();
+    if bindings.peek().is_none() {
         return;
     }
-    walk.visit_body(body);
+    let uses = scope.uses();
+    let candidates: FxHashMap<&str, Vec<Branch>> = bindings.filter(|(name, _)| uses.is_single_binding(name)).collect();
+    if candidates.is_empty() {
+        return;
+    }
     let mut sites_by_name: FxHashMap<&str, Vec<&Site>> = FxHashMap::default();
-    for site in &walk.sites {
+    for site in walk.sites.iter().filter(|site| candidates.contains_key(site.name)) {
         sites_by_name.entry(site.name).or_default().push(site);
     }
-    for (name, binding_path) in &walk.candidates {
+    for (name, binding_path) in &candidates {
         let sites = sites_by_name.remove(name).unwrap_or_default();
         // Any other read hands the iterator to code that may advance it, as `next()` does on purpose.
         if uses.loads(name).len() != sites.len() || sites.iter().any(|site| site.resumable) {
@@ -115,20 +110,16 @@ struct Site<'a> {
     resumable: bool,
 }
 
+// One walk of a scope numbers its branches and records both the names bound to a one-pass iterator, with the branch
+// path of the binding, and every read that consumes a name, with the branch path of the read.
 struct Walk<'c, 'a> {
     checker: &'c Checker<'a>,
-    // The candidate names with the branch path of their binding.
-    candidates: FxHashMap<&'a str, Vec<Branch>>,
+    bindings: Vec<(&'a str, Vec<Branch>)>,
     sites: Vec<Site<'a>>,
     path: Vec<Branch>,
 }
 
 impl<'a> Walk<'_, 'a> {
-    fn find_candidates(&mut self, body: &'a [Stmt], uses: &NameUses<'a>) {
-        let mut finder = CandidateFinder { walk: self, uses, path: Vec::new() };
-        finder.visit_body(body);
-    }
-
     fn is_iterator_value(&self, value: &Expr) -> bool {
         match value {
             Expr::Generator(_) => true,
@@ -138,9 +129,7 @@ impl<'a> Walk<'_, 'a> {
     }
 
     fn site(&mut self, expr: &'a Expr, resumable: bool) {
-        if let Expr::Name(name) = expr
-            && self.candidates.contains_key(name.id.as_str())
-        {
+        if let Expr::Name(name) = expr {
             self.sites.push(Site { name: name.id.as_str(), range: name.range, path: self.path.clone(), resumable });
         }
     }
@@ -159,24 +148,20 @@ fn exits(body: &[Stmt]) -> bool {
     matches!(body.last(), Some(Stmt::Return(_) | Stmt::Raise(_) | Stmt::Break(_) | Stmt::Continue(_)))
 }
 
-fn breaks(body: &[Stmt]) -> bool {
-    body.iter().any(|stmt| match stmt {
-        Stmt::Break(_) => true,
-        Stmt::For(_) | Stmt::While(_) | Stmt::FunctionDef(_) | Stmt::ClassDef(_) => false,
-        _ => {
-            let mut found = false;
-            crate::syntax::for_each_child_body(stmt, &mut |child| found |= breaks(child));
-            found
-        }
-    })
-}
-
 impl<'a> Visitor<'a> for Walk<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                if let [Expr::Name(target)] = targets.as_slice()
+                    && self.is_iterator_value(value)
+                {
+                    self.bindings.push((target.id.as_str(), self.path.clone()));
+                }
+                walk_stmt(self, stmt);
+            }
             Stmt::For(ast::StmtFor { target, iter, body, orelse, .. }) => {
-                self.site(iter, breaks(body));
+                self.site(iter, has_own_break(body));
                 self.visit_expr(iter);
                 self.visit_expr(target);
                 let id = stmt.start().to_usize();
@@ -281,70 +266,4 @@ fn is_join(call: &ast::ExprCall) -> bool {
         attribute.attr.as_str() == "join"
             && matches!(attribute.value.as_ref(), Expr::StringLiteral(_) | Expr::BytesLiteral(_))
     })
-}
-
-// Finds the names bound once to a one-pass iterator, with the branch path of the binding, following the same branch
-// numbering as the walk that collects the reads.
-struct CandidateFinder<'w, 'c, 'a> {
-    walk: &'w mut Walk<'c, 'a>,
-    uses: &'w NameUses<'a>,
-    path: Vec<Branch>,
-}
-
-impl<'a> CandidateFinder<'_, '_, 'a> {
-    fn arm(&mut self, statement: usize, arm: usize, is_loop: bool, body: &'a [Stmt]) {
-        self.path.push(Branch { statement, arm, is_loop, exits: exits(body) });
-        self.visit_body(body);
-        self.path.pop();
-    }
-}
-
-impl<'a> Visitor<'a> for CandidateFinder<'_, '_, 'a> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        match stmt {
-            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
-                if let [Expr::Name(target)] = targets.as_slice()
-                    && self.uses.is_single_binding(target.id.as_str())
-                    && self.walk.is_iterator_value(value)
-                {
-                    self.walk.candidates.insert(target.id.as_str(), self.path.clone());
-                }
-            }
-            Stmt::For(ast::StmtFor { body, orelse, .. }) => {
-                let id = stmt.start().to_usize();
-                self.arm(id, 0, true, body);
-                self.visit_body(orelse);
-            }
-            Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
-                let id = stmt.start().to_usize();
-                self.arm(id, 0, true, body);
-                self.visit_body(orelse);
-            }
-            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
-                let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body);
-                for (index, clause) in elif_else_clauses.iter().enumerate() {
-                    self.arm(id, index + 1, false, &clause.body);
-                }
-            }
-            Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                let id = stmt.start().to_usize();
-                for (index, case) in cases.iter().enumerate() {
-                    self.arm(id, index, false, &case.body);
-                }
-            }
-            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
-                let id = stmt.start().to_usize();
-                self.arm(id, 0, false, body);
-                for (index, handler) in handlers.iter().enumerate() {
-                    let ast::ExceptHandler::ExceptHandler(handler) = handler;
-                    self.arm(id, index + 1, false, &handler.body);
-                }
-                self.visit_body(orelse);
-                self.visit_body(finalbody);
-            }
-            _ => {}
-        }
-    }
 }
