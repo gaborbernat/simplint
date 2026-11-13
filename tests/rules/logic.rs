@@ -627,6 +627,27 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
     );
 }
 
+// Before Python 3.12 a value spread over lines goes into a replacement field as `ruff format` joins it, which a magic
+// trailing comma stops unless the formatter skips it.
+#[test_case(
+    "",
+    "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n" ;
+    "magic_trailing_comma_keeps_the_value"
+)]
+#[test_case(
+    "[tool.ruff.format]\nskip-magic-trailing-comma = true\n",
+    "def pair(first, second):\n    return f\"{(first, second)}\"\n" ;
+    "skipped_magic_trailing_comma_joins_the_value"
+)]
+fn single_use_fstring_value_follows_magic_trailing_comma(format: &str, fixed: &str) {
+    let source =
+        "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n";
+    let pyproject = format!("[tool.ruff]\ntarget-version = \"py311\"\n{format}");
+    let root = common::project(&[("pyproject.toml", pyproject.as_str()), ("module.py", source)]);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix", "--unsafe-fixes"]);
+    assert_eq!(read(root.path(), "module.py"), fixed);
+}
+
 // A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
 // naming an undefined name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
