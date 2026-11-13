@@ -9,7 +9,7 @@ reads module state. pylint's
 [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html) applies the
 same idea to names assigned once. [PEP 8](https://peps.python.org/pep-0008/#global-variable-names) and the
 [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.5.4-decision) give module globals
-`lower_case`; simplint reports every module-level variable, so each use shows the module state it reads.
+`lower_case`; simplint upper-cases those too.
 
 ## Example
 
@@ -176,10 +176,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
       raise RuntimeError(msg)
   ```
 
-- **Annotations alone under `if TYPE_CHECKING:`**: the rules no longer report a declaration with no value under
-  `if TYPE_CHECKING:`, which only types a name that a module's PEP 562 `__getattr__` serves at runtime. Renaming one
-  breaks the type checker's view of `module.log`, while `__getattr__` keeps serving it at runtime. An assigned name in
-  the same block is still checked.
+- **Annotations alone under `if TYPE_CHECKING:`**: a declaration with no value there only types a name that a module's
+  PEP 562 `__getattr__` serves at runtime. Renaming one breaks the type checker's view of `module.log`, while
+  `__getattr__` keeps serving it at runtime. An assigned name in the same block is still checked.
 
   ```python ok
   import typing
