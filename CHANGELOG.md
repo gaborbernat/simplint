@@ -1,5 +1,173 @@
 # Changelog
 
+## 0.12.2 (2026-11-13)
+
+<a name="release-0-12-2"></a>
+
+<a name="release-0-12-2-changes"></a>
+
+### Changes
+
+- [`conditional-in-test`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/conditional_in_test.md)
+  no longer reports branches on the interpreter or its environment, such as `sys.platform` or `os.environ`, nor branches
+  on what a `while` loop or a `for` loop over received values got, since neither can become a parameter
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`meaningless-name`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/naming/meaningless_name.md) no
+  longer reports the fields of a dataclass, attrs class, pydantic model, `TypedDict`, `NamedTuple` or msgspec `Struct`,
+  whose names the data's schema sets ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-letter-name`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/naming/single_letter_name.md) no
+  longer reports the parameters of a lambda, which is a single expression and keeps them next to every use, as a
+  comprehension does ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`sleep-in-test`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/sleep_in_test.md) reports only
+  sleeps in the body of a test, a fixture or a unittest set-up or tear-down method, and no longer those in test servers,
+  test doubles and other helpers ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-12-2-fixed"></a>
+
+### Fixed
+
+- [`unused-export`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/unused_export.md) and
+  [`missing-from-all`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/missing_from_all.md) offer no
+  fix when code outside the tests reads `__all__` off a module it imports by a computed name, as Pygments' lexer loader
+  does, since editing the list changed what that loader loads ([#139](https://github.com/gaborbernat/simplint/pull/139))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-default`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/unused_default.md),
+  [`default-argument-value`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/default_argument_value.md),
+  [`unused-return-value`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/unused_return_value.md) and
+  [`test-only-parameter`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/test_only_parameter.md) now
+  judge a function under a decorator that passes each call on unchanged, such as `functools.cache`,
+  `contextlib.contextmanager` or `typing.override`, instead of skipping it
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`callable-ellipsis`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/typing/callable_ellipsis.md)
+  leaves `Callable[..., T]` alone as the bound of a type variable, the typing idiom for a decorator that keeps the
+  signature of what it wraps ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`catastrophic-regex`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/catastrophic_regex.md)
+  leaves a nested repeat alone when only parts that can match nothing follow it and the call need not reach the end of
+  the string, since nothing then backtracks into it ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`class-member-order`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/layout/class_member_order.md) no
+  longer reads a class-level annotation as evaluated when the class body runs while annotations are lazy, which withheld
+  the fix that moves a nested class it names ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`dataclass-kw-only`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/classes/dataclass_kw_only.md)
+  leaves `@dataclass(init=False)` alone, as without a generated `__init__` the option changes nothing
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-slots` no longer offers a safe fix when code reaches the `__dict__` or a weak reference of an object of
+  unknown class, as `vars(obj)` or `weakref.ref(obj)` in a helper do, and withholds it when `weakref.ref(Release(...))`
+  or `vars(Release(...))` reach a new instance ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` and `dataclass-slots` no longer offer a safe fix when code sets an attribute no class of the run
+  declares on an object of unknown class, such as `node.extra = 1` on a loop variable, which may be an instance of the
+  dataclass ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/layout/definition_before_use.md)
+  no longer keeps in place the helpers of a base class or of a function whose default or decorator reads a constant, as
+  neither runs its body while the module loads, and lets such a function move as long as the names its statement reads
+  stay bound above it ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/layout/definition_before_use.md)
+  no longer takes a class body that reads a method, as `__str__ = __repr__` or `property(_get)` do, for one that calls
+  it, which kept the method's helpers in place ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`definition-before-use`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/layout/definition_before_use.md)
+  no longer pins a class named in the signature of a `pytest.fixture`, `pytest.mark`, `pytest.hookimpl`, `mock.patch` or
+  `deprecated` function when annotations are lazy, as none of them evaluates the annotations while the module loads
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`duplicate-code`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/duplicate_code.md) no longer
+  compares a module under `_sync` with its `_async` twin from which [unasync](https://github.com/python-trio/unasync)
+  generates it ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`early-assignment`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/early_assignment.md) no
+  longer holds an assignment back for a string that keys a subscript or a dict display and spells the name, such as
+  `loaded["cases"]`, since such a string is never run as code ([#139](https://github.com/gaborbernat/simplint/pull/139))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- [`expression-complexity`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/expression_complexity.md)
+  counts a chain of calls and subscripts on one receiver once, as `query.filter(a).order_by(b)` and `data["a"]["b"]`
+  read left to right instead of nesting ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`init-module-content`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/init_module_content.md)
+  leaves a `__version__` alone when setuptools' `attr:`, hatch's or pdm's version `path`, flit, bump-my-version,
+  bump2version, tbump or `setup.py` reads it, and no longer reports `from __future__` imports or `__lazy_modules__` in a
+  package that is not public ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/single_use_variable.md),
+  [`dead-store`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/dead_store.md),
+  [`early-assignment`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/early_assignment.md) and
+  [`walrus-candidate`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/walrus_candidate.md) no
+  longer take a variable of the same name that a nested function, lambda or comprehension binds for itself as a read of
+  the outer one, so they report the outer variable ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`long-tuple-return`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/long_tuple_return.md) leaves
+  alone a method that redefines one a base class of the run defines, whose shape the base sets, and `getstate` of an
+  incremental codec ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-variable-case`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/naming/module_variable_case.md)
+  leaves alone a module-level alias of an imported function, of a lowercase attribute of an imported module, such as a
+  PEP 517 hook, and of a method of a module-level instance, which keep the callable's name
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`long-paragraph`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/comments/long_paragraph.md) and
+  [`long-docstring-paragraph`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/docstrings/long_docstring_paragraph.md)
+  count each list item, field, directive and Google or numpydoc entry as a paragraph of its own, and read an empty `#:`
+  line as blank ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`parametrize-without-id`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/parametrize_without_id.md)
+  no longer reports bytes rows and rows unpacked into several arguments whose values are all strings, numbers, `True`,
+  `False` or `None`, since pytest already names them, such as `test_lower[FALSE-false]`
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`section-comment`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/comments/section_comment.md) leaves
+  table rules, lines of a `##` paragraph and a URL or code after `##` alone, so its fix no longer deletes them
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/single_use_variable.md) no
+  longer offers a fix that runs a value with calls or lookups after a step it used to precede, such as one of two
+  `stack.pop()` operands read in reverse order ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/layout/single_user_constant.md)
+  leaves alone a run of three or more adjacent literal constants that different functions read, such as a palette,
+  instead of scattering it across its users ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A project without `requires-python` now takes its Python version from Poetry's `python` dependency or the setuptools
+  `python_requires` in `setup.cfg` or `setup.py`, so rules no longer offer syntax newer than the project supports
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-module-docstring`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/docstrings/test_module_docstring.md)
+  keeps a docstring that carries a copyright or license notice
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`test-process-state`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/test_process_state.md)
+  leaves changes alone that a `patch.dict` decorator or call, `monkeypatch`, an autouse fixture of the module, a `patch`
+  class decorator or an inherited base class puts back ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`test-without-assertion`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/test_without_assertion.md)
+  follows a local function or a method of the test's class passed to a call as a callback, such as an event handler, and
+  counts the checks in its body ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unexported-public-name`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/unexported_public_name.md)
+  leaves alone a module that looks its own names up by a computed key, as `globals()["do_" + name]` does, since its fix
+  renamed the functions that lookup reaches ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unnamed-regex-group`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/unnamed_regex_group.md)
+  leaves the groups of a `findall` or `split` call alone, and those of a compiled pattern only called with them, since
+  the code receives those groups by position ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-default`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/logic/unused_default.md) leaves alone
+  the functions of a module the run reads through `getattr(module, name)` with a computed name or through its `__all__`,
+  since its fix broke calls such as `getattr(platformdirs, name)()`
+  ([#139](https://github.com/gaborbernat/simplint/pull/139)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-definition`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/api/unused_definition.md) keeps
+  the methods of a mixin, a class listed beside another base that may call them, and a nested function with a dunder
+  name such as pytest's `__tracebackhide__` ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-fixture`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/testing/unused_fixture.md) leaves
+  alone fixtures that pytest plugins such as anyio and pytest-django request by name, like `anyio_backend` and
+  `django_db_setup` ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`vars-call`](https://github.com/gaborbernat/simplint/blob/0.12.2/src/rules/typing/vars_call.md) leaves `vars()` on a
+  class object alone, such as `vars(cls)` or `vars(type(obj))`, the way to read a class's own namespace without
+  inherited names ([#139](https://github.com/gaborbernat/simplint/pull/139)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.12.1 (2026-11-13)
 
 <a name="release-0-12-1"></a>
