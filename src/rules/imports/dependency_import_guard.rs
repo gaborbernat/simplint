@@ -10,7 +10,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::imports::stdlib::ships_everywhere;
-use crate::syntax::{alias_root_binding, for_each_child_body, top_level};
+use crate::syntax::{alias_root_binding, for_each_child_body};
 
 pub fn dependency_import_guard(checker: &Checker) {
     report_guards(checker, checker.body(), None);
@@ -70,9 +70,7 @@ fn imported_modules(stmt: &Stmt) -> Option<Vec<&str>> {
 }
 
 fn is_required(checker: &Checker, module: &str) -> bool {
-    let root = top_level(module);
-    ships_everywhere(checker.target_version().minor, module)
-        || checker.settings.project.metadata.dependencies.contains(&root.to_ascii_lowercase())
+    ships_everywhere(checker.target_version().minor, module) || checker.settings.project.metadata.requires(module)
 }
 
 // Ruff's cleanup splits statements that share a line before it removes an import, so a suppression at the end of a

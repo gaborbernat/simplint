@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use ruff_python_ast::helpers::{any_over_expr, extract_handled_exceptions};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -8,7 +6,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{is_stdlib_root, is_type_checking_name, top_level};
+use crate::rules::imports::stdlib::ships_on_some_version;
+use crate::syntax::{is_type_checking_name, top_level};
 
 pub fn undeclared_dependency(checker: &Checker) {
     let settings = &checker.settings.project;
@@ -33,10 +32,10 @@ pub fn undeclared_dependency(checker: &Checker) {
     for (module, range, start) in imports.found {
         let root = top_level(module);
         if root == "__future__"
-            || is_stdlib(module)
+            || ships_on_some_version(module)
             || packages.contains(root)
             || project.imports_run_file(start)
-            || is_declared(&metadata.runtime, module)
+            || metadata.may_install(module)
         {
             continue;
         }
@@ -46,24 +45,6 @@ pub fn undeclared_dependency(checker: &Checker) {
             format!("`{root}` is imported, but no requirement or extra of the project installs it; declare its distribution"),
         );
     }
-}
-
-// A distribution's import name is its normalized name in most cases, so a namespace package such as `google.auth`
-// matches `google-auth`, and one whose name adds a prefix or suffix, such as `grpcio` or `pyserial`, contains it.
-pub(super) fn is_declared(runtime: &BTreeSet<String>, module: &str) -> bool {
-    let lower = module.to_ascii_lowercase();
-    let mut prefix = String::new();
-    for part in lower.split('.') {
-        if !prefix.is_empty() {
-            prefix.push('_');
-        }
-        prefix.push_str(part);
-        if runtime.contains(&prefix) {
-            return true;
-        }
-    }
-    let root = top_level(&lower);
-    runtime.iter().any(|name| name.contains(root))
 }
 
 // The absolute imports Python runs unguarded when it loads the module: an import under `if TYPE_CHECKING:` never runs,
@@ -114,11 +95,6 @@ fn handles_import_error(handlers: &[ast::ExceptHandler]) -> bool {
             )
         })
     })
-}
-
-// A module the standard library ships on any Python version, since a version check may pick it, as `tomllib` on 3.11.
-pub(super) fn is_stdlib(module: &str) -> bool {
-    (7..=15).any(|minor| is_stdlib_root(minor, module))
 }
 
 fn is_environment(expr: &Expr) -> bool {

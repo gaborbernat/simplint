@@ -1,10 +1,9 @@
-use std::collections::BTreeSet;
-
 use ruff_text_size::TextRange;
 
-use super::undeclared_dependency::{is_declared, is_stdlib};
+use crate::rules::imports::stdlib::ships_on_some_version;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::settings::may_provide;
 
 // The project has no Python file of its own for `pyproject.toml`, so the `__init__.py` of its first top-level package
 // holds the reports, at its start.
@@ -23,10 +22,9 @@ pub fn unused_dependency(checker: &Checker) {
     let Some(imported) = checker.project().imported_modules() else {
         return;
     };
-    let imported: Vec<&str> = imported.iter().map(String::as_str).filter(|module| !is_stdlib(module)).collect();
+    let imported: Vec<&str> = imported.iter().map(String::as_str).filter(|module| !ships_on_some_version(module)).collect();
     for (name, modules) in &metadata.requirements {
-        let modules: BTreeSet<String> = modules.iter().cloned().collect();
-        if metadata.name.as_deref() == Some(name.as_str()) || imported.iter().any(|module| is_declared(&modules, module)) {
+        if metadata.name.as_deref() == Some(name.as_str()) || imported.iter().any(|module| may_provide(modules, module)) {
             continue;
         }
         checker.report(

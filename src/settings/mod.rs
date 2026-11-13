@@ -28,6 +28,7 @@ pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
+pub(crate) use crate::settings::metadata::may_provide;
 pub(crate) use crate::settings::pytest::PytestConfig;
 use crate::settings::options::{
     ClassesOptions, ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector,
