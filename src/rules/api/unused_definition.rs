@@ -14,7 +14,9 @@ use crate::rules::is_named_by_doctest;
 use crate::rules::logic::LOCALS_READERS;
 use crate::rules::public_api::Need;
 use crate::semantic::Evaluation;
-use crate::syntax::{Visibility, for_each_child_body, identifier_words, instance_attributes, module_statements};
+use crate::syntax::{
+    REBUILD_HOOKS, Visibility, for_each_child_body, identifier_words, instance_attributes, module_statements,
+};
 
 pub fn unused_definition(checker: &Checker) {
     nested_functions(checker);
@@ -255,11 +257,14 @@ fn reads_instance_whole(class: &ast::StmtClassDef) -> bool {
             }
         }
     }
-    let hooks = ["__getstate__", "__reduce__", "__reduce_ex__", "__copy__", "__deepcopy__", "__slots__", "__getattr__"];
+    let is_hook = |name: &str| {
+        REBUILD_HOOKS.contains(&name)
+            || ["__getstate__", "__copy__", "__deepcopy__", "__slots__", "__getattr__"].contains(&name)
+    };
     if module_statements(&class.body).any(|member| match member {
-        Stmt::FunctionDef(method) => hooks.contains(&method.name.as_str()),
+        Stmt::FunctionDef(method) => is_hook(method.name.as_str()),
         Stmt::Assign(ast::StmtAssign { targets, .. }) => {
-            targets.iter().any(|target| target.as_name_expr().is_some_and(|name| hooks.contains(&name.id.as_str())))
+            targets.iter().any(|target| target.as_name_expr().is_some_and(|name| is_hook(name.id.as_str())))
         }
         _ => false,
     }) {

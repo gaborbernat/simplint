@@ -5,9 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::exception_classes::{ClassKey, derives_from_base_exception, lineage};
-
-// The methods that tell `pickle` and `copy` how to rebuild an object, which replace rebuilding it from its `args`.
-const REBUILDERS: [&str; 4] = ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__"];
+use crate::syntax::REBUILD_HOOKS;
 
 // `pickle` and `copy` rebuild an exception by calling its class with its `args`, which `BaseException.__init__` sets to
 // the arguments it receives. A subclass whose `__init__` passes its parent fewer or more positional values than it
@@ -33,7 +31,11 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             ClassKey::Known(_) => None,
         }))
         .any(|class| {
-            class.body.iter().filter_map(Stmt::as_function_def_stmt).any(|def| REBUILDERS.contains(&def.name.as_str()))
+            class
+                .body
+                .iter()
+                .filter_map(Stmt::as_function_def_stmt)
+                .any(|def| REBUILD_HOOKS.contains(&def.name.as_str()))
         });
     if rebuilt {
         return;
