@@ -3,14 +3,14 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
-12:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
-29:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
-36:5 SMP504 `message` is used once, right below; inline its value [fix: Inline `message`]
-41:5 SMP504 `removed` is used once, right below; inline its value [fix: Inline `removed`]
-50:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
-55:5 SMP504 `other` is used once, right below; inline its value [fix: Inline `other`]
-59:5 SMP504 `result` is used once, right below; inline its value [fix: Inline `result`]
-69:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+17:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+34:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+41:5 SMP504 `message` is used once, right below; inline its value [fix: Inline `message`]
+46:5 SMP504 `removed` is used once, right below; inline its value [fix: Inline `removed`]
+55:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+60:5 SMP504 `other` is used once, right below; inline its value [fix: Inline `other`]
+64:5 SMP504 `result` is used once, right below; inline its value [fix: Inline `result`]
+74:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
 --- fixed (9 applied, 0 remaining) ---
 def fits_once_inlined(items: list[str]) -> None:
     print(len(items))
@@ -19,6 +19,11 @@ def fits_once_inlined(items: list[str]) -> None:
 def too_wide_once_inlined(items: list[str]) -> None:
     value = items[0] + items[1] + items[2] + items[3] + items[4] + items[5] + items[6]
     print(value, items[7], items[8], items[9])
+
+
+def too_wide_once_reordered(stack: list[str], log: Log) -> None:
+    right = stack.pop() + stack.pop() + stack.pop() + stack.pop() + stack.pop() + stack.pop()
+    log.write(stack.pop(), right, stack.pop(), stack.pop(), stack.pop(), stack.pop(), stack.pop())
 
 
 def parenthesised_value(first: int, second: int) -> None:

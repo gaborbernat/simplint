@@ -67,15 +67,17 @@ fn check_pair<'a>(
     // A value with its own calls or lookups that would run after effects it used to precede swaps the two, which is
     // almost never what the author meant, so the report stands without a fix.
     let fix = match keep_debug_text(checker, vec![edit]) {
-        Some(_) if reordered && any_over_expr(&assign.value, &is_effect) => None,
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
-            let replace = &edits[0];
-            if !fits(checker, next, replace, depth) {
+            if !fits(checker, next, &edits[0], depth) {
                 return;
             }
-            let applicability = if reordered { Applicability::Unsafe } else { Applicability::Safe };
-            Some(Fix::applicable_edits(deletion, edits, applicability))
+            if reordered && any_over_expr(&assign.value, &is_effect) {
+                None
+            } else {
+                let applicability = if reordered { Applicability::Unsafe } else { Applicability::Safe };
+                Some(Fix::applicable_edits(deletion, edits, applicability))
+            }
         }
         // A debug field that cannot be rewritten keeps the report, and so does a t-string, whose fields keep their
         // source text, as the variable is still used once.

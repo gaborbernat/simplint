@@ -8,6 +8,11 @@ def too_wide_once_inlined(items: list[str]) -> None:
     print(value, items[7], items[8], items[9])
 
 
+def too_wide_once_reordered(stack: list[str], log: Log) -> None:
+    right = stack.pop() + stack.pop() + stack.pop() + stack.pop() + stack.pop() + stack.pop()
+    log.write(stack.pop(), right, stack.pop(), stack.pop(), stack.pop(), stack.pop(), stack.pop())
+
+
 def parenthesised_value(first: int, second: int) -> None:
     total = (first + second)
     print(total * 2)
