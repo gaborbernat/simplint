@@ -35,6 +35,11 @@ pub fn uncollected_test_module(checker: &Checker) {
     );
 }
 
+// Python imports a module only from a lowercase `.py` file, whatever the file system's case rules.
+fn is_python(name: &str) -> bool {
+    Path::new(name).extension().is_some_and(|extension| extension == "py")
+}
+
 // A script with a main guard, a module another test names as data for `pytester`, or one whose docstring gives the
 // command that runs it is kept out of the default run on purpose.
 fn is_run_on_purpose(checker: &Checker, file_name: &str) -> bool {
@@ -51,9 +56,4 @@ fn has_collected_sibling(checker: &Checker, pytest: &PytestConfig) -> bool {
         .directory_modules()
         .iter()
         .any(|name| is_python(name) && name != "conftest.py" && pytest.collects(name))
-}
-
-// Python imports a module only from a lowercase `.py` file, whatever the file system's case rules.
-fn is_python(name: &str) -> bool {
-    Path::new(name).extension().is_some_and(|extension| extension == "py")
 }

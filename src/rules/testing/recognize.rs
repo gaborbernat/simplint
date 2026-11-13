@@ -4,15 +4,6 @@ use ruff_python_ast::{self as ast, Expr};
 use crate::semantic::Semantic;
 use crate::syntax::{MOCK_CLASSES, decorator_callee, last_segment};
 
-const PATCHERS: &[&[&str]] = &[
-    &["unittest", "mock", "patch"],
-    &["unittest", "mock", "patch", "object"],
-    &["unittest", "mock", "patch", "dict"],
-    &["mock", "patch"],
-    &["mock", "patch", "object"],
-    &["mock", "patch", "dict"],
-];
-
 pub(crate) fn is_mock_constructor(func: &Expr) -> bool {
     last_segment(func).is_some_and(|last| MOCK_CLASSES.contains(&last))
 }
@@ -36,6 +27,14 @@ pub(crate) fn is_patch_object(semantic: &Semantic, func: &Expr) -> bool {
 }
 
 pub(crate) fn is_patcher(semantic: &Semantic, func: &Expr) -> bool {
+    const PATCHERS: &[&[&str]] = &[
+        &["unittest", "mock", "patch"],
+        &["unittest", "mock", "patch", "object"],
+        &["unittest", "mock", "patch", "dict"],
+        &["mock", "patch"],
+        &["mock", "patch", "object"],
+        &["mock", "patch", "dict"],
+    ];
     PATCHERS.iter().any(|path| semantic.resolves_to(func, path))
 }
 

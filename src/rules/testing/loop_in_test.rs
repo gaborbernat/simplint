@@ -107,9 +107,6 @@ impl Exercises<'_> {
     }
 }
 
-// Name lookups a value may follow, which stops an assignment that reads its own name from recursing forever.
-const MAX_NAME_DEPTH: usize = 8;
-
 struct Cases<'c, 'a> {
     checker: &'c Checker<'a>,
     function: &'a ast::StmtFunctionDef,
@@ -190,6 +187,8 @@ impl<'a> Cases<'_, 'a> {
     // A name the test function does not bind is a module constant or a builtin. A local name is known when its only
     // binding is an assignment of a known value; a parameter, a loop target or a result the test computes is not.
     fn is_known_name(&self, name: &ast::ExprName, depth: usize, table: bool) -> bool {
+        // Name lookups a value may follow, which stops an assignment that reads its own name from recursing forever.
+        const MAX_NAME_DEPTH: usize = 8;
         let function = self.function.range();
         let mut bindings = self
             .checker
