@@ -284,11 +284,8 @@ impl Settings {
         let path = configuration.map(|(path, _)| path);
         let configures_flake8_lazy =
             [metadata, configuration].into_iter().flatten().any(|(_, table)| configures(table, "flake8-lazy"));
-        let coverage = metadata.map_or_else(CoveragePlugins::default, |(path, table)| {
-            CoveragePlugins::of(table, path.parent().unwrap_or(root))
-        });
         let pyproject = metadata.map(|(_, table)| table);
-        let (metadata_path, metadata, build) = match metadata {
+        let (metadata_path, mut metadata, build) = match metadata {
             Some((path, table)) => {
                 let hatch_file = path.with_file_name("hatch.toml");
                 let build = BuildConfiguration::of(
@@ -315,6 +312,10 @@ impl Settings {
         // Its `setup.py` and the packages next to it belong to the metadata's project, which may sit above `root`.
         let project_dir = metadata_path.and_then(Path::parent).unwrap_or(root);
         let pytest = PytestConfig::of(&[root, project_dir], pyproject);
+        metadata.entry_points.extend(pytest.plugins.iter().cloned());
+        let coverage = pyproject.map_or_else(CoveragePlugins::default, |table| {
+            CoveragePlugins::of(table, project_dir, &pytest.pythonpath)
+        });
         // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
         let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = resolve_rules(
@@ -409,6 +410,7 @@ impl Settings {
         name.starts_with("test_")
             || name.ends_with("_test.py")
             || name == "conftest.py"
+            || self.pytest.collects_path(path)
             || in_test_directory(path.strip_prefix(&self.root).unwrap_or(path))
             || (self.nested && self.root.file_name().is_some_and(|root| in_test_directory(Path::new(root))))
     }

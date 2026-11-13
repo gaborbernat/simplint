@@ -2,14 +2,19 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-#[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n" ; "ini_options")]
-#[test_case("[tool.pytest]\naddopts = [\"-q\", \"-p\", \"pkg._plugin\"]\n" ; "native_options")]
-fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
-    let root = project(&[
-        ("pyproject.toml", &format!("{LIBRARY}{tool}")),
+#[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n", None ; "ini_options")]
+#[test_case("[tool.pytest]\naddopts = [\"-q\", \"-p\", \"pkg._plugin\"]\n", None ; "native_options")]
+#[test_case("", Some(("pytest.ini", "[pytest]\naddopts = -q -p pkg._plugin\n")) ; "pytest_ini")]
+#[test_case("", Some(("tox.ini", "[pytest]\naddopts =\n    -q\n    -ppkg._plugin\n")) ; "tox_ini")]
+fn pytest_plugin_counts_as_used(tool: &str, ini: Option<(&str, &str)>) {
+    let pyproject = format!("{LIBRARY}{tool}");
+    let mut files = vec![
+        ("pyproject.toml", pyproject.as_str()),
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
-    ]);
+    ];
+    files.extend(ini);
+    let root = project(&files);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
     let disabled = project(&[
         ("pyproject.toml", &format!("{LIBRARY}[tool.pytest.ini_options]\naddopts = \"-p no:pkg._plugin\"\n")),

@@ -82,21 +82,6 @@ impl ProjectMetadata {
                     .collect::<Vec<_>>()
             },
         ));
-        for path in [&["pytest", "ini_options", "addopts"][..], &["pytest", "addopts"]] {
-            let options: Vec<String> = strings(lookup(path))
-                .into_iter()
-                .flat_map(|option| option.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
-                .collect();
-            self.entry_points.extend(
-                options
-                    .windows(2)
-                    .filter(|pair| pair[0] == "-p")
-                    .map(|pair| pair[1].as_str())
-                    .chain(options.iter().filter_map(|option| option.strip_prefix("-p")))
-                    .filter(|plugin| !plugin.is_empty() && !plugin.starts_with("no:"))
-                    .map(str::to_owned),
-            );
-        }
     }
 }
 
@@ -300,23 +285,15 @@ pub struct CoveragePlugins {
 }
 
 impl CoveragePlugins {
-    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path) -> Self {
+    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path, pythonpath: &[PathBuf]) -> Self {
         let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
         let modules = strings(lookup(&["coverage", "run", "plugins"]));
         if modules.is_empty() {
             return Self::default();
         }
         let search_paths = std::iter::once(project_dir.to_path_buf())
-            .chain(
-                [
-                    &["pytest", "ini_options", "pythonpath"][..],
-                    &["pytest", "pythonpath"],
-                    &["ty", "environment", "extra-paths"],
-                ]
-                .iter()
-                .flat_map(|path| strings(lookup(path)))
-                .map(|directory| project_dir.join(directory)),
-            )
+            .chain(pythonpath.iter().cloned())
+            .chain(strings(lookup(&["ty", "environment", "extra-paths"])).into_iter().map(|directory| project_dir.join(directory)))
             .map(|path| path.components().collect::<PathBuf>())
             // A configured directory a source distribution leaves out would fail the whole search path.
             .filter(|path| path.is_dir())

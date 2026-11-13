@@ -20,15 +20,18 @@ fn coverage_plugin_keeps_its_other_functions_reported() {
 }
 
 // A plugin resolves from the directories pytest's `pythonpath` and ty's `extra-paths` put on the project's import path.
-#[test_case("[tool.pytest.ini_options]\npythonpath = [\"tasks\"]\n" ; "pytest_ini_options")]
-#[test_case("[tool.pytest]\npythonpath = [\"tasks\"]\n" ; "pytest")]
-#[test_case("[tool.ty.environment]\nextra-paths = [\"tasks\"]\n" ; "ty")]
-#[test_case("[tool.ty.environment]\nextra-paths = [\"typestubs\", \"tasks\"]\n" ; "ty_with_a_missing_directory")]
-fn coverage_plugin_resolves_from_import_paths(paths: &str) {
-    let root = project(&[
-        ("pyproject.toml", &format!("[project]\nname = \"demo\"\n[tool.coverage.run]\nplugins = [\"cov\"]\n{paths}")),
-        ("tasks/cov.py", &format!("{COVERAGE_PLUGIN}__all__ = []\n")),
-    ]);
+#[test_case("[tool.pytest.ini_options]\npythonpath = [\"tasks\"]\n", None ; "pytest_ini_options")]
+#[test_case("[tool.pytest]\npythonpath = [\"tasks\"]\n", None ; "pytest")]
+#[test_case("", Some(("pytest.ini", "[pytest]\npythonpath = tasks\n")) ; "pytest_ini")]
+#[test_case("", Some(("setup.cfg", "[tool:pytest]\npythonpath =\n    typestubs\n    tasks\n")) ; "setup_cfg")]
+#[test_case("[tool.ty.environment]\nextra-paths = [\"tasks\"]\n", None ; "ty")]
+#[test_case("[tool.ty.environment]\nextra-paths = [\"typestubs\", \"tasks\"]\n", None ; "ty_with_a_missing_directory")]
+fn coverage_plugin_resolves_from_import_paths(paths: &str, ini: Option<(&str, &str)>) {
+    let pyproject = format!("[project]\nname = \"demo\"\n[tool.coverage.run]\nplugins = [\"cov\"]\n{paths}");
+    let plugin = format!("{COVERAGE_PLUGIN}__all__ = []\n");
+    let mut files = vec![("pyproject.toml", pyproject.as_str()), ("tasks/cov.py", plugin.as_str())];
+    files.extend(ini);
+    let root = project(&files);
     assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
     let without_paths = project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n[tool.coverage.run]\nplugins = [\"cov\"]\n"),
