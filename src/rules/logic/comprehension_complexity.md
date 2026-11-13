@@ -4,9 +4,9 @@ Flags a comprehension with more than one `for` clause or more than one `if` clau
 
 A comprehension reads as one loop and one filter. A second `for` clause nests a loop, and the
 [language reference](https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries)
-orders the clauses outermost first, while the element comes before all of them, so the reader holds the element in
-mind while reading every loop around it. [PEP 798](https://peps.python.org/pep-0798/#rationale) notes that students
-often reverse the two `for` clauses, and the
+orders the clauses outermost first, while the element comes before all of them, so the reader holds the element in mind
+while reading every loop around it. [PEP 798](https://peps.python.org/pep-0798/#rationale) notes that students often
+reverse the two `for` clauses, and the
 [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#27-comprehensions--generator-expressions)
 does not permit more than one `for` clause or filter. A second `if` clause is an `and` written as two filters, which a
 named predicate states once. A `for` statement or a helper names each step.
@@ -76,8 +76,8 @@ No fix is offered: the replacement, a `for` statement, `itertools` or a helper, 
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports too many `for`
-  clauses as
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports too many `for` clauses
+  as
   [WPS224](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooManyForsInComprehensionViolation)
   and more than one `if` clause as
   [WPS307](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.MultipleIfsInComprehensionViolation),

@@ -102,10 +102,10 @@ def label(kind):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** [if-with-same-arms](https://docs.astral.sh/ruff/rules/if-with-same-arms/)
-  (SIM114) merges adjacent branches with the same body, and
-  [repeated-equality-comparison](https://docs.astral.sh/ruff/rules/repeated-equality-comparison/) (PLR1714) turns
-  `x == 1 or x == 2` into a membership test; neither reports a repeated test.
+- **[Ruff](https://github.com/astral-sh/ruff):**
+  [if-with-same-arms](https://docs.astral.sh/ruff/rules/if-with-same-arms/) (SIM114) merges adjacent branches with the
+  same body, and [repeated-equality-comparison](https://docs.astral.sh/ruff/rules/repeated-equality-comparison/)
+  (PLR1714) turns `x == 1 or x == 2` into a membership test; neither reports a repeated test.
   [Ruff issue #21690](https://github.com/astral-sh/ruff/issues/21690) asks for this rule.
 - **[wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide):** WPS533, WPS408 and
   WPS535.

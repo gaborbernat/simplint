@@ -3,8 +3,8 @@ Flags a value assigned to a local name that a later assignment in the same block
 ## Why is this bad?
 
 The first value is never used, so the line that computes it does nothing for the function. A reader takes it for a
-starting value that matters, and has to scan down to the second assignment to learn that it does not. Often the read it
-was written for got lost in a change, which hides a bug.
+starting value that matters, and has to scan down to the second assignment to learn that it does not. When an edit
+dropped the read the value was written for, the dead store is the only trace of that bug.
 
 ## Example
 

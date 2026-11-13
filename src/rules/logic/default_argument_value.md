@@ -1,4 +1,4 @@
-Flags arguments that pass a parameter of a function in the same module the literal its default already gives.
+Flags an argument that passes a function in the same module the literal its parameter's default already gives.
 
 ## Why is this bad?
 
