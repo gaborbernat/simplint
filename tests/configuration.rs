@@ -977,6 +977,16 @@ fn show_settings_without_files_fails() {
     assert_eq!((code, stderr.contains("No files found under the given path")), (2, true));
 }
 
+// A nested configuration Ruff cannot load fails both listings; one only simplint reads fails only the settings.
+#[test_case("[tool.ruff]\nextend = \"missing.toml\"\n", "--show-settings", "missing.toml" ; "settings_ruff")]
+#[test_case("[tool.ruff]\nextend = \"missing.toml\"\n", "--show-files", "missing.toml" ; "files_ruff")]
+#[test_case("[tool.simplint]\nselect = 1\n", "--show-settings", "tool.simplint.select" ; "settings_simplint")]
+fn showing_fails_on_a_broken_nested_configuration(configuration: &str, flag: &str, cause: &str) {
+    let root = project(&[("sub/pyproject.toml", configuration), ("sub/module.py", "VALUE = 1\n")]);
+    let (code, _, stderr) = check(root.path(), &[flag, "sub/module.py"]);
+    assert_eq!((code, stderr.contains(cause)), (2, true), "{stderr}");
+}
+
 #[test_case("[build-system]\nrequires = []\n", &[], "library" ; "build_system")]
 #[test_case("", &[("setup.py", "")], "library" ; "setup_py")]
 #[test_case("", &[("setup.cfg", "")], "library" ; "setup_cfg")]

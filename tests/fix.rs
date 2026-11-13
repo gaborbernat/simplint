@@ -143,6 +143,16 @@ fn check_show_fixes_lists_what_was_fixed() {
 }
 
 #[test]
+fn check_show_fixes_lists_each_fixed_rule() {
+    let root = project(&[("module.py", SECTIONED_DOCUMENTED)]);
+    assert_eq!(
+        check(root.path(), &["--fix", "--unsafe-fixes", "--show-fixes", "--select", "SMP001,SMP901"]).1,
+        "\nFixed 2 errors:\n- module.py:\n    1 × SMP901 (function-docstring)\n    1 × SMP001 (section-comment)\n\nFound 2 \
+         errors (2 fixed, 0 remaining).\n"
+    );
+}
+
+#[test]
 fn check_fix_on_read_only_file_is_reported() {
     let root = project(&[("module.py", SECTIONED)]);
     make_read_only(&root.path().join("module.py"));

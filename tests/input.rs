@@ -100,6 +100,25 @@ fn suppression_refuses_standard_input(flag: &str) {
     );
 }
 
+#[test]
+fn standard_input_that_is_not_utf8_fails() {
+    let root = empty_project();
+    let output = assert_cmd::Command::from_std(common::command(root.path()))
+        .args(["check", "-"])
+        .write_stdin(vec![0xff, 0xfe])
+        .output()
+        .expect("runs");
+    let stderr = String::from_utf8(output.stderr).expect("utf-8 stderr");
+    assert_eq!((output.status.code(), stderr.contains("valid UTF-8")), (Some(2), true), "{stderr}");
+}
+
+#[test]
+fn an_exclude_that_is_not_a_glob_fails() {
+    let root = empty_project();
+    let (code, _, stderr) = check(root.path(), &["--exclude", "["]);
+    assert_eq!((code, stderr.contains("unclosed character class")), (2, true), "{stderr}");
+}
+
 // `--stdin-filename` reads standard input whatever paths come with it, and reports it under that name.
 #[test]
 fn stdin_filename_reads_standard_input_over_the_paths() {
