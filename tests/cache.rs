@@ -145,8 +145,13 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
         ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         ("module.py", "def run() -> None:\n    pass\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP903"]).0, 1);
-    assert_eq!(check(root.path(), &["--select", "SMP903", "--config", "lint.select = [\"D103\"]"]).0, 0);
+    assert_eq!(
+        (
+            check(root.path(), &["--select", "SMP903"]).0,
+            check(root.path(), &["--select", "SMP903", "--config", "lint.select = [\"D103\"]"]).0
+        ),
+        (1, 0)
+    );
 }
 
 // Each case checks the file once, edits the file named, and checks again: the cache must check it again, so the second

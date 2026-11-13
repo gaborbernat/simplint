@@ -106,8 +106,7 @@ fn entry_point_module_resolves_from_its_project(name: &str, pyproject: &str) {
         check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1,
         common::native(&format!(
             "{name}:4:5: SMP401 [*] `run` is imported by other modules; list it in `__all__`\nFound 1 error.\n[*] 1 \
-            fixable \
-             with `--fix`.\n"
+             fixable with `--fix`.\n"
         ))
     );
 }
@@ -169,8 +168,7 @@ fn stdlib_import_of_own_stem_does_not_import_own_names() {
             "pkg/_compat/tomllib.py:8:12: SMP402 `TOMLDecodeError` is in `__all__`, yet no other module imports it; \
             list \
              only what other modules use\npkg/_compat/tomllib.py:8:39: SMP402 `loads` is in `__all__`, yet no other \
-             module \
-             imports it; list only what other modules use\nFound 2 errors.\n"
+             module imports it; list only what other modules use\nFound 2 errors.\n"
         )
     );
 }
@@ -193,8 +191,7 @@ fn doctest_naming_its_own_module_does_not_patch_the_package() {
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
             "pkg/parser/_parser.py:5:12: SMP304 Import `tzstr` from `..tz` instead of reaching it through the \
-            module\nFound \
-             1 error.\n"
+             module\nFound 1 error.\n"
         )
     );
 }
@@ -305,8 +302,7 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
 #[test_case("from typing import Any, cast\n\ncast(Any, report).TABLE_JSON_DIR = Path(\"out\")\n" ; "cast")]
 fn stored_module_variable_stays_module_level(store: &str) {
     let report = "from pathlib import Path\n\nTABLE_JSON_DIR: Path | None = None\n\n\ndef render() -> bool:\n    \
-    return \
-                  TABLE_JSON_DIR is not None\n";
+                  return TABLE_JSON_DIR is not None\n";
     let root = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/report.py", report),
@@ -357,8 +353,7 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "support/other.py:1:1: SMP404 `region` is not in `__all__`; name it `_region`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

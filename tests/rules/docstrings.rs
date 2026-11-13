@@ -1127,8 +1127,7 @@ fn inherited_members_of_a_private_base_are_public_api() {
             "class XDGMixin:\n    @property\n    def user_data_dir(self) -> str:\n        \"\"\"Data directory.\"\"\"\
                 \n        \
              return \"/data\"\n\n    def site_dir(self) -> str:\n        return \"/site\"\n\n    def ensure(self, path\
-             : \
-             str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
+             : str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
         ),
         (
             "pkg/unix.py",

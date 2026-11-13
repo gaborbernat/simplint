@@ -86,10 +86,12 @@ fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
 fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     let root = project(&[("models.py", &format!("{PARTITION}\nPartition(\"a\", 1)\n"))]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1,
-        common::ONE_FIXED
+        (
+            check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1,
+            common::read(root.path(), "models.py").lines().last().map(str::to_owned)
+        ),
+        (common::ONE_FIXED.to_owned(), Some("Partition(topic=\"a\", number=1)".to_owned()))
     );
-    assert_eq!(common::read(root.path(), "models.py").lines().last(), Some("Partition(topic=\"a\", number=1)"));
 }
 
 // A suppression on the class definition silences the report, and with it the positional calls it names elsewhere.
@@ -156,8 +158,11 @@ fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &st
     // A library's public class is not reported at all; an internal one is, with no fix while a caller is in another
     // file.
     let stdout = check(root.path(), &["--select", "SMP703"]).1;
-    assert_eq!(stdout.contains("Found 1 error."), reported, "{stdout}");
-    assert_eq!(common::read(root.path(), "caller.py"), caller);
+    assert_eq!(
+        (stdout.contains("Found 1 error."), common::read(root.path(), "caller.py")),
+        (reported, caller.to_owned()),
+        "{stdout}"
+    );
 }
 
 #[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
@@ -291,8 +296,7 @@ fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

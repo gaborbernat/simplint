@@ -88,8 +88,11 @@ fn doctest_reads_are_opaque_to_call_sites_but_not_imports(read: &str, unused: &s
     let unread = check(root.path(), &["--select", "SMP411"]).1;
     assert_eq!((unread == common::PASSED, unread.contains(unused)), (unused.is_empty(), true), "{unread}");
     let stdout = check(root.path(), &["--select", "SMP401"]).1;
-    assert!(stdout.contains("`total` is imported by other modules"), "{stdout}");
-    assert!(!stdout.contains("`ratio`"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`total` is imported by other modules"), stdout.contains("`ratio`")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 // A name a doctest reads off the module of another file counts as used there, though the doctest imports no name of it.

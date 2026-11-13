@@ -731,8 +731,11 @@ fn unused_default_leaves_reexported_functions_alone() {
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`_helper`") && !stdout.contains("`_connect`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`_helper`") && !stdout.contains("`_connect`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // A package with a dynamic `__all__` still offers the names other files import from it, so the default they pass is the
@@ -750,8 +753,11 @@ fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
         ("pkg/cli.py", "from pkg import make\n\nprint(make(2))\n"),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`_unused`") && !stdout.contains("`make`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`_unused`") && !stdout.contains("`make`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // The `__all__` of a library's public module declares its interface, so a public function it leaves out is judged like
@@ -767,8 +773,11 @@ fn unused_default_judges_public_functions_all_omits() {
         ),
     ]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
-    assert!(stdout.contains("`helper`") && !stdout.contains("`connect`"), "{stdout}");
+    assert_eq!(
+        (stdout.matches("Every call to").count(), stdout.contains("`helper`") && !stdout.contains("`connect`")),
+        (1, true),
+        "{stdout}"
+    );
 }
 
 // A star import hands the module's names to code that the calls of the run do not show.
@@ -821,17 +830,6 @@ fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &st
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP506"]);
     assert_eq!(stdout.matches("Every call to").count(), reports, "{stdout}");
-}
-
-// Test modules may assert on the messages their code raises.
-#[test]
-fn error_message_matching_leaves_test_modules_alone() {
-    let root = common::project(&[(
-        "test_errors.py",
-        "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n",
-    )]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Ruff's PT017 reports an `assert` naming the exception, at any depth in the handler, so SMP507 leaves it to Ruff
@@ -954,26 +952,29 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A class whose base name is rebound to a class deriving from it is followed through both bindings, and stops at the
-// cycle, so the first binding still shows the exception.
-#[test]
-fn error_message_matching_stops_at_rebound_class_cycles() {
-    let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A\
-        ):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\
-        \n            return str(exc) == str(other)\n    return inner\n";
-    let root = common::project(&[("module.py", source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.as_str(), common::PASSED);
-}
-
-// An exception class of the file counts as an exception type for a parameter annotation.
-#[test]
-fn error_message_matching_reads_exception_classes_of_the_file() {
-    let root = common::project(&[(
-        "module.py",
-        "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    \
-            except Offset as replay_error:\n        return replay_error.args == error.args\n",
-    )]);
+// Test modules may assert on the messages their code raises. An exception class of the file counts as an exception type
+// for a parameter annotation. A class whose base name is rebound to a class deriving from it is followed through both
+// bindings, and stops at the cycle, so the first binding still shows the exception.
+#[test_case(
+    "test_errors.py",
+    "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n" ;
+    "test_module"
+)]
+#[test_case(
+    "module.py",
+    "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    \
+     except Offset as replay_error:\n        return replay_error.args == error.args\n" ;
+    "exception_class_of_the_file"
+)]
+#[test_case(
+    "module.py",
+    "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A):\n        \
+     pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\n            \
+     return str(exc) == str(other)\n    return inner\n" ;
+    "rebound_class_cycle"
+)]
+fn error_message_matching_leaves_alone(file: &str, source: &str) {
+    let root = common::project(&[(file, source)]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
@@ -1527,8 +1528,7 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     assert_eq!(
         stdout,
         "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 \
-            unsafe \
-         fix available with `--fix --unsafe-fixes`.\n"
+         unsafe fix available with `--fix --unsafe-fixes`.\n"
     );
 }
 

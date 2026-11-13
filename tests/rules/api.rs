@@ -230,9 +230,15 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
-    assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
-    assert!(!stdout.contains("roots/test-example"), "{stdout}");
+    assert_eq!(
+        (
+            common::reports(&stdout, "SMP407").len(),
+            stdout.contains("tests/__init__.py"),
+            stdout.contains("roots/test-example")
+        ),
+        (1, false, false),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -254,8 +260,7 @@ fn missing_from_all_allows_main_modules() {
         ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
-    assert_eq!(common::reports(&stdout, "SMP401").len(), 1, "{stdout}");
-    assert!(stdout.contains("module.py"), "{stdout}");
+    assert_eq!((common::reports(&stdout, "SMP401").len(), stdout.contains("module.py")), (1, true), "{stdout}");
 }
 
 #[test]
@@ -398,8 +403,11 @@ fn missing_from_all_leaves_out_names_bound_only_for_type_checkers() {
         ("use.py", "from mod import Locked, Both, use\n\nprint(Locked, Both, use)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP401"]);
-    assert!(stdout.contains("`Both` is imported by other modules"), "{stdout}");
-    assert!(!stdout.contains("`Locked`"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`Both` is imported by other modules"), stdout.contains("`Locked`")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 #[test]
@@ -423,9 +431,15 @@ fn all_format_follows_skip_magic_trailing_comma() {
 #[test]
 fn unused_definition_reports_public_names_nothing_reads() {
     let reported = unused_definitions("return None");
-    assert!(reported.contains("`helper` is never used"), "{reported}");
-    assert!(reported.contains("`Client.send` is never called"), "{reported}");
-    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+    assert_eq!(
+        (
+            reported.contains("`helper` is never used"),
+            reported.contains("`Client.send` is never called"),
+            reported.contains("`Client.LIMIT` is never read")
+        ),
+        (true, true, true),
+        "{reported}"
+    );
 }
 
 #[test_case("getattr(obj, name)" ; "computed_getattr")]
@@ -440,9 +454,15 @@ fn unused_definition_keeps_public_names_under_computed_reads(read: &str) {
 #[test]
 fn unused_definition_keeps_only_the_member_a_literal_getattr_names() {
     let reported = unused_definitions("return getattr(obj, \"send\")");
-    assert!(!reported.contains("`Client.send`"), "{reported}");
-    assert!(reported.contains("`helper` is never used"), "{reported}");
-    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+    assert_eq!(
+        (
+            reported.contains("`Client.send`"),
+            reported.contains("`helper` is never used"),
+            reported.contains("`Client.LIMIT` is never read")
+        ),
+        (false, true, true),
+        "{reported}"
+    );
 }
 
 // The diagnostics of a project whose `read` returns `body`, with `main` reading the class and calling `read`, so
@@ -1027,8 +1047,11 @@ fn public_module_names_are_not_renamed_by_fixes() {
         "__all__ = [\"_limit\", \"level\"]\n\n_limit = 3\n\"\"\"Limit.\"\"\"\n\nlevel = 4\n\"\"\"Level.\"\"\"\n";
     let root = common::project(&[("pyproject.toml", LIBRARY), ("lib/__init__.py", ""), ("lib/api.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP404,SMP102"]);
-    assert_eq!(common::read(root.path(), "lib/api.py"), source);
-    assert!(stdout.contains("SMP102") && stdout.contains("SMP404"), "{stdout}");
+    assert_eq!(
+        (common::read(root.path(), "lib/api.py"), stdout.contains("SMP102") && stdout.contains("SMP404")),
+        (source.to_owned(), true),
+        "{stdout}"
+    );
 }
 
 // An import of a name the run cannot resolve, such as a stdlib one, says nothing about the names of the project, so a
@@ -1058,8 +1081,7 @@ fn unresolved_import_keeps_the_report_but_withholds_the_rename() {
         ("app/other.py", "from json import loads\n\nprint(loads)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP403"]);
-    assert!(stdout.contains("`loads` is not in `__all__`"), "{stdout}");
-    assert!(!stdout.contains("[fix"), "{stdout}");
+    assert_eq!((stdout.contains("`loads` is not in `__all__`"), stdout.contains("[fix")), (true, false), "{stdout}");
 }
 
 // A doctest that imports a name from its module reads it, so the name is neither reported as private nor as unused.
@@ -1076,8 +1098,7 @@ fn doctest_import_counts_as_a_read_of_the_name() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404,SMP409"]);
-    assert!(!stdout.contains("`LIMIT`"), "{stdout}");
-    assert!(!stdout.contains("`helper`"), "{stdout}");
+    assert_eq!((stdout.contains("`LIMIT`"), stdout.contains("`helper`")), (false, false), "{stdout}");
 }
 
 // A documented function is public to SMP408 too, so a test module that calls it does not make it test-only code.
@@ -1108,8 +1129,11 @@ fn listed_private_name_is_renamed_by_hand_in_public_library_modules() {
         ("lib/api.py", "__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert!(stdout.contains("`_LIMIT` is in `__all__`; rename it to `LIMIT` by hand"), "{stdout}");
-    assert!(!stdout.contains("[fix"), "{stdout}");
+    assert_eq!(
+        (stdout.contains("`_LIMIT` is in `__all__`; rename it to `LIMIT` by hand"), stdout.contains("[fix")),
+        (true, false),
+        "{stdout}"
+    );
 }
 
 // A doctest's relative import reads the name as a relative import of the code does, so the name stays used.

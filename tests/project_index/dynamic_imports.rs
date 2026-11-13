@@ -42,8 +42,7 @@ fn attributes_of_statically_named_dynamic_imports_keep_their_names(test: &str) {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -58,16 +57,14 @@ fn variable_rebound_to_another_value_reads_names_of_any_module() {
         (
             "tests/test_docs.py",
             "import pytest\n\n\ndef test_app(other) -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    \
-            mod = \
-             other\n    assert mod.client\n",
+             mod = other\n    assert mod.client\n",
         ),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -161,8 +158,7 @@ fn local_named_like_a_module_variable_reads_no_module() {
         (
             "tests/test_proxy.py",
             "import pytest\n\nproxy = pytest.importorskip(\"proxy\")\n\n\ndef test_one(make_proxy) -> None:\n    proxy \
-            = \
-             make_proxy()\n    assert proxy.url\n",
+             = make_proxy()\n    assert proxy.url\n",
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP102"]).1.matches("scripts/run.py").count(), 0);
@@ -193,8 +189,11 @@ fn name_bound_to_several_modules_reads_each_of_them(body: &str, other_reported: 
         ("tests/test_cli.py", &format!("import pytest\n\n\ndef test_app() -> None:\n{body}")),
     ]);
     let stdout = check(root.path(), &["--select", "SMP404"]).1;
-    assert!(stdout.contains("pkg/third.py:3:1: SMP404 `client`"), "{stdout}");
-    assert_eq!(stdout.contains("pkg/other.py:3:1: SMP404 `engine`"), other_reported, "{stdout}");
+    assert_eq!(
+        (stdout.contains("pkg/third.py:3:1: SMP404 `client`"), stdout.contains("pkg/other.py:3:1: SMP404 `engine`")),
+        (true, other_reported),
+        "{stdout}"
+    );
 }
 
 // The attribute of an import call's result is a name of the module the call loads, not a module itself, so a name a
@@ -209,8 +208,7 @@ fn attribute_of_an_import_call_result_is_no_module() {
         (
             "tests/test_cli.py",
             "import importlib\n\n\ndef test_one() -> None:\n    app = importlib.import_module(\"pkg.cli\").client\n    \
-            assert \
-             app\n\n\ndef test_two() -> None:\n    app = object()\n    assert app.engine\n",
+             assert app\n\n\ndef test_two() -> None:\n    app = object()\n    assert app.engine\n",
         ),
     ]);
     assert_eq!(
@@ -302,8 +300,7 @@ fn attributes_of_unresolved_spec_loaded_modules_keep_every_name(path: &str) {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -331,8 +328,7 @@ fn spec_loading_test(path: &str) -> String {
     format!(
         "import importlib.util\nimport os\nimport pathlib\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    \
          spec = importlib.util.spec_from_file_location(\"tutorial\", {path})\n    assert spec is not None\n    module \
-         = \
-         importlib.util.module_from_spec(spec)\n    assert spec.loader is not None\n    \
+         = importlib.util.module_from_spec(spec)\n    assert spec.loader is not None\n    \
          spec.loader.exec_module(module)\n    \
          alias = module\n    assert alias.client\n"
     )
@@ -415,8 +411,7 @@ fn runpy_globals_keep_names_read_by_key(test: &str) {
         check(root.path(), &["--select", "SMP403"]).1,
         common::native(
             "docs/tutorial.py:7:5: SMP403 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -437,8 +432,7 @@ fn computed_run_globals_read_keeps_listed_names() {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
-            what \
-             other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+             what other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }
@@ -489,8 +483,7 @@ fn patched_names_are_used_by_all(test: &str) {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
-            what \
-             other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+             what other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }

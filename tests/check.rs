@@ -261,8 +261,10 @@ fn unparsed_file_beside_a_report_leaves_that_report_and_status_1() {
 fn fix_leaves_an_unparsed_file_as_it_is() {
     let root = project(&[("broken.py", "def broken(:\n")]);
     let (code, stdout, stderr) = check(root.path(), &["--fix", "--select", "SMP101"]);
-    assert_eq!((code, stdout, stderr), (0, PASSED.to_owned(), UNPARSED.to_owned()));
-    assert_eq!(read(root.path(), "broken.py"), "def broken(:\n");
+    assert_eq!(
+        ((code, stdout, stderr), read(root.path(), "broken.py")),
+        ((0, PASSED.to_owned(), UNPARSED.to_owned()), "def broken(:\n".to_owned())
+    );
 }
 
 #[test]
