@@ -121,3 +121,17 @@ def nested_scopes(parts):
         text = ""
 
     return text, Local, reset
+
+
+def lone_iterables(first, second, flag):
+    total = 0
+    for value in first if flag else second:
+        total += value
+    return total
+
+
+def lone_yield():
+    total = 0
+    for value in (yield):
+        total += value
+    return total

@@ -140,15 +140,21 @@ fn loop_variables_stay_inside(loop_stmt: &ast::StmtFor, uses: &NameUses) -> bool
 }
 
 fn generator(checker: &Checker, loop_stmt: &ast::StmtFor, accumulation: &Accumulation) -> String {
-    let target = checker.text(loop_stmt.target.as_ref());
-    let iter = operand(checker, &loop_stmt.iter);
-    let value = checker.text(accumulation.value);
     let iterable_alone = loop_stmt.target.as_name_expr().is_some_and(|target| {
         accumulation.test.is_none() && accumulation.value.as_name_expr().is_some_and(|value| value.id == target.id)
     });
+    // A call argument takes any expression but a bare tuple, which would split into arguments, or a `yield`.
     if iterable_alone {
-        return iter;
+        let text = checker.text(loop_stmt.iter.as_ref());
+        return match loop_stmt.iter.as_ref() {
+            Expr::Yield(_) | Expr::YieldFrom(_) => format!("({text})"),
+            Expr::Tuple(tuple) if !tuple.parenthesized => format!("({text})"),
+            _ => text.to_owned(),
+        };
     }
+    let target = checker.text(loop_stmt.target.as_ref());
+    let iter = operand(checker, &loop_stmt.iter);
+    let value = checker.text(accumulation.value);
     match accumulation.test {
         Some(test) => format!("{value} for {target} in {iter} if {}", operand(checker, test)),
         None => format!("{value} for {target} in {iter}"),
