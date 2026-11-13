@@ -1,4 +1,3 @@
-use ruff_text_size::TextSize;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -131,7 +130,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) overridden: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) package_loaded: bool,
-    pub(super) resolved_imports: Option<&'a FxHashSet<u32>>,
+    pub(super) resolved_imports: Option<&'a FxHashSet<String>>,
     pub(super) imported_modules: Option<&'a FxHashSet<String>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) duplicates: &'a [DuplicateRun],
@@ -329,12 +328,12 @@ impl<'a> FileIndex<'a> {
         self.answers.package_loaded
     }
 
-    // The runtime import statement starting at `start` reaches a file of the run.
-    pub fn imports_run_file(&self, start: TextSize) -> bool {
-        self.answers.resolved_imports.is_some_and(|starts| starts.contains(&start.to_u32()))
+    // A runtime import of `module` reaches a file of the run.
+    pub fn imports_run_file(&self, module: &str) -> bool {
+        self.answers.resolved_imports.is_some_and(|modules| modules.contains(module))
     }
 
-    // The modules the run's files outside the tests import; only a package's `__init__.py` gets them.
+    // The modules the run's files outside the tests import, given only to the file `unused-dependency` reports in.
     pub fn imported_modules(&self) -> Option<&'a FxHashSet<String>> {
         self.answers.imported_modules
     }

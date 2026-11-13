@@ -204,6 +204,8 @@ pub(super) struct ModuleFacts<F> {
     pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<(String, String, F)>,
     pub(super) runtime: Vec<(F, TextRange)>,
+    // The modules whose runtime import runs a file of the run.
+    pub(super) runtime_modules: Vec<String>,
     pub(super) computed_writes: Vec<F>,
     pub(super) written: Vec<(F, Vec<String>)>,
 }
@@ -250,6 +252,7 @@ impl<F> ModuleFacts<F> {
                 .map(|(bound, module, file)| (bound, module, to(file)))
                 .collect(),
             runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
+            runtime_modules: self.runtime_modules,
             computed_writes: self.computed_writes.into_iter().map(&mut to).collect(),
             written: self.written.into_iter().map(|(file, names)| (to(file), names)).collect(),
         }
@@ -329,7 +332,7 @@ impl ModuleFacts<PathBuf> {
             facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let class_tuples = class_tuples(&facts.class_tuples, &resolved);
-        let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
+        let (runtime, runtime_modules) = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         // A module may write its own names under a computed name too, so its own file stays.
         let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
         let classes = facts
@@ -366,6 +369,7 @@ impl ModuleFacts<PathBuf> {
                 .filter(|(_, _, file)| file != &own)
                 .collect(),
             runtime,
+            runtime_modules,
             computed_writes,
             written,
         }
@@ -524,7 +528,7 @@ fn class_tuples<'f>(
         .collect()
 }
 
-// The files each runtime import statement runs, with the statement's range. A `from` import reads each name as a
+// The files each runtime import statement runs, with the statement's range, and the modules whose import runs one. A `from` import reads each name as a
 // submodule when one exists, and from the module otherwise, as Python does. An import a version check keeps to Pythons
 // older than the project's target never runs.
 fn runtime_targets<'f>(
@@ -532,9 +536,10 @@ fn runtime_targets<'f>(
     python_version: PythonVersion,
     resolved: &impl Fn(&'f str) -> Option<PathBuf>,
     own: &Path,
-) -> Vec<(PathBuf, TextRange)> {
+) -> (Vec<(PathBuf, TextRange)>, Vec<String>) {
     let version = (python_version.major, python_version.minor);
     let mut runtime = Vec::new();
+    let mut modules = Vec::new();
     for site in sites.iter().filter(|site| site.below.is_none_or(|below| version < below)) {
         let mut targets = Vec::new();
         if site.submodules.is_empty() {
@@ -551,7 +556,11 @@ fn runtime_targets<'f>(
                 targets.extend(resolved(&site.module));
             }
         }
+        let before = runtime.len();
         runtime.extend(targets.into_iter().filter(|file| file != own).map(|file| (file, site.range())));
+        if runtime.len() > before {
+            modules.push(site.module.clone());
+        }
     }
-    runtime
+    (runtime, modules)
 }

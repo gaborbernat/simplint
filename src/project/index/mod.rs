@@ -82,8 +82,8 @@ pub struct Project {
     pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     // The files that run when a top-level package of the run is imported or one of its entry points runs.
     pub(super) package_loaded: FxHashSet<FileId>,
-    // The offsets of each file's runtime import statements that reach a file of the run.
-    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<u32>>,
+    // The modules whose runtime import in each file reaches a file of the run.
+    pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<String>>,
     // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
     pub(super) imported_modules: FxHashSet<String>,
     pub(super) dependency_hosts: FxHashSet<FileId>,
@@ -190,9 +190,11 @@ impl Project {
             .filter(|(id, _)| !dependency_hosts.is_empty() && !test_modules.contains(id))
             .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
             .collect();
-        let resolved_imports: FxHashMap<FileId, FxHashSet<u32>> = runtime
+        let resolved_imports: FxHashMap<FileId, FxHashSet<String>> = resolver
+            .modules
             .iter()
-            .map(|(file, imports)| (*file, imports.iter().map(|(_, range)| range.start().to_u32()).collect()))
+            .filter(|(_, module)| !module.runtime_modules.is_empty())
+            .map(|(file, module)| (*file, module.runtime_modules.iter().cloned().collect()))
             .collect();
         // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
         // steps, so they are worked out alongside them.
