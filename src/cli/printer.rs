@@ -311,15 +311,10 @@ struct FixableStatistics {
 
 impl FixableStatistics {
     fn try_from(diagnostics: &Diagnostics, unsafe_fixes: UnsafeFixes) -> Option<Self> {
-        let mut applicable = 0;
-        let mut inapplicable_unsafe = 0;
-        for fix in diagnostics.inner.iter().filter_map(Diagnostic::fix) {
-            if fix.applies(unsafe_fixes.required_applicability()) {
-                applicable += 1;
-            } else if fix.applicability().is_unsafe() {
-                inapplicable_unsafe += 1;
-            }
-        }
+        let required = unsafe_fixes.required_applicability();
+        let fixes = diagnostics.inner.iter().filter_map(Diagnostic::fix);
+        let applicable = fixes.clone().filter(|fix| fix.applies(required)).count();
+        let inapplicable_unsafe = fixes.filter(|fix| !fix.applies(required) && fix.applicability().is_unsafe()).count();
         (applicable > 0 || inapplicable_unsafe > 0).then_some(Self { applicable, inapplicable_unsafe })
     }
 }
@@ -501,9 +496,10 @@ struct Related {
     message: String,
 }
 
-// A file's URI as Ruff writes a result's primary location, so the locations of one result agree.
+// A file's URI as Ruff writes a result's primary location, so the locations of one result agree. Related locations
+// name files of the project index, which holds absolute paths, so Ruff's fallback for a relative one never applies.
 fn file_uri(name: &str) -> String {
-    url::Url::from_file_path(name).map_or_else(|()| format!("file://{name}"), |url| url.to_string())
+    url::Url::from_file_path(name).expect("the project index holds absolute paths").to_string()
 }
 
 #[derive(Serialize)]

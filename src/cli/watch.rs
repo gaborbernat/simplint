@@ -25,10 +25,11 @@ pub(super) fn watch(
     mut writer: Box<dyn Write>,
 ) -> Result<ExitStatus> {
     let (sender, receiver) = channel();
-    let mut watcher = recommended_watcher(sender)?;
-    for file in files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path) {
-        watcher.watch(file, RecursiveMode::Recursive)?;
-    }
+    let mut watched = files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path);
+    // Kept until watching ends, as dropping the watcher stops the events.
+    let _watcher = recommended_watcher(sender).and_then(|mut watcher| {
+        watched.try_for_each(|file| watcher.watch(file, RecursiveMode::Recursive)).map(|()| watcher)
+    })?;
     let Err(error) = rounds(
         || receiver.recv().expect("the watcher keeps its channel open"),
         |change| {

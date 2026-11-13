@@ -370,7 +370,10 @@ impl CheckCommand {
         let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)
             .expect("Ruff accepted these `--config` values")
             .global_options;
-        let (_, config_arguments) = FormatCommand::try_parse_from(format)?.partition(ruff_global)?;
+        // These flags passed simplint's parser, and Ruff's takes any value of theirs: a file pattern parses as a string.
+        let (_, config_arguments) = FormatCommand::try_parse_from(format)
+            .expect("Ruff's parser takes the flags simplint parsed")
+            .partition(ruff_global)?;
         let arguments = SimplintArguments {
             config_file,
             isolated: global_options.isolated,
