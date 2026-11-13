@@ -230,8 +230,7 @@ fn star_import_in_a_test_exempts_no_submodule_name() {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other \
-        modules \
-         use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+         modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
             .replace("pkg/", &native("pkg/"))
     );
 }

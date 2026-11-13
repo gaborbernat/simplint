@@ -1527,8 +1527,7 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     assert_eq!(
         stdout,
         "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 \
-            unsafe \
-         fix available with `--fix --unsafe-fixes`.\n"
+         unsafe fix available with `--fix --unsafe-fixes`.\n"
     );
 }
 

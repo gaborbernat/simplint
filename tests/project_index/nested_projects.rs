@@ -395,8 +395,7 @@ fn doctest_read_does_not_patch_module() {
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
             "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it \
-            through \
-             the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+             through the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

@@ -291,8 +291,7 @@ fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
             "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }

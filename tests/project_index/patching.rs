@@ -223,8 +223,7 @@ fn nested_loops_restore_the_outer_name() {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
-            what \
-             other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+             what other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }
@@ -366,8 +365,7 @@ fn setattr_on_a_non_module_writes_no_module_variable(test: &str) {
         check(root.path(), &["--select", "SMP601"]).1,
         common::native(
             "docs/tutorial.py:1:1: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n1 unsafe \
-            fix \
-             available with `--fix --unsafe-fixes`.\n"
+             fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -504,8 +502,7 @@ fn docstring_mention_does_not_keep_a_constant() {
         check(root.path(), &["--select", "SMP202"]).1,
         common::native(
             "pkg/helpers.py:1:1: SMP202 `_LIMIT` is used by one function only; define it there\nFound 1 error.\n1 \
-            unsafe fix \
-             available with `--fix --unsafe-fixes`.\n"
+             unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
