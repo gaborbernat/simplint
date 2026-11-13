@@ -94,6 +94,17 @@ No fix is offered: the real signature has to be written by hand.
       run_twice(callback)
   ```
 
+- **The bound of a type variable**, as `TypeVar("F", bound=Callable[..., Any])` or `def wrap[F: Callable[..., Any]]`:
+  the [typing docs](https://typing.python.org/en/latest/reference/generics.html) use it for a decorator that keeps the
+  signature of what it wraps, which a `Protocol` cannot spell. A constraint of a type variable stays reported.
+
+  ```python ok
+  from collections.abc import Callable
+  from typing import Any, TypeVar
+
+  F = TypeVar("F", bound=Callable[..., Any])
+  ```
+
 - **String annotations**: these are not checked.
 
   ```python ok
