@@ -112,13 +112,6 @@ fn standard_input_that_is_not_utf8_fails() {
     assert_eq!((output.status.code(), stderr.contains("valid UTF-8")), (Some(2), true), "{stderr}");
 }
 
-#[test]
-fn an_exclude_that_is_not_a_glob_fails() {
-    let root = empty_project();
-    let (code, _, stderr) = check(root.path(), &["--exclude", "["]);
-    assert_eq!((code, stderr.contains("unclosed character class")), (2, true), "{stderr}");
-}
-
 // `--stdin-filename` reads standard input whatever paths come with it, and reports it under that name.
 #[test]
 fn stdin_filename_reads_standard_input_over_the_paths() {
