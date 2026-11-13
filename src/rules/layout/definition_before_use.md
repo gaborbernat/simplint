@@ -257,9 +257,10 @@ whatever the target version, because many decorators read them while the module 
 - pydantic's `validate_call`, typer, click, attrs and
   [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too
 
-Moving such a name below its user would leave the decorator with an unresolved forward reference. The standard
-[`dataclass`](https://docs.python.org/3/library/dataclasses.html) is the exception: it reads field annotations as
-strings or forward references, so with lazy annotations a field may name a class defined below it.
+Moving such a name below its user would leave the decorator with an unresolved forward reference. Standard decorators
+that never evaluate those annotations are the exception: `property` and its accessors, `classmethod`, `staticmethod`,
+`abstractmethod`, `contextmanager`, `functools.cache`, `lru_cache`, `cached_property`, `wraps` and `total_ordering`,
+`typing.final`, `overload` and `override`, and `dataclass`, which reads its fields as strings or forward references.
 
 ### Type parameters and type statements
 

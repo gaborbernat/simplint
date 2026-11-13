@@ -410,6 +410,13 @@ pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
         || matches!(method.name.as_str(), "__init_subclass__" | "__class_getitem__")
 }
 
+// `@name.setter`, `@name.getter` or `@name.deleter`, which copies the property `name` with a new accessor.
+pub fn is_property_accessor(decorator: &Expr) -> bool {
+    decorator.as_attribute_expr().is_some_and(|attribute| {
+        attribute.value.is_name_expr() && matches!(attribute.attr.as_str(), "setter" | "getter" | "deleter")
+    })
+}
+
 pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
     decorators.iter().filter_map(|decorator| last_segment(decorator_callee(decorator))).collect()
 }
