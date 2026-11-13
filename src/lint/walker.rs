@@ -77,9 +77,7 @@ impl<'c, 'a> Walker<'c, 'a> {
     // boolean test: the test of an `if`, `elif`, `while`, `assert`, conditional expression, match guard or
     // comprehension `if`, the operand of `not` or `bool()`, or an operand of `and` or `or` in such a test.
     pub fn is_boolean_test(&self, up: usize) -> bool {
-        let Some(index) = self.expressions.len().checked_sub(up + 1) else {
-            return false;
-        };
+        let index = self.expressions.len() - up - 1;
         let mut child = self.expressions[index];
         for &parent in self.expressions[..index].iter().rev() {
             let is_child = |candidate: &Expr| std::ptr::eq(candidate, child);
