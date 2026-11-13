@@ -1082,7 +1082,7 @@ fn long_tuple_return_limit(settings: &str, reports: usize) {
 #[test_case("from typing import override", "@override", 0 ; "typing_override")]
 #[test_case("from typing_extensions import override", "@override", 0 ; "typing_extensions_override")]
 #[test_case("from compatibility import override", "@override", 0 ; "compatibility_override")]
-#[test_case("", "", 1 ; "unconstrained_return")]
+#[test_case("", "", 0 ; "base_of_the_run_sets_the_shape")]
 fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, reports: usize) {
     let root = common::project(&[(
         "module.py",
@@ -1092,6 +1092,18 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
         ),
     )]);
     common::assert_report_count(root.path(), "SMP528", reports + 1);
+}
+
+// A base outside the run sets no shape the rule can see, so only the codec state method is exempt.
+#[test]
+fn long_tuple_return_override_of_an_outside_base() {
+    let root = common::project(&[(
+        "module.py",
+        "from codecs import IncrementalDecoder\n\n\nclass Decoder(IncrementalDecoder):\n    def fields(self) -> \
+            tuple[int, int, int]:\n        return 1, 2, 3\n\n    def getstate(self) -> tuple[bytes, int, int]:\n        \
+            return b\"\", 0, 0\n",
+    )]);
+    common::assert_report_count(root.path(), "SMP528", 1);
 }
 
 #[test_case(
