@@ -5,8 +5,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::logic::up_comprehension_unpacking::unpacks_only;
 
-// A comprehension reads as one loop with one filter; a second `for` or a second `if` is a nested loop or a compound
-// filter that a `for` statement or a named predicate states better.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let generators: &[Comprehension] = match expr {
         Expr::ListComp(ast::ExprListComp { generators, .. })

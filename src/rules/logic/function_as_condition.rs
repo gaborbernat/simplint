@@ -51,12 +51,11 @@ fn report<'a>(walker: &Walker<'_, 'a>, test: &'a Expr) {
         return;
     }
     let name = callee.name();
-    let fix = takes_no_arguments(&callee).then(|| Fix::unsafe_edit(Edit::insertion("()".to_owned(), test.end())));
     walker.checker.report_fix(
         Rule::FunctionAsCondition,
         test.range(),
         format!("`{name}` is a function, which is always true; call it to test what it returns"),
-        fix,
+        takes_no_arguments(&callee).then(|| Fix::unsafe_edit(Edit::insertion("()".to_owned(), test.end()))),
         format!("Call `{name}()`"),
     );
 }

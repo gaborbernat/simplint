@@ -4,9 +4,9 @@ conditional expression, lambda and comprehension adds one level to the parts bel
 ## Why is this bad?
 
 A reader evaluates a nested expression from the inside out and holds every partial result in mind until the outer parts
-consume it, so each level adds to what the reader must hold while reading the next. A deep expression also hides its intermediate values from a debugger and from a stack trace, which point at the line, not at the part that
-failed. A variable or a helper names each part, so the reader follows one step at a time and the debugger shows each
-value.
+consume it, so each level adds one more value to keep track of. A deep expression also hides its intermediate values
+from a debugger and from a stack trace, which point at the line, not at the part that failed. A variable or a helper
+names each part, so the reader follows one step at a time and the debugger shows each value.
 
 ## Example
 

@@ -119,16 +119,6 @@ fn added<'a>(augmented: &'a ast::StmtAugAssign, name: &str) -> Option<&'a Expr> 
     .then_some(augmented.value.as_ref())
 }
 
-impl Accumulation<'_> {
-    // A generator expression rejects a `yield` in its element or condition, and an `await` there makes it an
-    // asynchronous generator, which `sum` and `str.join` cannot consume.
-    fn suspends(&self) -> bool {
-        self.test.into_iter().chain([self.value]).any(|expr| {
-            any_over_expr(expr, &|inner: &Expr| matches!(inner, Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Await(_)))
-        })
-    }
-}
-
 // A generator keeps its loop variables to itself, so the fix may only drop them when nothing outside the loop reads
 // them.
 fn loop_variables_stay_inside(loop_stmt: &ast::StmtFor, uses: &NameUses) -> bool {
@@ -137,6 +127,16 @@ fn loop_variables_stay_inside(loop_stmt: &ast::StmtFor, uses: &NameUses) -> bool
             && uses.stores(variable).len() == 1
             && uses.loads(variable).iter().all(|load| loop_stmt.range().contains_range(load.range))
     })
+}
+
+impl Accumulation<'_> {
+    // A generator expression rejects a `yield` in its element or condition, and an `await` there makes it an
+    // asynchronous generator, which `sum` and `str.join` cannot consume.
+    fn suspends(&self) -> bool {
+        self.test.into_iter().chain([self.value]).any(|expr| {
+            any_over_expr(expr, &|inner: &Expr| matches!(inner, Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Await(_)))
+        })
+    }
 }
 
 fn generator(checker: &Checker, loop_stmt: &ast::StmtFor, accumulation: &Accumulation) -> String {

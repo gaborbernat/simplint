@@ -6,9 +6,9 @@ Flags the result of a method that changes a list, dict or set in place, such as 
 [`list.sort()`](https://docs.python.org/3/library/stdtypes.html#list.sort), `list.append()`, `dict.update()`,
 `set.add()` and the other in-place methods change their object and return `None`, as does
 [`random.shuffle()`](https://docs.python.org/3/library/random.html#random.shuffle). Storing, returning, passing or
-comparing that result works with `None`, which
-[`sorted()`](https://docs.python.org/3/library/functions.html#sorted) was likely meant to avoid. A comparison of two
-such results is always true.
+comparing that result works with `None`; where a new list was wanted,
+[`sorted()`](https://docs.python.org/3/library/functions.html#sorted) returns one. A comparison of two such results is
+always true.
 
 ## Example
 
@@ -29,9 +29,9 @@ def same_keys(first, second):
 ### Active on
 
 - **A stored, returned, passed or compared result** of `append`, `extend`, `insert`, `remove`, `reverse`, `clear` or
-  `sort` on a list, `update` or `clear` on a dict, and `add`, `update`, `discard`, `remove`, `clear` and the
-  `*_update` methods on a set. The object must be known to be one: a display, a comprehension, a `list()`, `dict()` or
-  `set()` call, a name bound only to one of those, or a parameter annotated with the type.
+  `sort` on a list, `update` or `clear` on a dict, and `add`, `update`, `discard`, `remove`, `clear` and the `*_update`
+  methods on a set. The object must be known to be one: a display, a comprehension, a `list()`, `dict()` or `set()`
+  call, a name bound only to one of those, or a parameter annotated with the type.
 
   ```python report
   def collect(items: list[int]):

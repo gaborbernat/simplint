@@ -3,8 +3,7 @@ bitwise operation written without parentheses, such as `a > 1 & b < 2`.
 
 ## Why is this bad?
 
-Python
-[joins a comparison chain with `and`](https://docs.python.org/3/reference/expressions.html#comparisons):
+Python [joins a comparison chain with `and`](https://docs.python.org/3/reference/expressions.html#comparisons):
 `a op1 b op2 c` is `a op1 b and b op2 c`. That reads as intended for `a < b <= c`, but `key == value in table` means
 `key == value and value in table`, and `a != b != c` never compares `a` with `c`. A bitwise operator binds tighter than
 a comparison, so the NumPy or pandas mask `a > 1 & b < 2` is `a > (1 & b) < 2`, not `(a > 1) & (b < 2)`.
@@ -59,8 +58,8 @@ def has_entry(key, value, table):
       return low <= value < high
   ```
 
-- **A single comparison with a bitwise operand**, such as `flags & MASK == 0` or `mode == A | B`, which mean what
-  they say.
+- **A single comparison with a bitwise operand**, such as `flags & MASK == 0` or `mode == A | B`, which mean what they
+  say.
 
   ```python ok
   def is_even(number):

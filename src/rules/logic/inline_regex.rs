@@ -127,8 +127,6 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
             .expect("a call sits in a statement of the module body");
         let constant = constant_name(checker, call, function, &constants);
         constants.insert(constant.clone());
-        let alias = alias_edits(checker, call, function, &constant, sites);
-
         let value_type = if literal.bytes { "bytes" } else { "str" };
         let mut compile_arguments = vec![checker.text(literal.range)];
         compile_arguments.extend(call.flags.map(|flags| checker.text(flags)));
@@ -137,7 +135,7 @@ fn shared_fix(checker: &Checker, sites: &[(&Literal, &Call)]) -> Option<Fix> {
             spelling.qualifier,
             compile_arguments.join(", "),
         ));
-        if let Some(edits) = alias {
+        if let Some(edits) = alias_edits(checker, call, function, &constant, sites) {
             replacements.extend(edits);
         } else {
             let replacement = if call.attr == "compile" {

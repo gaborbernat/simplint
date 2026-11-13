@@ -5,20 +5,16 @@ constant can hold instead, compiled once.
 ## Why is this bad?
 
 A module-level `re` function such as `re.fullmatch(pattern, text)` skips compiling its pattern only while the pattern is
-in `re`'s cache. The call runs
-[`re._compile`](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L332-L373), which builds the key
-`(type(pattern), pattern, flags)` and looks it up in `_cache2`
-([line 337](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L337)) and then in `_cache`
-([line 343](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L343)). The two caches hold 256 and 512
-patterns ([lines 328 and 329](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L328-L329)), so a
-program that uses more patterns than that compiles some of them again on every call. A module-level constant is compiled
-once, when the module loads, and each call skips the lookup.
+in `re`'s cache. Each call runs
+[`re._compile`](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L332-L373), which looks the pattern
+up in two caches that hold 256 and 512 patterns
+([lines 328 and 329](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L328-L329)), so a program that
+uses more patterns than that compiles some of them again on every call. A module-level constant is compiled once, when
+the module loads, and each call skips the lookup.
 
-Measured with `timeit` on CPython 3.15.2, which has the same cache code as the cited tag, two runs gave the same
-picture. On a warm cache, `re.fullmatch(p, s)` took 231 ns and 238 ns against 105 ns and 109 ns for `_P.fullmatch(s)`,
-about 2.2 times as long. With 600 patterns cycled, which evicts each one before its next use, every one of the 60,000
-inline calls compiled its pattern and took 21.3 µs and 21.9 µs, against 68 ns and 69 ns for precompiled patterns, about
-310 to 320 times as long.
+Measured with `timeit` on CPython 3.15.2, a warm-cache `re.fullmatch(p, s)` took about 235 ns against 107 ns for
+`_P.fullmatch(s)`, 2.2 times as long. With 600 patterns cycled, so each is evicted before its next use, every inline
+call compiled its pattern and took about 21.6 µs against 69 ns precompiled, over 300 times as long.
 
 A module-level constant also names the pattern, and it is the place where [unexplained-regex](SMP533.html) asks for
 comments on its parts.

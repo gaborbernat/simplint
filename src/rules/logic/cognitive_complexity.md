@@ -4,14 +4,14 @@ nested.
 
 ## Why is this bad?
 
-A function's length says little about how hard it is to read. Several branches nested in a loop are harder to follow
-than a longer straight-line function, because the reader holds each condition in mind. McCabe's count misses this.
+Length says little about how hard a function is to read: branches nested in a loop are harder to follow than a longer
+straight-line function, because the reader holds each condition in mind. McCabe's count weighs every branch the same;
 [SonarSource's white paper](https://www.sonarsource.com/docs/CognitiveComplexity.pdf) shows two functions with the same
-count where one is far harder to follow, and this score adds more for each level of nesting. A
-[meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found that the score correlates with comprehension
-time and subjective ratings. Moving a deep branch into a named helper lowers the score of the function it leaves.
-[Lavazza et al. (2023)](https://doi.org/10.1016/j.jss.2022.111561) found it predicts understandability no better than
-older measures. The rule keeps the score for its nesting term, which McCabe's count ignores.
+McCabe count where one is far harder to follow, and adds more for each level of nesting. A
+[meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found the score correlates with comprehension time and
+subjective ratings, while [Lavazza et al. (2023)](https://doi.org/10.1016/j.jss.2022.111561) found it predicts
+understandability no better than older measures; the rule keeps it for its nesting term. Moving a deep branch into a
+named helper lowers the score of the function it leaves.
 
 ## Example
 

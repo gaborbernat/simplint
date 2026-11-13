@@ -29,8 +29,9 @@ def first(items):
 
 ### Active on
 
-- **`==` and `!=` with `[]`, `()` or `{}` on either side.** **Unsafe fix:** when the comparison is the whole test of an
-  `if`, `elif`, `while` or conditional expression, `x == []` becomes `not x` and `x != []` becomes `x`. It is unsafe
+- **`==` and `!=` with `[]`, `()` or `{}` on either side.** **Unsafe fix:** when only the comparison's truth is used, as
+  the test of an `if`, `elif`, `while`, conditional expression, comprehension filter or `case` guard, or under `not`,
+  `bool()`, `and` or `or`, `x == []` becomes `not x` and `x != []` becomes `x`; `not x == []` becomes `x`. It is unsafe
   because `None`, `0` and `""` are falsy too, while only an empty list equals `[]`.
 
   ```python report

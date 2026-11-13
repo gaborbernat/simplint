@@ -48,7 +48,7 @@ reported, a new assignment ends the check.
       return value
   ```
 
-- **A name bound or read before the loop**: it has a value of its own when the loop runs no time.
+- **A name bound or read before the loop**: it keeps a value of its own when the loop runs zero times.
 
   ```python ok
   def last(values: list[int]) -> int | None:

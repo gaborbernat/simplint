@@ -43,16 +43,6 @@ impl Visitor<'_, '_> {
         }
         let checker = self.checker;
         let range = first.range().cover(second.range());
-        let fix = (!checker.has_comment_in(range)).then(|| {
-            Fix::unsafe_edit(Edit::range_replacement(
-                format!(
-                    "{first}, {second} = {second}, {first}",
-                    first = checker.text(first_target),
-                    second = checker.text(first_value)
-                ),
-                range,
-            ))
-        });
         checker.report_fix(
             Rule::FailedSwap,
             range,
@@ -61,7 +51,16 @@ impl Visitor<'_, '_> {
                 checker.text(second_target),
                 checker.text(first_value)
             ),
-            fix,
+            (!checker.has_comment_in(range)).then(|| {
+                Fix::unsafe_edit(Edit::range_replacement(
+                    format!(
+                        "{first}, {second} = {second}, {first}",
+                        first = checker.text(first_target),
+                        second = checker.text(first_value)
+                    ),
+                    range,
+                ))
+            }),
             "Swap both in one tuple assignment",
         );
     }

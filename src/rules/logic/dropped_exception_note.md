@@ -5,7 +5,7 @@ Flags an `add_note` call on an exception that is then dropped instead of raised.
 [`BaseException.add_note`](https://docs.python.org/3/library/exceptions.html#BaseException.add_note) attaches text that
 the traceback prints below the message. A handler that adds a note and then swallows the exception, or a function that
 builds an exception, notes it and never raises it, writes the note to an object no one reads. The code reads as if the
-error carried extra context, while it is silently ignored.
+error carried extra context, but nothing ever shows the note.
 
 ## Example
 
@@ -36,6 +36,7 @@ def read(path: str) -> str:
 ### Active on
 
 - **A caught exception** given a note and then not re-raised, raised, returned or passed anywhere in the handler.
+
 - **A local exception** built into a name of a function, given a note, and not used in any other way.
 
   ```python report

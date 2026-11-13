@@ -56,10 +56,10 @@ impl<'a> Visitor<'a> for Roots<'_, 'a> {
 
 impl<'a> Roots<'_, 'a> {
     fn visit_test(&mut self, test: &'a Expr) {
-        let left_to_ruff = test
+        if test
             .as_bool_op_expr()
-            .is_some_and(|bool_op| boolean_operands(bool_op) > self.checker.settings.from_ruff.max_bool_expr);
-        if !left_to_ruff {
+            .is_none_or(|bool_op| boolean_operands(bool_op) <= self.checker.settings.from_ruff.max_bool_expr)
+        {
             self.visit_expr(test);
         }
     }

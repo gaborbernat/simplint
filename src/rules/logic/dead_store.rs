@@ -10,18 +10,9 @@ use crate::rules::logic::flow::has_own_jump;
 use crate::rules::logic::inline::{for_each_scoped_body, is_constant};
 use crate::rules::logic::name_uses::FunctionNames;
 
-// The function a block belongs to, and whether a `try` or `with` of that function holds the block. There an exception
-// raised between two assignments may go on to a handler, a `finally` or past the `with`, where the first value is read.
-#[derive(Clone, Copy)]
-struct Place<'a> {
-    function: Option<&'a ast::StmtFunctionDef>,
-    guarded: bool,
-}
-
 pub fn dead_store(checker: &Checker) {
     let scopes = checker.state().local_scopes(checker);
-    let start = Place { function: None, guarded: false };
-    for_each_scoped_body(checker.body(), start, 0, &enter, &mut |body, place, _| {
+    for_each_scoped_body(checker.body(), Place { function: None, guarded: false }, 0, &enter, &mut |body, place, _| {
         let Some(function) = place.function.filter(|_| !place.guarded) else {
             return;
         };
@@ -29,10 +20,17 @@ pub fn dead_store(checker: &Checker) {
             let Some(first) = store(stmt) else {
                 continue;
             };
-            let names = scopes.function(function).names();
-            check_store(checker, names, &body[index + 1..], stmt, first);
+            check_store(checker, scopes.function(function).names(), &body[index + 1..], stmt, first);
         }
     });
+}
+
+// The function a block belongs to, and whether a `try` or `with` of that function holds the block. There an exception
+// raised between two assignments may go on to a handler, a `finally` or past the `with`, where the first value is read.
+#[derive(Clone, Copy)]
+struct Place<'a> {
+    function: Option<&'a ast::StmtFunctionDef>,
+    guarded: bool,
 }
 
 fn enter<'a>(place: Place<'a>, stmt: &'a Stmt) -> Place<'a> {
@@ -44,7 +42,6 @@ fn enter<'a>(place: Place<'a>, stmt: &'a Stmt) -> Place<'a> {
     }
 }
 
-// The single name a statement assigns, with the value it assigns.
 fn store(stmt: &Stmt) -> Option<(&ast::ExprName, &Expr)> {
     let (target, value) = match stmt {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {

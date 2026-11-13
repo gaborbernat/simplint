@@ -13,7 +13,6 @@ use crate::rules::edits::argument_removal;
 use crate::syntax::ExprCollector;
 
 pub(crate) fn default_argument_value(checker: &Checker) {
-    let semantic = checker.semantic();
     let functions: FxHashMap<TextRange, &ast::StmtFunctionDef> = checker
         .body()
         .iter()
@@ -26,7 +25,11 @@ pub(crate) fn default_argument_value(checker: &Checker) {
                     .any(|param| param.default.as_deref().is_some_and(is_literal))
         })
         .flat_map(|function| {
-            semantic.references_to(function.name.as_str()).iter().map(move |reference| (reference.range, function))
+            checker
+                .semantic()
+                .references_to(function.name.as_str())
+                .iter()
+                .map(move |reference| (reference.range, function))
         })
         .collect();
     if functions.is_empty() {
@@ -53,58 +56,16 @@ pub(crate) fn default_argument_value(checker: &Checker) {
             if all.as_ref().is_some_and(|all| always_passes(all, &function.parameters, param, 0)) {
                 continue;
             }
-            let fix =
-                argument_removal(checker, call, range).map(|removed| Fix::safe_edit(Edit::range_deletion(removed)));
             let param = param.parameter.name.as_str();
             checker.report_fix(
                 Rule::DefaultArgumentValue,
                 range,
                 format!("`{}` is the default of `{param}` in `{name}`; leave it out", checker.text(argument.range())),
-                fix,
+                argument_removal(checker, call, range).map(|removed| Fix::safe_edit(Edit::range_deletion(removed))),
                 format!("Remove the argument for `{param}`"),
             );
         }
     }
-}
-
-// The arguments of `call` that pass a parameter its literal default: each keyword one, and the last positional one, as
-// leaving out an earlier one would shift the rest onto other parameters.
-fn passed_defaults<'a>(
-    checker: &Checker,
-    function: &'a ast::StmtFunctionDef,
-    call: &'a ast::ExprCall,
-) -> Vec<(&'a ast::ParameterWithDefault, &'a Expr, TextRange)> {
-    let parameters = &function.parameters;
-    let mut found = Vec::new();
-    let positional: Vec<&ast::ParameterWithDefault> = parameters.posonlyargs.iter().chain(&parameters.args).collect();
-    let arguments = &call.arguments;
-    if let Some((index, last)) = arguments.args.iter().enumerate().last()
-        && let Some(param) = positional.get(index)
-        && is_default(param, last)
-    {
-        found.push((*param, last, checker.parenthesized_range(last, arguments.into())));
-    }
-    for keyword in &arguments.keywords {
-        let Some(arg) = &keyword.arg else { continue };
-        let param = parameters
-            .args
-            .iter()
-            .chain(&parameters.kwonlyargs)
-            .find(|param| param.parameter.name.as_str() == arg.as_str());
-        if let Some(param) = param
-            && is_default(param, &keyword.value)
-        {
-            found.push((param, &keyword.value, keyword.range()));
-        }
-    }
-    found
-}
-
-fn is_default(param: &ast::ParameterWithDefault, argument: &Expr) -> bool {
-    param
-        .default
-        .as_deref()
-        .is_some_and(|default| is_literal(default) && ComparableExpr::from(default) == ComparableExpr::from(argument))
 }
 
 // A literal evaluates to an equal value at each call, so passing it again matches the default. A name or a call may
@@ -122,4 +83,43 @@ fn is_literal(expr: &Expr) -> bool {
         }
         _ => false,
     }
+}
+
+// The arguments of `call` that pass a parameter its literal default: each keyword one, and the last positional one, as
+// leaving out an earlier one would shift the rest onto other parameters.
+fn passed_defaults<'a>(
+    checker: &Checker,
+    function: &'a ast::StmtFunctionDef,
+    call: &'a ast::ExprCall,
+) -> Vec<(&'a ast::ParameterWithDefault, &'a Expr, TextRange)> {
+    let parameters = &function.parameters;
+    let positional: Vec<&ast::ParameterWithDefault> = parameters.posonlyargs.iter().chain(&parameters.args).collect();
+    let arguments = &call.arguments;
+    let mut found = Vec::new();
+    if let Some((index, last)) = arguments.args.iter().enumerate().last()
+        && let Some(param) = positional.get(index)
+        && is_default(param, last)
+    {
+        found.push((*param, last, checker.parenthesized_range(last, arguments.into())));
+    }
+    for keyword in &arguments.keywords {
+        let Some(arg) = &keyword.arg else { continue };
+        if let Some(param) = parameters
+            .args
+            .iter()
+            .chain(&parameters.kwonlyargs)
+            .find(|param| param.parameter.name.as_str() == arg.as_str())
+            && is_default(param, &keyword.value)
+        {
+            found.push((param, &keyword.value, keyword.range()));
+        }
+    }
+    found
+}
+
+fn is_default(param: &ast::ParameterWithDefault, argument: &Expr) -> bool {
+    param
+        .default
+        .as_deref()
+        .is_some_and(|default| is_literal(default) && ComparableExpr::from(default) == ComparableExpr::from(argument))
 }
