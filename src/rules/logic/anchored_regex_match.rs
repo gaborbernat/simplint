@@ -34,13 +34,12 @@ pub(crate) struct Anchored<'a> {
     function: &'static str,
     pattern: &'a ast::ExprStringLiteral,
     // How many characters of the pattern's value the anchors take at its start and at its end.
-    start: Anchor,
+    start: Option<Anchor>,
     end: Anchor,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Anchor {
-    None,
     // `^`, `$`: `$` also matches before a newline that ends the string.
     Caret,
     Dollar,
@@ -68,19 +67,19 @@ pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> O
     let value = pattern.value.to_str();
     let end = trailing_anchor(value)?;
     let start = leading_anchor(value);
-    if function == "search" && start == Anchor::None {
+    if function == "search" && start.is_none() {
         return None;
     }
     Some(Anchored { function, pattern, start, end })
 }
 
-fn leading_anchor(value: &str) -> Anchor {
+fn leading_anchor(value: &str) -> Option<Anchor> {
     if value.starts_with('^') {
-        Anchor::Caret
+        Some(Anchor::Caret)
     } else if value.starts_with("\\A") {
-        Anchor::Absolute
+        Some(Anchor::Absolute)
     } else {
-        Anchor::None
+        None
     }
 }
 
@@ -89,14 +88,14 @@ fn trailing_anchor(value: &str) -> Option<Anchor> {
     let mut depth = 0_u32;
     let mut in_class = false;
     let mut escaped = false;
-    let mut last = Anchor::None;
+    let mut last = None;
     let mut chars = value.chars().peekable();
     while let Some(char) = chars.next() {
-        last = Anchor::None;
+        last = None;
         if escaped {
             escaped = false;
             if char == 'Z' && !in_class {
-                last = Anchor::Absolute;
+                last = Some(Anchor::Absolute);
             }
             continue;
         }
@@ -119,11 +118,11 @@ fn trailing_anchor(value: &str) -> Option<Anchor> {
             }
             ')' if !in_class => depth = depth.saturating_sub(1),
             '|' if !in_class && depth == 0 => return None,
-            '$' if !in_class => last = Anchor::Dollar,
+            '$' if !in_class => last = Some(Anchor::Dollar),
             _ => {}
         }
     }
-    (last != Anchor::None && !in_class).then_some(last)
+    last.filter(|_| !in_class)
 }
 
 // Renaming the function and dropping the anchors keeps the match, except for a string that ends in a newline, which `$`
@@ -144,8 +143,8 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     let source = checker.text(body);
     let raw = prefix.contains(['r', 'R']);
     let mut edits = vec![Edit::range_replacement("fullmatch".to_owned(), attribute.attr.range())];
-    if anchored.start != Anchor::None {
-        let width = anchor_width(source, anchored.start, raw, true)?;
+    if let Some(start) = anchored.start {
+        let width = anchor_width(source, start, raw, true)?;
         edits.push(Edit::range_deletion(TextRange::at(body.start(), width)));
     }
     let width = anchor_width(source, anchored.end, raw, false)?;
@@ -164,7 +163,6 @@ fn anchor_width(source: &str, anchor: Anchor, raw: bool, leading: bool) -> Optio
         (Anchor::Absolute, true) => &["\\\\A", "\\A"],
         (Anchor::Absolute, false) if raw => &["\\Z"],
         (Anchor::Absolute, false) => &["\\\\Z", "\\Z"],
-        (Anchor::None, _) => return None,
     };
     let found = candidates
         .iter()

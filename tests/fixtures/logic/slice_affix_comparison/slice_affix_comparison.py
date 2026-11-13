@@ -10,12 +10,13 @@ def check(text: str, data: bytes, parts):
     return prefix, suffix, negated, flipped, raw, joined, attribute, unicode
 
 
-def not_affixes(text: str):
+def not_affixes(text: str, size: int):
     wrong_length = text[:3] == "ab"
+    sized = text[:size] == "ab"
     middle = text[1:3] == "ab"
     stepped = text[:4:2] == "ab"
     variable = text[:3] == text
-    return wrong_length, middle, stepped, variable
+    return wrong_length, sized, middle, stepped, variable
 
 
 def unknown_receiver(field):

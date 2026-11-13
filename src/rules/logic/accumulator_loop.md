@@ -32,8 +32,9 @@ def render(parts):
 
 - **An empty `""` or `b""` start followed by a loop whose body is `name += value`**, directly or under one `if` with no
   `else`. **Unsafe fix:** both statements become `name = "".join(...)` with a generator expression, or with the iterable
-  alone when the loop adds its own variable. The fix is offered when the loop has no comments and nothing reads its
-  variables after it. It is unsafe because a `str` subclass with its own `__radd__`, such as `markupsafe.Markup`, gets
+  alone when the loop adds its own variable. The fix is offered when the loop has no comments, nothing reads its
+  variables after it, and the value and condition neither `yield` nor `await`: a generator expression rejects the first
+  and turns asynchronous with the second. It is unsafe because a `str` subclass with its own `__radd__`, such as `markupsafe.Markup`, gets
   to escape or reject each value in the loop, and `join()` skips it.
 
   ```python report

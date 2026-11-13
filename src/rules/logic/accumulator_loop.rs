@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::{self as ast, Expr, Number, Operator, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -62,6 +63,7 @@ fn check_pair(checker: &Checker, init: &Stmt, next: &Stmt, scope: &LocalScope) {
         Kind::Sum => "sum".to_owned(),
     };
     let fix = (loop_variables_stay_inside(loop_stmt, uses)
+        && !accumulation.suspends()
         && !checker.has_comment_in(TextRange::new(init.start(), next.end())))
     .then(|| {
         let replacement = format!("{name} = {call}({})", generator(checker, loop_stmt, &accumulation));
@@ -109,9 +111,22 @@ fn accumulation<'a>(body: &'a [Stmt], name: &str) -> Option<Accumulation<'a>> {
     }
 }
 
+// A tuple added to `""` or `0` raises, so a loop that adds one accumulates nothing.
 fn added<'a>(augmented: &'a ast::StmtAugAssign, name: &str) -> Option<&'a Expr> {
-    (augmented.op == Operator::Add && augmented.target.as_name_expr().is_some_and(|target| target.id == name))
-        .then_some(augmented.value.as_ref())
+    (augmented.op == Operator::Add
+        && augmented.target.as_name_expr().is_some_and(|target| target.id == name)
+        && !augmented.value.is_tuple_expr())
+    .then_some(augmented.value.as_ref())
+}
+
+impl Accumulation<'_> {
+    // A generator expression rejects a `yield` in its element or condition, and an `await` there makes it an
+    // asynchronous generator, which `sum` and `str.join` cannot consume.
+    fn suspends(&self) -> bool {
+        self.test.into_iter().chain([self.value]).any(|expr| {
+            any_over_expr(expr, &|inner: &Expr| matches!(inner, Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Await(_)))
+        })
+    }
 }
 
 // A generator keeps its loop variables to itself, so the fix may only drop them when nothing outside the loop reads
@@ -127,12 +142,12 @@ fn loop_variables_stay_inside(loop_stmt: &ast::StmtFor, uses: &NameUses) -> bool
 fn generator(checker: &Checker, loop_stmt: &ast::StmtFor, accumulation: &Accumulation) -> String {
     let target = checker.text(loop_stmt.target.as_ref());
     let iter = operand(checker, &loop_stmt.iter);
-    let value = element(checker, accumulation.value);
+    let value = checker.text(accumulation.value);
     let iterable_alone = loop_stmt.target.as_name_expr().is_some_and(|target| {
         accumulation.test.is_none() && accumulation.value.as_name_expr().is_some_and(|value| value.id == target.id)
     });
     if iterable_alone {
-        return checker.text(loop_stmt.iter.as_ref()).to_owned();
+        return iter;
     }
     match accumulation.test {
         Some(test) => format!("{value} for {target} in {iter} if {}", operand(checker, test)),
@@ -146,15 +161,6 @@ fn operand(checker: &Checker, expr: &Expr) -> String {
     let text = checker.text(expr);
     match expr {
         Expr::If(_) | Expr::Lambda(_) | Expr::Named(_) | Expr::Yield(_) | Expr::YieldFrom(_) => format!("({text})"),
-        Expr::Tuple(tuple) if !tuple.parenthesized => format!("({text})"),
-        _ => text.to_owned(),
-    }
-}
-
-fn element(checker: &Checker, expr: &Expr) -> String {
-    let text = checker.text(expr);
-    match expr {
-        Expr::Yield(_) | Expr::YieldFrom(_) => format!("({text})"),
         Expr::Tuple(tuple) if !tuple.parenthesized => format!("({text})"),
         _ => text.to_owned(),
     }

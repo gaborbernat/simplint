@@ -4,13 +4,14 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 5:12 SMP539 Every copy is the one `[0] * size` object, so changing an element through `grid` changes all of them [unsafe fix: Build each element in a comprehension]
 11:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them [unsafe fix: Build each element in a comprehension]
-17:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them [unsafe fix: Build each element in a comprehension]
-23:12 SMP539 Every copy is the one `{"key": 1}` object, so changing an element through `rows` changes all of them [unsafe fix: Build each element in a comprehension]
-29:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them
-35:12 SMP539 Every copy is the one `[_]` object, so changing an element through `rows` changes all of them
-41:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them
-48:22 SMP539 Every copy is the one `dict()` object, so changing an element through `self.cells` changes all of them [unsafe fix: Build each element in a comprehension]
---- fixed (5 applied, 3 remaining) ---
+17:12 SMP539 Every copy is the one `[0] * size` object, so changing an element through `grid` changes all of them [unsafe fix: Build each element in a comprehension]
+23:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them [unsafe fix: Build each element in a comprehension]
+29:12 SMP539 Every copy is the one `{"key": 1}` object, so changing an element through `rows` changes all of them [unsafe fix: Build each element in a comprehension]
+35:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them
+41:12 SMP539 Every copy is the one `[_]` object, so changing an element through `rows` changes all of them
+47:12 SMP539 Every copy is the one `[]` object, so changing an element through `rows` changes all of them
+54:22 SMP539 Every copy is the one `dict()` object, so changing an element through `self.cells` changes all of them [unsafe fix: Build each element in a comprehension]
+--- fixed (6 applied, 3 remaining) ---
 range_of = range
 
 
@@ -24,6 +25,12 @@ def buckets(size):
     rows = [[] for _ in range(size)]
     rows[1].append(2)
     return rows
+
+
+def annotated(size):
+    grid = [[0] * size for _ in range(size)]
+    grid[0][0]: int = 1
+    return grid
 
 
 def extended(size):

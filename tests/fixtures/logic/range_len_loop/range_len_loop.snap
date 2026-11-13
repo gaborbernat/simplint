@@ -55,3 +55,8 @@ def index_only(items):
 def call_result(load):
     for i in range(len(load())):
         print(load()[i])
+
+
+def counted(items, count):
+    for i in range(count(items)):
+        print(items[i])

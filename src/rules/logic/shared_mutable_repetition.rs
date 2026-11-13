@@ -47,15 +47,10 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         return;
     };
     let checker = walker.checker;
-    let (sequence, count) = match (left.as_ref(), right.as_ref()) {
-        (Expr::List(_) | Expr::Tuple(_), _) => (left.as_ref(), right.as_ref()),
-        (_, Expr::List(_) | Expr::Tuple(_)) => (right.as_ref(), left.as_ref()),
-        _ => return,
-    };
-    let elements = match sequence {
-        Expr::List(list) => &list.elts,
-        Expr::Tuple(tuple) => &tuple.elts,
-        _ => unreachable!("matched as a list or tuple display above"),
+    let (sequence, elements, count) = match (displayed(left), displayed(right)) {
+        (Some(elements), _) => (left.as_ref(), elements, right.as_ref()),
+        (None, Some(elements)) => (right.as_ref(), elements, left.as_ref()),
+        (None, None) => return,
     };
     // Zero or one copy shares nothing.
     if matches!(
@@ -89,6 +84,15 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         comprehension(checker, value, sequence, count),
         "Build each element in a comprehension",
     );
+}
+
+// The elements of a list or tuple display.
+fn displayed(expr: &Expr) -> Option<&[Expr]> {
+    match expr {
+        Expr::List(list) => Some(&list.elts),
+        Expr::Tuple(tuple) => Some(&tuple.elts),
+        _ => None,
+    }
 }
 
 struct Mutation<'t> {

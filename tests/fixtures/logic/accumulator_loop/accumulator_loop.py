@@ -85,3 +85,39 @@ def with_else(parts):
     else:
         total += 1
     return total
+
+
+def yielded_parts(parts):
+    text = ""
+    for part in parts:
+        text += yield part
+    return text
+
+
+def tuple_iterable(first, second):
+    total = 0
+    for value in first, second:
+        total += value
+    return total
+
+
+def global_total(parts):
+    global grand_total
+    grand_total = 0
+    for part in parts:
+        grand_total += part
+
+
+def nested_scopes(parts):
+    text = ""
+    for part in parts:
+        text += part
+
+    class Local:
+        pass
+
+    def reset():
+        nonlocal text
+        text = ""
+
+    return text, Local, reset

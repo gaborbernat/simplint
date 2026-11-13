@@ -9,7 +9,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 32:5 SMP547 `result` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
 39:5 SMP547 `size` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
 46:5 SMP547 `text` is built by `+=` in a loop; `str.join` builds it in one call
---- fixed (6 applied, 1 remaining) ---
+92:5 SMP547 `text` is built by `+=` in a loop; `str.join` builds it in one call
+99:5 SMP547 `total` is summed by `+=` in a loop; `sum` adds it up in one call [unsafe fix: Use `sum`]
+--- fixed (7 applied, 2 remaining) ---
 def join(parts):
     text = "".join(parts)
     return text
@@ -84,3 +86,37 @@ def with_else(parts):
     else:
         total += 1
     return total
+
+
+def yielded_parts(parts):
+    text = ""
+    for part in parts:
+        text += yield part
+    return text
+
+
+def tuple_iterable(first, second):
+    total = sum((first, second))
+    return total
+
+
+def global_total(parts):
+    global grand_total
+    grand_total = 0
+    for part in parts:
+        grand_total += part
+
+
+def nested_scopes(parts):
+    text = ""
+    for part in parts:
+        text += part
+
+    class Local:
+        pass
+
+    def reset():
+        nonlocal text
+        text = ""
+
+    return text, Local, reset
