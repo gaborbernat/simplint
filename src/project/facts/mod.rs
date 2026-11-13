@@ -183,7 +183,7 @@ impl FileFacts {
             class_tuples: visitor.class_tuples,
             classes,
             functions: module_functions(&parsed.syntax().body),
-            signatures: module_signatures(&parsed.syntax().body),
+            signatures: if parts.has(Parts::SIGNATURES) { module_signatures(&parsed.syntax().body) } else { Vec::new() },
             plain_modules: visitor.plain_modules,
             imported_modules: visitor.imported_modules.into_iter().collect(),
             interface: interface(&parsed.syntax().body),
@@ -435,6 +435,10 @@ impl Parts {
     pub const REFLECTED_NAMES: Self = Self(1 << 10);
     // The modules a write under a computed name may set any name of, which a rename or move of their variables breaks.
     pub const COMPUTED_WRITES: Self = Self(1 << 11);
+    // The modules the file imports, which `unused-dependency` matches to the project's requirements.
+    pub const IMPORTED_MODULES: Self = Self(1 << 12);
+    // The positional parameters of the module's functions, which the rules that judge a call by its callee read.
+    pub const SIGNATURES: Self = Self(1 << 13);
 
     #[must_use]
     pub fn with(self, part: Self) -> Self {

@@ -220,7 +220,9 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             Stmt::ImportFrom(import) => self.import_from(stmt, import, top_level),
             Stmt::Import(ast::StmtImport { names, is_lazy, .. }) => {
                 for alias in names {
-                    self.imported_modules.insert(alias.name.to_string());
+                    if self.parts.has(Parts::IMPORTED_MODULES) {
+                        self.imported_modules.insert(alias.name.to_string());
+                    }
                     if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
                         let module = alias.name.as_str().to_owned();
                         self.runtime_sites.push(ImportSite::new(module, Vec::new(), stmt.range(), runtime));
@@ -504,7 +506,9 @@ impl<'a> FactVisitor<'a> {
         let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
         let runtime = self.runtime;
         let module = module.as_ref().map(ast::Identifier::as_str);
-        if let (0, Some(module)) = (*level, module) {
+        if let (0, Some(module)) = (*level, module)
+            && self.parts.has(Parts::IMPORTED_MODULES)
+        {
             self.imported_modules.insert(module.to_owned());
             self.imported_modules
                 .extend(names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| format!("{module}.{}", alias.name)));

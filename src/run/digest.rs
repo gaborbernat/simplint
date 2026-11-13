@@ -47,6 +47,9 @@ pub(super) fn run_digest(
         let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
         test_modules.sort_unstable();
         test_modules.cache_key(&mut hasher);
+        let mut dependency_hosts: Vec<&Path> = project.dependency_hosts.iter().copied().collect();
+        dependency_hosts.sort_unstable();
+        dependency_hosts.cache_key(&mut hasher);
         let mut distribution_roots: Vec<(&Path, &Path)> =
             project.distribution_roots.iter().map(|(path, root)| (*path, *root)).collect();
         distribution_roots.sort_unstable_by_key(|(path, _)| *path);

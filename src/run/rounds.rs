@@ -44,6 +44,7 @@ pub(super) fn index_and_lint<'f, T: Send>(
         roles: &project.roles,
         test_modules: &project.test_modules,
         distribution_roots: &project.distribution_roots,
+        dependency_hosts: &project.dependency_hosts,
         docs,
         duplicate_statements: project.duplicate_statements,
         probed: project.probed,

@@ -86,6 +86,7 @@ pub struct Project {
     pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<u32>>,
     // The modules the run's files outside the tests import, which a package's `__init__.py` answers for the project.
     pub(super) imported_modules: FxHashSet<String>,
+    pub(super) dependency_hosts: FxHashSet<FileId>,
     pub(super) docs: DocReferences,
     pub(super) cycles: FxHashMap<FileId, Cycle>,
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
@@ -111,6 +112,8 @@ pub struct IndexInputs<'a> {
     pub roles: &'a FxHashMap<&'a Path, ModuleRole>,
     pub test_modules: &'a FxHashSet<&'a Path>,
     pub distribution_roots: &'a FxHashMap<&'a Path, &'a Path>,
+    // The files `unused-dependency` reports in, the only ones the index tells which modules the project imports.
+    pub dependency_hosts: &'a FxHashSet<&'a Path>,
     pub docs: &'a DocReferences,
     pub duplicate_statements: Option<usize>,
     pub probed: Option<u64>,
@@ -181,9 +184,10 @@ impl Project {
         let sources = non_stub_facts(&ids, files);
         let ids_of = &*resolver.files;
         let package_loaded = package_loaded(&runtime, &indexed, ids_of, &test_modules);
+        let dependency_hosts: FxHashSet<FileId> = inputs.dependency_hosts.iter().filter_map(|path| ids_of.get(path)).collect();
         let imported_modules: FxHashSet<String> = indexed
             .iter()
-            .filter(|(id, _)| !test_modules.contains(id))
+            .filter(|(id, _)| !dependency_hosts.is_empty() && !test_modules.contains(id))
             .flat_map(|(_, facts)| facts.imported_modules.iter().cloned())
             .collect();
         let resolved_imports: FxHashMap<FileId, FxHashSet<u32>> = runtime
@@ -311,6 +315,7 @@ impl Project {
             package_loaded,
             resolved_imports,
             imported_modules,
+            dependency_hosts,
             wide,
             docs: docs.clone(),
             cycles: cycle_reports,
@@ -366,9 +371,8 @@ impl Project {
                 overridden: entry(&self.overridden, id),
                 package_loaded: id.is_some_and(|id| self.package_loaded.contains(&id)),
                 resolved_imports: entry(&self.resolved_imports, id),
-                imported_modules: path
-                    .file_name()
-                    .is_some_and(|name| name == "__init__.py")
+                imported_modules: id
+                    .is_some_and(|id| self.dependency_hosts.contains(&id))
                     .then_some(&self.imported_modules),
                 cycle: entry(&self.cycles, id),
                 duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
