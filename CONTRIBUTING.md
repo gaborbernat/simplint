@@ -322,9 +322,9 @@ uv run tasks/stdlib_submodules.py ~/cpython
 
 The blobless clone keeps every tag and branch, which the script reads through `git ls-tree`, without the sources.
 
-The table of standard exception classes and their bases, which the rules that compare exception classes read, is
-generated too. Regenerate it when a supported Python version is added or dropped, passing the oldest and the newest
-interpreter; a class whose bases differ between them is left out:
+The rules that compare exception classes read a generated table of the standard exception classes and their bases.
+Regenerate it when a supported Python version is added or dropped, passing the oldest and the newest interpreter; a
+class whose bases differ between them is left out:
 
 ```bash
 uv run tasks/exception_hierarchy.py python3.10 python3.15
