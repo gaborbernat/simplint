@@ -5,7 +5,7 @@ use ruff_python_ast::Expr;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
@@ -15,7 +15,7 @@ use crate::rules::api::{AllList, exploded};
 use crate::rules::edits::fix_of;
 use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
-use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases, is_main_guard};
+use crate::syntax::{Exports, Visibility, alias_binding, import_aliases, is_main_guard};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
@@ -36,7 +36,7 @@ pub fn missing_from_all(checker: &Checker) {
         .body()
         .iter()
         .filter_map(|stmt| stmt.as_if_stmt().filter(|stmt| is_type_checking(&stmt.test, checker)))
-        .filter_map(|stmt| Some(TextRange::new(stmt.body.first()?.start(), stmt.body.last()?.end())))
+        .map(|stmt| TextRange::new(stmt.body[0].start(), stmt.body[stmt.body.len() - 1].end()))
         .collect();
     let mut missing: Vec<Missing> = checker
         .semantic()
@@ -98,10 +98,10 @@ struct Missing<'a> {
 fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) -> Option<Fix> {
     let mut names: Vec<&str> = names.collect();
     names.sort_by_key(|name| export_key(name));
-    let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
+    // Every binding of `__all__` is a literal here, since any other makes it dynamic and the rule skips the module.
+    let Some((stmt, all_list)) = checker.body().iter().rev().find_map(|stmt| Some((stmt, AllList::of(stmt)?))) else {
         return new_all(checker, &names);
     };
-    let all_list = AllList::of(stmt)?;
     let elts = all_list.elements();
     let one_per_line = all_list.one_per_line(checker);
     let has_comment = all_list.has_comment(checker);
@@ -137,7 +137,7 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
         Edit::insertion(format!("{declaration}{eol}{eol}"), source.line_start(guard.start()))
     } else {
         let blank_lines = if source.ends_with('\n') { 2 } else { 3 };
-        Edit::insertion(format!("{}{declaration}", eol.repeat(blank_lines)), TextSize::try_from(source.len()).ok()?)
+        Edit::insertion(format!("{}{declaration}", eol.repeat(blank_lines)), source.text_len())
     };
     Some(Fix::unsafe_edit(edit))
 }
@@ -227,11 +227,11 @@ fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -
         .filter(|comment| binds_only_listed(checker, *comment, &listed))
         .map(|comment| (comment.start(), comment.end()))
         .collect();
-    let unused = comments.into_iter().filter_map(|(start, end)| {
+    let unused = comments.into_iter().map(|(start, end)| {
         let comment = TextRange::new(start, end);
         let before = checker.text(TextRange::new(checker.source.line_start(comment.start()), comment.start()));
-        let code_end = comment.start() - TextSize::try_from(before.len() - before.trim_end().len()).ok()?;
-        Some(Edit::range_deletion(TextRange::new(code_end, comment.end())))
+        let code_end = comment.start() - TextSize::of(&before[before.trim_end().len()..]);
+        Edit::range_deletion(TextRange::new(code_end, comment.end()))
     });
     fix_of(fix.into_edits().into_iter().chain(unused), applicability)
 }

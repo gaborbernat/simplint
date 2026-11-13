@@ -61,10 +61,9 @@ pub fn unused_export(checker: &Checker) {
         .and_then(|list| removal(checker, list, &unused.iter().copied().collect()))
         .map(|fix| (fix, title));
     let mut ranges: FxHashMap<&str, TextRange> = FxHashMap::default();
-    for element in list.as_ref().map_or(&[][..], AllList::elements) {
-        if let Some(text) = element.as_string_literal_expr() {
-            ranges.entry(text.value.to_str()).or_insert(element.range());
-        }
+    // A listed `__all__` holds only strings.
+    for text in list.as_ref().map_or(&[][..], AllList::elements).iter().filter_map(Expr::as_string_literal_expr) {
+        ranges.entry(text.value.to_str()).or_insert(text.range());
     }
     for name in unused {
         let range = ranges
