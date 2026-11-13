@@ -1293,3 +1293,60 @@ fn private_import_is_checked_again_once_its_submodule_appears() {
         (1, 1, true, true)
     );
 }
+
+// The cache file goes to a temporary file renamed over it, so a build directory that takes no new file, or a
+// directory where the cache file goes, fails the write.
+#[cfg(unix)]
+#[test_case(false ; "read_only_directory")]
+#[test_case(true ; "directory_in_place_of_the_file")]
+fn cache_that_cannot_be_written_fails_the_run(blocked_by_directory: bool) {
+    let root = project(&[("module.py", CLEAN_MODULE)]);
+    check(root.path(), &["--select", "SMP101"]);
+    let directory = cache_dir(root.path());
+    if blocked_by_directory {
+        for file in cache_files(root.path()) {
+            fs::remove_file(&file).expect("remove");
+            fs::create_dir(&file).expect("create");
+        }
+    } else {
+        common::set_mode(&directory, 0o555);
+    }
+    fs::write(root.path().join("module.py"), "x = 1\n").expect("write");
+
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+
+    common::set_mode(&directory, 0o755);
+    let expected = if blocked_by_directory { "Failed to rename temporary cache file" } else { "temporary file" };
+    assert_eq!((code, stderr.contains(expected)), (2, true), "{stderr}");
+}
+
+// The `full` text goes beside the cache file, so a directory where it goes fails the write.
+#[cfg(unix)]
+#[test]
+fn full_text_that_cannot_be_written_fails_the_run() {
+    let root = project(&[("module.py", FIXABLE)]);
+    check(root.path(), &["--select", "SMP001,SMP901"]);
+    let reports_only = cache_files(root.path());
+    full_report(root.path(), &[], &[]);
+    for file in cache_files(root.path()).iter().filter(|file| !reports_only.contains(file)) {
+        fs::remove_file(file).expect("remove");
+        fs::create_dir(file).expect("create");
+    }
+
+    let (code, _, stderr) =
+        simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP001,SMP901", "--preview"]);
+
+    assert_eq!((code, stderr.contains("Is a directory")), (2, true), "{stderr}");
+}
+
+// The cache keys files by their path as text, so a file whose name is not UTF-8 is linted on every run.
+#[cfg(unix)]
+#[test]
+fn file_whose_name_is_not_utf8_is_reported_on_a_warm_run() {
+    use std::os::unix::ffi::OsStrExt;
+    let root = empty_project();
+    fs::write(root.path().join(std::ffi::OsStr::from_bytes(b"name\xff.py")), "x = 1\n").expect("write");
+    let first = check(root.path(), &["--select", "SMP101"]);
+    let second = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!((first.0, &first, first.1.contains("Single-letter name")), (1, &second, true));
+}

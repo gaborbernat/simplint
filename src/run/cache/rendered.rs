@@ -29,15 +29,15 @@ pub(crate) struct FullDisplay {
 }
 
 impl FullDisplay {
-    pub(crate) fn new(config: DisplayDiagnosticConfig, key: DisplayKey) -> Option<Self> {
+    pub(crate) fn new(config: DisplayDiagnosticConfig, key: DisplayKey) -> Self {
         let mut hasher = CacheKeyHasher::new();
         key.preview.cache_key(&mut hasher);
         key.prefer_rule_codes.cache_key(&mut hasher);
         key.color.cache_key(&mut hasher);
         key.hyperlinks.cache_key(&mut hasher);
         format!("{:?}", key.required).cache_key(&mut hasher);
-        std::env::current_dir().ok()?.to_string_lossy().cache_key(&mut hasher);
-        Some(Self { config, base: hasher.finish() })
+        std::env::current_dir().unwrap_or_default().cache_key(&mut hasher);
+        Self { config, base: hasher.finish() }
     }
 
     pub(super) fn key(&self, name: &str) -> u64 {

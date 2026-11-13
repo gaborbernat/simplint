@@ -67,14 +67,17 @@ pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<
     if named {
         return Some(configured.clone());
     }
-    let root = match config.path.as_deref().and_then(Path::parent) {
-        Some(parent) => parent.to_path_buf(),
-        None => env::current_dir().ok()?,
-    };
-    let chosen = if within(configured, &root) { configured.clone() } else { ruff_cache::cache_dir(&root) };
+    match config.path.as_deref().and_then(Path::parent) {
+        Some(parent) => cache_dir_within(configured, parent),
+        None => env::current_dir().ok().and_then(|cwd| cache_dir_within(configured, &cwd)),
+    }
+}
+
+fn cache_dir_within(configured: &Path, root: &Path) -> Option<PathBuf> {
+    let chosen = if within(configured, root) { configured.to_path_buf() } else { ruff_cache::cache_dir(root) };
     // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
-    let build = crate::project::cache::documentation_file(&chosen, &root);
-    if build.parent().is_some_and(|build| within(build, &root)) {
+    let build = crate::project::cache::documentation_file(&chosen, root);
+    if build.parent().is_some_and(|build| within(build, root)) {
         return Some(chosen);
     }
     warn_user!("Not caching: the cache directory `{}` leads outside the project", chosen.display());

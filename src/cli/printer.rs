@@ -71,8 +71,7 @@ impl Printer<'_> {
         Ok(())
     }
 
-    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when
-    // the working directory cannot be read, which leaves the text to the printer.
+    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`.
     pub(super) fn full_display(&self) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
@@ -86,7 +85,7 @@ impl Printer<'_> {
             hyperlinks: color && supports_hyperlinks(),
             required: self.mode.unsafe_fixes.required_applicability(),
         };
-        FullDisplay::new(self.display_config(false), key)
+        Some(FullDisplay::new(self.display_config(false), key))
     }
 
     fn render_config(&self, diagnostics: &Diagnostics) -> DisplayDiagnosticConfig {
