@@ -96,10 +96,6 @@ fn report(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites,
     }
 }
 
-fn param_name(param: &ast::ParameterWithDefault) -> &str {
-    param.parameter.name.as_str()
-}
-
 fn report_default(
     checker: &Checker,
     function: &str,
@@ -110,11 +106,6 @@ fn report_default(
 ) {
     let parameter = &param.parameter;
     let range = checker.parenthesized_range(default, param.into());
-    let message = format!(
-        "Every call to `{function}` passes `{}`; drop its default `{}`",
-        param_name(param),
-        checker.text(range)
-    );
     let start = match parameter.annotation.as_deref() {
         Some(annotation) => checker.parenthesized_range(annotation, parameter.into()).end(),
         None => parameter.name.range.end(),
@@ -125,11 +116,7 @@ fn report_default(
     if fix.is_none() && pytest_test {
         return;
     }
-    checker.report_fix(
-        Rule::UnusedDefault,
-        range,
-        message,
-        fix,
-        format!("Remove the default of `{}`", param_name(param)),
-    );
+    let message =
+        format!("Every call to `{function}` passes `{}`; drop its default `{}`", parameter.name, checker.text(range));
+    checker.report_fix(Rule::UnusedDefault, range, message, fix, format!("Remove the default of `{}`", parameter.name));
 }

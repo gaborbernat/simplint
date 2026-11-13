@@ -7,48 +7,6 @@ use rustc_hash::FxHashSet;
 
 use crate::syntax::{is_name, is_repeating_expr, last_segment};
 
-fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrecedence> {
-    let direct = |operand: &Expr| operand.range() == reference;
-    match expr {
-        Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) if values.iter().any(direct) => Some(match op {
-            ast::BoolOp::Or => OperatorPrecedence::And,
-            ast::BoolOp::And => OperatorPrecedence::Not,
-        }),
-        Expr::If(ast::ExprIf { test, body, .. }) if direct(test) || direct(body) => Some(OperatorPrecedence::Or),
-        Expr::Compare(ast::ExprCompare { operands, .. }) if operands.iter().any(direct) => {
-            Some(OperatorPrecedence::BitOr)
-        }
-        Expr::BinOp(ast::ExprBinOp { left, op, right, .. }) => {
-            // The left operand keeps the operator's precedence and the right one takes the next level up, as the
-            // operators associate to the left, except `**`, which takes its left operand from `await` and its right one
-            // from a unary operator.
-            let (left_level, right_level) = match op {
-                ast::Operator::BitOr => (OperatorPrecedence::BitOr, OperatorPrecedence::BitXor),
-                ast::Operator::BitXor => (OperatorPrecedence::BitXor, OperatorPrecedence::BitAnd),
-                ast::Operator::BitAnd => (OperatorPrecedence::BitAnd, OperatorPrecedence::LeftRightShift),
-                ast::Operator::LShift | ast::Operator::RShift => {
-                    (OperatorPrecedence::LeftRightShift, OperatorPrecedence::AddSub)
-                }
-                ast::Operator::Add | ast::Operator::Sub => {
-                    (OperatorPrecedence::AddSub, OperatorPrecedence::MulDivRemain)
-                }
-                ast::Operator::Pow => (OperatorPrecedence::Await, OperatorPrecedence::PosNegBitNot),
-                ast::Operator::Mult
-                | ast::Operator::MatMult
-                | ast::Operator::Div
-                | ast::Operator::Mod
-                | ast::Operator::FloorDiv => (OperatorPrecedence::MulDivRemain, OperatorPrecedence::PosNegBitNot),
-            };
-            if direct(left) { Some(left_level) } else { direct(right).then_some(right_level) }
-        }
-        Expr::UnaryOp(ast::ExprUnaryOp { op, operand, .. }) if direct(operand) => Some(match op {
-            ast::UnaryOp::Not => OperatorPrecedence::Not,
-            ast::UnaryOp::Invert | ast::UnaryOp::UAdd | ast::UnaryOp::USub => OperatorPrecedence::PosNegBitNot,
-        }),
-        _ => None,
-    }
-}
-
 #[expect(clippy::struct_excessive_bools, reason = "each flag marks one place the read sits in")]
 pub(super) struct ReadSite<'a> {
     // Whether the read is conditional, set once the walk reaches it. A read the walk never reaches stays unset.
@@ -391,6 +349,48 @@ impl<'a> Visitor<'a> for ReadWalk<'a> {
         }
         self.takes_state -= usize::from(operator);
         self.repeats -= usize::from(repeats);
+    }
+}
+
+fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrecedence> {
+    let direct = |operand: &Expr| operand.range() == reference;
+    match expr {
+        Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) if values.iter().any(direct) => Some(match op {
+            ast::BoolOp::Or => OperatorPrecedence::And,
+            ast::BoolOp::And => OperatorPrecedence::Not,
+        }),
+        Expr::If(ast::ExprIf { test, body, .. }) if direct(test) || direct(body) => Some(OperatorPrecedence::Or),
+        Expr::Compare(ast::ExprCompare { operands, .. }) if operands.iter().any(direct) => {
+            Some(OperatorPrecedence::BitOr)
+        }
+        Expr::BinOp(ast::ExprBinOp { left, op, right, .. }) => {
+            // The left operand keeps the operator's precedence and the right one takes the next level up, as the
+            // operators associate to the left, except `**`, which takes its left operand from `await` and its right one
+            // from a unary operator.
+            let (left_level, right_level) = match op {
+                ast::Operator::BitOr => (OperatorPrecedence::BitOr, OperatorPrecedence::BitXor),
+                ast::Operator::BitXor => (OperatorPrecedence::BitXor, OperatorPrecedence::BitAnd),
+                ast::Operator::BitAnd => (OperatorPrecedence::BitAnd, OperatorPrecedence::LeftRightShift),
+                ast::Operator::LShift | ast::Operator::RShift => {
+                    (OperatorPrecedence::LeftRightShift, OperatorPrecedence::AddSub)
+                }
+                ast::Operator::Add | ast::Operator::Sub => {
+                    (OperatorPrecedence::AddSub, OperatorPrecedence::MulDivRemain)
+                }
+                ast::Operator::Pow => (OperatorPrecedence::Await, OperatorPrecedence::PosNegBitNot),
+                ast::Operator::Mult
+                | ast::Operator::MatMult
+                | ast::Operator::Div
+                | ast::Operator::Mod
+                | ast::Operator::FloorDiv => (OperatorPrecedence::MulDivRemain, OperatorPrecedence::PosNegBitNot),
+            };
+            if direct(left) { Some(left_level) } else { direct(right).then_some(right_level) }
+        }
+        Expr::UnaryOp(ast::ExprUnaryOp { op, operand, .. }) if direct(operand) => Some(match op {
+            ast::UnaryOp::Not => OperatorPrecedence::Not,
+            ast::UnaryOp::Invert | ast::UnaryOp::UAdd | ast::UnaryOp::USub => OperatorPrecedence::PosNegBitNot,
+        }),
+        _ => None,
     }
 }
 

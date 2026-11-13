@@ -7,11 +7,12 @@ A name that exists only to feed the next test splits one decision over two state
 nothing else reads it. When the test is the only use, the value can take the name's place. When the body needs the value
 too, an [assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) (`:=`, from
 [PEP 572](https://peps.python.org/pep-0572/)) binds it in the test, the use the PEP shows under
-[capturing condition values](https://peps.python.org/pep-0572/#capturing-condition-values). Tim Peters'
-[review of real code](https://peps.python.org/pep-0572/#appendix-a-tim-peters-s-findings) found that form clearer and a
-frequent small win. PEP 572's [style guide](https://peps.python.org/pep-0572/#style-guide-recommendations) prefers an
-assignment statement when either form works, but simplint reports the `:=` form because binding in an `if` header is the
-PEP's lead use case.
+[capturing condition values](https://peps.python.org/pep-0572/#capturing-condition-values).
+
+Tim Peters' [review of real code](https://peps.python.org/pep-0572/#appendix-a-tim-peters-s-findings) found that form
+clearer and a frequent small win. PEP 572's [style guide](https://peps.python.org/pep-0572/#style-guide-recommendations)
+prefers an assignment statement when either form works, but simplint reports the `:=` form because binding in an `if`
+header is the PEP's lead use case.
 
 ## Example
 

@@ -62,11 +62,6 @@ fn acts(expr: &Expr) -> bool {
     })
 }
 
-// The fix rewrites the statement in place, so it must stand alone on its lines and hold no comment that would be lost.
-fn rewritable(checker: &Checker, stmt: &Stmt) -> bool {
-    checker.is_alone_on_lines(stmt.range()) && !checker.has_comment_in(stmt.range())
-}
-
 // The comprehension becomes nested `for` and `if` statements around its element. The loop variables then stay bound
 // after the loop, where a comprehension keeps them to itself, so the fix is unsafe.
 fn loop_fix(checker: &Checker, stmt: &Stmt, elt: &Expr, generators: &[ast::Comprehension]) -> Option<Fix> {
@@ -95,6 +90,11 @@ fn loop_fix(checker: &Checker, stmt: &Stmt, elt: &Expr, generators: &[ast::Compr
     lines.push(format!("{}{}", "    ".repeat(depth), checker.text(elt.range())));
     let text = lines.join(&format!("{eol}{indentation}"));
     Some(Fix::unsafe_edit(Edit::range_replacement(text, stmt.range())))
+}
+
+// The fix rewrites the statement in place, so it must stand alone on its lines and hold no comment that would be lost.
+fn rewritable(checker: &Checker, stmt: &Stmt) -> bool {
+    checker.is_alone_on_lines(stmt.range()) && !checker.has_comment_in(stmt.range())
 }
 
 // `a and f()` runs `f()` when `a` is true, and `a or f()` when it is false. The `if` tests the same operands the same

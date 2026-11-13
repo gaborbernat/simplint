@@ -90,6 +90,11 @@ impl<'a> NameUses<'a> {
         uses
     }
 
+    // A local the scope binds once and only it reads.
+    pub(super) fn is_single_binding(&self, name: &str) -> bool {
+        self.stores(name).len() == 1 && !self.is_opaque(name)
+    }
+
     pub(super) fn stores(&self, name: &str) -> &[TextRange] {
         self.stores.get(name).map_or(&[], Vec::as_slice)
     }
@@ -100,11 +105,6 @@ impl<'a> NameUses<'a> {
 
     pub(super) fn is_opaque(&self, name: &str) -> bool {
         self.opaque.contains(name)
-    }
-
-    // A local the scope binds once and only it reads.
-    pub(super) fn is_single_binding(&self, name: &str) -> bool {
-        self.stores(name).len() == 1 && !self.is_opaque(name)
     }
 
     fn mark_opaque(&mut self, node: &'a Stmt) {
