@@ -109,9 +109,17 @@ pub(super) struct RunReads {
     pub(super) class_names: bool,
     pub(super) reflected: FxHashSet<String>,
     pub(super) string_words: FxHashMap<String, u32>,
+    pub(super) all: AllReads,
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
+pub(super) struct AllReads {
     // Whether a test reads `__all__`, by its name in a string as `getattr(module, "__all__")` does or as an attribute,
     // which may check what type it is.
-    pub(super) tests_read_all: bool,
+    pub(super) in_tests: bool,
+    // Whether code outside the tests reads an `__all__` off a module it imports by a computed name, so removing or adding
+    // a listed name changes what it loads.
+    pub(super) dynamic_in_production: bool,
 }
 
 impl RunReads {
@@ -121,11 +129,16 @@ impl RunReads {
             class_names: indexed.iter().any(|(_, facts)| facts.reads_class_names),
             reflected: indexed.iter().flat_map(|(_, facts)| facts.reflected_names.iter().cloned()).collect(),
             string_words: string_word_counts(indexed),
-            tests_read_all: indexed.iter().any(|(id, facts)| {
-                test_modules.contains(id)
-                    && (facts.string_words.lines().any(|word| word == "__all__")
-                        || facts.attribute_loads.contains_key("__all__"))
-            }),
+            all: AllReads {
+                in_tests: indexed.iter().any(|(id, facts)| {
+                    test_modules.contains(id)
+                        && (facts.string_words.lines().any(|word| word == "__all__")
+                            || facts.attribute_loads.contains_key("__all__"))
+                }),
+                dynamic_in_production: indexed
+                    .iter()
+                    .any(|(id, facts)| !test_modules.contains(id) && facts.dynamic.unknown_all),
+            },
         }
     }
 }
@@ -160,7 +173,8 @@ impl RunWide {
         docs.cache_key(&mut hasher);
         self.computed_reads.cache_key(&mut hasher);
         string_words_key(&self.reads.string_words).cache_key(&mut hasher);
-        self.reads.tests_read_all.cache_key(&mut hasher);
+        self.reads.all.in_tests.cache_key(&mut hasher);
+        self.reads.all.dynamic_in_production.cache_key(&mut hasher);
         // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
         for names in [
             &self.assigned_attributes,
@@ -197,7 +211,7 @@ impl RunWide {
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
             .map(|class| last_dotted_segment(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
-        let all_read = (self.reads.tests_read_all != other.reads.tests_read_all).then_some("__all__");
+        let all_read = (self.reads.all != other.reads.all).then_some("__all__");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.module_reads.symmetric_difference(&other.module_reads))

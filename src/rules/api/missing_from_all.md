@@ -529,6 +529,8 @@ What the fix does depends on whether the module already has an `__all__`, and on
 - **It has none, and another file may star-import it**: no fix is offered.
 - **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what
   `import *` binds; the author decides.
+- **Code outside the tests reads `__all__` off a module it imports by a computed name**: no fix is offered, as a plugin
+  loader that walks `__import__(name).__all__` would load the new names too.
 
 **Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,
 annotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,

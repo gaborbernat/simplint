@@ -981,6 +981,35 @@ fn all_format_keeps_parenthesized_trailing_comma() {
     assert!(!stdout.contains("has no trailing comma"), "{stdout}");
 }
 
+const DYNAMIC_LOADER: &str = "def load(names):\n    return [__import__(name).__all__ for name in names]\n";
+
+// A loader that walks the `__all__` of modules it imports by a computed name uses whatever they list, so removing a name
+// or adding one changes what it loads: the report stays without a fix. A loader in the tests only checks the lists.
+#[test_case("SMP402", "def helper() -> None: ...\n\n\n__all__ = [\"helper\"]\n", "app/loader.py", false ; "unused_export")]
+#[test_case(
+    "SMP401", "def helper() -> None: ...\n\n\n__all__ = []\n", "app/loader.py", false ; "missing_from_all"
+)]
+#[test_case(
+    "SMP402", "def helper() -> None: ...\n\n\n__all__ = [\"helper\"]\n", "tests/test_loader.py", true
+    ; "unused_export_test_loader"
+)]
+fn api_rules_leave_lists_a_dynamic_loader_reads(code: &str, module: &str, loader: &str, fixed: bool) {
+    let importer = if code == "SMP401" { "from app.mod import helper\n\nhelper()\n" } else { "" };
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        ("app/mod.py", module),
+        ("app/main.py", importer),
+        (loader, DYNAMIC_LOADER),
+    ]);
+    let (_, stdout, _) = common::fix_unsafe(root.path(), code);
+    assert_eq!(
+        (common::read(root.path(), "app/mod.py") != module, stdout.contains("fixed")),
+        (fixed, fixed),
+        "{stdout}"
+    );
+}
+
 // The `__all__` of a public module of a library is the interface its author declares, so no importer in the run is
 // needed. A private module and an application keep reporting the names nothing imports.
 #[test_case("project-kind = \"library\"", "core.py", 0 ; "public_module_of_library")]

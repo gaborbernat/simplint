@@ -55,8 +55,10 @@ pub fn unused_export(checker: &Checker) {
         "Remove {} from `__all__`",
         unused.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
     );
+    // A loader that walks the `__all__` of modules it imports by a computed name may be what uses the names.
     let mut offer = list
         .as_ref()
+        .filter(|_| !project.reads_unknown_all())
         .filter(|_| !unused.iter().any(|name| doubled.contains(name) || project.is_read_opaquely(name)))
         .and_then(|list| removal(checker, list, &unused.iter().copied().collect()))
         .map(|fix| (fix, title));

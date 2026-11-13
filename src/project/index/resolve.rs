@@ -333,20 +333,13 @@ impl ModuleFacts<PathBuf> {
         let modules = named_modules(&facts.module_names, &resolved, &own);
         let values =
             facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
-        let dynamic = facts.dynamic_modules.iter().filter_map(|module| resolved(module)).collect();
+        let dynamic = facts.dynamic.modules.iter().filter_map(|module| resolved(module)).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let class_tuples = class_tuples(&facts.class_tuples, &resolved);
         let (runtime, runtime_modules) = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         // A module may write its own names under a computed name too, so its own file stays.
         let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
-        let classes = facts
-            .classes
-            .iter()
-            .map(|class| {
-                let bases = class.bases.iter().map(|(module, name)| (resolved(module), module.clone(), name.clone()));
-                (class.name.clone(), bases.collect(), class.methods.clone())
-            })
-            .collect();
+        let classes = class_bases(facts, &resolved);
         let written = written_names(facts, &resolved);
         Self {
             constructors,
@@ -578,4 +571,18 @@ fn runtime_targets<'f>(
         }
     }
     (runtime, modules)
+}
+
+fn class_bases<'f>(
+    facts: &'f FileFacts,
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+) -> Vec<(String, Vec<ClassBase<PathBuf>>, Vec<String>)> {
+    facts
+        .classes
+        .iter()
+        .map(|class| {
+            let bases = class.bases.iter().map(|(module, name)| (resolved(module), module.clone(), name.clone()));
+            (class.name.clone(), bases.collect(), class.methods.clone())
+        })
+        .collect()
 }

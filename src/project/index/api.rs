@@ -404,7 +404,11 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn tests_read_all(&self) -> bool {
-        self.project.wide.reads.tests_read_all
+        self.project.wide.reads.all.in_tests
+    }
+
+    pub fn reads_unknown_all(&self) -> bool {
+        self.project.wide.reads.all.dynamic_in_production
     }
 
     pub fn is_all_read(&self) -> bool {
