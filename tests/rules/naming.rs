@@ -50,6 +50,20 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
     common::assert_report_count(root.path(), "SMP105", expected);
 }
 
+// A script target names a module under the project root, so a file outside the root is never one.
+#[test]
+fn entrypoint_module_name_skips_files_outside_the_root() {
+    let source = "def run() -> None:\n    pass\n";
+    let root = common::project(&[
+        ("proj/pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"main:run\"\n"),
+        ("proj/main.py", source),
+        ("other/main.py", source),
+    ]);
+    let args = ["--no-cache", "--config", "proj/pyproject.toml", "--select", "SMP105", "proj/main.py", "other/main.py"];
+    let stdout = common::check(root.path(), &args).1;
+    assert!(stdout.contains("proj/main.py") && !stdout.contains("other/main.py"), "{stdout}");
+}
+
 #[test_case("", "main()", 0 ; "name_alone_main")]
 #[test_case("", "run()", 0 ; "name_alone_run")]
 #[test_case("", "populate_cache()", 0 ; "ordinary_cache")]
@@ -278,6 +292,23 @@ fn module_variable_rename_checks_whole_words_in_strings(text: &str, fixable: boo
     let root = common::project(&[("module.py", &format!("spelled = 1\nprint(\"{text}\")\n"))]);
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
     assert_eq!(stdout.contains("SMP102 [*]"), fixable);
+}
+
+// The rename respells the name's `__all__` entry, which it cannot do when the entry is split over concatenated strings.
+#[test_case("\"split_value\"", true ; "single_string")]
+#[test_case("\"split\" \"_value\"", false ; "concatenated_strings")]
+fn module_variable_rename_respells_its_export_entry(entry: &str, fixable: bool) {
+    let root = common::project(&[("module.py", &format!("split_value = 1\n\n__all__ = [{entry}]\n"))]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert_eq!(stdout.contains("SMP102 [*]"), fixable, "{stdout}");
+}
+
+// A debug field prints its source text, and one spread over lines has no single-line spelling to keep.
+#[test]
+fn module_variable_rename_leaves_a_debug_field_over_lines() {
+    let root = common::project(&[("module.py", "limit = 3\nprint(f\"\"\"{limit\n=}\"\"\")\n")]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert!(stdout.contains("SMP102") && !stdout.contains("SMP102 [*]"), "{stdout}");
 }
 
 // A string of another file may spell the name, as a test that looks a module variable up by its spelling does. A module

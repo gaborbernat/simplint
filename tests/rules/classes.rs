@@ -47,6 +47,7 @@ fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
 #[test_case("too-many-attributes", "too_many_attributes.py", None ; "too_many_attributes")]
 #[test_case("missing-override", "mo_child.py", None ; "missing_override")]
 #[test_case("missing-override", "mo_child.py", Some("py311") ; "missing_override_py311")]
+#[test_case("missing-override", "mo_shadowed.py", None ; "missing_override_shadowed_name")]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }

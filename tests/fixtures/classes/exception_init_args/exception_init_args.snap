@@ -11,3 +11,5 @@ expression: "lint_fixture(rule, fixture, target_version)"
 40:9 SMP705 `TwoArgumentSuper.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
 84:9 SMP705 `LocalChild.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
 101:9 SMP705 `BelowDiamond.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+116:9 SMP705 `Ranged.__init__` takes 2 to 3 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`
+124:9 SMP705 `Nested.__init__` takes 2 positional arguments but passes 1 to its parent, so `pickle` and `copy` rebuild it with 1 and fail; pass the arguments on, or define `__reduce__`

@@ -25,3 +25,8 @@ class TestDefaulted[T: int = int]:
 class TestPlain:
     def test_plain(self) -> None:
         assert 1 == 1
+
+
+class TestUnannotated[T]:
+    def test_untyped(self, value=None) -> None:
+        assert value is None

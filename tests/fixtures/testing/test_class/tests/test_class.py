@@ -144,3 +144,8 @@ class TestHeader:  # grouped for the report
 class TestQualname:
     def test_name(self) -> None:
         assert self.test_name.__qualname__ == "TestQualname.test_name"
+
+
+class TestWithoutSelf:
+    def test_bound_elsewhere(this) -> None:
+        assert this

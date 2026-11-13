@@ -16,3 +16,21 @@ pub(super) fn fix_of(edits: impl IntoIterator<Item = Edit>, applicability: Appli
     let first = edits.next()?;
     Some(Fix::applicable_edits(first, edits, applicability))
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_diagnostics::{Applicability, Edit};
+    use ruff_text_size::TextSize;
+
+    use super::fix_of;
+
+    #[test]
+    fn fix_of_needs_an_edit() {
+        let insertion = Edit::insertion("x".to_owned(), TextSize::from(0));
+        assert!(fix_of(Vec::new(), Applicability::Safe).is_none());
+        assert_eq!(
+            fix_of([insertion.clone()], Applicability::Safe).map(|fix| fix.edits().to_vec()),
+            Some(vec![insertion])
+        );
+    }
+}

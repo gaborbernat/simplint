@@ -150,3 +150,11 @@ class ConstructedTwice:
 
     def __new__(cls) -> "ConstructedTwice":
         return super().__new__(cls)
+
+
+class ConstructedFirst:
+    def __init__(self) -> None:
+        self.value = 0
+
+    class Options:
+        strict = True

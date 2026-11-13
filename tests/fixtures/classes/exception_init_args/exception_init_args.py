@@ -104,3 +104,21 @@ class BelowDiamond(Diamond):
 class NotAnException:
     def __init__(self):
         super().__init__()
+
+
+class Unpacked(Exception):
+    def __init__(self, path, line):
+        super().__init__(path, **{"line": line})
+
+
+class Ranged(Exception):
+    def __init__(self, path, line, column=0):
+        super().__init__(path)
+
+
+class Nested(Exception):
+    def __init__(self, path, line):
+        def describe():
+            return f"{path}:{line}"
+
+        super().__init__(describe())

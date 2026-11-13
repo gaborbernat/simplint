@@ -4,6 +4,7 @@ from unittest import mock
 from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest_mock
+from mock import patch as backport_patch
 
 
 def test_mocks(mocker: pytest_mock.MockerFixture) -> None:
@@ -46,3 +47,8 @@ def test_autospec_on_a_mock_is_an_attribute(mocker: pytest_mock.MockerFixture) -
     assert client and mock.Mock(new_callable=int)
     assert MagicMock(new=1)
     mocker.patch("os.getcwd", new_callable=MagicMock)
+
+
+def test_backport_patch() -> None:
+    with backport_patch("os.getcwd"):
+        pass

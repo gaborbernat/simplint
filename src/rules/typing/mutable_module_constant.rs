@@ -9,7 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::{Import, ensure_import};
+use crate::rules::edits::{Import, ensure_import, fix_of};
 use crate::rules::is_sphinx_conf;
 use crate::syntax::{last_segment, single_assignment};
 
@@ -146,17 +146,14 @@ fn fix(checker: &Checker, kind: Kind, value: &Expr, annotation: Option<&Expr>) -
     {
         edits.push(edit);
     }
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    let mut rest: Vec<Edit> = edits.collect();
     if immutable != "MappingProxyType" {
-        return Some(Fix::applicable_edits(first, rest, Applicability::Unsafe));
+        return fix_of(edits, Applicability::Unsafe);
     }
     match ensure_import(checker, "types", Some("MappingProxyType"), value.range())? {
-        Import::Present => Some(Fix::applicable_edits(first, rest, Applicability::Unsafe)),
+        Import::Present => fix_of(edits, Applicability::Unsafe),
         Import::Add(import) => {
-            rest.push(import);
-            Some(Fix::applicable_edits(first, rest, Applicability::Unsafe).isolate(IsolationLevel::Group(1)))
+            edits.push(import);
+            fix_of(edits, Applicability::Unsafe).map(|fix| fix.isolate(IsolationLevel::Group(1)))
         }
     }
 }

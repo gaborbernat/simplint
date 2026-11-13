@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Final
 
+from dc_options import IMPORTED_KW
+
 DC_KW = {"frozen": True, "slots": True}
 SLOTS_KW = {"slots": True}
 FROZEN_OFF = {"frozen": False}
@@ -12,6 +14,9 @@ FINAL_KW: Final = {"frozen": True}
 CALL_KW = dict(frozen=True)
 NESTED_KW = {**DC_KW, "slots": True}
 REPEATED_KW = {"frozen": True, "frozen": False}
+FROZEN_KEY = "frozen"
+KEYED_KW = {FROZEN_KEY: True}
+SPLAT_CALL_KW = dict(**SLOTS_KW)
 
 
 def get_kw() -> dict[str, bool]:
@@ -73,4 +78,19 @@ class Nested:
 
 @dataclass(**REPEATED_KW)
 class Repeated:
+    splat_marker: int
+
+
+@dataclass(**IMPORTED_KW)
+class Imported:
+    splat_marker: int
+
+
+@dataclass(**KEYED_KW)
+class Keyed:
+    splat_marker: int
+
+
+@dataclass(**SPLAT_CALL_KW)
+class SplatCall:
     splat_marker: int

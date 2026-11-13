@@ -201,3 +201,25 @@ def caught_by_standard_base(path: str) -> None:
 def undocumented_warning() -> None:
     """Warn."""
     raise UserWarning
+
+
+def caught_by_other(text: str) -> None:
+    """Parse a number.
+
+    :param text: The text.
+    """
+    try:
+        raise errors.ParseError(text)
+    except KeyError:
+        pass
+
+
+def caught_broadly(text: str) -> None:
+    """Parse a number.
+
+    :param text: The text.
+    """
+    try:
+        raise errors.ParseError(text)
+    except Exception:
+        pass

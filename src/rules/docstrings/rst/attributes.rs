@@ -62,8 +62,8 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                 }
             }
             Stmt::TypeAlias(ast::StmtTypeAlias { name, .. }) => {
-                if let Some(name) = name.as_name_expr() {
-                    add(name.id.as_str(), true, documented);
+                for name in target_names(name) {
+                    add(name, true, documented);
                 }
             }
             // A loop variable of the class body is a class variable, as an assignment to it is.

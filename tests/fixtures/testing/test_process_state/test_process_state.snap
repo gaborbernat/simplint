@@ -18,3 +18,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 50:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
 55:9 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
 70:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+151:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`

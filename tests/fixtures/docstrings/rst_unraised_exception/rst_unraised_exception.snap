@@ -9,7 +9,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 134:6 SMP925 `:raises KeyError:` documents `KeyError`, which `raised_by_helper_twice` never raises [unsafe fix: Remove `:raises KeyError:`]
 175:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `raised_with_cause` never raises [unsafe fix: Remove `:raises RuntimeError:`]
 204:6 SMP925 `:raises KeyError:` documents `KeyError`, which `unraised_over_display` never raises [unsafe fix: Remove `:raises KeyError:`]
---- fixed (7 applied, 0 remaining) ---
+214:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `unraised_subscript_other` never raises [unsafe fix: Remove `:raises RuntimeError:`]
+225:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `unraised_arithmetic` never raises [unsafe fix: Remove `:raises RuntimeError:`]
+235:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `unraised_beside_nested` never raises [unsafe fix: Remove `:raises RuntimeError:`]
+260:6 SMP925 `:raises RuntimeError:` documents `RuntimeError`, which `unraised_over_literal` never raises [unsafe fix: Remove `:raises RuntimeError:`]
+--- fixed (11 applied, 0 remaining) ---
 import json
 
 
@@ -207,3 +211,57 @@ def unraised_over_display() -> dict[str, int]:
     :returns: The counts.
     """
     return {name: 1 for name in ("a", "b")}
+
+
+def unraised_subscript_other(names: dict[str, str]) -> str:
+    """Return the first name.
+
+    :param names: The names.
+    :returns: The name.
+    """
+    return names["first"]
+
+
+def unraised_arithmetic(total: int, count: int) -> float:
+    """Average the total.
+
+    :param total: The total.
+    :param count: The count.
+    :returns: The average.
+    """
+    return total / count
+
+
+def unraised_beside_nested(text: str) -> str:
+    """Wrap a name.
+
+    :param text: The text.
+    :returns: The text.
+    """
+
+    def inner() -> str:
+        return text
+
+    return text
+
+
+def raised_by_division(total: int, count: int) -> float:
+    """Average the total.
+
+    :param total: The total.
+    :param count: The count.
+    :returns: The average.
+    :raises ZeroDivisionError: When the count is zero.
+    """
+    return total / count
+
+
+def unraised_over_literal(text: str) -> str:
+    """Join the parts.
+
+    :param text: The text.
+    :returns: The text.
+    """
+    for part in ("a", "b"):
+        text += part
+    return text

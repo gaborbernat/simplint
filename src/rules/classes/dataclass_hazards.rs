@@ -98,7 +98,8 @@ impl<'a> Fields<'a> {
             .iter()
             .filter_map(Stmt::as_ann_assign_stmt)
             .filter(|stmt| has_default(stmt.value.as_deref()))
-            .filter_map(|stmt| Some(stmt.target.as_name_expr()?.id.as_str()))
+            .filter_map(|stmt| stmt.target.as_name_expr())
+            .map(|target| target.id.as_str())
             .filter(|name| names.contains(name))
             .collect();
         Self {

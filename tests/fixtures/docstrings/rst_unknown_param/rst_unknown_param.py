@@ -132,3 +132,27 @@ class SpanRange:
     def __init__(self, start: int = 0, end: int = 0, *, length: int = 0) -> None:
         self.start = start
         self.end = end or start + length
+
+
+def first_line(path: str) -> str:
+    """:param gone_first: Shares the line of the opening quotes, so no whole line holds it."""
+    return path
+
+
+def with_meta(path: str) -> str:
+    """Load a file.
+
+    :meta public:
+    """
+    return path
+
+
+DECORATORS = [lambda cls: cls]
+
+
+@DECORATORS[0]
+class Decorated:
+    """Hold nothing.
+
+    :param value: The decorator may build a constructor that takes it.
+    """

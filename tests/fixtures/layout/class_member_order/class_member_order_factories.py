@@ -1,6 +1,8 @@
 import typing
 from typing import Self
 
+import typing_extensions
+
 
 class Date:
     def __init__(self, ordinal: int) -> None:
@@ -43,6 +45,10 @@ class Date:
 
     @classmethod
     def load(cls, text: str) -> typing.Self:
+        return cls.registry[text]
+
+    @classmethod
+    def extended(cls, text: str) -> typing_extensions.Self:
         return cls.registry[text]
 
     @classmethod

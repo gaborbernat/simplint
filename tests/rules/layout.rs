@@ -277,6 +277,21 @@ fn single_user_constant_still_reports_inlineable_value_at_local_limit() {
 #[test_case("0.0 ** -1.0", false ; "zero_float_to_negative_power")]
 #[test_case("7.5 % 2.0", true ; "float_modulo")]
 #[test_case("-7.5 % 2.0", true ; "float_modulo_with_negative_dividend")]
+#[test_case("2 * -None", false ; "right_operand_that_does_not_fold")]
+#[test_case("3 * b'a'", true ; "count_times_bytes")]
+#[test_case("3 * (1, 2)", true ; "count_times_tuple")]
+#[test_case("1j + 'a'", false ; "complex_plus_string")]
+#[test_case("(1,) * -1", false ; "tuple_repeated_negatively")]
+#[test_case("(1, 2) * 2 ** 63", false ; "tuple_repeated_beyond_index_size")]
+#[test_case("7 / 2", true ; "integer_true_division")]
+#[test_case("1 >> 200", true ; "right_shift_beyond_int_size")]
+#[test_case("-1 >> 200", true ; "negative_right_shift_beyond_int_size")]
+#[test_case("0 ** 5", true ; "zero_to_positive_power")]
+#[test_case("1 << 127", false ; "left_shift_beyond_i128_is_not_modelled")]
+#[test_case("-7 // 2", true ; "floor_division_rounding_down")]
+#[test_case("1.5 / 2.0", true ; "float_true_division")]
+#[test_case("(-2.0) ** 0.5", false ; "negative_float_to_fractional_power")]
+#[test_case("(-2.0) ** 2.0", true ; "negative_float_to_whole_power")]
 fn single_user_constant_reports_only_what_the_compiler_folds(value: &str, reported: bool) {
     let source = format!("_VALUE = {value}\n\n\ndef read() -> object:\n    return _VALUE\n");
     let root = common::project(&[("module.py", source.as_str())]);

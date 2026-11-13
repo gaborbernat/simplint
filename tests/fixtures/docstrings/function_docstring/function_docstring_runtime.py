@@ -1,3 +1,6 @@
+import abc
+import contextlib
+import enum
 import functools
 from dataclasses import dataclass
 from functools import cache
@@ -76,3 +79,28 @@ def _shelf_fixture() -> None:
 @pytest.mark.parametrize("value", [1])
 def _parametrized_shelf(value: int) -> None:
     """Check the shelf."""
+
+
+class _AbstractShelf(abc.ABC):
+    @abc.abstractmethod
+    def _stock(self) -> int:
+        """Count the stock."""
+
+
+@contextlib.contextmanager
+def _opened_shelf() -> object:
+    """Open the shelf."""
+    yield
+
+
+@contextlib.asynccontextmanager
+async def _opened_async_shelf() -> object:
+    """Open the shelf later."""
+    yield
+
+
+@enum.unique
+class _ShelfKind(enum.Enum):
+    """Kinds of shelf."""
+
+    WIDE = 1

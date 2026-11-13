@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 137
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 15:9 SMP203 `size` belongs with the properties, above `run` [unsafe fix: Move `size` above `run`]
@@ -23,7 +22,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 132:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
 143:9 SMP203 `__init__` belongs with the constructors, above `even` [fix: Move `__init__` above `even`]
 151:9 SMP203 `__new__` belongs above `__init__`, in the order Python runs the constructors [fix: Move `__new__` above `__init__`]
---- fixed (6 applied, 2 remaining) ---
+159:11 SMP203 `Options` belongs with the nested classes, above `__init__` [unsafe fix: Move `Options` above `__init__`]
+--- fixed (7 applied, 2 remaining) ---
 from functools import cached_property
 from typing import ClassVar, overload
 
@@ -173,6 +173,14 @@ class Recursive:
 class ConstructedTwice:
     def __new__(cls) -> "ConstructedTwice":
         return super().__new__(cls)
+
+    def __init__(self) -> None:
+        self.value = 0
+
+
+class ConstructedFirst:
+    class Options:
+        strict = True
 
     def __init__(self) -> None:
         self.value = 0

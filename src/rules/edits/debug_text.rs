@@ -46,29 +46,32 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
         return None;
     }
     let start = usize::from(field.range.start()) + 1;
-    let equals = start + debug.rfind('=')?;
+    // `debug` is the text before the expression, its source and the text after it through the `=`. An edit changes a name
+    // or a call either in the expression or in the conversion and format spec after `debug`.
+    let expression_end = start + debug.len() - field.debug.trailing().len();
     let (mut expression_edits, mut remainder_edits): (Vec<&Edit>, Vec<&Edit>) =
-        edits.iter().partition(|edit| usize::from(edit.start()) >= start && usize::from(edit.end()) <= equals);
-    let expression = splice(source, start, equals, &mut expression_edits)?;
-    let expression = expression.trim_end();
-    let remainder = splice(source, start + debug.len(), usize::from(field.range.end()) - 1, &mut remainder_edits)?;
+        edits.iter().partition(|edit| usize::from(edit.end()) <= expression_end);
+    let expression = splice(source, start, expression_end, &mut expression_edits);
+    let remainder = splice(source, start + debug.len(), usize::from(field.range.end()) - 1, &mut remainder_edits);
     let conversion = if remainder.is_empty() { "!r" } else { &remainder };
     let literal = escape_braces(debug).replace(quote, &format!("\\{quote}"));
-    Some(format!("{literal}{{{}{expression}{conversion}}}", if expression.starts_with('{') { " " } else { "" }))
+    // An inlined set or dict would start the field with `{{`, which Python reads as a literal brace.
+    let gap = if expression.starts_with('{') { " " } else { "" };
+    Some(format!("{literal}{{{gap}{expression}{conversion}}}"))
 }
 
-// The source between `from` and `to` with the edits inside it applied. `None` when an edit lies outside the span.
-fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<String> {
+// The source between `from` and `to` with the edits inside it applied.
+fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> String {
     edits.sort_by_key(|edit| usize::from(edit.start()));
     let mut text = String::new();
     let mut cursor = from;
     for edit in edits.iter() {
-        text.push_str(source.get(cursor..usize::from(edit.start()))?);
+        text.push_str(&source[cursor..usize::from(edit.start())]);
         text.push_str(edit.content().unwrap_or_default());
         cursor = usize::from(edit.end());
     }
-    text.push_str(source.get(cursor..to)?);
-    Some(text)
+    text.push_str(&source[cursor..to]);
+    text
 }
 
 // The text with each brace doubled, as an f-string spells a literal brace.
@@ -124,4 +127,23 @@ fn debug_field_of(element: &ast::InterpolatedStringElement, flags: ast::FStringF
         return None;
     };
     Some(DebugField { range: interpolation.range, debug: interpolation.debug_text.as_ref()?, flags })
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_diagnostics::Edit;
+    use ruff_python_parser::parse_module;
+    use ruff_text_size::{TextRange, TextSize};
+
+    use super::{DebugFields, debug_field};
+
+    #[test]
+    fn debug_field_puts_a_space_before_an_inlined_set() {
+        let source = "print(f\"{kinds=}\")\n";
+        let parsed = parse_module(source).expect("the source parses");
+        let fields = DebugFields::of(parsed.suite());
+        let name = TextRange::at(TextSize::from(9), TextSize::of("kinds"));
+        let edit = Edit::range_replacement("{1}".to_owned(), name);
+        assert_eq!(debug_field(source, &fields.fields[0], &[edit]).as_deref(), Some("kinds={ {1}!r}"));
+    }
 }

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextRange};
@@ -8,6 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::edits::fix_of;
 use crate::rules::testing::recognize::is_pytest_raises;
 use crate::semantic::Semantic;
 use crate::syntax::ReturnVisitor;
@@ -27,8 +28,8 @@ pub fn parametrize_without_id(checker: &Checker) {
                 continue;
             };
             if let Some(ids) = arguments.find_argument_value("ids", 3) {
-                if id_strings(ids).is_some() {
-                    let fix = ids_fix(checker, func, arguments, values, ids);
+                if let Some(id_values) = id_strings(ids) {
+                    let fix = ids_fix(checker, func, arguments, values, id_values);
                     report_ids_list(checker, ids, fix);
                 } else if is_module_id_strings(checker.semantic(), ids) {
                     report_ids_list(checker, ids, None);
@@ -91,13 +92,18 @@ fn report_ids_list(checker: &Checker, ids: &Expr, fix: Option<Fix>) {
     );
 }
 
-fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &Expr, ids: &Expr) -> Option<Fix> {
+fn ids_fix(
+    checker: &Checker,
+    func: &Expr,
+    arguments: &ast::Arguments,
+    values: &Expr,
+    id_values: &[Expr],
+) -> Option<Fix> {
     let keyword = arguments.find_keyword("ids")?;
     let argnames = argnames(arguments)?;
     let (Expr::List(ast::ExprList { elts: rows, .. }) | Expr::Tuple(ast::ExprTuple { elts: rows, .. })) = values else {
         return None;
     };
-    let id_values = id_strings(ids)?;
     if rows.len() != id_values.len() {
         return None;
     }
@@ -108,13 +114,10 @@ fn ids_fix(checker: &Checker, func: &Expr, arguments: &ast::Arguments, values: &
         let replacement = format!("{callee}({row_arguments}, id={})", checker.text(id));
         edits.push(Edit::range_replacement(replacement, row.range()));
     }
-    let removal = keyword_removal(arguments, keyword)?;
+    let removal = keyword_removal(arguments, keyword);
     edits.push(Edit::range_deletion(removal));
-    edits.sort_by_key(Ranged::start);
     let commented = checker.has_comment_in(removal.cover(values.range()));
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(if commented { Fix::unsafe_edits(first, edits) } else { Fix::safe_edits(first, edits) })
+    fix_of(edits, if commented { Applicability::Unsafe } else { Applicability::Safe })
 }
 
 // How pytest hands a row to the test: a row is taken whole only for a string naming one argument, without a trailing
@@ -174,8 +177,9 @@ fn is_literal_row(row: &Expr) -> bool {
 }
 
 // The text from the end of the argument before the keyword to its end, or, for a first argument, from its start to
-// the next one, so the other arguments keep their commas.
-fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> Option<TextRange> {
+// the next one, so the other arguments keep their commas. The fix needs the argument names beside `ids=`, so one of
+// the two always exists.
+fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> TextRange {
     let before = arguments
         .args
         .iter()
@@ -184,7 +188,7 @@ fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> Option
         .filter(|end| *end <= keyword.start())
         .max();
     if let Some(start) = before {
-        return Some(TextRange::new(start, keyword.end()));
+        return TextRange::new(start, keyword.end());
     }
     let after = arguments
         .args
@@ -192,8 +196,9 @@ fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> Option
         .map(Ranged::start)
         .chain(arguments.keywords.iter().map(Ranged::start))
         .filter(|start| *start >= keyword.end())
-        .min()?;
-    Some(TextRange::new(keyword.start(), after))
+        .min()
+        .unwrap_or(keyword.end());
+    TextRange::new(keyword.start(), after)
 }
 
 // The rows a list holds: its elements, and the elements of a starred list or tuple, written inline or a name bound once
@@ -345,9 +350,9 @@ fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
             text.bytes().all(|byte| matches!(byte, b' '..=b'~') && byte != b'\\').then_some(Cow::Borrowed(text))
         }
         Expr::BooleanLiteral(_) | Expr::NoneLiteral(_) => Some(Cow::Owned(checker.text(element).to_owned())),
-        Expr::NumberLiteral(number) => number_id(checker, number).map(Cow::Owned),
+        Expr::NumberLiteral(number) => Some(Cow::Owned(number_id(checker, number))),
         Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::USub, operand, .. }) => {
-            let id = number_id(checker, operand.as_number_literal_expr()?)?;
+            let id = number_id(checker, operand.as_number_literal_expr()?);
             Some(Cow::Owned(if id == "0" { id } else { format!("-{id}") }))
         }
         _ => None,
@@ -356,38 +361,37 @@ fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
 
 // The id pytest gives a number: an integer in decimal, a float as Python's `repr` prints it, and a complex or an
 // integer too large for `u64` as its source text.
-fn number_id(checker: &Checker, number: &ast::ExprNumberLiteral) -> Option<String> {
+fn number_id(checker: &Checker, number: &ast::ExprNumberLiteral) -> String {
     match &number.value {
-        ast::Number::Int(int) => Some(int.as_u64().map_or_else(|| checker.text(number).to_owned(), |v| v.to_string())),
+        ast::Number::Int(int) => int.as_u64().map_or_else(|| checker.text(number).to_owned(), |v| v.to_string()),
         ast::Number::Float(float) => float_id(*float),
-        ast::Number::Complex { .. } => Some(checker.text(number).to_owned()),
+        ast::Number::Complex { .. } => checker.text(number).to_owned(),
     }
 }
 
 // Python's `repr` of a float: the shortest digits that read back as the same value, in fixed notation from 1e-4 up to
 // 1e16 and in exponent notation beyond.
-fn float_id(value: f64) -> Option<String> {
+fn float_id(value: f64) -> String {
     if value.is_infinite() {
-        return Some("inf".to_owned());
+        return "inf".to_owned();
     }
     let scientific = format!("{value:e}");
-    let (mantissa, exponent) = scientific.split_once('e')?;
-    let exponent: i32 = exponent.parse().ok()?;
+    let (mantissa, exponent) = scientific.split_once('e').expect("a finite float formats with an exponent");
+    let exponent: i32 = exponent.parse().expect("the exponent is an integer");
     let digits: String = mantissa.chars().filter(|digit| *digit != '.').collect();
     let point = exponent + 1;
     if !(-4..16).contains(&exponent) {
         let (first, rest) = digits.split_at(1);
         let fraction = if rest.is_empty() { String::new() } else { format!(".{rest}") };
         let exponent_sign = if exponent < 0 { '-' } else { '+' };
-        return Some(format!("{first}{fraction}e{exponent_sign}{:02}", exponent.unsigned_abs()));
+        return format!("{first}{fraction}e{exponent_sign}{:02}", exponent.unsigned_abs());
     }
-    let fixed = match usize::try_from(point) {
+    match usize::try_from(point) {
         Ok(whole) if whole >= digits.len() => format!("{digits}{}.0", "0".repeat(whole - digits.len())),
         Ok(whole) if whole > 0 => {
             let (whole, fraction) = digits.split_at(whole);
             format!("{whole}.{fraction}")
         }
         _ => format!("0.{}{digits}", "0".repeat(point.unsigned_abs() as usize)),
-    };
-    Some(fixed)
+    }
 }

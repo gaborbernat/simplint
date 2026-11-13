@@ -1,6 +1,6 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
-use ruff_python_ast::helpers::{StoredNameFinder, body_without_leading_docstring, is_dunder};
+use ruff_python_ast::helpers::{StoredNameFinder, is_dunder};
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -179,9 +179,9 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     if !is_identifier(&local) || checker.name_token_count(&local) > 0 {
         return None;
     }
-    let anchor = body_without_leading_docstring(&function.body)
-        .iter()
-        .find(|candidate| candidate.range().contains_range(constant.references[0]))?;
+    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before it.
+    let anchor =
+        &function.body[function.body.partition_point(|stmt| stmt.start() <= constant.references[0].start()) - 1];
     // A body on the `def` line, as in `def f(): return _X`, has no line of its own to declare the local on, and its
     // statements move onto lines of their own, where `ruff format` would put them.
     let on_header = has_leading_content(function.body[0].start(), source);

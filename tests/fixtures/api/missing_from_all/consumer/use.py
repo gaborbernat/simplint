@@ -40,3 +40,4 @@ from _missing_from_all_last_comma_line import gamma as comma_line_gamma
 IMPORTED = (_missing_from_all_imported.sys, Path, join, run)
 from _missing_from_all_parenthesized_tail import gamma as tail_gamma
 from _missing_from_all_parenthesized_next import beta as next_beta
+from _missing_from_all_noall_no_eol import shared_no_eol

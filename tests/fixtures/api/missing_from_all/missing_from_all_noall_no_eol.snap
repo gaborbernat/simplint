@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP401 `shared_no_eol` is imported by other modules; list it in `__all__` [unsafe fix: Add `shared_no_eol` to `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def shared_no_eol() -> int:
+    return 1
+
+
+__all__ = [
+    "shared_no_eol",
+]
