@@ -197,7 +197,9 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn fixing_rules(fixes: &FixTable) -> impl Iterator<Item = Rule> {
-        fixes.iter().filter_map(|(_, code, _)| Rule::from_code(code?.as_str()))
+        fixes.iter().map(|(_, code, _)| {
+            code.and_then(|code| Rule::from_code(code.as_str())).expect("a simplint fix comes from a simplint rule")
+        })
     }
 
     fn reapplies(&self, source: &str) -> Result<bool, FixBug> {
@@ -440,7 +442,7 @@ fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
         .iter()
         .enumerate()
         .filter(|(_, diagnostic)| diagnostic.fix().is_some())
-        .filter_map(|(index, diagnostic)| Some((index, rule_of(diagnostic)?)))
+        .map(|(index, diagnostic)| (index, rule_of(diagnostic).expect("a simplint fix comes from a simplint rule")))
         .collect();
     reports.sort_by_key(|&(index, _)| diagnostics[index].range().map(TextRange::start));
     let mut occurrences = FxHashMap::<(Rule, &str, &str), usize>::default();

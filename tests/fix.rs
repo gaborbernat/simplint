@@ -143,6 +143,16 @@ fn check_show_fixes_lists_what_was_fixed() {
 }
 
 #[test]
+fn check_show_fixes_lists_each_fixed_rule() {
+    let root = project(&[("module.py", SECTIONED_DOCUMENTED)]);
+    assert_eq!(
+        check(root.path(), &["--fix", "--unsafe-fixes", "--show-fixes", "--select", "SMP001,SMP901"]).1,
+        "\nFixed 2 errors:\n- module.py:\n    1 × SMP901 (function-docstring)\n    1 × SMP001 (section-comment)\n\nFound 2 \
+         errors (2 fixed, 0 remaining).\n"
+    );
+}
+
+#[test]
 fn check_fix_on_read_only_file_is_reported() {
     let root = project(&[("module.py", SECTIONED)]);
     make_read_only(&root.path().join("module.py"));
@@ -235,6 +245,13 @@ fn fix_leaves_formatting_to_ruff_format() {
     "SMP202",
     "\n\ndef limit() -> int:\n    return 3\n"
     ; "lets_ruff_clean_up_what_it_disturbed"
+)]
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"F401\"]\n",
+    "def run() -> int:\n    import os\n    return 1\n    print(os.sep)\n",
+    "SMP535",
+    "def run() -> int:\n    return 1\n"
+    ; "lets_ruff_remove_a_local_import_it_left_unused"
 )]
 #[test_case(
     "[tool.ruff.lint]\nselect = [\"ANN201\"]\n",
@@ -605,7 +622,8 @@ fn fix_keeps_a_line_length_noqa_when_ruff_removes_unused_ones() {
     assert_eq!(read(root.path(), "a.py"), format!("from b import shown\n\n{long}\n\n__all__ = [\n    \"shown\",\n]\n"));
 }
 
-// Ruff sorts an import block only once `ruff format` moves the statement after its `;` to a line of its own.
+// Ruff sorts an import block only once `ruff format` moves the statement after its `;` to a line of its own. A `;`
+// after any other statement stays.
 #[test]
 fn fix_lets_ruff_sort_an_import_block_it_joins_across_a_semicolon() {
     let source = r#"import os
@@ -616,14 +634,15 @@ import sys; sys.setrecursionlimit(100)
 
 
 def run() -> str:
+    print(os); print(sys)
     return os.sep
 "#;
     let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"I001\"]\n"), ("module.py", source)]);
     check(root.path(), &["--fix", "--select", "SMP406"]);
     assert_eq!(
         read(root.path(), "module.py"),
-        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = \
-         [\"run\"]\n"
+        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    print(os); print(sys)\n    \
+         return os.sep\n\n\n__all__ = [\"run\"]\n"
     );
 }
 

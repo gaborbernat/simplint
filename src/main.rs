@@ -47,16 +47,17 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     // Deeply nested source, such as a list nested thousands of levels deep, recurses past the default stack of a thread
     // in the parser and in every visitor, so the work and rayon's workers get a larger one.
-    let worker = thread::Builder::new().stack_size(STACK_SIZE).spawn(move || {
-        ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global()?;
-        run(cli)
-    });
-    let status = worker
-        .map_err(anyhow::Error::from)
-        .and_then(|worker| worker.join().unwrap_or_else(|panic| resume_unwind(panic)));
-    match status {
-        Ok(status) => status.into(),
-        Err(error) => report_error(&error),
+    let worker = thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(move || {
+            ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global().expect("nothing built the pool before");
+            run(cli)
+        })
+        .expect("the process can start its first thread");
+    match worker.join() {
+        Ok(Ok(status)) => status.into(),
+        Ok(Err(error)) => report_error(&error),
+        Err(panic) => resume_unwind(panic),
     }
 }
 
@@ -66,7 +67,7 @@ fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
     if let Some(color) = colored_override(global_options.color, std::env::var_os("FORCE_COLOR")) {
         colored::control::set_override(color);
     }
-    set_up_logging(global_options.log_level())?;
+    set_up_logging(global_options.log_level());
     match command {
         Command::Check(args) => return check(&args, &global_options),
         Command::Rule { rule, all, output_format } => {
@@ -100,7 +101,7 @@ fn colored_override(color: Option<TerminalColor>, force_color: Option<OsString>)
 
 // Ruff's `set_up_logging`, without the warnings Ruff gives about its own configuration while simplint resolves it:
 // `ruff check` already shows them, and simplint would repeat them on every run.
-fn set_up_logging(level: LogLevel) -> Result<()> {
+fn set_up_logging(level: LogLevel) {
     fern::Dispatch::new()
         .format(|out, message, record| match record.level() {
             log::Level::Error => out.finish(format_args!("{}{} {message}", "error".red().bold(), ":".bold())),
@@ -126,8 +127,8 @@ fn set_up_logging(level: LogLevel) -> Result<()> {
                     && (metadata.target() != "ruff_linter::noqa" || lint::ruff::directive_warnings_shown()))
         })
         .chain(std::io::stderr())
-        .apply()?;
-    Ok(())
+        .apply()
+        .expect("nothing set a logger before");
 }
 
 // As `ruff` does: a failed run prints its cause chain and exits 2, while a closed pipe ends the run quietly.

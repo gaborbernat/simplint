@@ -14,6 +14,7 @@ use ruff_python_ast::PythonVersion;
 use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
+use crate::cli::write_flushed;
 use crate::lint::registry::RuleSet;
 use crate::project::{Ending, cache};
 use crate::run::{
@@ -34,14 +35,9 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         }
         _ => Box::new(BufWriter::new(std::io::stdout())),
     };
-    if cli.show_settings {
-        show_settings(&files, &resolved, &mut writer)?;
-        writer.flush()?;
-        return Ok(ExitStatus::Success);
-    }
-    if cli.show_files {
-        show_files(&files, &resolved, &mut writer)?;
-        writer.flush()?;
+    if cli.show_settings || cli.show_files {
+        let text = if cli.show_settings { show_settings(&files, &resolved)? } else { show_files(&files, &resolved)? };
+        write_flushed(&mut writer, [text])?;
         return Ok(ExitStatus::Success);
     }
     let run = &resolved.settings_resolver.root.run;
@@ -108,9 +104,7 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
     // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
     diagnostics.diffs.sort_by(|left, right| left.0.cmp(&right.0));
-    for (_, diff) in &diagnostics.diffs {
-        write!(std::io::stdout().lock(), "{diff}")?;
-    }
+    write_flushed(&mut std::io::stdout().lock(), diagnostics.diffs.iter().map(|(_, diff)| diff))?;
     // With fixed source going to standard output, the report goes to standard error.
     if is_stdin && !mode.fix.is_generate() && cli.output_file.is_none() {
         writer = Box::new(std::io::stderr());
@@ -120,7 +114,6 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     } else {
         printer.write_once(&diagnostics, &mut writer)?;
     }
-    writer.flush()?;
     let status = exit_status(cli, &diagnostics, fix_only);
     // The output is out, so the run's results go to the exit rather than being freed one by one.
     Ending::Exit.end(diagnostics);
@@ -138,100 +131,93 @@ fn reads_stdin(cli: &CheckCommand) -> bool {
     true
 }
 
-fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
+fn show_settings(files: &[PathBuf], resolved: &Resolved) -> Result<String> {
     let Discovered { python, resolver, missing, .. } = discover(files, resolved)?;
     warn_missing(&missing);
     let Some(path) = python.first() else {
         bail!("No files found under the given path");
     };
     let settings = resolved.settings_resolver.for_file(path)?;
-    writeln!(writer, "Resolved settings for: {:?}", path.display().to_string())?;
-    if let Some(settings_path) = &settings.path {
-        writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
-    }
+    let settings_path = settings
+        .path
+        .as_ref()
+        .map(|settings_path| format!("Settings path: {:?}\n", settings_path.display().to_string()));
     let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
-    write_settings(writer, &settings, target_version, resolved.cache_dir.as_deref().map(cache::directory).as_deref())?;
-    Ok(())
+    let cache_dir = resolved.cache_dir.as_deref().map(cache::directory);
+    Ok(format!(
+        "Resolved settings for: {:?}\n{}{}",
+        path.display().to_string(),
+        settings_path.unwrap_or_default(),
+        settings_text(&settings, target_version, cache_dir.as_deref())
+    ))
 }
 
 // `ruff check --show-settings`'s layout, with simplint's settings and the Python version Ruff gives the file.
-fn write_settings(
-    writer: &mut dyn Write,
-    settings: &Settings,
-    target_version: PythonVersion,
-    cache_dir: Option<&Path>,
-) -> std::io::Result<()> {
+fn settings_text(settings: &Settings, target_version: PythonVersion, cache_dir: Option<&Path>) -> String {
     let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
     let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
     let Settings { root, metadata, run, knobs, api, docstring_style, .. } = settings;
     let [enabled, fixable, forced_safe, forced_unsafe] = settings.rule_sets();
-    writeln!(writer, "\n# General Settings")?;
-    match cache_dir {
-        Some(cache_dir) => writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?,
-        None => writeln!(writer, "cache_dir = none")?,
-    }
-    writeln!(writer, "fix = {}", run.fix.unwrap_or_default())?;
-    writeln!(writer, "fix_only = {}", run.fix_only.unwrap_or_default())?;
-    writeln!(writer, "output_format = {}", run.output_format.unwrap_or_default())?;
-    writeln!(writer, "show_fixes = {}", run.show_fixes.unwrap_or_default())?;
-    writeln!(writer, "unsafe_fixes = {}", run.unsafe_fixes())?;
-    writeln!(writer, "\n# Linter Settings")?;
-    writeln!(writer, "linter.project_root = \"{}\"", root.display())?;
-    writeln!(writer, "linter.target_version = {target_version}")?;
-    write_list(writer, "linter.rules.enabled", &rules(enabled))?;
-    write_list(writer, "linter.rules.should_fix", &rules(fixable))?;
     let per_file_ignores = settings.per_file_ignores().map(|(pattern, set)| format!("{pattern:?} = {:?}", rules(set)));
-    write_list(writer, "linter.per_file_ignores", &per_file_ignores.collect_vec())?;
-    write_list(writer, "linter.safety_table.forced_safe", &rules(forced_safe))?;
-    write_list(writer, "linter.safety_table.forced_unsafe", &rules(forced_unsafe))?;
-    write_list(writer, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
-    write_list(writer, "linter.declared_dependencies", &quoted(&mut metadata.declared.iter()))?;
-    write_list(writer, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
-    writeln!(writer, "linter.max_paragraph_words = {}", knobs.max_paragraph_words)?;
-    write_list(writer, "linter.naming.keep_names", &quoted(&mut knobs.keep_names.iter()))?;
-    write_list(writer, "linter.naming.meaningless_names", &quoted(&mut knobs.meaningless_names.iter()))?;
-    write_list(writer, "linter.naming.catch_all_modules", &quoted(&mut knobs.catch_all_modules.iter()))?;
-    write_list(writer, "linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter()))?;
-    write_list(writer, "linter.imports.module_attribute_scope", &quoted(&mut knobs.module_attribute_scope.iter()))?;
-    writeln!(writer, "linter.logic.max_helper_statements = {}", knobs.max_helper_statements)?;
-    writeln!(writer, "linter.logic.max_caller_statements = {}", knobs.max_caller_statements)?;
-    writeln!(writer, "linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements)?;
-    writeln!(writer, "linter.logic.max_cognitive_complexity = {}", knobs.max_cognitive_complexity)?;
-    writeln!(writer, "linter.logic.min_duplicate_statements = {}", knobs.min_duplicate_statements)?;
-    writeln!(writer, "linter.logic.max_expression_complexity = {}", knobs.max_expression_complexity)?;
-    writeln!(writer, "linter.classes.max_instance_attributes = {}", knobs.max_instance_attributes)?;
-    writeln!(writer, "linter.project_kind = {}", api.kind)?;
-    match &api.packages {
-        Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,
-        None => writeln!(writer, "linter.api_packages = every module outside docs and tests")?,
-    }
-    match docstring_style {
-        Some(style) => writeln!(writer, "linter.docstring_style = {style}"),
-        None => writeln!(writer, "linter.docstring_style = none"),
-    }
+    let lines = [
+        "\n# General Settings".to_owned(),
+        format!("cache_dir = {}", cache_dir.map_or_else(|| "none".to_owned(), |dir| format!("\"{}\"", dir.display()))),
+        format!("fix = {}", run.fix.unwrap_or_default()),
+        format!("fix_only = {}", run.fix_only.unwrap_or_default()),
+        format!("output_format = {}", run.output_format.unwrap_or_default()),
+        format!("show_fixes = {}", run.show_fixes.unwrap_or_default()),
+        format!("unsafe_fixes = {}", run.unsafe_fixes()),
+        "\n# Linter Settings".to_owned(),
+        format!("linter.project_root = \"{}\"", root.display()),
+        format!("linter.target_version = {target_version}"),
+        list("linter.rules.enabled", &rules(enabled)),
+        list("linter.rules.should_fix", &rules(fixable)),
+        list("linter.per_file_ignores", &per_file_ignores.collect_vec()),
+        list("linter.safety_table.forced_safe", &rules(forced_safe)),
+        list("linter.safety_table.forced_unsafe", &rules(forced_unsafe)),
+        list("linter.dependencies", &quoted(&mut metadata.dependencies.iter())),
+        list("linter.declared_dependencies", &quoted(&mut metadata.declared.iter())),
+        list("linter.entry_points", &quoted(&mut metadata.entry_points.iter())),
+        format!("linter.max_paragraph_words = {}", knobs.max_paragraph_words),
+        list("linter.naming.keep_names", &quoted(&mut knobs.keep_names.iter())),
+        list("linter.naming.meaningless_names", &quoted(&mut knobs.meaningless_names.iter())),
+        list("linter.naming.catch_all_modules", &quoted(&mut knobs.catch_all_modules.iter())),
+        list("linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter())),
+        list("linter.imports.module_attribute_scope", &quoted(&mut knobs.module_attribute_scope.iter())),
+        format!("linter.logic.max_helper_statements = {}", knobs.max_helper_statements),
+        format!("linter.logic.max_caller_statements = {}", knobs.max_caller_statements),
+        format!("linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements),
+        format!("linter.logic.max_cognitive_complexity = {}", knobs.max_cognitive_complexity),
+        format!("linter.logic.min_duplicate_statements = {}", knobs.min_duplicate_statements),
+        format!("linter.logic.max_expression_complexity = {}", knobs.max_expression_complexity),
+        format!("linter.classes.max_instance_attributes = {}", knobs.max_instance_attributes),
+        format!("linter.project_kind = {}", api.kind),
+        match &api.packages {
+            Some(packages) => list("linter.api_packages", &quoted(&mut packages.iter())),
+            None => "linter.api_packages = every module outside docs and tests".to_owned(),
+        },
+        format!(
+            "linter.docstring_style = {}",
+            docstring_style.map_or_else(|| "none".to_owned(), |style| style.to_string())
+        ),
+    ];
+    lines.iter().format_with("", |line, f| f(&format_args!("{line}\n"))).to_string()
 }
 
-fn write_list(writer: &mut dyn Write, name: &str, items: &[String]) -> std::io::Result<()> {
+fn list(name: &str, items: &[String]) -> String {
     if items.is_empty() {
-        return writeln!(writer, "{name} = []");
+        return format!("{name} = []");
     }
-    writeln!(writer, "{name} = [")?;
-    for item in items {
-        writeln!(writer, "\t{item},")?;
-    }
-    writeln!(writer, "]")
+    format!("{name} = [\n{}]", items.iter().format_with("", |item, f| f(&format_args!("\t{item},\n"))))
 }
 
-fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
+fn show_files(files: &[PathBuf], resolved: &Resolved) -> Result<String> {
     let discovered = discover(files, resolved)?;
     warn_missing(&discovered.missing);
     if discovered.python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
     }
-    for path in &discovered.python {
-        writeln!(writer, "{}", path.to_string_lossy())?;
-    }
-    Ok(())
+    Ok(discovered.python.iter().format_with("", |path, f| f(&format_args!("{}\n", path.to_string_lossy()))).to_string())
 }
 
 // The source comes from standard input, which is linted as the file it stands for.
