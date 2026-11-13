@@ -1,9 +1,9 @@
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Comprehension, Expr, ExprContext, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, CmpOp, Comprehension, Expr, ExprContext, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -42,10 +42,10 @@ pub fn mutable_module_constant(checker: &Checker) {
     if candidates.is_empty() {
         return;
     }
-    let escaped = Reads::escaped(checker, candidates.iter().map(|(target, ..)| target.id.as_str()).collect());
+    let reads = Reads::of(checker, candidates.iter().map(|&(target, _, _, kind)| (target.id.as_str(), kind)).collect());
     for (target, annotation, value, kind) in candidates {
         let name = target.id.as_str();
-        if escaped.contains(name) {
+        if reads.escaped.contains(name) {
             continue;
         }
         let immutable = kind.immutable(checker.target_version());
@@ -53,7 +53,7 @@ pub fn mutable_module_constant(checker: &Checker) {
             Rule::MutableModuleConstant,
             target.range,
             format!("`{name}` is a {} that nothing changes; make it a `{immutable}`", kind.noun()),
-            fix(checker, kind, value, annotation),
+            (!reads.typed.contains(name)).then(|| fix(checker, kind, value, annotation)).flatten(),
             format!("Make `{name}` a `{immutable}`"),
         );
     }
@@ -117,8 +117,8 @@ fn final_type(annotation: &Expr) -> Option<Option<&Expr>> {
     }
 }
 
-// Callers may rely on the list, set or dict API, such as `+` with a list or `|` with a set of another kind, so the fix is
-// unsafe. An annotation the fix cannot follow, such as `typing.List[str]`, leaves it off.
+// Code this module cannot see, such as a caller of a function that returns a slice of the value, may still rely on the
+// list, set or dict API, so the fix is unsafe. An annotation the fix cannot follow, such as `typing.List[str]`, leaves it off.
 fn fix(checker: &Checker, kind: Kind, value: &Expr, annotation: Option<&Expr>) -> Option<Fix> {
     let immutable = kind.immutable(checker.target_version());
     let mut edits = value_edits(checker, kind, value, immutable);
@@ -191,35 +191,55 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
 // Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method that leaves it as it
 // is, iterates it, tests it, compares it, or passes it to a built-in that copies or reads it. Anything else, such as
 // passing it to another function or returning it, may hand it to code that changes it.
+//
+// Some reads see the type itself, so the immutable value would change what they do: a list compares unequal to a tuple,
+// `+` mixes them only by raising, a `tuple` has no `copy`, an operator on a `frozenset` or a mapping view returns another
+// type than before, and `isinstance`, `type`, `repr`, `str` and `print` show the new type.
 struct Reads<'a> {
-    names: FxHashSet<&'a str>,
+    names: FxHashMap<&'a str, Kind>,
     reading: FxHashSet<TextRange>,
     escaped: FxHashSet<&'a str>,
+    typed: FxHashSet<&'a str>,
 }
 
 impl<'a> Reads<'a> {
-    fn escaped(checker: &Checker<'a>, names: FxHashSet<&'a str>) -> FxHashSet<&'a str> {
-        let mut reads = Self { names, reading: FxHashSet::default(), escaped: FxHashSet::default() };
+    fn of(checker: &Checker<'a>, names: FxHashMap<&'a str, Kind>) -> Self {
+        let mut reads =
+            Self { names, reading: FxHashSet::default(), escaped: FxHashSet::default(), typed: FxHashSet::default() };
         reads.visit_body(checker.body());
-        reads.escaped
+        reads
     }
 
-    fn read(&mut self, expr: &Expr) {
+    fn read(&mut self, expr: &'a Expr) {
         if let Expr::Name(name) = expr
-            && self.names.contains(name.id.as_str())
+            && self.names.contains_key(name.id.as_str())
         {
             self.reading.insert(name.range);
         }
     }
+
+    // A read whose result depends on the type, for a constant of one of the kinds.
+    fn typed_read(&mut self, expr: &'a Expr, kinds: &[Kind]) {
+        self.read(expr);
+        if let Expr::Name(name) = expr
+            && self.names.get(name.id.as_str()).is_some_and(|kind| kinds.contains(kind))
+        {
+            self.typed.insert(name.id.as_str());
+        }
+    }
 }
 
+const KINDS: [Kind; 3] = [Kind::List, Kind::Set, Kind::Dict];
+
+// Built-ins whose result shows the type of their argument.
+const TYPE_BUILTINS: [&str; 5] = ["isinstance", "type", "repr", "str", "print"];
+
 // Methods that read a list, set or dict without changing it.
-const READ_METHODS: [&str; 13] = [
+const READ_METHODS: [&str; 12] = [
     "get",
     "keys",
     "values",
     "items",
-    "copy",
     "index",
     "count",
     "union",
@@ -231,7 +251,7 @@ const READ_METHODS: [&str; 13] = [
 ];
 
 // Built-ins that read or copy their arguments.
-const READING_BUILTINS: [&str; 22] = [
+const READING_BUILTINS: [&str; 18] = [
     "len",
     "sorted",
     "list",
@@ -250,10 +270,6 @@ const READING_BUILTINS: [&str; 22] = [
     "min",
     "max",
     "reversed",
-    "isinstance",
-    "repr",
-    "str",
-    "print",
 ];
 
 // Methods that read their argument without keeping it.
@@ -298,7 +314,7 @@ impl<'a> Visitor<'a> for Reads<'a> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
-            Expr::Name(ast::ExprName { id, ctx, range, .. }) if self.names.contains(id.as_str()) => {
+            Expr::Name(ast::ExprName { id, ctx, range, .. }) if self.names.contains_key(id.as_str()) => {
                 // The one store is the definition, as the name is not rebound.
                 if matches!(ctx, ExprContext::Del) || matches!(ctx, ExprContext::Load) && !self.reading.contains(range)
                 {
@@ -306,15 +322,28 @@ impl<'a> Visitor<'a> for Reads<'a> {
                 }
             }
             Expr::Subscript(ast::ExprSubscript { value, ctx: ExprContext::Load, .. }) => self.read(value),
+            Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Load, .. }) if attr == "copy" => {
+                self.typed_read(value, &[Kind::List]);
+            }
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Load, .. })
                 if READ_METHODS.contains(&attr.as_str()) =>
             {
                 self.read(value);
             }
-            Expr::Compare(ast::ExprCompare { operands, .. }) => operands.iter().for_each(|operand| self.read(operand)),
+            Expr::Compare(compare) => {
+                // Only the container of a membership test is not compared as a whole.
+                let last = compare.ops.len();
+                for (index, operand) in compare.operands.iter().enumerate() {
+                    if index == last && matches!(compare.ops[last - 1], CmpOp::In | CmpOp::NotIn) {
+                        self.read(operand);
+                    } else {
+                        self.typed_read(operand, &[Kind::List]);
+                    }
+                }
+            }
             Expr::BinOp(ast::ExprBinOp { left, right, .. }) => {
-                self.read(left);
-                self.read(right);
+                self.typed_read(left, &KINDS);
+                self.typed_read(right, &KINDS);
             }
             Expr::BoolOp(ast::ExprBoolOp { values, .. }) => values.iter().for_each(|value| self.read(value)),
             Expr::UnaryOp(ast::ExprUnaryOp { operand, .. }) => self.read(operand),
@@ -322,6 +351,11 @@ impl<'a> Visitor<'a> for Reads<'a> {
             Expr::Starred(ast::ExprStarred { value, .. }) => self.read(value),
             Expr::Dict(ast::ExprDict { items, .. }) => {
                 items.iter().filter(|item| item.key.is_none()).for_each(|item| self.read(&item.value));
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. })
+                if func.as_name_expr().is_some_and(|builtin| TYPE_BUILTINS.contains(&builtin.id.as_str())) =>
+            {
+                arguments.args.iter().for_each(|argument| self.typed_read(argument, &KINDS));
             }
             Expr::Call(ast::ExprCall { func, arguments, .. }) => {
                 let reads_arguments = match func.as_ref() {

@@ -37,24 +37,33 @@ lowercase = ["a"]
 __all__ = ["reader"]
 TUPLE = ("a",)
 OTHER_CALL = sorted("abc")
+COMPARED = ["a"]
+ORDERED = ["a"]
+MEMBER_OF = ["a"]
+CONTAINER = ["a"]
+SET_COMPARED = {"a"}
+COMBINED = {"a"}
+COPIED = ["a"]
+SHOWN = {"a": 1}
+CHECKED = ["a"]
 
 
 def reader(key: str) -> object:
     for suffix in SUFFIXES:
         print(suffix)
     if ONE and len(ONE_COMMA) > 0:
-        print(SQUARES[0], [*LETTERS], {**CODES}, INVERSE.get(1))
+        zip(SQUARES[0], [*LETTERS], {**CODES}, INVERSE.get(1))
     while key in EVENS:
         break
     assert FROM_CALL
-    print(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE)
-    print({item for item in FINAL_TYPED if item in FINAL_DICT}, ABSTRACT, MAPPING, TYPING_LIST, QUOTED)
-    print(",".join(SUFFIXES), not TYPED, CODES.keys() | {"x"})
+    zip(sorted(SET_CALL), DICT_CALL.items(), _PRIVATE + lower, -len(TYPED), TYPED_BARE)
+    zip({item for item in FINAL_TYPED if item in FINAL_DICT}, ABSTRACT, MAPPING, TYPING_LIST, QUOTED)
+    zip(",".join(SUFFIXES), not TYPED, CODES.keys() | {"x"})
     CHANGED.append(key)
     SUBSCRIPT_WRITTEN[key] = 1
     del DELETED["a"]
     PASSED.sort()
-    print(lowercase, TUPLE, OTHER_CALL, REBOUND)
+    zip(lowercase, TUPLE, OTHER_CALL, REBOUND)
     return RETURNED
 
 
@@ -66,3 +75,10 @@ def extend() -> None:
 def shadow() -> list[str]:
     LOCAL_ONLY = ["a"]
     return LOCAL_ONLY
+
+
+def typed(key: str) -> bool:
+    zip(COMPARED == [key], ORDERED < [key], MEMBER_OF in [[key]], SET_COMPARED == {key}, COMBINED | {key})
+    zip(COPIED.copy(), isinstance(CHECKED, list))
+    print(SHOWN)
+    return key in CONTAINER

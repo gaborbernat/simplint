@@ -156,10 +156,28 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
 | `list(...)`, `set(...)` or `dict(...)` call | calls `tuple`, `frozenset` or `frozendict`, or wraps `dict(...)` before 3.15       |  ✗   |
 | annotation `list[T]`, `set[T]`, `dict[K,V]` | becomes `tuple[T, ...]`, `frozenset[T]` or the mapping type, inside `Final` too    |  ✗   |
 | annotation `typing.List` or a string        | no fix                                                                             |      |
+| a read that sees the type, listed below      | no fix                                                                             |      |
 
-The fix is unsafe: code may rely on the list, set or dict API, such as `+` with another list, `|` with a set, or the
-`copy()` method a tuple lacks. An abstract annotation, such as `Sequence[str]`, already fits the immutable value and
-stays.
+A read in the module that sees the type leaves the fix off, as the immutable value would change what it does:
+
+- **A list compared**: a tuple never equals a list, and ordering the two raises `TypeError`. Being the container of an
+  `in` test is fine.
+- **An operator**: `+` raises between a tuple and a list, and `|` on a `frozenset` or a mapping view returns a
+  `frozenset` or a `dict` where a `set` or the view came back before.
+- **`copy()` on a list**: a tuple has no `copy` method.
+- **`isinstance`, `type`, `repr`, `str` or `print`**: each shows the new type.
+
+```python report
+LEGACY = ["==2.1.0.3"]
+
+
+def is_legacy(specifier: str) -> bool:
+    return specifier in LEGACY + ["<1.0"]
+```
+
+The fix is still unsafe: code the module cannot see, such as a caller that compares what a function built from the
+value, may rely on the list, set or dict API. An abstract annotation, such as `Sequence[str]`, already fits the
+immutable value and stays.
 
 ```python report
 PORTS: dict[str, int] = {"http": 80}
