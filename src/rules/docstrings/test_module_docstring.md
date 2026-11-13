@@ -81,6 +81,18 @@ Checks for a module docstring in a test module.
   """Load the config file."""
   ```
 
+### Exceptions
+
+- **Docstrings with a copyright or license notice**: code copied from another project must keep the notice its license
+  asks for, such as a `Copyright` line, an `SPDX-License-Identifier` or the MIT permission text.
+
+  ```python ok file=tests/test_set.py
+  """Adapted from the pyrsistent test suite.
+
+  Copyright (c) 2022 Tobias Gustafsson. Permission is hereby granted, free of charge, to any person obtaining a copy.
+  """
+  ```
+
 ### Fix
 
 The fix deletes the docstring and the blank lines after it. A docstring that shares its line with the next statement

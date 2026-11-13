@@ -16,6 +16,7 @@ use crate::common;
 #[test_case("function-docstring", "facade/_helpers.py", None ; "function_docstring_shared_internally")]
 #[test_case("test-module-docstring", "tests/test_module_docstring.py", None ; "test_module_docstring")]
 #[test_case("test-module-docstring", "tests/test_module_docstring_inline.py", None ; "test_module_docstring_inline")]
+#[test_case("test-module-docstring", "tests/test_module_docstring_license.py", None ; "test_module_docstring_license")]
 #[test_case("test-module-docstring", "multiline_module_docstring.py", None ; "test_module_docstring_non_test")]
 #[test_case("undocumented-public-api", "undocumented_public_api.py", None ; "undocumented_public_api")]
 #[test_case(

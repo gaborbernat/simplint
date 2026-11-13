@@ -14,6 +14,9 @@ pub fn test_module_docstring(checker: &Checker) {
     let Some(literal) = docstring(body) else {
         return;
     };
+    if carries_notice(literal.value.to_str()) {
+        return;
+    }
     // A file-level `ruff: noqa` may name codes that only the docstring triggers, so the docstring stays.
     let fix = (!checker.state().has_file_noqa(checker))
         .then(|| docstring_deletion(checker, body))
@@ -29,4 +32,12 @@ pub fn test_module_docstring(checker: &Checker) {
         fix,
         "Remove the docstring",
     );
+}
+
+// Code copied from another project has to keep its copyright and license notice.
+fn carries_notice(text: &str) -> bool {
+    let text = text.to_lowercase();
+    ["copyright", "\u{a9}", "spdx-license-identifier", "licensed under", "permission is hereby granted"]
+        .iter()
+        .any(|marker| text.contains(marker))
 }
