@@ -4,9 +4,7 @@ use std::ops::Range;
 use super::blocks::Classified;
 use super::directives::rst_walk;
 use super::lines::Line;
-use super::punctuation::{
-    CLOSER_CHARS, CLOSERS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, OPENERS, match_chars,
-};
+use super::punctuation::{CLOSERS, OPENERS, ends_before, match_chars, starts_after};
 
 // A `:role:target` with no backticks: where the role starts, where its target starts and ends, and whether backticks
 // around the target make a valid reference.
@@ -32,7 +30,7 @@ pub(crate) fn bare_roles(lines: &[Classified]) -> Vec<BareRole> {
         let masked = escape_mask(&joined);
         let plain = blank(&masked, &inline_spans(&masked));
         for (index, _) in plain.match_indices(':') {
-            if index > 0 && !starts_after(plain[..index].chars().next_back()) {
+            if index > 0 && !plain[..index].chars().next_back().is_some_and(starts_after) {
                 continue;
             }
             let rest = &plain[index + 1..];
@@ -188,7 +186,7 @@ impl<'a> Scanner<'a> {
     fn next_candidate(&mut self, base: usize) -> Option<(usize, Candidate<'a>, usize)> {
         let text = self.text;
         text[base..].char_indices().map(|(offset, _)| base + offset).find_map(|at| {
-            if at > base && !starts_after(text[..at].chars().next_back()) {
+            if at > base && !text[..at].chars().next_back().is_some_and(starts_after) {
                 return None;
             }
             let (candidate, matchend) = self.candidate_at(at)?;
@@ -219,7 +217,7 @@ impl<'a> Scanner<'a> {
         if name > 0 {
             let end = at + name;
             let underscores = if text[end..].starts_with("__") { 2 } else { 1 };
-            if text[end..].starts_with('_') && ends_after(text[end + underscores..].chars().next()) {
+            if text[end..].starts_with('_') && text[end + underscores..].chars().next().is_none_or(ends_before) {
                 return Some((Candidate::Reference, end + underscores));
             }
         }
@@ -309,7 +307,7 @@ impl<'a> Scanner<'a> {
             for (role, role_length) in suffix.into_iter().chain([(None, 0)]) {
                 for refend in [2, 1, 0] {
                     let marks = &text[at + 1 + role_length..];
-                    if marks.starts_with(&"__"[..refend]) && ends_after(marks[refend..].chars().next()) {
+                    if marks.starts_with(&"__"[..refend]) && marks[refend..].chars().next().is_none_or(ends_before) {
                         return Some(Close { at, role, refend: refend > 0, end: at + 1 + role_length + refend });
                     }
                 }
@@ -393,7 +391,7 @@ fn construct_token(text: &str, at: usize, construct: Construct) -> Option<usize>
     let rest = &text[at..];
     markers
         .iter()
-        .find(|marker| rest.starts_with(**marker) && ends_after(rest[marker.len()..].chars().next()))
+        .find(|marker| rest.starts_with(**marker) && rest[marker.len()..].chars().next().is_none_or(ends_before))
         .map(|marker| marker.len())
 }
 
@@ -406,20 +404,6 @@ fn quoted(text: &str, base: usize, start: usize, matchend: usize) -> bool {
         None => true,
         Some(after) => text[..start].chars().next_back().is_some_and(|before| match_chars(before, after)),
     }
-}
-
-fn starts_after(before: Option<char>) -> bool {
-    before.is_some_and(|char| char.is_whitespace() || OPENER_CHARS.contains(&char) || DELIMITER_CHARS.contains(&char))
-}
-
-fn ends_after(after: Option<char>) -> bool {
-    after.is_none_or(|char| {
-        char.is_whitespace()
-            || char == '\0'
-            || CLOSER_CHARS.contains(&char)
-            || DELIMITER_CHARS.contains(&char)
-            || CLOSING_DELIMITER_CHARS.contains(&char)
-    })
 }
 
 fn non_space(after: Option<char>) -> bool {

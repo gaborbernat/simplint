@@ -4,7 +4,7 @@ use crate::project::FileFacts;
 use crate::project::receivers::ANY_ATTRIBUTE;
 
 use super::files::FileId;
-use super::reach::unqualified;
+use crate::syntax::last_dotted_segment;
 
 #[derive(Default)]
 pub(super) struct Writes {
@@ -61,7 +61,7 @@ impl Writes {
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
         for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
-            *writes.namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
+            *writes.namesakes.entry(last_dotted_segment(class).to_owned()).or_default() += 1;
         }
         writes
     }

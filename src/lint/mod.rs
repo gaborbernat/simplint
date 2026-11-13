@@ -12,11 +12,11 @@ use ruff_db::diagnostic::{Diagnostic, Span};
 use ruff_linter::SuppressionKind;
 use ruff_linter::package::PackageRoot;
 use ruff_linter::settings::flags;
-use ruff_python_ast::PySourceType;
+use ruff_python_ast::{ModModule, PySourceType};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
-use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, parse_unchecked};
-use ruff_source_file::SourceFileBuilder;
+use ruff_python_parser::{ParseOptions, Parsed, UnsupportedSyntaxError, parse_unchecked};
+use ruff_source_file::{SourceFile, SourceFileBuilder};
 use ruff_text_size::TextSize;
 
 use crate::lint::checker::Checker;
@@ -32,6 +32,16 @@ pub struct Linter<'a> {
     pub ruff: RuffFile<'a>,
     // Whether the file's directory holds an `__init__.py`, when a rule reads it; the run checks only then.
     pub sibling_init: bool,
+}
+
+// One parse of a file's source, with the indexes built from its tokens.
+#[derive(Clone, Copy)]
+pub struct Parse<'a> {
+    pub path: &'a Path,
+    pub file: &'a SourceFile,
+    pub parsed: &'a Parsed<ModModule>,
+    pub indexer: &'a Indexer,
+    pub stylist: &'a Stylist<'a>,
 }
 
 // A file's reports and the syntax errors its target version rejects, both from one parse of its source. With `noqa`
@@ -103,9 +113,9 @@ impl<'a> Linter<'a> {
         }
         let indexer = Indexer::from_tokens(parsed.tokens(), source);
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
-        let suppressions = Suppressions::new(path, source, &parsed, &indexer, &stylist);
-        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self, &suppressions)
-            .run(include_unused_ignore.then_some(&suppressions));
+        let parse = Parse { path, file: &file, parsed: &parsed, indexer: &indexer, stylist: &stylist };
+        let suppressions = Suppressions::new(parse);
+        let diagnostics = Checker::new(parse, self, &suppressions).run(include_unused_ignore.then_some(&suppressions));
         (unsupported, Ok(then(diagnostics, &suppressions)))
     }
 

@@ -8,7 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::is_type_checking;
 use crate::semantic::future_import;
-use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, import_aliases, is_name};
+use crate::syntax::{Exports, alias_binding, all_binding, builds_all, import_aliases, is_name};
 
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
@@ -46,7 +46,7 @@ fn is_reexport(stmt: &Stmt, exports: &Exports, facade: bool) -> bool {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
             future_import(stmt).is_some() || names.iter().all(|alias| is_reexported_alias(alias, exports, facade))
         }
-        _ => all_binding(stmt).is_some() || all_mutation(stmt).is_some() || is_lazy_modules_binding(stmt),
+        _ => builds_all(stmt) || is_lazy_modules_binding(stmt),
     }
 }
 

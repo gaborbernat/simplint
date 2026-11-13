@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::rules::logic::inline::Names;
-use crate::syntax::{Nesting, target_names};
+use crate::syntax::{Nesting, target_names, top_level};
 
 // The module and each function of a file, nested ones included, with what the local-variable rules read off each. A
 // rule asks only for the scopes its cheap syntactic trigger points at, and the first rule to ask builds the answer for
@@ -129,7 +129,7 @@ impl<'a> Visitor<'a> for NameUses<'a> {
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
                     let bound = alias.asname.as_ref().unwrap_or(&alias.name);
-                    let name = bound.as_str().split('.').next().unwrap_or_default();
+                    let name = top_level(bound.as_str());
                     self.stores.entry(name).or_default().push(bound.range());
                 }
             }

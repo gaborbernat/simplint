@@ -1,6 +1,6 @@
 use super::blocks::Classified;
 use super::lines::leading_whitespace;
-use super::punctuation::{CLOSER_CHARS, CLOSING_DELIMITER_CHARS, DELIMITER_CHARS, OPENER_CHARS, match_chars};
+use super::punctuation::{ends_before, match_chars, starts_after};
 
 // What is wrong with an inline literal or a backtick run, and so what the rule says.
 #[derive(Debug, PartialEq, Eq)]
@@ -196,7 +196,7 @@ fn open_literals(units: &[(char, usize)]) -> Vec<Finding> {
 fn start_at(units: &[(char, usize)], index: usize, segment: usize) -> Option<usize> {
     let double = units.get(index + 1).is_some_and(|&(next, _)| next == '`');
     let after = index + 1 + usize::from(double);
-    let prefixed = index == segment || units[index - 1].0.is_whitespace() || starts_after(units[index - 1].0);
+    let prefixed = index == segment || starts_after(units[index - 1].0);
     let spaced = units.get(after).is_some_and(|&(next, _)| next.is_whitespace());
     (prefixed && !spaced).then_some(after)
 }
@@ -261,7 +261,7 @@ fn backtick_runs(units: &[(char, usize)]) -> Vec<(usize, usize)> {
 
 // Whether the backticks at `start` can open markup: whitespace or punctuation before them, and no space after.
 fn opens_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
-    let prefixed = start == 0 || units[start - 1].0.is_whitespace() || starts_after(units[start - 1].0);
+    let prefixed = start == 0 || starts_after(units[start - 1].0);
     prefixed && units.get(start + len).is_some_and(|&(next, _)| !next.is_whitespace())
 }
 
@@ -319,18 +319,7 @@ fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
 }
 
 fn ends_at(units: &[(char, usize)], index: usize) -> bool {
-    units.get(index).is_none_or(|&(char, _)| {
-        char.is_whitespace()
-            || char == '\0'
-            || CLOSER_CHARS.contains(&char)
-            || DELIMITER_CHARS.contains(&char)
-            || CLOSING_DELIMITER_CHARS.contains(&char)
-    })
-}
-
-// Whether a start-string may follow `char`, besides whitespace: an opening bracket or quote, or a delimiter.
-fn starts_after(char: char) -> bool {
-    OPENER_CHARS.contains(&char) || DELIMITER_CHARS.contains(&char)
+    units.get(index).is_none_or(|&(char, _)| ends_before(char))
 }
 
 #[cfg(test)]

@@ -288,24 +288,29 @@ pub fn instance_attributes(class: &ast::StmtClassDef) -> Vec<(&str, TextRange)> 
 // The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
 // modules pick an implementation by version, availability or platform.
 pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
-    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
+    module_statements_with_next(body).map(|(stmt, _)| stmt)
+}
+
+// Each statement of `module_statements` with the one after it in its own block, where a docstring for it would sit.
+pub fn module_statements_with_next(body: &[Stmt]) -> impl Iterator<Item = (&Stmt, Option<&Stmt>)> {
+    body.iter().enumerate().flat_map(|(index, stmt)| -> Box<dyn Iterator<Item = (&Stmt, Option<&Stmt>)> + '_> {
         match stmt {
             Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
-                module_statements(body)
-                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
+                module_statements_with_next(body)
+                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements_with_next(&clause.body))),
             ),
             Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                Box::new(cases.iter().flat_map(|case| module_statements(&case.body)))
+                Box::new(cases.iter().flat_map(|case| module_statements_with_next(&case.body)))
             }
             Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
-                module_statements(body)
+                module_statements_with_next(body)
                     .chain(handlers.iter().flat_map(|handler| match handler {
-                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
+                        ast::ExceptHandler::ExceptHandler(handler) => module_statements_with_next(&handler.body),
                     }))
-                    .chain(module_statements(orelse))
-                    .chain(module_statements(finalbody)),
+                    .chain(module_statements_with_next(orelse))
+                    .chain(module_statements_with_next(finalbody)),
             ),
-            _ => Box::new(std::iter::once(stmt)),
+            _ => Box::new(std::iter::once((stmt, body.get(index + 1)))),
         }
     })
 }
@@ -542,6 +547,11 @@ pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
     Some((attribute.attr.as_str(), &call.arguments))
 }
 
+// The statement binds `__all__` or changes it in place.
+pub fn builds_all(stmt: &Stmt) -> bool {
+    all_binding(stmt).is_some() || all_mutation(stmt).is_some()
+}
+
 impl<'a> Listing<'a> {
     fn new(names: Vec<&'a str>) -> Self {
         Self { members: names.iter().copied().collect(), names }
@@ -566,21 +576,26 @@ impl<'a> Listing<'a> {
 // name that `extend` or `append` adds.
 pub fn export_names(body: &[Stmt]) -> FxHashSet<&str> {
     let mut names = FxHashSet::default();
-    module_scope_statements(body, &mut |stmt| {
-        if let Some(value) = export_value(stmt) {
-            add_export_names(value, &mut names);
-        }
-    });
+    for value in scope_statements(body).into_iter().filter_map(|stmt| all_binding(stmt)?.value) {
+        add_export_names(value, &mut names);
+    }
     names
 }
 
-fn module_scope_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a Stmt)) {
-    for stmt in body {
-        visit(stmt);
-        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            for_each_child_body(stmt, &mut |child| module_scope_statements(child, visit));
+// Every statement of the scope `body` opens, nested blocks included. Function and class bodies bind in their own scope,
+// so they are skipped.
+pub fn scope_statements(body: &[Stmt]) -> Vec<&Stmt> {
+    fn collect<'a>(body: &'a [Stmt], found: &mut Vec<&'a Stmt>) {
+        for stmt in body {
+            found.push(stmt);
+            if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                for_each_child_body(stmt, &mut |child| collect(child, found));
+            }
         }
     }
+    let mut found = Vec::new();
+    collect(body, &mut found);
+    found
 }
 
 pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
@@ -612,17 +627,6 @@ pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt]
             }
         }
         _ => {}
-    }
-}
-
-fn export_value(stmt: &Stmt) -> Option<&Expr> {
-    match stmt {
-        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.first().is_some_and(is_all_target) => {
-            Some(value)
-        }
-        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => value.as_deref(),
-        Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) if is_all_target(target) => Some(value),
-        _ => None,
     }
 }
 

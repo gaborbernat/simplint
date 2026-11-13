@@ -9,9 +9,7 @@ use crate::rules::logic::modernize::{module_attribute_read, rename_attribute};
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    // `re.prefixmatch` is the same function as `re.match` from Python 3.15, so the rename keeps the behavior. A name
-    // imported from `re` is not reported, since renaming it would also rename its uses. An assignment or `del` patches
-    // the module, where a rename would patch the other name. A name bound to another module as well may be that one.
+    // `re.prefixmatch` is the same function as `re.match` from Python 3.15, so the rename keeps the behavior.
     let Some(attribute) = module_attribute_read(checker, expr, &["re", "match"]) else {
         return;
     };

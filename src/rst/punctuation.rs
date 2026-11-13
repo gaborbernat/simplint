@@ -56,10 +56,24 @@ pub(crate) fn match_chars(opener: char, closer: char) -> bool {
         || QUOTE_PAIRS.iter().any(|(open, closers)| *open == opener && closers.contains(closer))
 }
 
-pub(crate) static OPENER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(OPENERS));
-pub(crate) static CLOSER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSERS));
-pub(crate) static DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(DELIMITERS));
-pub(crate) static CLOSING_DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSING_DELIMITERS));
+// Whether a start-string may follow `before`: whitespace, an opening bracket or quote, or a delimiter.
+pub(crate) fn starts_after(before: char) -> bool {
+    before.is_whitespace() || OPENER_CHARS.contains(&before) || DELIMITER_CHARS.contains(&before)
+}
+
+// Whether an end-string may precede `after`: whitespace, a closing bracket or quote, or a delimiter.
+pub(crate) fn ends_before(after: char) -> bool {
+    after.is_whitespace()
+        || after == '\0'
+        || CLOSER_CHARS.contains(&after)
+        || DELIMITER_CHARS.contains(&after)
+        || CLOSING_DELIMITER_CHARS.contains(&after)
+}
+
+static OPENER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(OPENERS));
+static CLOSER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSERS));
+static DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(DELIMITERS));
+static CLOSING_DELIMITER_CHARS: LazyLock<HashSet<char>> = LazyLock::new(|| members(CLOSING_DELIMITERS));
 
 // The characters a regular expression character class matches: `\x` stands for `x`, and `a-b` for the characters from
 // `a` through `b`, as docutils' classes use both.

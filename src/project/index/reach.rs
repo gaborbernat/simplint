@@ -80,10 +80,6 @@ pub(super) fn signature_reached(
     (listed, exposed)
 }
 
-pub(super) fn unqualified(class: &str) -> &str {
-    class.rsplit_once('.').map_or(class, |(_, name)| name)
-}
-
 // A module whose `__getattr__` supplies names lazily offers only what it defines, since the names it re-exports are
 // not all known. A public name an entry point or build hook loads is reached whatever `__all__` says, since the tool
 // that loads it is outside the run.

@@ -44,18 +44,12 @@ pub fn all_format(checker: &Checker) {
         let has_comment = all_list.has_comment(checker);
         let items = all_list.items(checker);
         let base = leading_indentation(checker.source.full_line_str(value.start()));
-        let comma = checker
-            .parsed
-            .tokens()
-            .after(last.end())
-            .iter()
-            .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment | TokenKind::Rpar))
-            .filter(|token| token.kind() == TokenKind::Comma);
+        let after_last = checker.parenthesized_range(last, value.into()).end();
+        let comma = checker.next_significant_token(after_last) == Some(TokenKind::Comma);
         // With `skip-magic-trailing-comma`, `ruff format` drops the comma from a list that fits on one line.
         let magic = checker.settings.from_ruff.magic_trailing_comma;
-        let after_last = checker.parenthesized_range(last, value.into()).end();
         if is_list {
-            if comma.is_none() && magic {
+            if !comma && magic {
                 // Ruff's COM812 reports a list whose closing bracket follows a line break with no comma before it.
                 // The list is left to it only while Ruff runs it: `ruff format` joins a list that fits on one line
                 // once simplint is done, and the list would come back to this rule on the next run.
@@ -89,7 +83,7 @@ pub fn all_format(checker: &Checker) {
                 "]".to_owned(),
                 TextRange::at(value.end() - TextSize::from(1), TextSize::from(1)),
             );
-            let edits = (comma.is_none() && magic).then(|| Edit::insertion(",".to_owned(), after_last));
+            let edits = (!comma && magic).then(|| Edit::insertion(",".to_owned(), after_last));
             Fix::unsafe_edits(open, std::iter::once(close).chain(edits))
         } else if magic {
             Fix::unsafe_edit(Edit::range_replacement(exploded(checker, base, &items), value.range()))

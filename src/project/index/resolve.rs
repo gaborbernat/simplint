@@ -19,7 +19,7 @@ use ty_module_resolver::{
 use crate::project::constructors::{NameUse, UseKind};
 use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames, Signature};
 use crate::project::{Ending, FileFacts};
-use crate::syntax::is_stdlib_root;
+use crate::syntax::{is_stdlib_root, last_dotted_segment};
 
 use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
@@ -452,7 +452,7 @@ fn unreached_names<'f>(
             };
             let package = resolved(top)?;
             let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
-            let last = rest.rsplit_once('.').map_or(rest, |(_, name)| name);
+            let last = last_dotted_segment(rest);
             resolved(module).is_none().then(|| UnreachedPath {
                 package: directory,
                 last: last.to_owned(),
@@ -472,7 +472,7 @@ fn star_targets<'f>(
     for module in modules {
         match resolve(module) {
             Some(file) => stars.extend((file != own).then_some(file)),
-            None => unresolved.push(module.rsplit_once('.').map_or(module.as_str(), |(_, name)| name).to_owned()),
+            None => unresolved.push(last_dotted_segment(module).to_owned()),
         }
     }
     (stars, unresolved)
@@ -495,7 +495,7 @@ fn constructor_reads<'f>(
     if reads.is_empty() {
         return Vec::new();
     }
-    let last = module.rsplit_once('.').map_or(module, |(_, name)| name);
+    let last = last_dotted_segment(module);
     match run.namesakes.get(last) {
         Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
         _ => Vec::new(),

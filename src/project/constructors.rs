@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
@@ -480,8 +481,7 @@ pub(crate) fn init_fields(
     }
     let mut fields: Vec<String> = Vec::new();
     for base in class.bases() {
-        let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
-        match UnqualifiedName::from_expr(base).as_ref().map(UnqualifiedName::segments) {
+        match UnqualifiedName::from_expr(map_subscript(base)).as_ref().map(UnqualifiedName::segments) {
             Some([.., "Generic" | "ABC" | "object" | "Protocol"]) => {}
             Some([name]) if fields.is_empty() => fields = base_fields(name)?,
             _ => return None,
