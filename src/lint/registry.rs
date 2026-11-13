@@ -347,7 +347,7 @@ rules! {
     RangeLenLoop => ("SMP546", "range-len-loop", "`for i in range(len(seq))` loops that read `seq[i]`", Sometimes, logic::range_len_loop { module }),
     AccumulatorLoop => ("SMP547", "accumulator-loop", "Loops that only add to a string or number `join` or `sum` builds", Sometimes, logic::accumulator_loop { module }),
     EmptyCollectionComparison => ("SMP548", "empty-collection-comparison", "Comparisons with an empty list, tuple or dict literal", Sometimes, logic::empty_collection_comparison { expression }),
-    SliceAffixComparison => ("SMP549", "slice-affix-comparison", "Slices compared with a literal instead of `startswith` or `endswith`", Sometimes, logic::slice_affix_comparison { expression }),
+    SliceAffixComparison => ("SMP549", "slice-affix-comparison", "Slices compared with a literal instead of `startswith` or `endswith`", Sometimes, logic::slice_affix_comparison { expression } reads [cross_file]),
     AnchoredRegexMatch => ("SMP550", "anchored-regex-match", "`re.match` and `re.search` with a pattern anchored at both ends", Sometimes, logic::anchored_regex_match { expression }),
     WallClockDuration => ("SMP551", "wall-clock-duration", "Durations measured with `time.time()`", Sometimes, logic::wall_clock_duration { module }),
     ShadowedExceptHandler => ("SMP552", "shadowed-except-handler", "`except` clauses an earlier, broader clause already catches", Sometimes, logic::shadowed_except_handler { statement }),

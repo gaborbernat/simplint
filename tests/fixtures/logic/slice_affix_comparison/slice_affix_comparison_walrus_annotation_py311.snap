@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:12 SMP549 Comparing a slice with a literal of its length is `startswith`

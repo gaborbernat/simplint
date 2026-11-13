@@ -278,6 +278,15 @@ use crate::common::{self, check, read};
 #[test_case("accumulator-loop", "accumulator_loop.py", None ; "accumulator_loop")]
 #[test_case("empty-collection-comparison", "empty_collection_comparison.py", None ; "empty_collection_comparison")]
 #[test_case("slice-affix-comparison", "slice_affix_comparison.py", None ; "slice_affix_comparison")]
+#[test_case("slice-affix-comparison", "slice_affix_comparison_kinds.py", None ; "slice_affix_comparison_kinds")]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_walrus_annotation.py", Some("py311") ;
+    "slice_affix_comparison_walrus_annotation"
+)]
+#[test_case(
+    "slice-affix-comparison", "slice_affix_comparison_unpacked_comprehension.py", Some("py315") ;
+    "slice_affix_comparison_unpacked_comprehension"
+)]
 #[test_case("anchored-regex-match", "anchored_regex_match.py", None ; "anchored_regex_match")]
 #[test_case("wall-clock-duration", "wall_clock_duration.py", None ; "wall_clock_duration")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
