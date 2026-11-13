@@ -11,7 +11,7 @@ fn startup_pth_under_src_keeps_the_name() {
         ("src/pkg/hook.py", HOOK_PROJECT),
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP408");
     let without_pth = project(&[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/hook.py", HOOK_PROJECT),

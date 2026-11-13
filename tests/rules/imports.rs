@@ -1618,7 +1618,7 @@ fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, 
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "undeclared-dependency"]);
     let found: Vec<&str> =
-        stdout.lines().filter(|line| line.contains("SMP312")).filter_map(|line| line.split('`').nth(1)).collect();
+        common::reports(&stdout, "SMP312").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
     assert_eq!(found, reported, "{stdout}");
 }
 
@@ -1632,7 +1632,7 @@ fn undeclared_dependency_judges_each_module_of_an_import() {
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "undeclared-dependency"]);
     let found: Vec<&str> =
-        stdout.lines().filter(|line| line.contains("SMP312")).filter_map(|line| line.split('`').nth(1)).collect();
+        common::reports(&stdout, "SMP312").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
     assert_eq!(found, ["yaml"], "{stdout}");
 }
 
@@ -1651,7 +1651,7 @@ fn unused_dependency_reports_requirements_nothing_imports(project: &str, reporte
         ("tests/test_core.py", "import pytest_mock\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "unused-dependency"]);
-    let lines: Vec<&str> = stdout.lines().filter(|line| line.contains("SMP313")).collect();
+    let lines = common::reports(&stdout, "SMP313");
     let found: Vec<&str> = lines.iter().filter_map(|line| line.split('`').nth(1)).collect();
     assert_eq!(
         (found, lines.iter().all(|line| line.starts_with("pkg/__init__.py:1:1:"))),

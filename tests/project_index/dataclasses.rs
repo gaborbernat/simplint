@@ -103,7 +103,7 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
         ("models.py", &format!("__all__ = []\n\n{models}")),
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP703"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP703");
     let unsuppressed = project(&[
         ("pyproject.toml", DEMO_BUILD),
         ("models.py", &format!("__all__ = []\n\n{PARTITION}")),
@@ -217,7 +217,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP901"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP901");
     let unread =
         project(&[("pkg/__init__.py", ""), ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n")]);
     assert!(check(unread.path(), &["--select", "SMP901"]).1.contains("SMP901"));

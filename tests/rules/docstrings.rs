@@ -532,7 +532,7 @@ fn simple_name_shared_by_two_classes_reports_nothing() {
         ("docs/conf.py", ""),
         ("docs/api.rst", api),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP918");
 }
 
 // A module of a package is named by its dotted path from the package's root, so a directive that names it in full
@@ -849,7 +849,7 @@ fn rst_rules_need_the_docstring_style() {
             "def run(path: str) -> str:\n    \"\"\"Run.\n\n    :parm path: Where.\n    \"\"\"\n    return path\n",
         ),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP91,SMP92");
 }
 
 // Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document

@@ -60,7 +60,7 @@ fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
 #[test]
 fn named_ignore_needs_no_migration() {
     let root = common::project(&[("module.py", "x = 1  # simplint: ignore[single-letter-name] # external name\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP008");
 }
 
 // Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them whether or not the project
@@ -128,7 +128,7 @@ fn blanket_ignore_is_left_to_ruff_blanket_rules(source: &str, code: &str, fragme
 #[test_case("A = 1  # type: ignore [attr-defined]\n" ; "type_ignore_codes")]
 fn named_type_ignore_after_spaces_is_not_blanket(source: &str) {
     let root = common::project(&[("module.py", source)]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP004"]).1, common::PASSED);
+    common::assert_clean(root.path(), "SMP004");
 }
 
 #[test]
