@@ -1,5 +1,5 @@
-Flags `:raises Error:` fields in a public API function's reStructuredText docstring for an exception the function
-never raises.
+Flags `:raises Error:` fields in a public API function's reStructuredText docstring for an exception the function never
+raises.
 
 ## Why is this bad?
 
@@ -43,7 +43,7 @@ def parse(text: str) -> str:
 - [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in
   `[tool.simplint]`: `"rst"` turns the rule on
 
-    ```toml config
+  ```toml config
   [project]
   name = "demo"
 
@@ -77,10 +77,11 @@ The fix removes the field. It is offered when the field's lines can be deleted o
 
 - **Bodies whose every source of exceptions is known**: the function's `raise` statements, the module functions and
   methods of the same class it calls by name, and operations that raise a built-in exception on their own. A field
-  matches by the exception's last name, and a field for a built-in base, such as `:raises OSError:`, matches a raised
-  subclass such as `FileNotFoundError`.
+  matches by the exception's last name or a second name, such as `IOError` for `OSError`, and a field for a base, such
+  as `:raises OSError:`, matches a raised subclass such as `FileNotFoundError`. The bases of built-in exceptions, of
+  common standard library exceptions and of the classes the file defines are known.
 
-    ```toml config
+  ```toml config
   [project]
   name = "demo"
 
@@ -114,7 +115,7 @@ The fix removes the field. It is offered when the field's lines can be deleted o
   comprehension over anything but a literal display, a `with`, an `await`, a `yield from`, or a `raise` of a value whose
   class is unknown. The rule then judges none of the function's fields.
 
-    ```toml config
+  ```toml config
   [project]
   name = "demo"
 
@@ -143,7 +144,7 @@ The fix removes the field. It is offered when the field's lines can be deleted o
   `TypeError`, an attribute read `AttributeError`, an arithmetic operator or comparison `ZeroDivisionError`,
   `ArithmeticError`, `OverflowError` or `TypeError`, and an `assert` `AssertionError`.
 
-    ```toml config
+  ```toml config
   [project]
   name = "demo"
 
@@ -168,7 +169,7 @@ The fix removes the field. It is offered when the field's lines can be deleted o
 - **A bare `raise` or a `raise` of the caught exception**: it re-raises whatever the surrounding handler catches, so
   each class the handler names counts as raised.
 
-    ```toml config
+  ```toml config
   [project]
   name = "demo"
 
@@ -203,8 +204,9 @@ The fix removes the field. It is offered when the field's lines can be deleted o
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** [DOC502](https://docs.astral.sh/ruff/rules/docstring-extraneous-exception/)
-  reports the same case in Google and numpydoc sections, and cannot read `:raises:` fields.
+- **[Ruff](https://github.com/astral-sh/ruff):**
+  [DOC502](https://docs.astral.sh/ruff/rules/docstring-extraneous-exception/) reports the same case in Google and
+  numpydoc sections, and cannot read `:raises:` fields.
 - [pydoclint](https://github.com/jsh9/pydoclint) reports documented exceptions the body does not raise as
   [DOC502 and DOC503](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
 - [darglint](https://github.com/terrencepreilly/darglint) reports them as

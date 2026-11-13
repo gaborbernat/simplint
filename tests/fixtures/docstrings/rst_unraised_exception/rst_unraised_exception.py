@@ -88,3 +88,38 @@ class Unraised:
         if not text:
             raise ValueError(text)
         return text
+
+
+def raised_warning_base() -> None:
+    """Warn.
+
+    :raises Warning: Always.
+    """
+    raise UserWarning
+
+
+def raised_standard_base(text: str) -> None:
+    """Decode a document.
+
+    :param text: The document.
+    :raises ValueError: When it is not JSON.
+    """
+    raise json.JSONDecodeError(text, text, 0)
+
+
+def raised_alias(path: str) -> None:
+    """Open a file.
+
+    :param path: The file.
+    :raises IOError: When it cannot be opened.
+    :raises socket.error: When it cannot be opened.
+    """
+    raise FileNotFoundError(path)
+
+
+def unraised_sibling() -> None:
+    """Warn.
+
+    :raises DeprecationWarning: Never.
+    """
+    raise UserWarning
