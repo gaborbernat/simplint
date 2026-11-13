@@ -87,6 +87,20 @@ function setupRulesTable(table) {
   document.documentElement.classList.remove("rules-filtering");
 }
 
+// Every page opens the sidebar at its top, so stepping through the rules would lose the reader's place in the list; the
+// template calls this right after the sidebar, which centers the current page's entry before the page paints. Furo
+// scrolls smoothly, which would animate the jump in after the paint instead.
+function centerCurrentPage() {
+  const scroller = document.querySelector(".sidebar-scroll");
+  const entry = scroller.querySelector(".current-page > .reference");
+  if (!entry) {
+    return;
+  }
+  const box = scroller.getBoundingClientRect();
+  const at = entry.getBoundingClientRect();
+  scroller.scrollBy({ top: at.top - box.top - (box.height - at.height) / 2, behavior: "instant" });
+}
+
 // each example's icon, placed by the build, toggles its dropdown
 function linkExamples() {
   for (const button of document.querySelectorAll("button.example-toggle")) {
