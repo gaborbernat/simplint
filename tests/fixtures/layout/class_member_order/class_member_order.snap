@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 125
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 8:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
@@ -13,10 +12,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 65:9 SMP203 `__init__` belongs with the constructors, above `load`
 73:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
 83:9 SMP203 `__init__` belongs with the constructors, above `load`
-96:9 SMP203 `__init__` belongs with the constructors, above `load`
+96:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
 99:9 SMP203 `__init__` belongs with the constructors, above `load`
 101:9 SMP203 `__init__` belongs with the constructors, above `load`
---- fixed (5 applied, 5 remaining) ---
+--- fixed (6 applied, 2 remaining) ---
 from typing import overload
 
 
@@ -105,10 +104,7 @@ class CtorAliased:
     ALIAS = __init__
 
 
-class CtorOverloadStuck:
-    def load(self) -> int:
-        return 1
-
+class CtorOverloadAfterAlias:
     Value = int
 
     @overload
@@ -119,3 +115,6 @@ class CtorOverloadStuck:
 
     def __init__(self, value: int | str) -> None:
         self.value = value
+
+    def load(self) -> int:
+        return 1

@@ -3,14 +3,15 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{ExprCollector, alias_binding, import_aliases, pattern_capture};
+use crate::syntax::{ExprCollector, alias_binding, import_aliases, is_property_accessor, pattern_capture};
 
 pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
     let mut runtime_names = ExprCollector::new(|expr| expr.as_name_expr().map(|name| name.id.as_str()));
     for stmt in &class.body {
         match stmt {
+            // `@name.setter` hands the property a new accessor without calling the getter `name` holds.
             Stmt::FunctionDef(function) => {
-                for expr in definition_time_exprs(function) {
+                for expr in definition_time_exprs(function).filter(|expr| !is_property_accessor(expr)) {
                     runtime_names.visit_expr(expr);
                 }
             }

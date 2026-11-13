@@ -2,9 +2,13 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-15:7 SMP201 `Payload` is defined before its first use in `Envelope`; move it below `Envelope` [unsafe fix: Move `Payload` below `Envelope`]
-38:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller`
+17:7 SMP201 `Payload` is defined before its first use in `Envelope`; move it below `Envelope` [unsafe fix: Move `Payload` below `Envelope`]
+40:7 SMP201 `Helper` is defined before its first use in `caller`; move it below `caller`
+60:7 SMP201 `Lease` is defined before its first use in `lease`; move it below `lease`
+69:7 SMP201 `Grant` is defined before its first use in `Vault`; move it below `Vault`
 --- fixed (1 applied, 0 remaining) ---
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from api import router
@@ -60,3 +64,26 @@ class Row:
 
     def fill(self) -> object:
         return Column()
+
+
+@contextmanager
+def lease() -> Iterator[Lease]:
+    yield Lease()
+
+
+class Lease:
+    pass
+
+
+class Vault:
+    @property
+    def grant(self) -> Grant:
+        return Grant()
+
+    @grant.setter
+    def grant(self, value: Grant) -> None:
+        pass
+
+
+class Grant:
+    pass

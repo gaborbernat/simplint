@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 from api import router
@@ -53,3 +55,26 @@ class Row:
 
     def fill(self) -> object:
         return Column()
+
+
+class Lease:
+    pass
+
+
+@contextmanager
+def lease() -> Iterator[Lease]:
+    yield Lease()
+
+
+class Grant:
+    pass
+
+
+class Vault:
+    @property
+    def grant(self) -> Grant:
+        return Grant()
+
+    @grant.setter
+    def grant(self, value: Grant) -> None:
+        pass

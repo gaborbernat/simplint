@@ -12,7 +12,7 @@ use super::reorder::{Read, Suite, depth_first, moved_span, moves_definition_unsa
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
-use crate::syntax::{decorator_callee, signature_annotations};
+use crate::syntax::signature_annotations;
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
@@ -46,9 +46,8 @@ fn definition_uses(
     let mut eager = eager_annotations(checker);
     eager.sort_unstable_by_key(Ranged::start);
     let import_time = import_time_functions(body, runtime_names);
-    // Decorators such as FastAPI routes or pydantic's `validate_call` read the annotations they decorate
-    // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
-    // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
+    // Some decorators read the annotations they decorate while the module loads, even when Python defers them. Without
+    // lazy annotations, a `def` evaluates its own signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
         Evaluation::Annotation if in_ranges(&eager, reference.range) => {
             if reference.function.is_none() {
@@ -108,20 +107,16 @@ fn definition_uses(
 }
 
 fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
+    let semantic = checker.semantic();
     let signatures = checker
         .function_defs()
         .iter()
-        .filter(|function| !function.decorator_list.is_empty())
+        .filter(|function| semantic.reads_annotations(&function.decorator_list))
         .flat_map(|function| signature_annotations(function).map(Ranged::range));
-    // The standard `dataclass` reads its fields' annotations as strings or forward references, so they may name a class
-    // defined later.
-    let is_dataclass = |decorator: &ast::Decorator| {
-        checker.semantic().resolves_to(decorator_callee(decorator), &["dataclasses", "dataclass"])
-    };
     let fields =
-        checker.class_defs().iter().filter(|class| !class.decorator_list.iter().all(is_dataclass)).flat_map(|class| {
-            class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
-        });
+        checker.class_defs().iter().filter(|class| semantic.reads_annotations(&class.decorator_list)).flat_map(
+            |class| class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range()),
+        );
     signatures.chain(fields).collect()
 }
 
