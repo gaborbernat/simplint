@@ -821,7 +821,10 @@ impl<'a> Visitor<'a> for ReturnVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
-            Stmt::Return(stmt) => self.returns.push(stmt),
+            Stmt::Return(ret) => {
+                self.returns.push(ret);
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }

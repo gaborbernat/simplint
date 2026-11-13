@@ -18,3 +18,11 @@ def numbers(limit: int) -> Iterator[int]:
     """
     probe = lambda: (yield)  # noqa: E731
     yield from range(limit) if probe else ()
+
+
+def echo() -> Iterator[int]:
+    """Echo what is sent.
+
+    :returns: The values sent.
+    """
+    return (yield 0)
