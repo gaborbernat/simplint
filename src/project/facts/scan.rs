@@ -21,6 +21,7 @@ pub(super) struct Scan<'a> {
     pub(super) discarded: FxHashSet<TextRange>,
     pub(super) words: FxHashSet<String>,
     pub(super) global_names: BTreeSet<String>,
+    pub(super) bound_marks: BTreeSet<String>,
     pub(super) modules: FxHashSet<String>,
     // Read once a body is walked, as the names it binds to modules may come later in the body.
     returns: Vec<Vec<&'a Expr>>,
@@ -35,6 +36,7 @@ impl<'a> Scan<'a> {
             discarded: FxHashSet::default(),
             words: FxHashSet::default(),
             global_names: BTreeSet::new(),
+            bound_marks: BTreeSet::new(),
             modules: FxHashSet::default(),
             returns: Vec::new(),
         };
@@ -118,11 +120,11 @@ impl<'a> Scan<'a> {
     // A conftest that binds a mark to a name, as `C_EXT = pytest.mark.c_extension`, registers it through
     // `config.addinivalue_line("markers", f"{C_EXT.name}: ...")`, which spells no name in a string.
     fn add_bound_mark(&mut self, value: &Expr) {
-        if self.parts.has(Parts::STRING_WORDS)
+        if self.parts.has(Parts::BOUND_MARKS)
             && let Expr::Attribute(ast::ExprAttribute { value: marks, attr, .. }) = value
             && UnqualifiedName::from_expr(marks).is_some_and(|name| name.segments().last() == Some(&"mark"))
         {
-            self.add_words(attr.as_str());
+            self.bound_marks.insert(attr.to_string());
         }
     }
 

@@ -394,7 +394,7 @@ rules! {
     TestReturnValue => ("SMP817", "test-return-value", "Test functions that return a value", Sometimes, testing::test_return_value { module }),
     TestWithoutAssertion => ("SMP818", "test-without-assertion", "Tests that check nothing", None, testing::test_without_assertion { module }),
     PytestDeprecatedApi => ("SMP819", "up-pytest-deprecated-api", "pytest APIs that pytest removed or no longer calls", Sometimes, testing::up_pytest_deprecated_api { module }),
-    UnregisteredMarker => ("SMP820", "unregistered-marker", "pytest marks the configuration does not register", None, testing::unregistered_marker { module } reads [cross_file, STRING_WORDS]),
+    UnregisteredMarker => ("SMP820", "unregistered-marker", "pytest marks the configuration does not register", None, testing::unregistered_marker { module } reads [cross_file, STRING_WORDS, BOUND_MARKS]),
     UncollectedTestModule => ("SMP821", "uncollected-test-module", "Test modules whose file name pytest does not collect", None, testing::uncollected_test_module { module } reads [cross_file, STRING_WORDS]),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file, docs] skips [nested]),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module } skips [nested]),

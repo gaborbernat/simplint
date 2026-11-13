@@ -30,6 +30,7 @@ pub(in crate::project) struct RunWide {
     // The class names more than one module-level class of the run defines, which a documentation reference by simple
     // name cannot tell apart.
     pub(super) class_namesakes: FxHashSet<String>,
+    pub(super) bound_marks: FxHashSet<String>,
 }
 
 pub(super) fn run_names(
@@ -73,6 +74,7 @@ pub(super) fn run_names(
         computed_reads,
         writes,
         class_namesakes: class_namesakes(indexed),
+        bound_marks: every(indexed, |facts| &facts.bound_marks),
     }
 }
 
@@ -158,6 +160,7 @@ impl RunWide {
             &self.fixture_requests,
             &self.opaque_names,
             &self.referenced_paths,
+            &self.bound_marks,
             &self.writes.untyped,
             &self.writes.dict_stores,
             &self.writes.unslottable_bases,
@@ -191,6 +194,7 @@ impl RunWide {
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
             .chain(self.fixture_requests.symmetric_difference(&other.fixture_requests))
             .chain(self.opaque_names.symmetric_difference(&other.opaque_names))
+            .chain(self.bound_marks.symmetric_difference(&other.bound_marks))
             .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
             .chain(

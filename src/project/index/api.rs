@@ -448,6 +448,10 @@ impl<'a> FileIndex<'a> {
         self.project.docs.class_doc_from(root, qualified, namesake)
     }
 
+    pub fn is_mark_bound(&self, name: &str) -> bool {
+        self.project.wide.bound_marks.contains(name)
+    }
+
     pub fn is_fixture_requested(&self, name: &str) -> bool {
         self.project.wide.fixture_requests.contains(name)
     }

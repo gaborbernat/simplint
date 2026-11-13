@@ -87,6 +87,7 @@ pub struct FileFacts {
     // A file holds thousands of words, which as one string the cache reads back in one allocation.
     pub(super) string_words: String,
     pub(super) global_names: Vec<String>,
+    pub(super) bound_marks: Vec<String>,
     pub(super) source_digest: u64,
     // The search roots change the module paths a relative import resolves against, while the file stays the same.
     module_digest: u64,
@@ -195,6 +196,7 @@ impl FileFacts {
             parts,
             string_words: string_words(scan.words),
             global_names: scan.global_names.into_iter().collect(),
+            bound_marks: scan.bound_marks.into_iter().collect(),
             source_digest: source_digest(source),
             module_digest: module_digest(module_path, importable),
         })
@@ -439,6 +441,9 @@ impl Parts {
     pub const IMPORTED_MODULES: Self = Self(1 << 12);
     // The positional parameters of the module's functions, which the rules that judge a call by its callee read.
     pub const SIGNATURES: Self = Self(1 << 13);
+    // The marks bound to a name, as `C_EXT = pytest.mark.c_extension`, which a conftest may register through the name,
+    // so `unregistered-marker` leaves them alone.
+    pub const BOUND_MARKS: Self = Self(1 << 14);
 
     #[must_use]
     pub fn with(self, part: Self) -> Self {
