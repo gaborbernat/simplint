@@ -2,26 +2,30 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-10:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-21:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-33:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-38:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-45:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-51:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-56:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-62:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-70:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-78:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-83:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-108:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-113:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-118:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
---- fixed (4 applied, 10 remaining) ---
+12:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+23:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+35:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+40:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+47:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+53:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+58:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+64:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+72:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+80:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+85:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+110:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+115:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+120:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+129:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+134:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+--- fixed (4 applied, 12 remaining) ---
 __all__ = []
 
 import functools
 from dataclasses import KW_ONLY, InitVar, dataclass, field
 from typing import ClassVar, Generic, TypeVar
+
+from dc_bases import ImportedBase, LaterBase
 
 Item = TypeVar("Item")
 
@@ -140,4 +144,18 @@ class Foreign(functools.partial):
 
 
 class Registry(metaclass=type):
+    pass
+
+
+@dataclass
+class FromImported(ImportedBase):
+    value: int
+
+
+@dataclass
+class FromLater(LaterBase):
+    value: int
+
+
+class LaterBase:
     pass

@@ -70,6 +70,11 @@ class _IerrMixed(_IerrBase, ValueError):
     pass
 
 
+class _IerrNestedStore(Exception):
+    def tag(self) -> None:
+        self.context.tag = 1
+
+
 def guard() -> None:
     try:
         raise _IerrOwn()

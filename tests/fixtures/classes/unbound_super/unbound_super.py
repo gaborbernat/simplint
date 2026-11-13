@@ -51,3 +51,6 @@ class Child(Base):
 
     def in_dict_comprehension(self):
         return {item: super().method() for item in super().items()}
+
+    def in_set_comprehension(self):
+        return {item for item in super().items()}
