@@ -583,6 +583,22 @@ fn module_scope_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a Stmt
     }
 }
 
+// Every statement of the scope `body` opens, nested blocks included. Function and class bodies bind in their own scope,
+// so they are skipped.
+pub fn scope_statements(body: &[Stmt]) -> Vec<&Stmt> {
+    fn collect<'a>(body: &'a [Stmt], found: &mut Vec<&'a Stmt>) {
+        for stmt in body {
+            found.push(stmt);
+            if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+                for_each_child_body(stmt, &mut |child| collect(child, found));
+            }
+        }
+    }
+    let mut found = Vec::new();
+    collect(body, &mut found);
+    found
+}
+
 pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
     match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })

@@ -8,7 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::{is_documented_variable, ruff_ignores_function};
 use crate::rules::public_api::{ApiItem, ApiKind};
-use crate::syntax::{alias_binding, docstring, for_each_child_body, is_name, top_level};
+use crate::syntax::{alias_binding, docstring, is_name, scope_statements, top_level};
 
 pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
@@ -64,7 +64,7 @@ impl<'a> RuffPublic<'a> {
     fn of(checker: &Checker<'a>) -> Self {
         let mut exports: Option<FxHashSet<&'a str>> = None;
         let mut typing_aliases = FxHashMap::default();
-        for stmt in Self::module_scope(checker.body()) {
+        for stmt in scope_statements(checker.body()) {
             match stmt {
                 Stmt::ImportFrom(ast::StmtImportFrom { module, names, level: 0, .. })
                     if module
@@ -91,21 +91,6 @@ impl<'a> RuffPublic<'a> {
             }
         }
         Self { module_public: Self::module_public(checker), exports, typing_aliases }
-    }
-
-    // Skips the bodies of functions and classes, which bind names in their own scope.
-    fn module_scope(body: &[Stmt]) -> Vec<&Stmt> {
-        fn collect<'a>(body: &'a [Stmt], found: &mut Vec<&'a Stmt>) {
-            for stmt in body {
-                found.push(stmt);
-                if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-                    for_each_child_body(stmt, &mut |child| collect(child, found));
-                }
-            }
-        }
-        let mut found = Vec::new();
-        collect(body, &mut found);
-        found
     }
 
     // A binding without a value still makes the exports present, and lists nothing.
