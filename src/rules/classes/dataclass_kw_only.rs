@@ -13,8 +13,7 @@ use crate::lint::registry::Rule;
 use crate::project::constructors::{CallKind, CallSite, Use, Uses, init_fields};
 use crate::rules::classes::{Offer, require_options, splatted_options};
 use crate::rules::edits::keep_debug_text;
-use crate::syntax::ExprCollector;
-use crate::syntax::{dataclass_decorator, is_classmethod, is_name, receiver};
+use crate::syntax::{ExprCollector, dataclass_decorator, is_classmethod, is_name, receiver};
 
 // `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
 pub(super) const SINCE: PythonVersion = PythonVersion::PY310;

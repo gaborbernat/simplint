@@ -149,6 +149,7 @@ fn is_data_type(expr: &Expr) -> bool {
         "bool",
         "bytearray",
         "bytes",
+        "ChainMap",
         "complex",
         "Collection",
         "Container",
@@ -185,7 +186,6 @@ fn is_data_type(expr: &Expr) -> bool {
         "tuple",
         "Tuple",
         "ValuesView",
-        "ChainMap",
     ];
     last_segment(expr).is_some_and(|segment| DATA_TYPES.contains(&segment))
 }
