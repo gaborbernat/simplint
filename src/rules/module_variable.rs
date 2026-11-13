@@ -2,7 +2,7 @@
 // names a loop, `with`, `except` or `match` binds, and annotations alone under `if TYPE_CHECKING:` are left out.
 
 use ruff_python_ast::helpers::is_dunder;
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
@@ -80,24 +80,61 @@ pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<
     variables
 }
 
-// The module-scope names bound to a function the module defines, as `_build_cli = build_cli`. Such an alias reads
-// as the function, so it follows the function's name as a class alias does. An import is left out: the semantic
-// model cannot tell whether it binds a function.
+// The module-scope names bound to a callable, as `_build_cli = build_cli`, `to_json = dumps` or `encode =
+// _codec.encode`. Such an alias reads as the callable and is called like it, so it follows the callable's name as a
+// class alias does: a function the module defines, a lowercase imported name, a lowercase attribute of an imported
+// module, and a method of an instance of a class the module defines. An uppercase name or attribute reads as a constant.
 fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     checker
         .body()
         .iter()
         .filter_map(single_assignment)
-        .filter(|(_, _, value)| match value {
-            Expr::Name(name) => checker
-                .semantic()
-                .bindings(name.id.as_str())
-                .iter()
-                .any(|binding| binding.kind == BindingKind::Function),
-            _ => false,
-        })
+        .filter(|(_, _, value)| is_callable_alias(checker, value))
         .map(|(target, _, _)| target.id.as_str())
         .collect()
+}
+
+fn is_callable_alias(checker: &Checker, value: &Expr) -> bool {
+    let semantic = checker.semantic();
+    let bound_as = |name: &str, kind: BindingKind| semantic.bindings(name).iter().any(|binding| binding.kind == kind);
+    match value {
+        Expr::Name(name) => {
+            let name = name.id.as_str();
+            bound_as(name, BindingKind::Function) || (is_lowercase(name) && bound_as(name, BindingKind::Import))
+        }
+        Expr::Attribute(attribute) if is_lowercase(attribute.attr.as_str()) => {
+            let Expr::Name(receiver) = attribute.value.as_ref() else {
+                return false;
+            };
+            bound_as(receiver.id.as_str(), BindingKind::Import)
+                || instance_class(checker, receiver).is_some_and(|class| {
+                    class
+                        .body
+                        .iter()
+                        .filter_map(Stmt::as_function_def_stmt)
+                        .any(|method| method.name.as_str() == attribute.attr.as_str())
+                })
+        }
+        _ => false,
+    }
+}
+
+// The class the module defines whose call gives `name` its only value, as `_codec = _Codec()` does.
+fn instance_class<'a>(checker: &Checker<'a>, name: &ast::ExprName) -> Option<&'a ast::StmtClassDef> {
+    let name = name.id.as_str();
+    if checker.semantic().is_rebound(name) {
+        return None;
+    }
+    let body = checker.body();
+    let class = body.iter().filter_map(single_assignment).find_map(|(target, _, value)| match value {
+        Expr::Call(ast::ExprCall { func, .. }) if target.id == name => func.as_name_expr(),
+        _ => None,
+    })?;
+    body.iter().filter_map(Stmt::as_class_def_stmt).find(|candidate| candidate.name.id == class.id)
+}
+
+fn is_lowercase(name: &str) -> bool {
+    name.chars().any(char::is_lowercase)
 }
 
 // A name that one module-level `if`, `try` or `with` block binds and reads, and nothing outside the block reads,
