@@ -1,5 +1,6 @@
 use ruff_linter::fs::relativize_path;
 use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -147,8 +148,7 @@ impl<'a> RuffPublic<'a> {
     }
 
     fn is_sequence_builtin(func: &Expr) -> bool {
-        let func = func.as_subscript_expr().map_or(func, |subscript| subscript.value.as_ref());
-        func.as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "list" | "tuple"))
+        map_subscript(func).as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "list" | "tuple"))
     }
 
     fn string_value(expr: &Expr) -> Option<&str> {

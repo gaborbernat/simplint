@@ -1,6 +1,7 @@
 use rustc_hash::FxHashSet;
 
 use ruff_diagnostics::Applicability;
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 
@@ -293,8 +294,7 @@ fn index_hazards(checker: &Checker, decorated: &Decorated, fields: &Fields, haza
 }
 
 fn is_generic(base: &Expr) -> bool {
-    let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
-    last_segment(base) == Some("Generic")
+    last_segment(map_subscript(base)) == Some("Generic")
 }
 
 // Whether the class body reads a `__class__` cell, which `slots=True` leaves pointing at the class it replaces: a bare

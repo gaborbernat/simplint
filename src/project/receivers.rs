@@ -1,6 +1,7 @@
 use rustc_hash::FxHashMap;
 use std::path::Path;
 
+use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
@@ -71,12 +72,7 @@ impl AttributeWrites {
 fn module_classes(body: &[Stmt], module: &str) -> Vec<String> {
     module_statements(body)
         .filter_map(Stmt::as_class_def_stmt)
-        .filter(|class| {
-            !class.bases().iter().any(|base| {
-                let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
-                last_segment(base) == Some("Protocol")
-            })
-        })
+        .filter(|class| !class.bases().iter().any(|base| last_segment(map_subscript(base)) == Some("Protocol")))
         .map(|class| format!("{module}.{}", class.name))
         .collect()
 }
