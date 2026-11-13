@@ -2,6 +2,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::Ranged;
 
+use super::is_callable;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
@@ -12,9 +13,7 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
     let Expr::Tuple(ast::ExprTuple { elts, .. }) = slice.as_ref() else {
         return;
     };
-    let semantic = walker.checker.semantic();
-    if (semantic.match_typing_expr(value, "Callable")
-        || semantic.resolves_to(value, &["collections", "abc", "Callable"]))
+    if is_callable(walker.checker.semantic(), value)
         && elts.first().is_some_and(Expr::is_ellipsis_literal_expr)
         && !uncalled_test_parameter(walker, expr)
     {

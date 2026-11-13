@@ -18,6 +18,11 @@ pub(crate) fn is_type_parameter_constructor(semantic: &Semantic, func: &Expr) ->
     ["TypeVar", "TypeVarTuple", "ParamSpec"].iter().any(|member| semantic.match_typing_expr(func, member))
 }
 
+// `typing.Callable`, its `typing_extensions` copy, or `collections.abc.Callable`.
+fn is_callable(semantic: &Semantic, expr: &Expr) -> bool {
+    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
+}
+
 pub(crate) fn type_parameter_assignment<'a>(checker: &Checker, stmt: &'a Stmt) -> Option<&'a ast::ExprName> {
     let (target, _, value) = single_assignment(stmt)?;
     let call = value.as_call_expr()?;

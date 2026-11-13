@@ -4,6 +4,7 @@ use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
 
+use super::is_callable;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
@@ -102,7 +103,7 @@ fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
     let mut metadata = Vec::new();
     let mut finder = ExprCollector::new(|expr: &Expr| {
         if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
-            if is_callable(walker, value)
+            if is_callable(semantic, value)
                 && let Some(returns) = slice_elements(slice).last()
             {
                 callable_returns.insert(returns.range());
@@ -163,11 +164,6 @@ fn slice_elements(slice: &Expr) -> &[Expr] {
         Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
         _ => std::slice::from_ref(slice),
     }
-}
-
-fn is_callable(walker: &Walker, expr: &Expr) -> bool {
-    let semantic = walker.checker.semantic();
-    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
 }
 
 // The `def`s that implement an `@overload` set. Ruff's ANN401 skips them, since the type checker reads the signature
