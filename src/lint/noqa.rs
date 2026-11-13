@@ -1,4 +1,3 @@
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -14,6 +13,7 @@ use ruff_python_parser::Parsed;
 use ruff_python_trivia::{CommentRanges, indentation_at_offset};
 use ruff_source_file::{LineEnding, LineRanges};
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::registry::Rule;
 
@@ -113,7 +113,7 @@ impl<'a> Suppressions<'a> {
             .into_iter()
             .zip(lines)
             .filter(|(diagnostic, line)| {
-                let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+                let code = code_of(diagnostic);
                 !self.file.iter().any(|directive| directive.suppresses(code))
                     && self.lines.get(line).is_none_or(|directives| !directives.suppresses(code))
             })
@@ -136,17 +136,16 @@ impl<'a> Suppressions<'a> {
             self.unsuppressed(diagnostics, rows).into_iter().map(|(diagnostic, _)| diagnostic).collect();
         let mut removed = Vec::new();
         self.remove_unused(&candidates, &mut removed, &baseline, &relint);
-        let first = removed.iter().map(|(start, _)| *start).min()?;
-        let count = removed.len();
+        let start = removed.iter().map(|(start, _)| *start).min()?;
         let mut edits = self.removal_edits(&removed);
         edits.reverse();
-        Some(UnusedIgnore { start: first, count, edits })
+        Some(UnusedIgnore { start, count: removed.len(), edits })
     }
 
     fn ignore_candidates(&self, located: &[Diagnostic], rows: &[TextSize]) -> Vec<(TextSize, String)> {
         let mut used = FxHashSet::default();
         for (diagnostic, line) in located.iter().zip(rows) {
-            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            let code = code_of(diagnostic);
             if self.file.iter().any(|directive| directive.suppresses(code)) {
                 continue;
             }
@@ -233,7 +232,7 @@ impl<'a> Suppressions<'a> {
             {
                 continue;
             }
-            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            let code = code_of(diagnostic);
             let line_codes = codes.entry(*line).or_default();
             let name = match kind {
                 SuppressionKind::Noqa => code.to_owned(),
@@ -250,9 +249,7 @@ impl<'a> Suppressions<'a> {
                 {
                     continue;
                 }
-                SuppressionKind::Ignore => {
-                    Rule::from_code(code).map_or_else(|| code.to_owned(), |rule| rule.name().to_owned())
-                }
+                SuppressionKind::Ignore => ignore_name(code),
             };
             line_codes.insert(name);
         }
@@ -269,13 +266,11 @@ impl<'a> Suppressions<'a> {
                 SuppressionKind::Ignore => directives.ignore.clone(),
             });
             let (edit_range, blank_line, suffix) = if let Some((start, existing_codes)) = existing {
-                line_codes.extend(existing_codes.into_iter().map(|code| {
-                    if matches!(kind, SuppressionKind::Ignore) {
-                        Rule::from_code(&code).map_or(code.clone(), |rule| rule.name().to_owned())
-                    } else {
-                        code
-                    }
-                }));
+                line_codes.extend(
+                    existing_codes
+                        .into_iter()
+                        .map(|code| if matches!(kind, SuppressionKind::Ignore) { ignore_name(&code) } else { code }),
+                );
                 let prefix = &self.source[TextRange::new(line_range.start(), start)];
                 let blank = prefix.trim().is_empty();
                 let edit_start = if blank { start } else { line_range.start() + TextSize::of(prefix.trim_end()) };
@@ -435,6 +430,15 @@ fn code_list(codes: &str) -> impl Iterator<Item = &str> {
     codes.split(|char: char| char == ',' || char.is_whitespace()).filter(|part| !part.is_empty())
 }
 
+fn code_of(diagnostic: &Diagnostic) -> &str {
+    diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str()
+}
+
+// An ignore comment names a rule by its name, which also settles SMP008 for a numeric code it held.
+fn ignore_name(code: &str) -> String {
+    Rule::from_code(code).map_or_else(|| code.to_owned(), |rule| rule.name().to_owned())
+}
+
 fn matches_ignore(candidate: &str, code: &str) -> bool {
     candidate == code || Rule::from_code(code).is_some_and(|rule| rule.name() == candidate)
 }
@@ -496,8 +500,7 @@ fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRan
 fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
     let comment = &source[TextRange::new(start, source.line_end(start))];
     let (offset, contents) = ignore_contents(comment)?;
-    let mut codes: Vec<&str> =
-        contents.split(|char: char| char == ',' || char.is_whitespace()).filter(|code| !code.is_empty()).collect();
+    let mut codes: Vec<&str> = code_list(contents).collect();
     codes.remove(codes.iter().position(|code| *code == selector)?);
     if !codes.is_empty() {
         let from = start + offset;
