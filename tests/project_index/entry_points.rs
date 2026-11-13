@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, project};
+use crate::common::{check, native, project};
 use test_case::test_case;
 
 const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
@@ -80,7 +80,7 @@ fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str
     ]);
     assert_eq!(
         check(root.path(), &["--select", rule]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -150,7 +150,7 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402,SMP409"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -173,7 +173,7 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -197,7 +197,7 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("pkg/", &native("pkg/"))
     );
 }
 
@@ -227,7 +227,7 @@ fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
-        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+        stdout.replace("app/", &native("app/"))
     );
 }
 
@@ -247,7 +247,7 @@ fn star_import_in_a_test_exempts_no_submodule_name() {
         "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other \
         modules \
          use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
-            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+            .replace("pkg/", &native("pkg/"))
     );
 }
 
