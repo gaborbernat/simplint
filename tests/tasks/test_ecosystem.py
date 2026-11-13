@@ -75,6 +75,63 @@ def run_tools(mocker: MockerFixture) -> Callable[[_Behavior], MockType]:
     return patch
 
 
+def _tools(behavior: _Behavior) -> _Run:
+    # The uv and interpreter calls run for real, through the function bound before the tests patch `subprocess.run`;
+    # the tools that act on a tree are the fake's.
+    def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
+        if command[0] == "uv" or command[1:2] == ["-I"]:
+            return real_run(
+                command,
+                cwd=options.get("cwd"),
+                input=options.get("input"),
+                capture_output=True,
+                text=True,
+                check=options.get("check", False),
+            )
+        return _fake(behavior, command, options["cwd"])
+
+    return run
+
+
+# The simulated Ruff answers by the markers the fix left in the files; the runs a test varies go to `behavior`.
+def _fake(behavior: _Behavior, command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    if command[0] != "ruff" or (command[:2] == ["ruff", "check"] and "concise" in command):
+        outcome = behavior(command, cwd)
+        return subprocess.CompletedProcess(command, outcome.code, outcome.stdout, outcome.stderr)
+    if command[:2] == ["ruff", "check"] and "json" in command:
+        return subprocess.CompletedProcess(command, 0, _ruff_report(command, cwd), "")
+    if command[:2] == ["ruff", "check"] and "--diff" in command:
+        unsettled = _marked(cwd, "unsettled")
+        return subprocess.CompletedProcess(command, int(unsettled), "--- mod.py\n+++ mod.py\n" * unsettled, "")
+    if command[:2] == ["ruff", "format"] and "--check" in command:
+        conflict_warning = (
+            "warning: The following rule may cause conflicts when used with the formatter: "
+            "`missing-trailing-comma` (`COM812`).\n"
+        )
+        return subprocess.CompletedProcess(command, int(_marked(cwd, "unformatted")), "", conflict_warning)
+    if command[:2] == ["ruff", "format"]:
+        behavior(command, cwd)
+    return subprocess.CompletedProcess(command, 0, "", "")
+
+
+def _ruff_report(command: list[str], cwd: Path) -> str:
+    markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
+    ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []
+    reports: list[dict[str, str]] = []
+    for path in cwd.rglob("*.py"):
+        text = path.read_text()
+        reports.extend(
+            {"filename": str(path.resolve()), "code": rule}
+            for marker, rule in markers.items()
+            if marker in text and rule not in ignored
+        )
+    return json.dumps(reports)
+
+
+def _marked(cwd: Path, marker: str) -> bool:
+    return any(marker in path.read_text() for path in cwd.rglob("*.py"))
+
+
 @pytest.fixture
 def pinned(mocker: MockerFixture, package: Package) -> None:
     mocker.patch("tasks.ecosystem.PACKAGES", (package, Package(name="other", version="2.0", sha256="")))
@@ -369,60 +426,3 @@ def test_check_does_not_warn_about_invalid_escapes(
         problems = check(package, archive, "simplint", None)
 
     assert (problems, [warning for warning in caught if issubclass(warning.category, SyntaxWarning)]) == ([], [])
-
-
-def _tools(behavior: _Behavior) -> _Run:
-    # The uv and interpreter calls run for real, through the function bound before the tests patch `subprocess.run`;
-    # the tools that act on a tree are the fake's.
-    def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
-        if command[0] == "uv" or command[1:2] == ["-I"]:
-            return real_run(
-                command,
-                cwd=options.get("cwd"),
-                input=options.get("input"),
-                capture_output=True,
-                text=True,
-                check=options.get("check", False),
-            )
-        return _fake(behavior, command, options["cwd"])
-
-    return run
-
-
-# The simulated Ruff answers by the markers the fix left in the files; the runs a test varies go to `behavior`.
-def _fake(behavior: _Behavior, command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    if command[0] != "ruff" or (command[:2] == ["ruff", "check"] and "concise" in command):
-        outcome = behavior(command, cwd)
-        return subprocess.CompletedProcess(command, outcome.code, outcome.stdout, outcome.stderr)
-    if command[:2] == ["ruff", "check"] and "json" in command:
-        return subprocess.CompletedProcess(command, 0, _ruff_report(command, cwd), "")
-    if command[:2] == ["ruff", "check"] and "--diff" in command:
-        unsettled = _marked(cwd, "unsettled")
-        return subprocess.CompletedProcess(command, int(unsettled), "--- mod.py\n+++ mod.py\n" * unsettled, "")
-    if command[:2] == ["ruff", "format"] and "--check" in command:
-        conflict_warning = (
-            "warning: The following rule may cause conflicts when used with the formatter: "
-            "`missing-trailing-comma` (`COM812`).\n"
-        )
-        return subprocess.CompletedProcess(command, int(_marked(cwd, "unformatted")), "", conflict_warning)
-    if command[:2] == ["ruff", "format"]:
-        behavior(command, cwd)
-    return subprocess.CompletedProcess(command, 0, "", "")
-
-
-def _ruff_report(command: list[str], cwd: Path) -> str:
-    markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
-    ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []
-    reports: list[dict[str, str]] = []
-    for path in cwd.rglob("*.py"):
-        text = path.read_text()
-        reports.extend(
-            {"filename": str(path.resolve()), "code": rule}
-            for marker, rule in markers.items()
-            if marker in text and rule not in ignored
-        )
-    return json.dumps(reports)
-
-
-def _marked(cwd: Path, marker: str) -> bool:
-    return any(marker in path.read_text() for path in cwd.rglob("*.py"))

@@ -75,10 +75,6 @@ def store(tmp_path: Path) -> Path:
     return root
 
 
-def _register(store: Path) -> None:
-    register(_SCHEMA, store, _OPTIONS)
-
-
 def test_register_writes_partial_with_schemastore_id(store: Path) -> None:
     _register(store)
 
@@ -86,6 +82,10 @@ def test_register_writes_partial_with_schemastore_id(store: Path) -> None:
     expected = json.loads(_SCHEMA.read_text(encoding="utf-8"))
     expected["$id"] = "https://json.schemastore.org/partial-simplint.json"
     assert partial == expected
+
+
+def _register(store: Path) -> None:
+    register(_SCHEMA, store, _OPTIONS)
 
 
 def test_register_references_partial_from_pyproject(store: Path) -> None:
