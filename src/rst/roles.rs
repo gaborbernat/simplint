@@ -703,7 +703,8 @@ mod tests {
     fn timed<T>(work: impl FnOnce() -> T) -> T {
         let started = std::time::Instant::now();
         let result = work();
-        assert!(started.elapsed() < std::time::Duration::from_secs(5), "took {:?}", started.elapsed());
+        let elapsed = started.elapsed();
+        assert!(elapsed < std::time::Duration::from_secs(5), "took {elapsed:?}");
         result
     }
 

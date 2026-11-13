@@ -142,10 +142,9 @@ impl<'a> Scan<'a> {
     }
 
     fn record(&mut self, name: &str, value: &'a Expr) {
-        if let Some(name) = tracked(name) {
-            self.bound.insert(name);
-            self.values.insert(name, value);
-        }
+        let name = tracked(name).expect("only a tracked name is recorded");
+        self.bound.insert(name);
+        self.values.insert(name, value);
     }
 
     fn bind(&mut self, name: &str) {

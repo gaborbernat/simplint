@@ -17,17 +17,17 @@ pub(super) fn interface(body: &[Stmt]) -> Vec<Definition> {
 
 fn definition(stmt: &Stmt) -> Option<Definition> {
     let (name, is_type, refs) = match stmt {
-        Stmt::FunctionDef(function) => (function.name.as_str(), false, signature_names(function)),
-        Stmt::ClassDef(class) => (class.name.as_str(), true, class_names(class)),
+        Stmt::FunctionDef(function) => (Some(function.name.as_str()), false, signature_names(function)),
+        Stmt::ClassDef(class) => (Some(class.name.as_str()), true, class_names(class)),
         Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
             let mut refs = type_param_names(type_params.as_deref());
             refs.extend(names_in(value));
-            (name.as_name_expr()?.id.as_str(), true, refs)
+            (name_of(name), true, refs)
         }
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. })
             if last_segment(annotation) == Some("TypeAlias") =>
         {
-            (target.as_name_expr()?.id.as_str(), true, names_in(value))
+            (name_of(target), true, names_in(value))
         }
         // A plain assignment is an alias when its value has the shape of a type expression, so `Offset = int` counts
         // while `LIMIT = compute(3)` does not.
@@ -43,11 +43,15 @@ fn definition(stmt: &Stmt) -> Option<Definition> {
             let [target] = targets.as_slice() else {
                 return None;
             };
-            (target.as_name_expr()?.id.as_str(), true, names_in(value))
+            (name_of(target), true, names_in(value))
         }
         _ => return None,
     };
-    Some(Definition { name: name.to_owned(), is_type, refs })
+    Some(Definition { name: name?.to_owned(), is_type, refs })
+}
+
+fn name_of(target: &Expr) -> Option<&str> {
+    target.as_name_expr().map(|name| name.id.as_str())
 }
 
 fn signature_names(function: &ast::StmtFunctionDef) -> Vec<String> {

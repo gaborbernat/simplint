@@ -40,7 +40,7 @@ fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
     let (module, names) = code.trim_start().strip_prefix("from ")?.split_once(" import ")?;
     let module = module.trim();
     let name = module.trim_start_matches('.');
-    let level = u32::try_from(module.len() - name.len()).ok()?;
+    let level = u32::try_from(module.len() - name.len()).expect("a doctest line has fewer dots than a u32 holds");
     let names = names
         .trim()
         .trim_start_matches('(')

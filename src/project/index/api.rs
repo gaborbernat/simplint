@@ -305,8 +305,11 @@ impl<'a> FileIndex<'a> {
     }
 
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {
-        let target = self.answers.run_modules.modules?.get(module)?;
-        self.answers.run_modules.members[target].get(name).copied()
+        let modules = &self.answers.run_modules;
+        modules
+            .modules
+            .and_then(|targets| targets.get(module))
+            .and_then(|target| modules.members[target].get(name).copied())
     }
 
     pub fn is_api_reached(&self, name: &str) -> bool {

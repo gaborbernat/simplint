@@ -724,7 +724,7 @@ impl FactVisitor<'_> {
 }
 
 pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) -> Option<String> {
-    let (first, rest) = segments.split_first()?;
+    let (first, rest) = segments.split_first().expect("a dotted name has a first segment");
     let module = aliases.get(first)?;
     Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
 }

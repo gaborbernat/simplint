@@ -375,15 +375,16 @@ fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, exp
     assert_eq!(stdout, common::native(expected));
 }
 
-// A doctest reads a module's name, which is no patch of it, so the module's own reads still get the import fix.
+// A doctest reads a module's name, which is no patch of it, so the module's own reads still get the import fix. A
+// `from` line without `import` imports nothing.
 #[test]
 fn doctest_read_does_not_patch_module() {
     let root = project(&[
         ("tools/bench/__init__.py", ""),
         (
             "tools/bench/operations.py",
-            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import \
-            operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
+            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench\n    \
+            >>> from bench import operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
         ),
         (
             "tools/bench/report.py",

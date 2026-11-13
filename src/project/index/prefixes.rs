@@ -45,9 +45,10 @@ pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds)
             if path.extension() != Some(OsStr::new("py")) {
                 return None;
             }
-            let directory = path.parent()?;
-            let prefix = name_prefix(path.file_stem()?.to_str()?)?;
-            let modules = groups.get(&(directory, prefix))?.len();
+            let prefix = path.file_stem().and_then(OsStr::to_str).and_then(name_prefix)?;
+            let directory = path.parent().expect("a run file sits in a directory");
+            // The loop above grouped every file with a prefix, this one among them.
+            let modules = groups[&(directory, prefix)].len();
             let package = directory.join(format!("_{prefix}"));
             if modules < 3 || directories.contains(package.as_path()) || package.join("__init__.py").is_file() {
                 return None;

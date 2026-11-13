@@ -702,7 +702,7 @@ fn only_tests(
 }
 
 fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
-    map.get(&id?)
+    id.and_then(|id| map.get(&id))
 }
 
 fn range_key(range: TextRange, state: &mut CacheKeyHasher) {

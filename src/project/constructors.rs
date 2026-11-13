@@ -97,9 +97,10 @@ impl Constructors {
     ) -> Self {
         let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
         let mut uses = Uses::new(|expr: &Expr| {
-            let full = qualify(expr)?;
+            let written = UnqualifiedName::from_expr(expr)?;
+            let full = qualified(written.segments(), aliases)?;
             let (module, member) = full.rsplit_once('.')?;
-            Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
+            Some((module.to_owned(), member.to_owned(), written.segments().join(".")))
         })
         .with_source(source);
         uses.visit_body(body);

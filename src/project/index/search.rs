@@ -1,5 +1,6 @@
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -111,9 +112,9 @@ impl SearchRoots {
             .into_iter()
             .filter_map(|root| {
                 path.strip_prefix(root)
-                    .ok()?
+                    .expect("the root is a prefix of the path")
                     .iter()
-                    .map(|part| Path::new(part).file_stem()?.to_str().map(str::to_owned))
+                    .map(|part| Path::new(part).file_stem().and_then(OsStr::to_str).map(str::to_owned))
                     .collect()
             })
             .collect()
@@ -130,15 +131,13 @@ fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
             name.to_str().is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name)))
         })
         .filter_map(|entry| {
-            let kind = entry.file_type().ok()?;
             let path = entry.path();
-            if kind.is_dir() {
-                Some((path, None))
-            } else if kind.is_symlink() && path.is_dir() {
-                let target = fs::canonicalize(&path).ok()?;
-                Some((path, Some(target)))
-            } else {
-                None
+            match entry.file_type() {
+                Ok(kind) if kind.is_dir() => Some((path, None)),
+                Ok(kind) if kind.is_symlink() && path.is_dir() => {
+                    fs::canonicalize(&path).ok().map(|target| (path, Some(target)))
+                }
+                _ => None,
             }
         })
         .collect()
@@ -153,6 +152,6 @@ fn module_links(directory: &Path) -> Vec<PathBuf> {
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
         .map(|entry| entry.path())
-        .filter(|path| matches!(path.extension().and_then(|extension| extension.to_str()), Some("py" | "pyi")))
+        .filter(|path| ["py", "pyi"].iter().any(|extension| path.extension() == Some(OsStr::new(extension))))
         .collect()
 }

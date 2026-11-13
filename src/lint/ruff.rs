@@ -264,3 +264,18 @@ impl Findings {
         introduced
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use test_case::test_case;
+
+    use super::has_blanket_noqa;
+
+    #[test_case("x = 1  # noqa\n", true ; "bare")]
+    #[test_case("x = 1  # noqa: E501\n", false ; "codes")]
+    #[test_case("x = 1  # noqa \t: E501\n", false ; "blanks_before_the_colon")]
+    #[test_case("x = 1  # noqa\n: E501\n", true ; "colon_on_the_next_line")]
+    fn blanket_noqa_is_one_no_colon_follows(source: &str, blanket: bool) {
+        assert_eq!(has_blanket_noqa(source), blanket);
+    }
+}

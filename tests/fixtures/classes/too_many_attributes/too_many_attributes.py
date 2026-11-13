@@ -94,3 +94,30 @@ class AtLimitWithMarkers:
     l: int
     seed: InitVar[int]
     registry: "ClassVar[list[str]]" = []
+
+
+@dataclass
+class Unpacked:
+    a: int
+    b: int
+    c: int
+    d: int
+    e: int
+    f: int
+    g: int
+    h: int
+    i: int
+    j: int
+    k: int
+    registry.entry: int
+
+    def __post_init__(self) -> None:
+        [self.l, self.m] = 0, 0
+
+
+def outer() -> None:
+    def inner() -> None:
+        nonlocal unbound
+        unbound = 1
+
+    inner()

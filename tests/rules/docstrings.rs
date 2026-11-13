@@ -559,6 +559,7 @@ fn packaged_module_is_named_by_its_dotted_path() {
 #[test_case("", "", "extensions = []\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_extensions")]
 #[test_case("", "", "master_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_master_doc")]
 #[test_case("", "", "root_doc = \"start\"\nautoclass_content = \"init\"\n", KEPT_INIT ; "names_root_doc")]
+#[test_case("", "", "from shared import extensions\nautoclass_content = \"init\"\n", KEPT_INIT ; "imports_extensions")]
 #[test_case("", "", INIT, KEPT_CLASS ; "neither_index_nor_name_is_not_sphinx")]
 #[test_case("", "", "from shared import *\nextensions = []\n", common::PASSED ; "star_import_beside_a_real_binding")]
 fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
@@ -572,6 +573,19 @@ fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
         files.push((index, index_text));
     }
     assert_eq!(duplicate_report(&files), stdout);
+}
+
+// A page that is not UTF-8 holds no text to read, so the other pages decide.
+#[test]
+fn page_that_is_not_utf8_is_skipped() {
+    let root = common::project(&[
+        ("pyproject.toml", RST),
+        ("model.py", DUPLICATED),
+        ("docs/index.rst", INDEX),
+        ("docs/conf.py", INIT),
+    ]);
+    std::fs::write(root.path().join("docs/broken.rst"), b"\xff\xfe\n").expect("write the page");
+    assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_INIT);
 }
 
 // A wildcard binding may bind any name, so it leaves the options unknown, but it does not make a `conf.py` one.

@@ -381,6 +381,7 @@ impl CheckCommand {
                 inline,
                 flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli),
             },
+            cwd,
         };
         Ok((config_arguments, arguments))
     }
@@ -452,6 +453,7 @@ pub struct SimplintArguments {
     pub(crate) config_file: Option<PathBuf>,
     pub(crate) isolated: bool,
     pub(crate) overrides: Overrides,
+    pub(crate) cwd: PathBuf,
 }
 
 #[derive(Parser)]

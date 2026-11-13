@@ -209,3 +209,17 @@ pub(super) fn string_words(words: FxHashSet<String>) -> String {
     words.sort_unstable();
     words.join("\n")
 }
+
+#[cfg(test)]
+mod tests {
+    use ruff_python_parser::parse_module;
+
+    use super::{Parts, Scan};
+
+    // A `return` outside any function, which the parser accepts, returns from no fixture.
+    #[test]
+    fn module_level_return_returns_no_module() {
+        let parsed = parse_module("import importlib\n\nreturn importlib.import_module(\"pkg\")\n").expect("parses");
+        assert!(Scan::of(&parsed.syntax().body, Parts::default()).modules.is_empty());
+    }
+}

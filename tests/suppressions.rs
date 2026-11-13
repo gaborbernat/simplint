@@ -35,6 +35,12 @@ fn simplint_ignore_suppresses_with_any_space_around_its_colon(source: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
 }
 
+#[test]
+fn simplint_ignore_without_its_colon_suppresses_nothing() {
+    let root = project(&[("module.py", "x = 1  # simplint ignore[SMP101]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 1);
+}
+
 #[test_case("x = 1  # NoQA: SMP101\n", 0 ; "keyword_in_any_case")]
 #[test_case("x = 1  # noqa : SMP101\n", 0 ; "space_before_colon")]
 #[test_case("x = 1  # noqa:SMP601,SMP101\n", 0 ; "codes_after_a_comma")]

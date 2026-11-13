@@ -203,3 +203,37 @@ fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
         testpaths: strings("testpaths").unwrap_or_default(),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use tempfile::TempDir;
+
+    use super::PytestConfig;
+
+    fn configured(pytest_ini: &str) -> PytestConfig {
+        let directory = TempDir::new().expect("create a temporary directory");
+        std::fs::write(directory.path().join("pytest.ini"), pytest_ini).expect("write pytest.ini");
+        PytestConfig::of(&[directory.path()], None)
+    }
+
+    #[test]
+    fn a_pattern_that_is_no_glob_matches_nothing() {
+        let config = configured("[pytest]\npython_files = [ check_*.py\n");
+
+        assert_eq!((config.collects("check_one.py"), config.collects("[")), (true, false));
+    }
+
+    #[test]
+    fn pytest_ini_without_its_section_registers_no_markers() {
+        assert_eq!(configured("[other]\nmarkers = slow\n").markers, Some(BTreeSet::new()));
+    }
+
+    #[test]
+    fn lines_outside_any_option_are_skipped() {
+        let config = configured("[pytest]\n    orphan\nflag\nmarkers =\n    slow: slow tests\n");
+
+        assert_eq!(config.markers, Some(BTreeSet::from(["slow".to_owned()])));
+    }
+}

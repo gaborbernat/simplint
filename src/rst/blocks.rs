@@ -422,9 +422,7 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
 
     fn code(&mut self, start: usize, end: usize) {
         for mark in &mut self.out[start..end] {
-            if mark.shown == Shown::Prose {
-                mark.shown = Shown::Code;
-            }
+            mark.shown = Shown::Code;
         }
     }
 
@@ -528,18 +526,18 @@ const NUMERALS: [(&str, usize); 13] = [
 fn roman_value(text: &str) -> Option<usize> {
     let mut rest = text;
     let mut value = 0;
-    while !rest.is_empty() {
-        let (symbol, digit) = NUMERALS.iter().find(|(symbol, _)| rest.starts_with(symbol))?;
-        value += digit;
-        rest = &rest[symbol.len()..];
+    for (symbol, digit) in NUMERALS {
+        while let Some(after) = rest.strip_prefix(symbol) {
+            value += digit;
+            rest = after;
+        }
     }
     (value > 0 && roman_text(value) == text).then_some(value)
 }
 
 // The letter of an alphabetic ordinal, `c` for 3 counting from `a`, when the ordinal has one.
 fn letter(ordinal: usize, first: u8) -> Option<String> {
-    let offset = u8::try_from(ordinal.checked_sub(1)?).ok().filter(|offset| *offset < 26)?;
-    Some(char::from(first + offset).to_string())
+    u8::try_from(ordinal - 1).ok().filter(|offset| *offset < 26).map(|offset| char::from(first + offset).to_string())
 }
 
 fn roman_text(mut value: usize) -> String {
@@ -652,6 +650,9 @@ mod tests {
     #[test_case("Summary.\n\na. item\nfoo\n", &[false, false, false, false] ; "lower_alpha_without_next_item_is_text")]
     #[test_case("Summary.\n\nA. item\nfoo\n", &[false, false, false, false] ; "upper_alpha_without_next_item_is_text")]
     #[test_case("Summary.\n\nz. item\nfoo\n", &[false, false, false, false] ; "alpha_past_z_is_text")]
+    #[test_case("Summary.\n\n(1) item::\n(2) next\n", &[false, false, false, false] ; "parenthesized_list_of_two")]
+    #[test_case("Summary.\n\n99999999999999999999999. item::\n\n    code\n", &[false, false, false, true, true] ; "arabic_past_the_largest_ordinal_is_a_paragraph")]
+    #[test_case("Summary.\n\n.. [unclosed label\n", &[false, false, true] ; "unclosed_note_label_is_a_comment")]
     #[test_case("Summary.\n\nii. item\nfoo\n", &[false, false, false, false] ; "lower_roman_without_next_item_is_text")]
     #[test_case("Summary.\n\nIV. item\nfoo\n", &[false, false, false, false] ; "upper_roman_without_next_item_is_text")]
     #[test_case("Summary.\n\na. item\nb. next\n", &[false, false, false, false] ; "alpha_list_of_two")]

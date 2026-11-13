@@ -638,6 +638,44 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
     );
 }
 
+// Before Python 3.12 a value spread over lines goes into a replacement field as `ruff format` joins it, which a magic
+// trailing comma stops unless the formatter skips it.
+#[test_case(
+    "",
+    "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n" ;
+    "magic_trailing_comma_keeps_the_value"
+)]
+#[test_case(
+    "[tool.ruff.format]\nskip-magic-trailing-comma = true\n",
+    "def pair(first, second):\n    return f\"{(first, second)}\"\n" ;
+    "skipped_magic_trailing_comma_joins_the_value"
+)]
+fn single_use_fstring_value_follows_magic_trailing_comma(format: &str, fixed: &str) {
+    let source =
+        "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n";
+    let pyproject = format!("[tool.ruff]\ntarget-version = \"py311\"\n{format}");
+    let root = common::project(&[("pyproject.toml", pyproject.as_str()), ("module.py", source)]);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix", "--unsafe-fixes"]);
+    assert_eq!(read(root.path(), "module.py"), fixed);
+}
+
+// A function another module defines on both sides of a version check is the same function when both definitions
+// agree, and has no single signature when they do not.
+#[test_case("def ready() -> bool:\n        return True", true ; "same_shape")]
+#[test_case("def ready(strict: bool) -> bool:\n        return strict", false ; "other_shape")]
+fn function_as_condition_reads_a_twice_defined_import(other: &str, reported: bool) {
+    let checks = format!(
+        "import sys\n\nif sys.version_info >= (3, 12):\n\n    def ready() -> bool:\n        return True\n\nelse:\n\n    \
+         {other}\n"
+    );
+    let root = common::project(&[
+        ("checks.py", checks.as_str()),
+        ("main.py", "from checks import ready\n\nif ready:\n    print(1)\n"),
+    ]);
+    let stdout = check(root.path(), &["--no-cache", "--select", "SMP558"]).1;
+    assert_eq!(stdout.contains("main.py:3:4"), reported, "{stdout}");
+}
+
 // A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
 // naming an undefined name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rayon::prelude::*;
 use ruff_db::files::{File, system_path_to_file};
-use ruff_db::system::{OsSystem, SystemPathBuf};
+use ruff_db::system::{OsSystem, System, SystemPathBuf};
 use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_python_ast::PythonVersion;
 use ruff_text_size::TextRange;
@@ -48,23 +48,25 @@ impl ImportResolver {
         entry_roots: impl IntoIterator<Item = &'a Path>,
         coverage: impl IntoIterator<Item = (&'a Path, &'a Path)>,
     ) -> Result<Self> {
-        let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
-            .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
+        let cwd = std::env::current_dir().map_err(anyhow::Error::from).and_then(|cwd| {
+            SystemPathBuf::from_path_buf(cwd).map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))
+        })?;
         let system = OsSystem::new(cwd);
         let src_roots: Vec<SystemPathBuf> =
             roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
-        let paths = resolve_search_paths(&system, src_roots.clone(), None)?;
+        let paths = search_paths(&system, src_roots.clone());
         // Like the source roots, a non-UTF-8 directory is no search path, so its entry points stay unresolved.
-        let entry_paths = entry_roots
+        let entry_paths: FxHashMap<_, _> = entry_roots
             .into_iter()
             .unique()
-            .filter_map(|root| Some((root, SystemPathBuf::from_path_buf(root.to_path_buf()).ok()?)))
-            .map(|(root, system_root)| {
-                let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
-                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+            .filter_map(|root| {
+                SystemPathBuf::from_path_buf(root.to_path_buf()).ok().map(|system_root| {
+                    let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
+                    (root.to_path_buf(), search_paths(&system, search_roots))
+                })
             })
-            .collect::<Result<FxHashMap<_, _>>>()?;
-        let coverage_paths = coverage
+            .collect();
+        let coverage_paths: FxHashMap<_, _> = coverage
             .into_iter()
             .into_group_map()
             .into_iter()
@@ -78,9 +80,9 @@ impl ImportResolver {
                             .filter_map(|directory| SystemPathBuf::from_path_buf(directory.to_path_buf()).ok()),
                     )
                     .collect();
-                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+                (root.to_path_buf(), search_paths(&system, search_roots))
             })
-            .collect::<Result<FxHashMap<_, _>>>()?;
+            .collect();
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
         for paths in entry_paths.values().chain(coverage_paths.values()) {
@@ -99,10 +101,9 @@ impl ImportResolver {
         })
     }
 
+    // A file the index never read, such as one a fix created, has no facts to drop.
     pub fn forget(&mut self, path: &Path) {
-        if let Some(id) = self.files.get(path) {
-            self.modules.remove(&id);
-        }
+        _ = self.files.get(path).and_then(|id| self.modules.remove(&id));
     }
 
     pub fn release(&mut self, ending: Ending) {
@@ -383,10 +384,11 @@ pub(super) fn resolve<'db>(
     importing: Option<File>,
     module: &str,
 ) -> Option<PathBuf> {
-    let name = ModuleName::new(module)?;
-    let module = locate(db, environment, importing, &name)?;
-    let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
-    Some(normalized(&path.with_extension("py")))
+    let module = ModuleName::new(module).and_then(|name| locate(db, environment, importing, &name))?;
+    let path = module
+        .file(db)
+        .and_then(|file| file.path(db).as_system_path().map(|path| path.as_std_path().with_extension("py")))?;
+    Some(normalized(&path))
 }
 
 fn locate<'db>(
@@ -403,8 +405,16 @@ fn locate<'db>(
     }
 }
 
+// Resolving fails only for an empty path, and a module's path never is one.
 pub(super) fn normalized(path: &Path) -> PathBuf {
-    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
+    std::path::absolute(path).expect("a module path is not empty")
+}
+
+// Each root was a directory when the run listed it, and one removed since holds no module to find, so it is left out
+// rather than failing the run.
+fn search_paths(system: &OsSystem, roots: Vec<SystemPathBuf>) -> SearchPaths {
+    let roots = roots.into_iter().filter(|root| system.is_directory(root)).collect();
+    resolve_search_paths(system, roots, None).expect("directories are valid search roots")
 }
 
 // Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships

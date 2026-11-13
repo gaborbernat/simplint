@@ -30,8 +30,9 @@ pub(crate) fn fits_line(
 // quote decides which quote the value may hold.
 pub(crate) fn joined(checker: &Checker, text: &str) -> Option<String> {
     let options = formatting_options(checker).with_quote_style(QuoteStyle::Preserve);
-    let printed = format_module_source(&format!("_ = ({text})\n"), options).ok()?;
-    printed.as_code().trim_end().strip_prefix("_ = ").filter(|line| !line.contains('\n')).map(str::to_owned)
+    format_module_source(&format!("_ = ({text})\n"), options).ok().and_then(|printed| {
+        printed.as_code().trim_end().strip_prefix("_ = ").filter(|line| !line.contains('\n')).map(str::to_owned)
+    })
 }
 
 fn formatting_options(checker: &Checker) -> PyFormatOptions {

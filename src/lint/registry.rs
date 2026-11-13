@@ -130,39 +130,27 @@ macro_rules! rules {
         }
 
         pub(crate) fn statement<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt))
-            })*)*
+            $($(hook!(statement, $hook, rules, walker, Rule::$variant, $family::$check(walker, stmt));)*)*
         }
 
         pub(crate) fn expression<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr))
-            })*)*
+            $($(hook!(expression, $hook, rules, walker, Rule::$variant, $family::$check(walker, expr));)*)*
         }
 
         pub(crate) fn scope<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope))
-            })*)*
+            $($(hook!(scope, $hook, rules, walker, Rule::$variant, $family::$check(walker, scope));)*)*
         }
 
         pub(crate) fn except_handler<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler))
-            })*)*
+            $($(hook!(except_handler, $hook, rules, walker, Rule::$variant, $family::$check(walker, handler));)*)*
         }
 
         pub(crate) fn pattern<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern))
-            })*)*
+            $($(hook!(pattern, $hook, rules, walker, Rule::$variant, $family::$check(walker, pattern));)*)*
         }
 
         pub(crate) fn type_param<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
-            $($(if rules.contains(Rule::$variant) {
-                hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param))
-            })*)*
+            $($(hook!(type_param, $hook, rules, walker, Rule::$variant, $family::$check(walker, type_param));)*)*
         }
 
     };
@@ -211,40 +199,40 @@ macro_rules! hook {
     (module, module, $family:ident::$check:ident($($argument:expr),*)) => {
         rules::$family::$check($($argument),*)
     };
-    (statement, statement, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (statement, statement, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::statement($($argument),*)
+            rules::$family::$check::statement($($argument),*);
         }
     };
-    (expression, expression, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (expression, expression, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::expression($($argument),*)
+            rules::$family::$check::expression($($argument),*);
         }
     };
-    (scope, scope, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (scope, scope, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::scope($($argument),*)
+            rules::$family::$check::scope($($argument),*);
         }
     };
-    (except_handler, except_handler, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (except_handler, except_handler, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::except_handler($($argument),*)
+            rules::$family::$check::except_handler($($argument),*);
         }
     };
-    (pattern, pattern, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (pattern, pattern, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::pattern($($argument),*)
+            rules::$family::$check::pattern($($argument),*);
         }
     };
-    (type_param, type_param, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
-        {
+    (type_param, type_param, $rules:ident, $walker:ident, $rule:expr, $family:ident::$check:ident($($argument:expr),*)) => {
+        if $rules.contains($rule) {
             $walker.checker.enter($rule);
-            rules::$family::$check::type_param($($argument),*)
+            rules::$family::$check::type_param($($argument),*);
         }
     };
     (walks, module) => {
@@ -253,9 +241,7 @@ macro_rules! hook {
     (walks, $hook:ident) => {
         true
     };
-    ($asked:ident, $hook:ident, $($call:tt)*) => {
-        ()
-    };
+    ($asked:ident, $hook:ident, $($call:tt)*) => {};
 }
 
 rules! {
@@ -572,11 +558,8 @@ mod tests {
 
     #[test]
     fn code_digit_names_the_family_group() {
-        let misplaced: Vec<_> = Rule::ALL
-            .iter()
-            .filter(|rule| rule.group_entry().0 != rule.family())
-            .map(|rule| (rule.code(), rule.family(), rule.group_entry().0))
-            .collect();
-        assert_eq!(misplaced, Vec::new());
+        let misplaced: Vec<&str> =
+            Rule::ALL.iter().copied().filter(|rule| rule.group_entry().0 != rule.family()).map(Rule::code).collect();
+        assert_eq!(misplaced, Vec::<&str>::new());
     }
 }

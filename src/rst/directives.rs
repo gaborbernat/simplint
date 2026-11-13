@@ -511,8 +511,7 @@ fn enumerator_len(text: &str) -> Option<usize> {
         Some(body) => (true, body),
         None => (false, text),
     };
-    let end = body.find([')', '.'])?;
-    let suffix = body[end..].chars().next()?;
+    let (end, suffix) = body.char_indices().find(|(_, char)| matches!(char, ')' | '.'))?;
     let closed = if parens { suffix == ')' } else { suffix == ')' || suffix == '.' };
     let length = usize::from(parens) + end + 1;
     (closed && is_enumerator(&body[..end]) && (text[length..].is_empty() || text[length..].starts_with(BLANKS)))
@@ -650,15 +649,14 @@ fn list_item(text: &str, base: usize) -> Option<(usize, &str)> {
     if indent.saturating_sub(base) > 3 || is_thematic_break(body) {
         return None;
     }
-    let marker = match body.chars().next()? {
-        '-' | '+' | '*' => 1,
-        _ => {
-            let digits = body.bytes().take_while(u8::is_ascii_digit).count();
-            if !(1..=9).contains(&digits) || !matches!(body.as_bytes().get(digits), Some(b'.' | b')')) {
-                return None;
-            }
-            digits + 1
+    let marker = if body.starts_with(['-', '+', '*']) {
+        1
+    } else {
+        let digits = body.bytes().take_while(u8::is_ascii_digit).count();
+        if !(1..=9).contains(&digits) || !matches!(body.as_bytes().get(digits), Some(b'.' | b')')) {
+            return None;
         }
+        digits + 1
     };
     let after = &body[marker..];
     if !(after.is_empty() || after.starts_with(BLANKS)) {
@@ -972,6 +970,12 @@ mod tests {
     }
 
     #[test]
+    fn empty_option_value_takes_its_deeper_line() {
+        let expected = [parsed("automodule", "pkg", &[("members", "a")])];
+        assert_eq!(found(".. automodule:: pkg\n   :members:\n      a\n"), expected);
+    }
+
+    #[test]
     fn multi_line_argument_is_one_signature_per_line() {
         let expected = [parsed("function", "f(a,\nb)", &[("module", "pkg")])];
         assert_eq!(found(".. function:: f(a,\n   b)\n   :module: pkg\n"), expected);
@@ -1282,6 +1286,12 @@ mod tests {
     #[test_case("* * *\n\n    ```{automodule} pkg\n    ```\n", &[] ; "asterisk_thematic_break_is_not_a_list_item")]
     #[test_case("- - -\n\n    ```{automodule} pkg\n    ```\n", &[] ; "dash_thematic_break_is_not_a_list_item")]
     #[test_case("---\n\n    ```{automodule} pkg\n    ```\n", &[] ; "dashes_thematic_break_is_not_a_list_item")]
+    #[test_case("*\t*\t*\n\n    ```{automodule} pkg\n    ```\n", &[] ; "tab_separated_thematic_break_is_not_a_list_item")]
+    #[test_case("Text\n1. one\n\n    ```{automodule} pkg\n    ```\n", &[("automodule", "pkg", &[])] ; "ordered_item_at_one_interrupts_a_paragraph")]
+    #[test_case("Text\n2. two\n\n    ```{automodule} pkg\n    ```\n", &[] ; "ordered_item_past_one_continues_a_paragraph")]
+    #[test_case("- item\n2024 notes\n\n    ```{automodule} pkg\n    ```\n", &[("automodule", "pkg", &[])] ; "number_without_a_marker_continues_the_item")]
+    #[test_case("-\n  ```{automodule} pkg\n  ```\n", &[("automodule", "pkg", &[])] ; "empty_item_content_starts_after_the_marker_space")]
+    #[test_case("-      ```{automodule} pkg\n       ```\n", &[] ; "five_spaces_after_a_marker_start_code")]
     #[test_case("- item\nlazy\n\n    ```{automodule} pkg\n    ```\n", &[("automodule", "pkg", &[])] ; "lazy_continuation_keeps_the_list_item")]
     #[test_case("-item\n\n    ```{automodule} pkg\n    ```\n", &[] ; "bullet_without_a_space_is_not_a_list_item")]
     #[test_case("```{automodule} pkg\n    ```\n", &[("automodule", "pkg", &[])] ; "closing_fence_indented_four_spaces_does_not_close")]
@@ -1316,6 +1326,13 @@ mod tests {
     #[test_case("<span title=\"{func}`pkg.hidden`\">x</span>\n", &[] ; "inline_html_attribute")]
     #[test_case("[x](<{func}`pkg.hidden`>)\n", &[] ; "link_destination")]
     #[test_case("[a]: http://x '{func}`pkg.hidden`'\n", &[] ; "reference_definition")]
+    #[test_case("Text\n\n[a]: http://x '{func}`pkg.hidden`'\nmore {func}`pkg.a`\n", &["pkg.a"] ; "reference_definition_after_a_line")]
+    #[test_case("a [x]: {func}`pkg.a`\n", &["pkg.a"] ; "reference_definition_after_text_is_text")]
+    #[test_case("<svn+ssh://host/{func}`pkg.hidden`>\n", &[] ; "autolink_scheme_with_punctuation")]
+    #[test_case("<!-- {func}`pkg.hidden` -->\n", &[] ; "html_comment")]
+    #[test_case("a <1 {func}`pkg.a`>\n", &["pkg.a"] ; "angle_bracket_before_a_digit_is_text")]
+    #[test_case("a <x {func}`pkg.a`\n", &["pkg.a"] ; "unclosed_angle_bracket_is_text")]
+    #[test_case("\\``x {func}``pkg.a``\n", &["pkg.a"] ; "backtick_after_an_escaped_one_without_a_closer")]
     #[test_case("[{func}`pkg.a`](http://x)\n", &["pkg.a"] ; "role_in_link_text")]
     #[test_case("> {func}`pkg.a`\n", &["pkg.a"] ; "role_in_blockquote")]
     #[test_case("# {func}`pkg.a`\n", &["pkg.a"] ; "role_in_heading")]
