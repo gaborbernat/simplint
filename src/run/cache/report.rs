@@ -99,19 +99,16 @@ impl Report {
     fn of(diagnostic: &Diagnostic, noqa_row: Option<TextSize>) -> Option<Self> {
         let primary = diagnostic.annotations().first()?;
         let range = primary.get_span().range()?;
-        let unruled = |kind| {
-            Some(Self {
-                kind,
+        if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
+            return Some(Self {
+                kind: ReportKind::IoError,
                 message: diagnostic.headline_message().to_owned(),
                 start: range.start().to_u32(),
                 end: range.end().to_u32(),
                 help: Vec::new(),
                 fix: None,
                 related: Vec::new(),
-            })
-        };
-        if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
-            return unruled(ReportKind::IoError);
+            });
         }
         let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
         let related: Vec<StoredRelated> =
@@ -312,13 +309,13 @@ impl Settled {
 
 pub(super) fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
     Withdrawn {
-        rules: RuleSet::from_rules(settled.rules.iter().filter_map(|code| Rule::from_code(code.as_str()))),
+        rules: RuleSet::from_rules(settled.rules.iter().filter_map(|code| rule_by_code(code.as_str()))),
         fixes: settled
             .fixes
             .iter()
             .filter_map(|fix| {
                 Some(FixKey {
-                    rule: Rule::from_code(fix.rule.as_str())?,
+                    rule: rule_by_code(fix.rule.as_str())?,
                     message: fix.message.as_str().to_owned(),
                     text: fix.text.as_str().to_owned(),
                     occurrence: fix.occurrence.to_native() as usize,
@@ -331,10 +328,9 @@ pub(super) fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
 #[cfg(test)]
 mod tests {
     use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
+    use ruff_source_file::SourceFileBuilder;
     use ruff_text_size::{TextRange, TextSize};
     use test_case::test_case;
-
-    use ruff_source_file::SourceFileBuilder;
 
     use super::{Report, ReportKind, StoredApplicability, StoredEdit, StoredFix, StoredIsolation};
 

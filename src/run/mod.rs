@@ -247,9 +247,13 @@ fn fix_path(
             diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
-    let fixed = FixMap::of(path, fixed);
     Ok(Linting {
-        diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
+        diagnostics: Diagnostics {
+            inner: diagnostics,
+            fixed: FixMap::of(path, fixed),
+            diffs,
+            ..Diagnostics::default()
+        },
         settled,
         noqa_rows,
         cacheable: true,
@@ -301,12 +305,7 @@ fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> StdinL
             .map(|transformed| SourceKindDiff::from_text(source, &transformed, Some(path)).to_string())
     };
     StdinLint {
-        diagnostics: Diagnostics {
-            inner: diagnostics,
-            fixed: FixMap::of(path, fixed),
-            diffs: Vec::new(),
-            rendered: FxHashMap::default(),
-        },
+        diagnostics: Diagnostics { inner: diagnostics, fixed: FixMap::of(path, fixed), ..Diagnostics::default() },
         output,
     }
 }
