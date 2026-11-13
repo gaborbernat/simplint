@@ -57,7 +57,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 115:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
 116:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
 117:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
---- fixed (50 applied, 5 remaining) ---
+153:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+154:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+--- fixed (52 applied, 5 remaining) ---
 def check(value: int) -> None:
     assert value
     assert False, "unreachable"
@@ -168,3 +170,11 @@ def not_constant(value: int) -> None:
 def commented_tuple(value: int) -> None:
     assert (value,  # keep the message
             "value is set")
+
+
+def evaluated(value: int) -> None:
+    assert -"a"
+    assert True and value
+    assert "a" * None
+    assert "a" - 1
+    assert 1 - "a"

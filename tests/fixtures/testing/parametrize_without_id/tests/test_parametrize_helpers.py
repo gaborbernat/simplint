@@ -339,3 +339,38 @@ def _async_exit_stack_row(name: str) -> pytest.ParameterSet:
 @pytest.mark.parametrize("name", [_async_exit_stack_row("a")])
 def test_async_exit_stack_helper(name: str) -> None:
     assert name
+
+
+def _else_row(name: str) -> pytest.ParameterSet:
+    try:
+        text = name.upper()
+    except AttributeError:
+        return pytest.param(name, id="raw")
+    else:
+        return pytest.param(text, id="upper")
+
+
+def _matched_row(name: str) -> pytest.ParameterSet:
+    match name:
+        case "a":
+            return pytest.param(name, id="first")
+        case _:
+            return pytest.param(name, id="other")
+
+
+@pytest.mark.parametrize("name", [_else_row("a"), _matched_row("b")])
+def test_helpers_through_else_and_match(name: str) -> None:
+    assert name
+
+
+def _open_match_row(name: str) -> pytest.ParameterSet:
+    match name:
+        case "a":
+            return pytest.param(name, id="first")
+        case "b":
+            return pytest.param(name, id="second")
+
+
+@pytest.mark.parametrize("name", [_open_match_row("b")])
+def test_helpers_through_open_match(name: str) -> None:
+    assert name

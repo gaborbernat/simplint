@@ -2,33 +2,37 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-12:72 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-17:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-22:39 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-27:30 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-32:63 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-37:43 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-42:40 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-52:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-62:80 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-67:99 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-79:9 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [unsafe fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-88:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-93:49 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-98:66 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-103:48 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-108:32 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-113:42 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-118:58 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-123:60 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
-128:49 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-133:56 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-138:53 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-143:53 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-148:54 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-153:67 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
-158:40 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
---- fixed (14 applied, 12 remaining) ---
+13:72 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+18:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+23:39 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+28:30 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+33:63 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+38:43 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+43:40 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+53:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+63:80 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+68:99 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+80:9 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [unsafe fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+89:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+94:49 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+99:66 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+104:48 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+109:32 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+114:42 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+119:58 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+124:60 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+129:49 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+134:56 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+139:53 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+144:53 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+149:54 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+154:67 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+159:40 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+192:47 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)` [fix: Wrap each row in `pytest.param(..., id=...)` and drop `ids=`]
+197:48 SMP802 Parametrize `ids=` list keeps each id apart from its row; wrap each row in `pytest.param(..., id=...)`
+202:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+202:43 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+--- fixed (15 applied, 15 remaining) ---
 import pytest
 import pytest as pt
 from pytest import mark
@@ -38,6 +42,7 @@ from shared_ids import shared_ids
 IDS = ["one", "two"]
 NAMES = "value"
 CASES = [(1, 2)]
+VALUE = 3
 
 
 @pytest.mark.parametrize(("value", "expected"), [pytest.param(1, 2, id="positive"), pytest.param(-1, 0, id="negative")])
@@ -216,3 +221,23 @@ def test_local_ids() -> None:
     @pytest.mark.parametrize("value", [1, 2], ids=local_ids)
     def test_local(value: int) -> None:
         assert value
+
+
+@pytest.mark.parametrize("value", (pytest.param(1, id="one"), pytest.param(2, id="two")))
+def test_tuple_rows(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize(argvalues=[1, 2], ids=["one", "two"])
+def test_without_argnames(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", (VALUE, -VALUE))
+def test_tuple_rows_without_ids(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [1.5e20, 2e20])
+def test_large_float_ids(value: float) -> None:
+    assert value

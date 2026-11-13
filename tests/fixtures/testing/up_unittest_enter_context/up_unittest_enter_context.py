@@ -9,6 +9,11 @@ class ConfigTest(TestCase):
         self.addCleanup(patcher.stop)
         home.return_value = "/home"
 
+    def test_started_unbound(self):
+        patcher = mock.patch("os.getcwd")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_object(self):
         patcher = mock.patch.object(Config, "debug", True)
         debug = patcher.start()

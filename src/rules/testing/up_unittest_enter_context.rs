@@ -17,10 +17,8 @@ pub fn up_unittest_enter_context(checker: &Checker) {
     for class in checker.class_defs().iter().filter(|class| is_test_case(checker, class)) {
         for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
             for_each_body(&method.body, &mut |statements, _| {
-                for window in statements.windows(3) {
-                    if let [start, bind, cleanup] = window {
-                        check_sequence(checker, &mut spellings, method.range(), start, bind, cleanup);
-                    }
+                for [start, bind, cleanup] in statements.array_windows() {
+                    check_sequence(checker, &mut spellings, method.range(), start, bind, cleanup);
                 }
             });
         }

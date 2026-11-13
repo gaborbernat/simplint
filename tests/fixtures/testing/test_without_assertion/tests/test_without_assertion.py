@@ -1,4 +1,6 @@
+import unittest
 import warnings
+from unittest import skip
 
 import pytest
 
@@ -18,6 +20,9 @@ def test_placeholder() -> None:
 
 
 class TestComputation:
+    runs = 0
+    runs += 1
+
     def test_method(self) -> None:
         compute()
 
@@ -80,13 +85,13 @@ def test_matcher(pytester: pytest.Pytester) -> None:
     result.stdout.fnmatch_lines(["*passed*"])
 
 
-def test_warnings_as_errors() -> None:
+def test_warnings_escalated() -> None:
     with warnings.catch_warnings(action="error"):
         compute()
 
 
 @pytest.mark.filterwarnings("error")
-def test_marked_warnings_as_errors() -> None:
+def test_marked_warnings_escalated() -> None:
     compute()
 
 
@@ -135,6 +140,16 @@ def test_commented() -> None:
 
 @pytest.mark.skip(reason="not written yet")
 def test_skipped() -> None:
+    compute()
+
+
+@skip("not written yet")
+def test_skipped_by_name() -> None:
+    compute()
+
+
+@unittest.skip("not written yet")
+def test_skipped_through_module() -> None:
     compute()
 
 

@@ -250,12 +250,10 @@ fn evaluate(expr: &Expr) -> Option<Value> {
             last
         }
         Expr::Compare(ast::ExprCompare { ops, operands, .. }) => {
-            let mut previous = evaluate(operands.first()?)?;
+            let values = operands.iter().map(evaluate).collect::<Option<Vec<_>>>()?;
             let mut all_hold = true;
-            for (op, operand) in ops.iter().zip(&operands[1..]) {
-                let next = evaluate(operand)?;
-                all_hold &= compare(&previous, *op, &next)?;
-                previous = next;
+            for (op, [left, right]) in ops.iter().zip(values.array_windows()) {
+                all_hold &= compare(left, *op, right)?;
             }
             Some(Value::Bool(all_hold))
         }

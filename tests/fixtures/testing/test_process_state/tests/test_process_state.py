@@ -142,3 +142,10 @@ def test_saved_copies() -> None:
     os.environ.update(environment)
     sys.argv = arguments
     sys.modules.update(modules)
+
+
+def test_other_shapes() -> None:
+    fresh = dict()
+    value = 1
+    del value
+    [os.environ["MODE"], fresh["x"]] = ["fast", 1]

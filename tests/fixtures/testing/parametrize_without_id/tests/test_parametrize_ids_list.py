@@ -7,6 +7,7 @@ from shared_ids import shared_ids
 IDS = ["one", "two"]
 NAMES = "value"
 CASES = [(1, 2)]
+VALUE = 3
 
 
 @pytest.mark.parametrize(("value", "expected"), [(1, 2), (-1, 0)], ids=["positive", "negative"])
@@ -186,3 +187,23 @@ def test_local_ids() -> None:
     @pytest.mark.parametrize("value", [1, 2], ids=local_ids)
     def test_local(value: int) -> None:
         assert value
+
+
+@pytest.mark.parametrize("value", (1, 2), ids=["one", "two"])
+def test_tuple_rows(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize(argvalues=[1, 2], ids=["one", "two"])
+def test_without_argnames(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", (VALUE, -VALUE))
+def test_tuple_rows_without_ids(value: int) -> None:
+    assert value
+
+
+@pytest.mark.parametrize("value", [1.5e20, 2e20])
+def test_large_float_ids(value: float) -> None:
+    assert value
