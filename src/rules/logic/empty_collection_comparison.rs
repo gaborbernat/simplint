@@ -29,13 +29,19 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
     let checker = walker.checker;
     let text = checker.parenthesized_text(value, compare.into());
+    let wrapped = if needs_parentheses(value) && !text.starts_with('(') { format!("({text})") } else { text.to_owned() };
+    // `not value == []` negates twice, so the `not` goes too, unless its result is kept as a `bool`.
+    let negated = walker.expressions().iter().rev().nth(1).filter(|parent| {
+        matches!(parent, Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::Not, .. }))
+    });
     let fix = walker.is_boolean_test(0).then(|| {
-        let replacement = match op {
-            CmpOp::Eq if needs_parentheses(value) && !text.starts_with('(') => format!("not ({text})"),
-            CmpOp::Eq => format!("not {text}"),
-            _ => text.to_owned(),
+        let (replacement, range) = match (op, negated) {
+            (CmpOp::Eq, Some(parent)) if walker.is_boolean_test(1) => (wrapped, parent.range()),
+            (CmpOp::Eq, Some(parent)) => (format!("bool({text})"), parent.range()),
+            (CmpOp::Eq, None) => (format!("not {wrapped}"), expr.range()),
+            _ => (text.to_owned(), expr.range()),
         };
-        Fix::unsafe_edit(Edit::range_replacement(replacement, expr.range()))
+        Fix::unsafe_edit(Edit::range_replacement(replacement, range))
     });
     let truth = if op == CmpOp::Eq { "falsy" } else { "truthy" };
     checker.report_fix(

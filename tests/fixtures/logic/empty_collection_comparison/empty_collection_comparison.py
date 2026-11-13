@@ -29,4 +29,4 @@ def tests(items, flag):
     match flag:
         case True if items == []:
             return None
-    return None
+    return not items == []
