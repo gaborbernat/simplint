@@ -6,9 +6,7 @@ its methods set on the instance and a dataclass's fields.
 A class that holds many attributes often holds several concerns, each a group of attributes that change together and
 that a few methods use. Every method can read and change every attribute, so a reader has to check all of them to know
 which ones a change touches. Smaller classes, each holding one group and held by the outer class, name the concerns and
-limit what each method can reach. pylint's
-[too-many-instance-attributes](https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/too-many-instance-attributes.html)
-(R0902) reports the same smell.
+limit what each method can reach.
 
 ## Example
 
@@ -53,8 +51,7 @@ class Order:
 ## Configuration
 
 - [`classes.max-instance-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#classes)
-  in `[tool.simplint]`: the most attributes a class's instances may hold. A class holding more is reported, such as
-  `max-instance-attributes = 4` under `[tool.simplint.classes]`
+  in `[tool.simplint]`: the most attributes a class's instances may hold
 
   ```toml config
   [tool.simplint.classes]
@@ -92,7 +89,8 @@ Each class is reported at its name. An attribute counts once, however many metho
           self.socket = object()
   ```
 
-- **A dataclass's fields**: annotated class attributes, leaving out `ClassVar` ones and the `KW_ONLY` marker.
+- **A dataclass's fields**: annotated class attributes, leaving out `ClassVar` and `InitVar` ones and the `KW_ONLY`
+  marker.
 
   ```toml config
   [tool.simplint.classes]
@@ -128,7 +126,7 @@ Each class is reported at its name. An attribute counts once, however many metho
           cls.total = 0
   ```
 
-- **`ClassVar` annotations and the `KW_ONLY` marker of a dataclass**: neither is an instance field.
+- **`ClassVar` and `InitVar` annotations and the `KW_ONLY` marker of a dataclass**: none is an instance field.
 
   ```toml config
   [tool.simplint.classes]
@@ -136,13 +134,14 @@ Each class is reported at its name. An attribute counts once, however many metho
   ```
 
   ```python ok
-  from dataclasses import KW_ONLY, dataclass
+  from dataclasses import KW_ONLY, InitVar, dataclass
   from typing import ClassVar
 
 
   @dataclass
   class Point:
       registry: ClassVar[list[str]] = []
+      scale: InitVar[int]
       _: KW_ONLY
       x: int
   ```

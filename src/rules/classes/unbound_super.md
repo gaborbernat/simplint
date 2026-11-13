@@ -29,8 +29,8 @@ class Child(dict):
 ### Active on
 
 - **Generator expressions**, at any target version.
-- **List, set and dict comprehensions** before Python 3.12, which inlined them into the function
-  ([PEP 709](https://peps.python.org/pep-0709/)).
+- **List, set and dict comprehensions** before Python 3.12, which run them as functions of their own; 3.12 inlined
+  them ([PEP 709](https://peps.python.org/pep-0709/)).
 - **Lambdas and nested functions without positional parameters**.
 
   ```python report
