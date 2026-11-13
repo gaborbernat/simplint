@@ -60,8 +60,8 @@ default of the parameter it fills.
   print(scale(2), scale(2, 1, 5))
   ```
 
-- **Parameters every call passes**: [`unused-default`](SMP506.html) reports their default instead, since the
-  default is then never used.
+- **Parameters every call passes**: [`unused-default`](SMP506.html) reports their default instead, since the default is
+  then never used.
 
   ```python ok
   def _scale(value: int, factor: int = 1) -> int:

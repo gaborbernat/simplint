@@ -4,9 +4,9 @@ catches through a base class.
 ## Why is this bad?
 
 Python tries the handlers of a `try` in order and runs the first whose class matches. A handler for `FileNotFoundError`
-after one for `OSError` never runs, so the code in it is dead and the reader is misled about which handler deals with the
-error. Inside one clause, `(OSError, FileNotFoundError)` catches the same as `OSError` alone, and the extra entry suggests
-a distinction the code does not make.
+after one for `OSError` never runs, so the code in it is dead and the reader is misled about which handler deals with
+the error. Inside one clause, `(OSError, FileNotFoundError)` catches the same as `OSError` alone, and the extra entry
+suggests a distinction the code does not make.
 
 ## Example
 

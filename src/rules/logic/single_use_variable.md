@@ -249,8 +249,8 @@ def total_price(prices: list[float]) -> str:
       print(next(stream))
   ```
 
-- **A weak reference**: a call to `weakref.ref`, `weakref.proxy` or `weakref.WeakMethod`. Inlined, the weak reference
-  is dropped right after the read, so code that counts or relies on it, as `weakref.getweakrefcount` does, sees it gone.
+- **A weak reference**: a call to `weakref.ref`, `weakref.proxy` or `weakref.WeakMethod`. Inlined, the weak reference is
+  dropped right after the read, so code that counts or relies on it, as `weakref.getweakrefcount` does, sees it gone.
 
   ```python ok
   import weakref

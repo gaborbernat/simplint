@@ -1,5 +1,5 @@
-Flags a class whose instances hold more attributes than the limit, which is 12 by default. It counts the attributes
-its methods set on the instance and a dataclass's fields.
+Flags a class whose instances hold more attributes than the limit, which is 12 by default. It counts the attributes its
+methods set on the instance and a dataclass's fields.
 
 ## Why is this bad?
 
@@ -167,7 +167,8 @@ No fix is offered: grouping attributes into classes is a decision about the desi
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not implemented; pylint R0902 is listed in
-  [#970](https://github.com/astral-sh/ruff/issues/970) as waiting on [#1774](https://github.com/astral-sh/ruff/issues/1774).
+  [#970](https://github.com/astral-sh/ruff/issues/970) as waiting on
+  [#1774](https://github.com/astral-sh/ruff/issues/1774).
 - [pylint](https://github.com/pylint-dev/pylint) reports a class over `max-attributes`, 7 by default, as
   [R0902](https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/too-many-instance-attributes.html), with
   no fix.
