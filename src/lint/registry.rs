@@ -423,12 +423,13 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
     diagnostic.secondary_code().and_then(|code| Rule::from_code(code.as_str()))
 }
 
-const WORDS: usize = 8;
+// One bit per rule, in as few words as the rules need, so a membership test on the walker's path reads one word.
+const WORDS: usize = Rule::ALL.len().div_ceil(128);
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct RuleSet([u128; WORDS]);
 
-const _: () = assert!(Rule::ALL.len() <= WORDS * 128, "RuleSet holds one bit per rule in its u128 words");
+const _: () = assert!(Rule::ALL.len() <= 1024, "the rule set holds at most 1024 rules");
 
 impl CacheKey for RuleSet {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
@@ -447,7 +448,7 @@ impl RuleSet {
             return Some((Self::from_rules([rule]), usize::MAX));
         }
         let set = Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.code().starts_with(selector)));
-        (!selector.is_empty() && set != Self::default()).then_some((set, selector.len()))
+        (!selector.is_empty() && !set.is_empty()).then_some((set, selector.len()))
     }
 
     pub fn all() -> Self {
@@ -488,11 +489,16 @@ impl RuleSet {
     }
 
     pub fn contains(self, rule: Rule) -> bool {
-        self.overlaps(Self::single(rule))
+        let bit = rule as usize;
+        self.0[bit / 128] >> (bit % 128) & 1 != 0
     }
 
     pub fn overlaps(self, other: Self) -> bool {
-        self.combine(other, |left, right| left & right) != Self::default()
+        self.0.iter().zip(other.0).any(|(left, right)| left & right != 0)
+    }
+
+    fn is_empty(self) -> bool {
+        self.0.iter().all(|word| *word == 0)
     }
 
     // The rules that read the project index, directly or through the public API, the rst targets' publicness, string
