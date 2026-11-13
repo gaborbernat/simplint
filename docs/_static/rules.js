@@ -6,7 +6,7 @@ document.documentElement.classList.remove("no-js");
 
 // The rules table streams in before the script after it can filter it, so with filters in the URL its rows stay out of
 // the layout until they are applied: rows shown and then hidden would move everything around them.
-const RULE_FILTERS = ["q", "group", "fix", "scope"];
+const RULE_FILTERS = ["q", "group", "fix", "scope", "default"];
 if (RULE_FILTERS.some((key) => new URLSearchParams(window.location.search).get(key))) {
   document.documentElement.classList.add("rules-filtering");
 }
@@ -17,6 +17,7 @@ function setupRulesTable(table) {
   const group = document.getElementById("rule-group");
   const fix = document.getElementById("rule-fix");
   const scope = document.getElementById("rule-scope");
+  const byDefault = document.getElementById("rule-default");
   const count = document.getElementById("rule-count");
   const empty = document.getElementById("rule-empty");
   const rows = [...table.querySelectorAll("tr.rule-row")];
@@ -26,6 +27,7 @@ function setupRulesTable(table) {
   group.value = params.get("group") ?? "";
   fix.value = params.get("fix") ?? "";
   scope.value = params.get("scope") ?? "";
+  byDefault.value = params.get("default") ?? "";
 
   // the build sizes the box for the longest rule name; only text that no longer fits widens it, rather than scrolling
   // out of view
@@ -46,7 +48,8 @@ function setupRulesTable(table) {
         words.every((word) => row.dataset.text.includes(word)) &&
         (!group.value || row.dataset.group === group.value) &&
         (!fix.value || row.dataset.fix === fix.value) &&
-        (!scope.value || row.dataset.scope === scope.value);
+        (!scope.value || row.dataset.scope === scope.value) &&
+        (!byDefault.value || row.dataset.default === byDefault.value);
       row.hidden = !visible;
       shown += visible ? 1 : 0;
     }
@@ -56,7 +59,7 @@ function setupRulesTable(table) {
     count.textContent = shown === rows.length ? `${rows.length} rules` : `${shown} of ${rows.length} rules`;
     empty.hidden = shown !== 0;
     const state = new URLSearchParams();
-    const values = [search.value, group.value, fix.value, scope.value];
+    const values = [search.value, group.value, fix.value, scope.value, byDefault.value];
     for (const [key, value] of RULE_FILTERS.map((key, index) => [key, values[index]])) {
       if (value) {
         state.set(key, value);
@@ -66,7 +69,7 @@ function setupRulesTable(table) {
     history.replaceState(null, "", query ? `?${query}` : window.location.pathname);
   };
 
-  for (const control of [search, group, fix, scope]) {
+  for (const control of [search, group, fix, scope, byDefault]) {
     control.addEventListener("input", apply);
   }
   // typing a "/" into another field, or pressing a shortcut with a modifier, is not a request to search
@@ -81,7 +84,7 @@ function setupRulesTable(table) {
     event.preventDefault();
     search.focus();
   });
-  if (search.value || group.value || fix.value || scope.value) {
+  if (search.value || group.value || fix.value || scope.value || byDefault.value) {
     apply();
   }
   document.documentElement.classList.remove("rules-filtering");

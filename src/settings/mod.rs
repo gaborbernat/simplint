@@ -350,7 +350,8 @@ impl Settings {
             .map_or_else(CoveragePlugins::default, |table| CoveragePlugins::of(table, project_dir, &pytest.pythonpath));
         let rules = resolve_rules(
             configuration.rule_selections.iter().map(|selection| &selection.enabled),
-            RuleSet::all().subtract(RuleSet::from_rules([Rule::UnusedIgnore])),
+            RuleSet::by_default().subtract(RuleSet::from_rules([Rule::UnusedIgnore])),
+            RuleSet::by_default(),
         )?;
         // flake8-lazy rebuilds each module's `__lazy_modules__` from its imports, so it and this rule's fix keep
         // rewriting each other's output; the rule stays off for the whole project. The hook configuration is read only
@@ -364,8 +365,11 @@ impl Settings {
         } else {
             rules
         };
-        let fixable =
-            resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable), RuleSet::all())?;
+        let fixable = resolve_rules(
+            configuration.rule_selections.iter().map(|selection| &selection.fixable),
+            RuleSet::all(),
+            RuleSet::all(),
+        )?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
         let options = configuration.project;
@@ -505,7 +509,12 @@ struct Tool {
     simplint: SimplintOptions,
 }
 
-fn resolve_rules<'a>(layers: impl IntoIterator<Item = &'a SelectorLayer>, default: RuleSet) -> Result<RuleSet> {
+// `broad` holds the rules `ALL` and a code prefix can turn on; a selector naming a rule turns it on either way.
+fn resolve_rules<'a>(
+    layers: impl IntoIterator<Item = &'a SelectorLayer>,
+    default: RuleSet,
+    broad: RuleSet,
+) -> Result<RuleSet> {
     layers.into_iter().try_fold(default, |rules, layer| {
         let enable = layer.replace.iter().flatten().chain(&layer.extend).map(|selector| (selector, true));
         let updates: Vec<(usize, RuleSet, bool)> = enable
@@ -516,9 +525,11 @@ fn resolve_rules<'a>(layers: impl IntoIterator<Item = &'a SelectorLayer>, defaul
             .sorted_by_key(|(specificity, ..)| *specificity)
             .collect();
         let base = if layer.replace.is_some() { RuleSet::default() } else { rules };
-        Ok(updates
-            .into_iter()
-            .fold(base, |rules, (_, set, enabled)| if enabled { rules.union(set) } else { rules.subtract(set) }))
+        Ok(updates.into_iter().fold(base, |rules, (specificity, set, enabled)| match (enabled, specificity) {
+            (true, usize::MAX) => rules.union(set),
+            (true, _) => rules.union(set.intersect(broad)),
+            (false, _) => rules.subtract(set),
+        }))
     })
 }
 

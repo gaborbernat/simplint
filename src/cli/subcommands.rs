@@ -154,6 +154,8 @@ struct Explanation {
     preview: bool,
     // simplint's own key: whether other files of the run can change what the rule reports.
     cross_file: bool,
+    // simplint's own key: whether the rule runs only when a selector names it.
+    opt_in: bool,
 }
 
 impl Explanation {
@@ -169,6 +171,7 @@ impl Explanation {
             explanation: rule.explanation(),
             preview: false,
             cross_file: rule.reads_other_files(),
+            opt_in: rule.is_opt_in(),
         }
     }
 
@@ -181,6 +184,9 @@ impl Explanation {
         }
         if self.cross_file {
             output.push_str("Reads other files of the run.\n\n");
+        }
+        if self.opt_in {
+            output.push_str("Opt-in: runs only when selected by its code or name.\n\n");
         }
         let examples = parse(self.explanation).expect("every rule page parses; tests/examples.rs checks each one");
         output.push_str(plain_examples(self.explanation, &examples).trim());
@@ -322,6 +328,7 @@ struct RuleEntry {
     group: &'static str,
     short_group: &'static str,
     cross_file: bool,
+    opt_in: bool,
 }
 
 impl RuleEntry {
@@ -337,6 +344,7 @@ impl RuleEntry {
             group: rule.group(),
             short_group: rule.short_group(),
             cross_file: rule.reads_other_files(),
+            opt_in: rule.is_opt_in(),
         }
     }
 }

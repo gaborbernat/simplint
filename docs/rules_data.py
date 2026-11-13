@@ -25,7 +25,7 @@ _ROW: Final[re.Pattern[str]] = re.compile(
     "(?P<summary>[^"\\]+)",[ ]                    # the summary
     (?P<fix>Always|Sometimes|None),[ ]            # when the fix applies
     (?P<family>\w+)::(?P<check>\w+)[ ]\{[^}]*\}   # the module and check, then the rule's fields
-    (?P<attributes>(?:[ ](?:since[ ]\w+|reads[ ]\[[^\]]*\]|skips[ ]\[[^\]]*\]))*)  # the attributes
+    (?P<attributes>(?:[ ](?:since[ ]\w+|reads[ ]\[[^\]]*\]|skips[ ]\[[^\]]*\]|default[ ]off))*)  # the attributes
     \),                                           # the end of the tuple
     """,
     re.VERBOSE,
@@ -79,6 +79,7 @@ class RuleEntry(TypedDict):
     group: str
     short_group: str
     cross_file: bool
+    opt_in: bool
 
 
 def rule_entries(root: Path = _ROOT) -> list[RuleEntry]:
@@ -228,6 +229,7 @@ def _rule(root: Path, line: str, groups: list[tuple[str, str]]) -> RuleEntry:
         "group": group,
         "short_group": short_group,
         "cross_file": reads is not None and "cross_file" in reads["names"].replace(" ", "").split(","),
+        "opt_in": "default off" in row["attributes"],
     }
 
 

@@ -55,6 +55,7 @@ X = 1
             "group": "Naming",
             "short_group": "Naming",
             "cross_file": False,
+            "opt_in": False,
         }
     )
 
@@ -62,4 +63,25 @@ X = 1
         "`tasks.py` (executable)\n\n```{code-block} python" in page,
         "Before, with SMP101 selected" in page,
         "After" in page,
-    ) == (True, True, True)
+        "badge opt-in" in page,
+    ) == (True, True, True, False)
+
+
+def test_rule_page_badges_an_opt_in_rule(rule_pages: ModuleType) -> None:
+    page = rule_pages._rule_page(  # ruff: ignore[private-member-access] # the build's own renderer
+        {
+            "code": "SMP407",
+            "name": "init-module-content",
+            "summary": "`__init__.py` holding code beyond its API",
+            "fix": "None",
+            "explanation": "Flags it.\n\n## Why is this bad?\n\nIt runs first.\n",
+            "examples": {"parsed": []},
+            "family": "api",
+            "group": "Public API",
+            "short_group": "Public API",
+            "cross_file": False,
+            "opt_in": True,
+        }
+    )
+
+    assert '<a class="badge opt-in" href="../how-to/select-rules.html#opt-in-rules"' in page

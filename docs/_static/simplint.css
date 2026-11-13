@@ -563,6 +563,25 @@ table.rules tr[data-scope="cross-file"] td.rule-scope {
   color: var(--simplint-accent);
 }
 
+table.rules th.rule-default {
+  width: 5em;
+  text-align: center;
+}
+
+table.rules th.rule-default a {
+  color: inherit;
+}
+
+table.rules td.rule-default {
+  text-align: center;
+  color: var(--color-foreground-muted);
+}
+
+table.rules tr[data-default="opt-in"] td.rule-default {
+  font-weight: 700;
+  color: var(--simplint-accent);
+}
+
 table.rules td {
   padding: 0.65rem 0.6rem;
   vertical-align: top;
@@ -617,7 +636,7 @@ table.rules tr.group-row td {
     position: static;
   }
 
-  /* the column stays, as the group rows span all five, but its text takes no room: at zero width alone it would wrap a
+  /* the column stays, as the group rows span all six, but its text takes no room: at zero width alone it would wrap a
      letter per line and stretch every row */
   table.rules td.rule-name,
   table.rules th.rule-name {
@@ -631,6 +650,12 @@ table.rules tr.group-row td {
   /* the header breaks at its hyphen, so the column needs only the room of its mark */
   table.rules th.rule-scope {
     width: 3.6em;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  table.rules th.rule-default {
+    width: 4.4em;
     padding-left: 0;
     padding-right: 0;
   }

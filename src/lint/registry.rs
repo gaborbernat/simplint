@@ -18,6 +18,7 @@ macro_rules! rules {
         $(since $min:ident)?
         $(reads [$($read:ident), *])?
         $(skips [$($skip:ident), *])?
+        $(default $default:ident)?
     ),)*) => {
         #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub enum Rule {
@@ -87,6 +88,13 @@ macro_rules! rules {
             fn minimum_version(self) -> Option<PythonVersion> {
                 match self {
                     $(Rule::$variant => Option::<PythonVersion>::None $(.or(Some(PythonVersion::$min)))?,)*
+                }
+            }
+
+            // An opt-in rule runs only when a selector names it, so `ALL` and code prefixes leave it out.
+            pub fn is_opt_in(self) -> bool {
+                match self {
+                    $(Rule::$variant => false $(|| off!($default))?,)*
                 }
             }
 
@@ -169,6 +177,12 @@ pub(crate) enum Read {
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Skip {
     Nested,
+}
+
+macro_rules! off {
+    (off) => {
+        true
+    };
 }
 
 macro_rules! skip {
@@ -280,7 +294,7 @@ rules! {
     ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Sometimes, api::all_format { module } reads [cross_file, STRING_WORDS]),
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
-    InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file]),
+    InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding code beyond its API", None, api::init_module_content { module } reads [cross_file] default off),
     TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),
     UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods, nested functions and attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, STRING_WORDS, COMPUTED_READS, DOCTESTS, docs]),
     TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
@@ -427,18 +441,27 @@ impl RuleSet {
     // A selector's rules and how specific it is, ordered as Ruff's `Specificity`: `ALL`, then code prefixes by length,
     // then a single rule by code or name. `None` when it selects nothing.
     pub fn from_selector(selector: &str) -> Option<(Self, usize)> {
-        if selector == "ALL" {
-            return Some((Self::all(), 0));
-        }
         if let Some(rule) = Rule::from_code_or_name(selector) {
             return Some((Self::from_rules([rule]), usize::MAX));
         }
-        let set = Self::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.code().starts_with(selector)));
+        if selector == "ALL" {
+            return Some((Self::all(), 0));
+        }
+        let set = Self::all().filtered(|rule| rule.code().starts_with(selector));
         (!selector.is_empty() && !set.is_empty()).then_some((set, selector.len()))
     }
 
     pub fn all() -> Self {
         Self::from_rules(Rule::ALL.iter().copied())
+    }
+
+    // Every rule but the opt-in ones, which only a selector naming them turns on.
+    pub fn by_default() -> Self {
+        Self::all().filtered(|rule| !rule.is_opt_in())
+    }
+
+    fn filtered(self, keep: impl Fn(&Rule) -> bool) -> Self {
+        Self::from_rules(self.iter().filter(keep))
     }
 
     pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
@@ -464,6 +487,10 @@ impl RuleSet {
         let newer =
             Rule::ALL.iter().copied().filter(|rule| rule.minimum_version().is_some_and(|minimum| minimum > target));
         self.subtract(Self::from_rules(newer))
+    }
+
+    pub fn intersect(self, other: Self) -> Self {
+        self.combine(other, |left, right| left & right)
     }
 
     pub fn subtract(self, other: Self) -> Self {
