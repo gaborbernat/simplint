@@ -4,6 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::kinds::Kinds;
 use crate::syntax::needs_parentheses;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -26,8 +27,10 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(method) = affix(&subscript.slice, length) else {
         return;
     };
-    let checker = walker.checker;
     let value = subscript.value.as_ref();
+    // Any class may answer `==` with a `str`, as pyasn1's character types do, without having `startswith`.
+    let text = Kinds::new(walker, expr.range()).is_text(value);
+    let checker = walker.checker;
     let receiver = if needs_parentheses(value) {
         format!("({})", checker.text(value))
     } else {
@@ -39,7 +42,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         Rule::SliceAffixComparison,
         expr.range(),
         format!("Comparing a slice with a literal of its length is `{method}`"),
-        Some(Fix::unsafe_edit(Edit::range_replacement(replacement, expr.range()))),
+        text.then(|| Fix::unsafe_edit(Edit::range_replacement(replacement, expr.range()))),
         format!("Use `{method}`"),
     );
 }

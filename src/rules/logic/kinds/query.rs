@@ -29,6 +29,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
         self.kind(expr, self.scopes.len()) == Some(Kind::Str)
     }
 
+    pub(in crate::rules::logic) fn is_text(&mut self, expr: &'a Expr) -> bool {
+        matches!(self.kind(expr, self.scopes.len()), Some(Kind::Str | Kind::Bytes))
+    }
+
     // An operator on such an instance may run the class's own method.
     pub(in crate::rules::logic) fn is_class_instance(&mut self, expr: &'a Expr) -> bool {
         matches!(self.kind(expr, self.scopes.len()), Some(Kind::Instance(_) | Kind::ImportedInstance))
