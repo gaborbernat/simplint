@@ -70,6 +70,12 @@ use crate::common;
 #[test_case("test-process-state", "tests/test_process_state.py", None ; "test_process_state")]
 #[test_case("test-process-state", "tests/test_process_state_teardown_module.py", None ; "test_process_state_teardown")]
 #[test_case("test-process-state", "tests/test_process_state_pytestmark.py", None ; "test_process_state_pytestmark")]
+#[test_case(
+    "test-process-state",
+    "tests/test_process_state_pytestmark_single.py",
+    None ;
+    "test_process_state_pytestmark_single"
+)]
 #[test_case("test-return-value", "tests/test_return_value.py", None ; "test_return_value")]
 #[test_case("test-without-assertion", "tests/test_without_assertion.py", None ; "test_without_assertion")]
 #[test_case("up-pytest-deprecated-api", "tests/test_up_pytest_deprecated_api.py", None ; "up_pytest_deprecated_api")]

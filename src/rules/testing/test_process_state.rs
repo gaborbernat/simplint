@@ -37,6 +37,9 @@ pub fn test_process_state(checker: &Checker) {
     }
 }
 
+const DICT_MUTATORS: [&str; 7] = ["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"];
+const LIST_MUTATORS: [&str; 8] = ["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"];
+
 // The state of the test process a test changes for the tests that run after it.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum State {
@@ -50,27 +53,28 @@ enum State {
 
 impl State {
     // The process-wide objects whose items are the state, by their qualified name.
-    const OBJECTS: [([&str; 2], Self); 4] = [
-        (["os", "environ"], Self::Environment),
-        (["sys", "path"], Self::SysPath),
-        (["sys", "modules"], Self::SysModules),
-        (["sys", "argv"], Self::SysArgv),
+    // The process-wide objects, with the methods that change each in place.
+    const OBJECTS: [([&str; 2], Self, &[&str]); 4] = [
+        (["os", "environ"], Self::Environment, &DICT_MUTATORS),
+        (["sys", "path"], Self::SysPath, &LIST_MUTATORS),
+        (["sys", "modules"], Self::SysModules, &DICT_MUTATORS),
+        (["sys", "argv"], Self::SysArgv, &LIST_MUTATORS),
     ];
 
     fn of_object(checker: &Checker, expr: &Expr) -> Option<Self> {
         let semantic = checker.semantic();
-        Self::OBJECTS.into_iter().find_map(|(segments, state)| semantic.resolves_to(expr, &segments).then_some(state))
+        Self::OBJECTS
+            .into_iter()
+            .find_map(|(segments, state, _)| semantic.resolves_to(expr, &segments).then_some(state))
     }
 
-    // The methods that change the object in place.
-    fn mutators(self) -> &'static [&'static str] {
-        match self {
-            Self::Environment | Self::SysModules => {
-                &["update", "pop", "popitem", "setdefault", "clear", "__setitem__", "__delitem__"]
-            }
-            Self::SysPath => &["append", "insert", "extend", "remove", "pop", "clear", "__setitem__", "__delitem__"],
-            Self::WorkingDirectory | Self::SysArgv | Self::ModuleAttribute => &[],
-        }
+    // The object a method call such as `sys.path.append` changes in place.
+    fn mutated_by(checker: &Checker, method: &ast::ExprAttribute) -> Option<Self> {
+        let semantic = checker.semantic();
+        Self::OBJECTS.into_iter().find_map(|(segments, state, mutators)| {
+            (mutators.contains(&method.attr.as_str()) && semantic.resolves_to(&method.value, &segments))
+                .then_some(state)
+        })
     }
 
     fn noun(self) -> &'static str {
@@ -283,8 +287,7 @@ impl Changes<'_, '_> {
         } else if semantic.resolves_to(func, &["os", "chdir"]) {
             self.push(call.range(), State::WorkingDirectory);
         } else if let Expr::Attribute(attribute) = func
-            && let Some(state) = State::of_object(self.checker, &attribute.value)
-            && state.mutators().contains(&attribute.attr.as_str())
+            && let Some(state) = State::mutated_by(self.checker, attribute)
         {
             self.push(call.range(), state);
         }

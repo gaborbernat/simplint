@@ -32,6 +32,19 @@ def test_module_attribute() -> None:
     json.dumps = repr
 
 
+def test_argv_append() -> None:
+    sys.argv.append("--verbose")
+
+
+def test_tuple_target() -> None:
+    sys.path[0], json.dumps = "src", repr
+
+
+def test_nested_attribute(tmp_path) -> None:
+    settings = mock.Mock()
+    settings.paths.root = tmp_path
+
+
 @pytest.fixture
 def environment() -> None:
     os.environ["MODE"] = "fast"

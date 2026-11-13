@@ -12,6 +12,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 27:5 SMP816 Changing `sys.modules` by hand leaks into the tests that run after this one; use `monkeypatch.setitem` or `mock.patch.dict`
 28:5 SMP816 Changing `sys.modules` by hand leaks into the tests that run after this one; use `monkeypatch.setitem` or `mock.patch.dict`
 32:5 SMP816 Changing a module attribute by hand leaks into the tests that run after this one; use `monkeypatch.setattr` or `mock.patch.object`
-37:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
-42:9 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
-57:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+36:5 SMP816 Changing `sys.argv` by hand leaks into the tests that run after this one; use `monkeypatch.setattr(sys, "argv", ...)`
+40:5 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
+40:5 SMP816 Changing a module attribute by hand leaks into the tests that run after this one; use `monkeypatch.setattr` or `mock.patch.object`
+50:5 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
+55:9 SMP816 Changing `sys.path` by hand leaks into the tests that run after this one; use `monkeypatch.syspath_prepend`
+70:9 SMP816 Changing an environment variable by hand leaks into the tests that run after this one; use `monkeypatch.setenv` or `monkeypatch.delenv`
