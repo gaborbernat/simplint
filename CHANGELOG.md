@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.3 (2026-11-14)
+
+<a name="release-0-12-3"></a>
+
+<a name="release-0-12-3-added"></a>
+
+### Added
+
+- Rules can now be opt-in: they run only when a selector names them by code or name, and `ALL` and code prefixes leave
+  them out. The rules list shows each rule's default in a new column, and an opt-in rule's page carries a badge
+  ([#142](https://github.com/gaborbernat/simplint/pull/142)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-12-3-changes"></a>
+
+### Changes
+
+- [`init-module-content`](https://github.com/gaborbernat/simplint/blob/0.12.3/src/rules/api/init_module_content.md) is
+  now opt-in, since many projects keep their implementation in a package's `__init__.py` on purpose. Enable it with
+  `extend-select = ["init-module-content"]` ([#142](https://github.com/gaborbernat/simplint/pull/142)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.12.2 (2026-11-13)
 
 <a name="release-0-12-2"></a>
