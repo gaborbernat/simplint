@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.4 (2026-11-14)
+
+<a name="release-0-12-4"></a>
+
+<a name="release-0-12-4-fixed"></a>
+
+### Fixed
+
+- The [`unused-ignore`](https://github.com/gaborbernat/simplint/blob/0.12.4/src/rules/comments/unused_ignore.md) fix
+  removes a stale directive's reason comment with it, instead of leaving the reason behind as a bare comment. Another
+  tool's directive later on the line, such as `# noqa: E501`, stays
+  ([#143](https://github.com/gaborbernat/simplint/pull/143)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.12.3 (2026-11-14)
 
 <a name="release-0-12-3"></a>
