@@ -17,6 +17,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::Parse;
 use crate::lint::registry::Rule;
+use crate::rules::comments::is_tool_directive;
 
 // The `noqa` and `simplint: ignore` comments of one file, by the line they sit on, and the file-level `ruff: noqa`
 // and `ruff: file-ignore` comments that cover the whole file.
@@ -502,9 +503,14 @@ fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> (Tex
     let line_start = source.line_start(start);
     let prefix = &source[TextRange::new(line_start, start)];
     let directive_end = start + offset + TextSize::of(contents) + TextSize::from(1);
-    // A comment after the directive stays with its line, so only the directive and its reason go.
+    // A prose comment after the directive is its reason, so it goes too; another tool's directive stays with its line.
     let rest = &source[TextRange::new(directive_end, source.line_end(start))];
-    let next = comment_start(rest).map(|index| directive_end + TextSize::of(&rest[..index]));
+    let starts: Vec<usize> = comment_starts(rest).collect();
+    let next = starts
+        .iter()
+        .zip(starts.iter().skip(1).copied().chain([rest.len()]))
+        .find(|&(&from, to)| is_tool_directive(&rest[from..to]))
+        .map(|(&index, _)| directive_end + TextSize::of(&rest[..index]));
     if prefix.trim().is_empty() {
         return match next {
             Some(next) => (TextRange::new(start, next), String::new()),
@@ -526,12 +532,12 @@ pub(crate) fn ignore_contents(comment: &str) -> Option<(TextSize, &str)> {
     })
 }
 
-// The `#` of a comment after a directive, which a `#` followed by a space or the end of the text starts, so an issue
-// number such as `#12` in a reason is not one.
-fn comment_start(text: &str) -> Option<usize> {
+// The `#` of each comment after a directive, which a `#` followed by a space or the end of the text starts, so an
+// issue number such as `#12` in a reason is not one.
+fn comment_starts(text: &str) -> impl Iterator<Item = usize> {
     text.match_indices('#')
         .map(|(index, _)| index)
-        .find(|index| matches!(text[index + 1..].chars().next(), None | Some(' ')))
+        .filter(|index| matches!(text[index + 1..].chars().next(), None | Some(' ')))
 }
 
 fn changed_region(before: &str, after: &str) -> (TextRange, String) {
@@ -559,7 +565,7 @@ fn with_reason(after: &str, reason: Option<&str>) -> String {
     let Some(reason) = reason else {
         return after.to_owned();
     };
-    let (old, tail) = after.split_at(comment_start(after).unwrap_or(after.len()));
+    let (old, tail) = after.split_at(comment_starts(after).next().unwrap_or(after.len()));
     let gap = match &old[old.trim_end().len()..] {
         _ if tail.is_empty() => "",
         "" => "  ",
