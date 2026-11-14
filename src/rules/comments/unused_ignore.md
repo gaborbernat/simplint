@@ -48,15 +48,15 @@ The rule tests removals one selector at a time, then offers one safe fix for the
   x = sum(values)  # simplint: ignore[single-letter-name]
   ```
 
-- **A comment after the directive**: when its last selector is unused, the directive and its reason are removed, and a
-  comment after them on the same line stays.
+- **A comment after the directive**: when its last selector is unused, the directive goes with the prose comment that
+  gives its reason, while another tool's directive later on the line, such as `# noqa: E501`, stays.
 
   ```python report
-  value = 1  # simplint: ignore[single-letter-name]  # wire order
+  value = 1  # simplint: ignore[single-letter-name]  # wire order  # noqa: E501
   ```
 
   ```python fixed
-  value = 1  # wire order
+  value = 1  # noqa: E501
   ```
 
 - **Selectors for rules outside a narrow `--select`**: the rule checks the rules currently selected for the file, so

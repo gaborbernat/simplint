@@ -149,16 +149,17 @@ fn unused_ignore_reports_and_fixes_each_selector() {
             fixed,
             common::read(root.path(), "module.py"),
         ),
-        (1, 1, true, 0, "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2  # stale\n".to_owned())
+        (1, 1, true, 0, "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2\n".to_owned())
     );
 }
 
 #[test_case(
-    "[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n" ;
+    "[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n",
+    (1, true, false) ;
     "local_limit_blocks_report"
 )]
-#[test_case("[tool.ruff.lint]\nselect = []\n" ; "comment_keeps_report_silent")]
-fn unused_ignore_rechecks_comment_sensitive_rules(config: &str) {
+#[test_case("[tool.ruff.lint]\nselect = []\n", (0, false, true) ; "reason_keeps_report_silent")]
+fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, expected: (i32, bool, bool)) {
     let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> \
         str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
     let root = common::project(&[("pyproject.toml", config), ("module.py", source)]);
@@ -170,7 +171,7 @@ fn unused_ignore_rechecks_comment_sensitive_rules(config: &str) {
             output.contains("unused simplint ignore selector"),
             common::read(root.path(), "module.py").contains("simplint: ignore"),
         ),
-        (1, true, false),
+        expected,
         "{output}"
     );
 }
@@ -220,19 +221,25 @@ fn unused_ignore_drops_standalone_directive_without_hiding_later_reports() {
     let fixed = common::check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0;
     assert_eq!(
         (fixed, common::read(root.path(), "module.py"), common::check(root.path(), &["--select", "SMP101"]).0),
-        (1, "# stale\nx = 1\n".to_owned(), 1)
+        (1, "x = 1\n".to_owned(), 1)
     );
 }
 
-#[test_case(
-    "value = 1  # simplint: ignore[SMP101]  # wire order\n",
-    "value = 1  # wire order\n" ;
-    "trailing_directive_keeps_later_comment"
-)]
+#[test_case("value = 1  # simplint: ignore[SMP101]  # wire order\n", "value = 1\n" ; "trailing_directive_drops_its_reason")]
 #[test_case(
     "def f():\n    # simplint: ignore[SMP101]  # wire order\n    return 1\n",
-    "def f():\n    # wire order\n    return 1\n" ;
-    "own_line_directive_keeps_later_comment"
+    "def f():\n    return 1\n" ;
+    "own_line_directive_drops_its_reason"
+)]
+#[test_case(
+    "value = 1  # simplint: ignore[SMP101]  # wire order  # noqa: E501\n",
+    "value = 1  # noqa: E501\n" ;
+    "reason_goes_and_later_directive_stays"
+)]
+#[test_case(
+    "def f():\n    # simplint: ignore[SMP101]  # see #12  # fmt: skip\n    return 1\n",
+    "def f():\n    # fmt: skip\n    return 1\n" ;
+    "own_line_reason_goes_and_later_directive_stays"
 )]
 #[test_case(
     "value = 1  # simplint: ignore[SMP101]# noqa: E501\n",
