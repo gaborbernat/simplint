@@ -3,11 +3,13 @@ Flags the result of a method that changes a list, dict or set in place, such as 
 
 ## Why is this bad?
 
-[`list.sort()`](https://docs.python.org/3/library/stdtypes.html#list.sort), `list.append()`, `dict.update()`,
-`set.add()` and the other in-place methods change their object and return `None`, as does
-[`random.shuffle()`](https://docs.python.org/3/library/random.html#random.shuffle). Storing, returning, passing or
-comparing that result works with `None`; where a new list was wanted,
-[`sorted()`](https://docs.python.org/3/library/functions.html#sorted) returns one. A comparison of two such results is
+[`list.sort()`](https://docs.python.org/3/builtins/stdtypes.html#list.sort),
+[`list.append()`](https://docs.python.org/3/builtins/stdtypes.html#list.append),
+[`dict.update()`](https://docs.python.org/3/builtins/stdtypes.html#dict.update),
+[`set.add()`](https://docs.python.org/3/builtins/stdtypes.html#set.add) and the other in-place methods change their
+object and return `None`, as does [`random.shuffle()`](https://docs.python.org/3/library/random.html#random.shuffle).
+Storing, returning, passing or comparing that result works with `None`; where a new list was wanted,
+[`sorted()`](https://docs.python.org/3/builtins/functions.html#sorted) returns one. A comparison of two such results is
 always true.
 
 ## Example

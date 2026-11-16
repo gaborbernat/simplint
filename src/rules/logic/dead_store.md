@@ -71,7 +71,9 @@ block that mentions the name assigns it again without reading it.
       return read
   ```
 
-- **A function that reads its locals by name**, through `locals()`, `vars()`, `eval` or `exec`.
+- **A function that reads its locals by name**, through
+  [`locals()`](https://docs.python.org/3/builtins/functions.html#locals),
+  [`vars()`](https://docs.python.org/3/builtins/functions.html#vars), `eval` or `exec`.
 
 - **`None` assigned over a computed value**: it lets the value go before the function ends, often to free its memory.
 

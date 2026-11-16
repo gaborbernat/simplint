@@ -78,7 +78,8 @@ def is_number(text):
       return re.match(r"yes|no$", text) is not None
   ```
 
-- **Flags, as an argument or an inline group such as `(?m)`**: with `re.MULTILINE`, `$` matches at the end of each line.
+- **Flags, as an argument or an inline group such as `(?m)`**: with
+  [`re.MULTILINE`](https://docs.python.org/3/library/re.html#re.MULTILINE), `$` matches at the end of each line.
 
   ```python ok
   import re

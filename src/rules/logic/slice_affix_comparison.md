@@ -1,6 +1,6 @@
 Flags `s[:n] == literal` and `s[-n:] == literal` when the literal is `n` characters or bytes long.
-[`str.startswith()`](https://docs.python.org/3/library/stdtypes.html#str.startswith) and
-[`str.endswith()`](https://docs.python.org/3/library/stdtypes.html#str.endswith) test the same without a length to keep
+[`str.startswith()`](https://docs.python.org/3/builtins/stdtypes.html#str.startswith) and
+[`str.endswith()`](https://docs.python.org/3/builtins/stdtypes.html#str.endswith) test the same without a length to keep
 in step.
 
 ## Why is this bad?

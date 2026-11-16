@@ -3,9 +3,11 @@ Flags `async def` on special methods that Python calls without awaiting the resu
 ## Why is this bad?
 
 Python calls `__len__`, `__iter__`, `__enter__`, `__aiter__` and the other special methods of the data model
-synchronously and uses what they return. An `async def` method returns a coroutine instead, so `len(obj)` raises
-`TypeError`, `__init__` raises `TypeError` for returning a value other than `None`, and `async for` gets a coroutine
-where it needs an async iterator. The coroutine is never awaited, and Python warns about it at best.
+synchronously and uses what they return. An `async def` method returns a coroutine instead, so
+[`len(obj)`](https://docs.python.org/3/builtins/functions.html#len) raises
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), `__init__` raises `TypeError` for returning
+a value other than `None`, and `async for` gets a coroutine where it needs an async iterator. The coroutine is never
+awaited, and Python warns about it at best.
 
 ## Example
 

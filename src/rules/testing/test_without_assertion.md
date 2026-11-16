@@ -38,8 +38,10 @@ These count as checks:
   Playwright's `expect` count;
 - `pytest.fail`, `pytest.skip`, `pytest.xfail`, `pytest.importorskip` and `pytest.deprecated_call`;
 - pytester's line matchers, such as `result.stdout.fnmatch_lines(...)`;
-- a warning filter set to `error`, by `warnings.simplefilter("error")`, `warnings.catch_warnings(action="error")` or a
-  `filterwarnings("error")` mark, which fails the test on any warning;
+- a warning filter set to `error`, by
+  [`warnings.simplefilter("error")`](https://docs.python.org/3/library/warnings.html#warnings.simplefilter),
+  [`warnings.catch_warnings(action="error")`](https://docs.python.org/3/library/warnings.html#warnings.catch_warnings)
+  or a `filterwarnings("error")` mark, which fails the test on any warning;
 - a call of a test parameter, as a callable fixture may check what it runs, a call of a name imported from a test
   package (a relative import, or a module path with `test` in it, such as `conftest` or `numpy.testing`), and a call
   through `super()`, which runs a base class's test;

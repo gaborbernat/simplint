@@ -77,9 +77,12 @@ The fix removes the field. It is offered when the field's lines can be deleted o
 
 - **Bodies whose every source of exceptions is known**: the function's `raise` statements, the module functions and
   methods of the same class it calls by name, and operations that raise a built-in exception on their own. A field
-  matches by the exception's last name or a second name, such as `IOError` for `OSError`, and a field for a base, such
-  as `:raises OSError:`, matches a raised subclass such as `FileNotFoundError`. The bases of built-in exceptions, of
-  common standard library exceptions and of the classes the file defines are known.
+  matches by the exception's last name or a second name, such as
+  [`IOError`](https://docs.python.org/3/builtins/exceptions.html#IOError) for
+  [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError), and a field for a base, such as
+  `:raises OSError:`, matches a raised subclass such as
+  [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError). The bases of built-in
+  exceptions, of common standard library exceptions and of the classes the file defines are known.
 
   ```toml config
   [project]
@@ -140,9 +143,16 @@ The fix removes the field. It is offered when the field's lines can be deleted o
       return json.loads(text)
   ```
 
-- **Exceptions an operation raises on its own**: a subscript can raise `KeyError`, `IndexError`, `LookupError` or
-  `TypeError`, an attribute read `AttributeError`, an arithmetic operator or comparison `ZeroDivisionError`,
-  `ArithmeticError`, `OverflowError` or `TypeError`, and an `assert` `AssertionError`.
+- **Exceptions an operation raises on its own**: a subscript can raise
+  [`KeyError`](https://docs.python.org/3/builtins/exceptions.html#KeyError),
+  [`IndexError`](https://docs.python.org/3/builtins/exceptions.html#IndexError),
+  [`LookupError`](https://docs.python.org/3/builtins/exceptions.html#LookupError) or
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), an attribute read
+  [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError), an arithmetic operator or
+  comparison [`ZeroDivisionError`](https://docs.python.org/3/builtins/exceptions.html#ZeroDivisionError),
+  [`ArithmeticError`](https://docs.python.org/3/builtins/exceptions.html#ArithmeticError),
+  [`OverflowError`](https://docs.python.org/3/builtins/exceptions.html#OverflowError) or `TypeError`, and an `assert`
+  [`AssertionError`](https://docs.python.org/3/builtins/exceptions.html#AssertionError).
 
   ```toml config
   [project]

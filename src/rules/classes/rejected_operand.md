@@ -1,10 +1,11 @@
-Flags comparison and binary operator methods that return a boolean or raise `TypeError` for an operand type they do not
-handle, instead of returning `NotImplemented`.
+Flags comparison and binary operator methods that return a boolean or raise
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) for an operand type they do not handle,
+instead of returning `NotImplemented`.
 
 ## Why is this bad?
 
 For `a == b` or `a + b`, Python calls the method of `a`, and asks `b`'s reflected method only when the first returns
-[`NotImplemented`](https://docs.python.org/3/library/constants.html#NotImplemented). Returning `False` or raising
+[`NotImplemented`](https://docs.python.org/3/builtins/constants.html#NotImplemented). Returning `False` or raising
 `TypeError` stops that, so another type can never make `a == b` true or define `a + b`. When neither side handles the
 pair, Python still answers `False` for `==` and raises `TypeError` for the other operators, so returning
 `NotImplemented` loses nothing.
@@ -82,5 +83,6 @@ in place of the error or `False`. A guard body with a comment in it gets no fix.
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-- [pylint](https://github.com/pylint-dev/pylint) asks for `NotImplemented` over `NotImplementedError` only, and leaves
-  this case alone.
+- [pylint](https://github.com/pylint-dev/pylint) asks for `NotImplemented` over
+  [`NotImplementedError`](https://docs.python.org/3/builtins/exceptions.html#NotImplementedError) only, and leaves this
+  case alone.

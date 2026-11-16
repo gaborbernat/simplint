@@ -71,8 +71,9 @@ literal.
 
 - **Tuples**: always reported, whether parenthesized or bare, so every module uses the same list shape. **Unsafe fix:**
   code that concatenates `__all__` with another tuple stops working once it is a list. The fix is left off when another
-  module imports `__all__`, or a test reads it by name, as `getattr(module, "__all__")` does, since either may rely on
-  the tuple.
+  module imports `__all__`, or a test reads it by name, as
+  [`getattr(module, "__all__")`](https://docs.python.org/3/builtins/functions.html#getattr) does, since either may rely
+  on the tuple.
 
   - parenthesized:
 

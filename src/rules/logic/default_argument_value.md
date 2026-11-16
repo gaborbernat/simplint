@@ -47,8 +47,9 @@ default of the parameter it fills.
 
 ### Exceptions
 
-- **Defaults that are not literals**: a default such as `[]`, `CONFIG` or `time.time()` may differ from the value the
-  call passes even when both are spelled alike, so only `None`, booleans, numbers, strings, bytes and `...` count.
+- **Defaults that are not literals**: a default such as `[]`, `CONFIG` or
+  [`time.time()`](https://docs.python.org/3/library/time.html#time.time) may differ from the value the call passes even
+  when both are spelled alike, so only `None`, booleans, numbers, strings, bytes and `...` count.
 
 - **Earlier positional arguments**: leaving one out would shift the arguments after it onto other parameters.
 
@@ -72,9 +73,11 @@ default of the parameter it fills.
   ```
 
 - **Decorated or rebound functions**: a decorator may change the signature a call reaches, and a rebound name may reach
-  another function. A decorator that passes each call on unchanged keeps the function judged: `functools.cache`,
-  `lru_cache` and `wraps`, `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and
-  `override`.
+  another function. A decorator that passes each call on unchanged keeps the function judged:
+  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
+  [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
+  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
+  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
 
 - **Calls that unpack `*args` or `**kwargs`**, and calls of functions in other modules.
 

@@ -1,5 +1,5 @@
 Flags `for i in range(len(seq))` loops that read `seq[i]`. Looping over `seq` gives each item directly, and
-[`enumerate()`](https://docs.python.org/3/library/functions.html#enumerate) gives the position too when the loop needs
+[`enumerate()`](https://docs.python.org/3/builtins/functions.html#enumerate) gives the position too when the loop needs
 it.
 
 ## Why is this bad?

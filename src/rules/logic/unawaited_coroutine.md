@@ -42,8 +42,9 @@ async def handle(record: str) -> None:
   imports, and **calls of `self.method()`** inside a method of the class that defines the `async def`.
 
   **Unsafe fix:** inside an `async def`, the fix adds `await`, which runs the coroutine at that point and waits for it.
-  Code that meant to start it in the background needs `asyncio.create_task` instead. Outside an `async def`, a class
-  body or a lambda included, nothing can await, so the call is reported without a fix.
+  Code that meant to start it in the background needs
+  [`asyncio.create_task`](https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task) instead. Outside an
+  `async def`, a class body or a lambda included, nothing can await, so the call is reported without a fix.
 
   ```python report
   import asyncio
@@ -73,9 +74,12 @@ async def handle(record: str) -> None:
 
 - **Async generators**, which yield, return an async iterator rather than a coroutine.
 
-- **Decorated functions**, since a decorator such as `contextlib.asynccontextmanager` replaces what the call returns.
+- **Decorated functions**, since a decorator such as
+  [`contextlib.asynccontextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.asynccontextmanager)
+  replaces what the call returns.
 
-- **A call whose result is used**, passed on, as `asyncio.run(main())`, or stored.
+- **A call whose result is used**, passed on, as
+  [`asyncio.run(main())`](https://docs.python.org/3/library/asyncio-runner.html#asyncio.run), or stored.
 
   ```python ok
   import asyncio

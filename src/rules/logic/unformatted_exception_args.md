@@ -4,7 +4,7 @@ them, such as `raise ValueError("bad %s", value)`.
 ## Why is this bad?
 
 An exception does not format its message: it keeps every positional argument in
-[`args`](https://docs.python.org/3/library/exceptions.html#BaseException.args), and `str()` of an exception with more
+[`args`](https://docs.python.org/3/builtins/exceptions.html#BaseException.args), and `str()` of an exception with more
 than one shows the tuple. `raise ValueError("bad %s", value)` reports `('bad %s', 42)`. The
 [logging calls](https://docs.python.org/3/library/logging.html#logging.Logger.debug) take arguments this way, which is
 where the habit comes from.
@@ -31,8 +31,9 @@ def check(value):
 
 - **A raised builtin exception whose first argument is a string literal with `%` placeholders or `{}` fields, followed
   by more positional arguments.** **Unsafe fix:** when the placeholders and the arguments match one to one, the message
-  is formatted with `%` or `str.format()`, which changes the exception's `args`. Ruff's
-  [f-string](https://docs.astral.sh/ruff/rules/f-string/) (UP032) then turns a `str.format()` call into an f-string.
+  is formatted with `%` or [`str.format()`](https://docs.python.org/3/builtins/stdtypes.html#str.format), which changes
+  the exception's `args`. Ruff's [f-string](https://docs.astral.sh/ruff/rules/f-string/) (UP032) then turns a
+  `str.format()` call into an f-string.
 
   ```python report
   def check(value):
@@ -50,7 +51,7 @@ def check(value):
 
 - **The project's own exceptions**, whose `__init__` may format the message.
 
-- **[`SyntaxError`](https://docs.python.org/3/library/exceptions.html#SyntaxError) and its subclasses, and exception
+- **[`SyntaxError`](https://docs.python.org/3/builtins/exceptions.html#SyntaxError) and its subclasses, and exception
   groups**: their second argument is the error's location or the grouped exceptions, not part of the message.
 
 - **No fix** for named placeholders such as `%(name)s` or `{name}`, a count that differs from the arguments, or an

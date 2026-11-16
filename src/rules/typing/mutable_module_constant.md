@@ -7,8 +7,8 @@ A module constant is shared by every caller, and a mutable one can be changed by
 it changes what every other caller reads, for the rest of the process. `Final`
 ([PEP 591](https://peps.python.org/pep-0591/#specification)) stops rebinding the name, not changing the value it holds.
 An immutable value states that the constant does not change, and the runtime enforces it: a
-[`tuple`](https://docs.python.org/3/library/stdtypes.html#tuple) and a
-[`frozenset`](https://docs.python.org/3/library/stdtypes.html#frozenset) have no methods that change them, and
+[`tuple`](https://docs.python.org/3/builtins/stdtypes.html#tuple) and a
+[`frozenset`](https://docs.python.org/3/builtins/stdtypes.html#frozenset) have no methods that change them, and
 [`frozendict`](https://docs.python.org/3.15/library/stdtypes.html#frozendict), added in Python 3.15 by
 [PEP 814](https://peps.python.org/pep-0814/), or a
 [`MappingProxyType`](https://docs.python.org/3/library/types.html#types.MappingProxyType) before it, raises on
@@ -149,22 +149,23 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
 
 ### Fix
 
-| Value                                       | Fix                                                                             | Safe |
-| ------------------------------------------- | ------------------------------------------------------------------------------- | :--: |
-| list display                                | a tuple display, with a trailing comma for one element                          |  ✗   |
-| list comprehension                          | wrapped in `tuple(...)`                                                         |  ✗   |
-| set display or comprehension                | wrapped in `frozenset(...)`                                                     |  ✗   |
-| dict display or comprehension, Python 3.15+ | wrapped in `frozendict(...)`                                                    |  ✗   |
-| dict display or comprehension, before 3.15  | wrapped in `MappingProxyType(...)`, importing it from `types`                   |  ✗   |
-| `list(...)`, `set(...)` or `dict(...)` call | calls `tuple`, `frozenset` or `frozendict`, or wraps `dict(...)` before 3.15    |  ✗   |
-| annotation `list[T]`, `set[T]`, `dict[K,V]` | becomes `tuple[T, ...]`, `frozenset[T]` or the mapping type, inside `Final` too |  ✗   |
-| annotation `typing.List` or a string        | no fix                                                                          |      |
-| a read that sees the type, listed below     | no fix                                                                          |      |
+| Value                                                                                             | Fix                                                                             | Safe |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | :--: |
+| list display                                                                                      | a tuple display, with a trailing comma for one element                          |  ✗   |
+| list comprehension                                                                                | wrapped in `tuple(...)`                                                         |  ✗   |
+| set display or comprehension                                                                      | wrapped in `frozenset(...)`                                                     |  ✗   |
+| dict display or comprehension, Python 3.15+                                                       | wrapped in `frozendict(...)`                                                    |  ✗   |
+| dict display or comprehension, before 3.15                                                        | wrapped in `MappingProxyType(...)`, importing it from `types`                   |  ✗   |
+| `list(...)`, `set(...)` or `dict(...)` call                                                       | calls `tuple`, `frozenset` or `frozendict`, or wraps `dict(...)` before 3.15    |  ✗   |
+| annotation `list[T]`, `set[T]`, `dict[K,V]`                                                       | becomes `tuple[T, ...]`, `frozenset[T]` or the mapping type, inside `Final` too |  ✗   |
+| annotation [`typing.List`](https://docs.python.org/3/library/typing.html#typing.List) or a string | no fix                                                                          |      |
+| a read that sees the type, listed below                                                           | no fix                                                                          |      |
 
 A read in the module that sees the type leaves the fix off, as the immutable value would change what it does:
 
-- **A list compared**: a tuple never equals a list, and ordering the two raises `TypeError`. Being the container of an
-  `in` test is fine.
+- **A list compared**: a tuple never equals a list, and ordering the two raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). Being the container of an `in` test is
+  fine.
 - **An operator**: `+` raises between a tuple and a list, and `|` on a `frozenset` or a mapping view returns a
   `frozenset` or a `dict` where a `set` or the view came back before.
 - **`copy()` on a list**: a tuple has no `copy` method.

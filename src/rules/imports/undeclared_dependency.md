@@ -4,8 +4,10 @@ the package is imported.
 ## Why is this bad?
 
 An import of a module the project does not declare works on the author's machine, where a development tool or another
-package happened to install it, and fails with `ModuleNotFoundError` for a user who installs only what the project
-lists. A module another requirement pulls in is no safer: that requirement can drop it in any release.
+package happened to install it, and fails with
+[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError) for a user who installs
+only what the project lists. A module another requirement pulls in is no safer: that requirement can drop it in any
+release.
 
 ## Example
 
@@ -70,9 +72,13 @@ renames, such as `yaml` for `pyyaml`.
   import pytest
   ```
 
-- **Optional and deferred imports**: an import in a `try` that handles `ImportError`, and the fallback in its handler,
-  one under `if TYPE_CHECKING:`, one under a check of `sys.version_info`, `sys.platform` or `os.name`, and one inside a
-  function, which runs only when called.
+- **Optional and deferred imports**: an import in a `try` that handles
+  [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError), and the fallback in its handler, one
+  under `if TYPE_CHECKING:`, one under a check of
+  [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info),
+  [`sys.platform`](https://docs.python.org/3/library/sys.html#sys.platform) or
+  [`os.name`](https://docs.python.org/3/library/os.html#os.name), and one inside a function, which runs only when
+  called.
 
   ```toml config
   [project]

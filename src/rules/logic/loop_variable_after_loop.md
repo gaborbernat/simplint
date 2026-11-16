@@ -4,9 +4,10 @@ Flags a `for` loop's variable read after the loop ends, when nothing binds it be
 ## Why is this bad?
 
 After a loop that runs to the end, its variable holds the last item, which is rarely what the code after it means to
-read. When the iterable is empty the loop never binds the variable, and the read raises `NameError`, or picks up a value
-an earlier loop left behind. Naming the value the code wants, such as `items[-1]` or a variable set in the loop, says
-what is meant and works for an empty iterable.
+read. When the iterable is empty the loop never binds the variable, and the read raises
+[`NameError`](https://docs.python.org/3/builtins/exceptions.html#NameError), or picks up a value an earlier loop left
+behind. Naming the value the code wants, such as `items[-1]` or a variable set in the loop, says what is meant and works
+for an empty iterable.
 
 ## Example
 

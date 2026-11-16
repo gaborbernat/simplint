@@ -4,8 +4,9 @@ Flags descriptor decorators stacked so that the outer one cannot wrap what the i
 
 Decorators apply bottom up, so the outer one wraps the descriptor the inner one returns. `@property` over
 `@staticmethod` or `@classmethod` calls the wrapped object with the instance, which it does not accept, so reading the
-attribute raises `TypeError`. `@classmethod` over `@property` chained descriptors on Python 3.9 and 3.10; Python 3.11
-deprecated it and Python 3.13 removed it, so the attribute now reads as a bound method instead of the value.
+attribute raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). `@classmethod` over
+`@property` chained descriptors on Python 3.9 and 3.10; Python 3.11 deprecated it and Python 3.13 removed it, so the
+attribute now reads as a bound method instead of the value.
 
 ## Example
 

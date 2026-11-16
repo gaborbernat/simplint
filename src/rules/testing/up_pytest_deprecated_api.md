@@ -10,8 +10,9 @@ Each of these either does nothing on a current pytest or fails there. pytest 8
 [A mark on a fixture](https://docs.pytest.org/en/stable/deprecations.html#applying-a-mark-to-a-fixture-function) never
 applied to the tests, and pytest 9 rejects it. The
 [removed arguments](https://docs.pytest.org/en/stable/deprecations.html#removed-features-and-breaking-changes) raise a
-`TypeError`. The `py.path` fixtures live on only in pytest's `legacypath` plugin; the
-[pathlib fixtures](https://docs.pytest.org/en/stable/how-to/tmp_path.html) replace them.
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). The `py.path` fixtures live on only in
+pytest's `legacypath` plugin; the [pathlib fixtures](https://docs.pytest.org/en/stable/how-to/tmp_path.html) replace
+them.
 
 ## Example
 
@@ -40,7 +41,8 @@ def test_missing(tmp_path):
 ### Active on
 
 - **Nose-style hooks**: a module-level `setup` or `teardown` function, and a `setup` or `teardown` method of a test
-  class that does not derive from `unittest.TestCase`.
+  class that does not derive from
+  [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase).
 
   ```python report file=tests/test_nose.py
   class TestStore:

@@ -4,7 +4,7 @@ changes an element through the name it is stored in.
 ## Why is this bad?
 
 Repeating a sequence copies references, not objects:
-[`s * n`](https://docs.python.org/3/library/stdtypes.html#common-sequence-operations) holds the same element `n` times.
+[`s * n`](https://docs.python.org/3/builtins/stdtypes.html#common-sequence-operations) holds the same element `n` times.
 The [Programming FAQ](https://docs.python.org/3/faq/programming.html#how-do-i-create-a-multidimensional-list) shows the
 result: after `grid = [[0] * 3] * 3`, `grid[0][0] = 1` sets the first cell of every row, since all three rows are one
 list. A comprehension builds a new element for each copy.

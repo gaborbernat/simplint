@@ -327,8 +327,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   ```
 
 - **Every name of a module that looks itself up by a computed name**, as `globals()[key]`, `vars()[key]`,
-  `globals().get(key)` or `getattr(sys.modules[__name__], key)` do with a key that is not a string literal: the lookup
-  may reach any of them.
+  [`globals().get(key)`](https://docs.python.org/3/builtins/functions.html#globals) or
+  [`getattr(sys.modules[__name__], key)`](https://docs.python.org/3/builtins/functions.html#getattr) do with a key that
+  is not a string literal: the lookup may reach any of them.
 
   ```python ok
   def do_upper(value: str) -> str:
