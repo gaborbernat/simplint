@@ -174,7 +174,8 @@ def parse_version(text):
   ```
 
 - **Patterns anchored at their end, when [`anchored-regex-match`](SMP550.html) is selected**: that rule turns the call
-  into `re.fullmatch()`, which a rename to `prefixmatch` would only delay.
+  into [`re.fullmatch()`](https://docs.python.org/3/library/re.html#re.fullmatch), which a rename to `prefixmatch` would
+  only delay.
 
 - **A name also bound to another module**: `re` may be another module in that file, which may have no `prefixmatch`, so
   the `re.match` of a `try` import fallback is left alone.

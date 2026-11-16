@@ -234,8 +234,11 @@ unpacks `**kwargs`, which may pass any keyword.
   ```
 
 - **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
-  decorator that passes each call on unchanged keeps the function judged: `functools.cache`, `lru_cache` and `wraps`,
-  `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and `override`.
+  decorator that passes each call on unchanged keeps the function judged:
+  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
+  [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
+  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
+  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
 
   ```python ok
   from atexit import register

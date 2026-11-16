@@ -4,9 +4,11 @@ Flags a decorator whose wrapper forwards its `*args` or `**kwargs` to the decora
 ## Why is this bad?
 
 A decorator returns the wrapper in place of the function, so the decorated name now holds a function called `wrapper`
-with no docstring and a `(*args, **kwargs)` signature. Tracebacks, logs, `help()`, Sphinx autodoc and anything that
-reads `inspect.signature` see the wrapper instead of the function. `functools.wraps` copies the name, docstring and
-module across and sets `__wrapped__`, through which `inspect.signature` finds the original signature.
+with no docstring and a `(*args, **kwargs)` signature. Tracebacks, logs,
+[`help()`](https://docs.python.org/3/builtins/functions.html#help), Sphinx autodoc and anything that reads
+[`inspect.signature`](https://docs.python.org/3/library/inspect.html#inspect.signature) see the wrapper instead of the
+function. `functools.wraps` copies the name, docstring and module across and sets `__wrapped__`, through which
+`inspect.signature` finds the original signature.
 
 ## Example
 
@@ -68,7 +70,8 @@ def logged(func):
 
 ### Exceptions
 
-- **A wrapper that already copies the metadata**, through a decorator of its own, `functools.update_wrapper` or an
+- **A wrapper that already copies the metadata**, through a decorator of its own,
+  [`functools.update_wrapper`](https://docs.python.org/3/library/functools.html#functools.update_wrapper) or an
   assignment to one of its dunders, such as `wrapper.__name__ = func.__name__`.
 
 - **An adapter**, which calls the function with arguments of another shape, as `func(len(args), *args)` or

@@ -5,7 +5,8 @@ Flags zero-argument `super()` calls placed where Python cannot find the class or
 `super()` without arguments reads the `__class__` cell the compiler creates for methods, and the first argument of the
 function it runs in. In a generator expression that argument is the iterator the expression loops over, a lambda or
 nested function without parameters has none, and a function outside a class has no `__class__` cell. Each call raises
-`TypeError` or `RuntimeError` only when that line runs.
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) or
+[`RuntimeError`](https://docs.python.org/3/builtins/exceptions.html#RuntimeError) only when that line runs.
 
 ## Example
 

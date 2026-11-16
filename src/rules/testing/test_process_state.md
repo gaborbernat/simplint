@@ -1,5 +1,7 @@
 Flags a test, a fixture or a method of a test class that changes process-wide state by hand: an environment variable,
-the working directory, `sys.path`, `sys.argv`, `sys.modules`, or an attribute of an imported module.
+the working directory, [`sys.path`](https://docs.python.org/3/library/sys.html#sys.path),
+[`sys.argv`](https://docs.python.org/3/library/sys.html#sys.argv),
+[`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules), or an attribute of an imported module.
 
 ## Why is this bad?
 
@@ -36,10 +38,12 @@ def test_utc_timezone(monkeypatch):
 
 ### Active on
 
-- **Environment variables**: an item assigned to or deleted from `os.environ`, a call of its `update`, `pop`, `popitem`,
-  `setdefault` or `clear`, and `os.putenv` or `os.unsetenv`.
+- **Environment variables**: an item assigned to or deleted from
+  [`os.environ`](https://docs.python.org/3/library/os.html#os.environ), a call of its `update`, `pop`, `popitem`,
+  `setdefault` or `clear`, and [`os.putenv`](https://docs.python.org/3/library/os.html#os.putenv) or
+  [`os.unsetenv`](https://docs.python.org/3/library/os.html#os.unsetenv).
 
-- **The working directory**: `os.chdir`.
+- **The working directory**: [`os.chdir`](https://docs.python.org/3/library/os.html#os.chdir).
 
 - **`sys.path`, `sys.argv` and `sys.modules`**: assigning them or an item of them, deleting an item, and the methods
   that change a list or a dictionary in place, such as `sys.path.insert` or `sys.modules.pop`.
@@ -89,9 +93,9 @@ since `setup_method` and its kin run as part of each test.
           os.chdir(previous)
   ```
 
-- **State the function saved first**: `os.getcwd()` saves the working directory, and a copy such as `sys.path[:]`,
-  `list(sys.argv)`, `dict(os.environ)` or `sys.modules.copy()`, or reading `module.attribute` into a name, saves the
-  rest, so the function can put it back.
+- **State the function saved first**: [`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd) saves the
+  working directory, and a copy such as `sys.path[:]`, `list(sys.argv)`, `dict(os.environ)` or `sys.modules.copy()`, or
+  reading `module.attribute` into a name, saves the rest, so the function can put it back.
 
 - **State a patcher or `monkeypatch` puts back**: `patch.dict(os.environ)` or `mocker.patch.dict(sys.modules)`, as a
   decorator or a call in the function, restores the whole mapping once the test ends, and `monkeypatch.setenv`,
@@ -110,8 +114,9 @@ since `setup_method` and its kin run as part of each test.
 
 - **Modules, classes and tests with their own teardown**: a module with `teardown_module`, `teardown_function` or an
   autouse fixture that restores what it changes, a class with `tearDown`, `teardown_method` or `teardown_class`, a
-  `patch` decorator, or a base other than `unittest.TestCase`, whose hooks it inherits, and a test, class or module with
-  a `usefixtures` mark, whose fixture may restore the state.
+  `patch` decorator, or a base other than
+  [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase), whose hooks it inherits, and
+  a test, class or module with a `usefixtures` mark, whose fixture may restore the state.
 
 - **Tests that request `pytester` or `testdir`**: pytester snapshots the working directory, `sys.path` and
   `sys.modules`, and restores them after the test.

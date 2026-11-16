@@ -77,7 +77,8 @@ def start() -> str:
               pass
   ```
 
-- **Attributes of other objects** and names the run cannot resolve to a `def`, such as `os.path.exists`.
+- **Attributes of other objects** and names the run cannot resolve to a `def`, such as
+  [`os.path.exists`](https://docs.python.org/3/library/os.path.html#os.path.exists).
 
 ## Ruff overlap
 

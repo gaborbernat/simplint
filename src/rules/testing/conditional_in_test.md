@@ -87,10 +87,15 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
       assert Helper().pick(0) == 2
   ```
 
-- **Branches on the interpreter or its environment**: a test whose condition reads only `sys.platform`,
-  `sys.version_info`, `sys.implementation`, `os.name`, `os.environ`, `os.getenv`, the `platform` module, literals, or a
-  constant that names such a check, such as `IS_WINDOWS` or `ON_PYPY`. The branch follows the machine running the test,
-  so it cannot become a parameter.
+- **Branches on the interpreter or its environment**: a test whose condition reads only
+  [`sys.platform`](https://docs.python.org/3/library/sys.html#sys.platform),
+  [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info),
+  [`sys.implementation`](https://docs.python.org/3/library/sys.html#sys.implementation),
+  [`os.name`](https://docs.python.org/3/library/os.html#os.name),
+  [`os.environ`](https://docs.python.org/3/library/os.html#os.environ),
+  [`os.getenv`](https://docs.python.org/3/library/os.html#os.getenv), the `platform` module, literals, or a constant
+  that names such a check, such as `IS_WINDOWS` or `ON_PYPY`. The branch follows the machine running the test, so it
+  cannot become a parameter.
 
   ```python ok file=tests/test_exe.py
   import sys

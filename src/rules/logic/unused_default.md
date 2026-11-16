@@ -174,13 +174,17 @@ parameter by position counts for it, and so does one that passes it by keyword.
   handlers = [connect]
   ```
 
-- **Functions of a module read by a computed name**: a file of the run reads the module through `getattr(module, name)`
-  or `hasattr(module, name)` with a name that is not a string literal, or reads its `__all__`, so a call such as
-  `getattr(module, name)()` may reach any of them without arguments.
+- **Functions of a module read by a computed name**: a file of the run reads the module through
+  [`getattr(module, name)`](https://docs.python.org/3/builtins/functions.html#getattr) or
+  [`hasattr(module, name)`](https://docs.python.org/3/builtins/functions.html#hasattr) with a name that is not a string
+  literal, or reads its `__all__`, so a call such as `getattr(module, name)()` may reach any of them without arguments.
 
 - **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
-  decorator that passes each call on unchanged keeps the function judged: `functools.cache`, `lru_cache` and `wraps`,
-  `contextlib.contextmanager`, `abc.abstractmethod`, `classmethod`, and `typing.final` and `override`.
+  decorator that passes each call on unchanged keeps the function judged:
+  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
+  [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
+  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
+  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
 
   ```python ok
   from atexit import register

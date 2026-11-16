@@ -2,7 +2,7 @@ Flags an `add_note` call on an exception that is then dropped instead of raised.
 
 ## Why is this bad?
 
-[`BaseException.add_note`](https://docs.python.org/3/library/exceptions.html#BaseException.add_note) attaches text that
+[`BaseException.add_note`](https://docs.python.org/3/builtins/exceptions.html#BaseException.add_note) attaches text that
 the traceback prints below the message. A handler that adds a note and then swallows the exception, or a function that
 builds an exception, notes it and never raises it, writes the note to an object no one reads. The code reads as if the
 error carried extra context, but nothing ever shows the note.

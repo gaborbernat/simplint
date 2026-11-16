@@ -2,12 +2,12 @@ Flags a one-pass iterator read a second time, or read inside a loop, where every
 
 ## Why is this bad?
 
-[`map()`](https://docs.python.org/3/library/functions.html#map),
-[`filter()`](https://docs.python.org/3/library/functions.html#filter),
-[`zip()`](https://docs.python.org/3/library/functions.html#zip), a generator expression and the other
+[`map()`](https://docs.python.org/3/builtins/functions.html#map),
+[`filter()`](https://docs.python.org/3/builtins/functions.html#filter),
+[`zip()`](https://docs.python.org/3/builtins/functions.html#zip), a generator expression and the other
 [iterators](https://docs.python.org/3/glossary.html#term-iterator) hand out each item once. The first `list()`, `for`
-loop or `sum()` takes every item, and the next read gets nothing, without an error. Code that worked while the value was
-a list breaks quietly when it becomes a `map()`.
+loop or [`sum()`](https://docs.python.org/3/builtins/functions.html#sum) takes every item, and the next read gets
+nothing, without an error. Code that worked while the value was a list breaks quietly when it becomes a `map()`.
 
 ## Example
 
@@ -31,10 +31,17 @@ def summary(numbers):
 
 ### Active on
 
-- **A second read of a local bound once to an iterator**: `map()`, `filter()`, `zip()`, `reversed()`, `enumerate()` or a
-  generator expression, read to its end by a `for` loop, a comprehension, `list()`, `tuple()`, `set()`, `frozenset()`,
-  `sorted()`, `sum()`, `min()`, `max()`, `any()`, `all()`, `dict()`, `str.join()` or `*` unpacking. The read that finds
-  the iterator empty is reported. No fix: keeping a list and building the iterator again are both valid.
+- **A second read of a local bound once to an iterator**: `map()`, `filter()`, `zip()`,
+  [`reversed()`](https://docs.python.org/3/builtins/functions.html#reversed),
+  [`enumerate()`](https://docs.python.org/3/builtins/functions.html#enumerate) or a generator expression, read to its
+  end by a `for` loop, a comprehension, `list()`, `tuple()`, `set()`, `frozenset()`,
+  [`sorted()`](https://docs.python.org/3/builtins/functions.html#sorted), `sum()`,
+  [`min()`](https://docs.python.org/3/builtins/functions.html#min),
+  [`max()`](https://docs.python.org/3/builtins/functions.html#max),
+  [`any()`](https://docs.python.org/3/builtins/functions.html#any),
+  [`all()`](https://docs.python.org/3/builtins/functions.html#all), `dict()`,
+  [`str.join()`](https://docs.python.org/3/builtins/stdtypes.html#str.join) or `*` unpacking. The read that finds the
+  iterator empty is reported. No fix: keeping a list and building the iterator again are both valid.
 
   ```python report
   def summary(numbers):
@@ -51,7 +58,8 @@ def summary(numbers):
       return [(row, list(upper)) for row in rows]
   ```
 
-- **Parameters annotated `Iterator` or `Generator`**, from `typing` or `collections.abc`.
+- **Parameters annotated `Iterator` or `Generator`**, from `typing` or
+  [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc).
 
   ```python report
   from collections.abc import Iterator
@@ -86,7 +94,8 @@ def summary(numbers):
       return list(rows)
   ```
 
-- **Any other read**, such as `next(texts)` or passing the iterator to a function: what it takes is not known.
+- **Any other read**, such as [`next(texts)`](https://docs.python.org/3/builtins/functions.html#next) or passing the
+  iterator to a function: what it takes is not known.
 
   ```python ok
   def tail(numbers):
@@ -108,4 +117,5 @@ def summary(numbers):
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** [B031](https://docs.astral.sh/ruff/rules/reuse-of-groupby-generator/)
-  reports the same mistake for the groups of `itertools.groupby` only.
+  reports the same mistake for the groups of
+  [`itertools.groupby`](https://docs.python.org/3/library/itertools.html#itertools.groupby) only.

@@ -471,7 +471,9 @@ definition a Sphinx page names is used.
   print(dispatch(Handlers(), "text"))
   ```
 
-- **Nested functions a call to `locals()`, `vars()`, `eval()` or `exec()` may reach**, and those declared `global` or
+- **Nested functions a call to [`locals()`](https://docs.python.org/3/builtins/functions.html#locals), `vars()`,
+  [`eval()`](https://docs.python.org/3/builtins/functions.html#eval) or
+  [`exec()`](https://docs.python.org/3/builtins/functions.html#exec) may reach**, and those declared `global` or
   `nonlocal`, since these read names without spelling them.
 
   ```python ok
@@ -486,8 +488,10 @@ definition a Sphinx page names is used.
   ```
 
 - **Attributes of objects read whole**: a class that reads `self.__dict__`, passes itself to `vars()`,
-  `dataclasses.asdict()` or `dataclasses.astuple()`, or defines `__getstate__`, `__reduce__`, `__reduce_ex__`,
-  `__copy__`, `__deepcopy__`, `__slots__` or `__getattr__` uses its attributes without naming them.
+  [`dataclasses.asdict()`](https://docs.python.org/3/library/dataclasses.html#dataclasses.asdict) or
+  [`dataclasses.astuple()`](https://docs.python.org/3/library/dataclasses.html#dataclasses.astuple), or defines
+  `__getstate__`, `__reduce__`, `__reduce_ex__`, `__copy__`, `__deepcopy__`, `__slots__` or `__getattr__` uses its
+  attributes without naming them.
 
   ```python ok
   class Snapshot:

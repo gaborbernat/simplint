@@ -1,6 +1,6 @@
 Flags a `for` loop whose only job is to add to a string, bytes or number that the line before it set to `""`, `b""` or
-`0`. [`str.join()`](https://docs.python.org/3/library/stdtypes.html#str.join) or
-[`sum()`](https://docs.python.org/3/library/functions.html#sum) builds the same value in one call.
+`0`. [`str.join()`](https://docs.python.org/3/builtins/stdtypes.html#str.join) or
+[`sum()`](https://docs.python.org/3/builtins/functions.html#sum) builds the same value in one call.
 
 ## Why is this bad?
 

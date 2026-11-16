@@ -232,8 +232,9 @@ field until they do.
   ```
 
 - **An exception whose base a field documents**: a field for the base documents its subclasses too, as
-  `:raises OSError:` does `FileNotFoundError` and `:raises ValueError:` does `json.JSONDecodeError`. A field may name a
-  class by a second name, as `:raises IOError:` names `OSError`.
+  `:raises OSError:` does `FileNotFoundError` and `:raises ValueError:` does
+  [`json.JSONDecodeError`](https://docs.python.org/3/library/json.html#json.JSONDecodeError). A field may name a class
+  by a second name, as `:raises IOError:` names `OSError`.
 
   ```toml config
   [project]

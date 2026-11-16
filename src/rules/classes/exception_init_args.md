@@ -5,8 +5,8 @@ Flags exception classes whose `__init__` cannot be called again with the `args` 
 [`pickle`](https://docs.python.org/3/library/pickle.html) and [`copy`](https://docs.python.org/3/library/copy.html)
 rebuild an exception by calling its class with its `args`, which `BaseException.__init__` sets to the arguments it
 receives. A subclass that takes a path but passes its parent a formatted message, or that requires a keyword-only
-argument, raises `TypeError` when it is unpickled. That breaks exceptions sent across
-[`multiprocessing`](https://docs.python.org/3/library/multiprocessing.html) and
+argument, raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) when it is unpickled. That
+breaks exceptions sent across [`multiprocessing`](https://docs.python.org/3/library/multiprocessing.html) and
 [`concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html) workers, where a `TypeError` about the
 rebuild replaces the original error.
 
@@ -55,8 +55,8 @@ class ParseError(ValueError):
           self.request = request
   ```
 
-The class must derive from `BaseException` through builtin, standard library or same-file classes, or be one the project
-index knows as an exception.
+The class must derive from [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException) through
+builtin, standard library or same-file classes, or be one the project index knows as an exception.
 
 ### Exceptions
 
