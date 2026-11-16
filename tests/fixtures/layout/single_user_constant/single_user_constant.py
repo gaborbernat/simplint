@@ -184,7 +184,7 @@ _WRAPPED: Final[int] = (
 )
 
 
-def wrapped() -> int:
+def unwrap() -> int:
     return _WRAPPED
 
 
@@ -242,3 +242,44 @@ def first() -> int:
 
 def second() -> int:
     return _SECOND
+
+
+# how many attempts the server allows
+# before it locks the account
+_ATTEMPTS = 5
+
+
+def allowed() -> int:
+    return _ATTEMPTS + _ATTEMPTS
+
+
+_LONG_URL = "https://example.com/a/very/long/path"  # noqa: E501
+
+
+def fetch() -> str:
+    return _LONG_URL
+
+
+_SHORT = 1  # one tick
+
+
+def tick() -> int: return _SHORT
+
+
+#: the shade a sphinx attribute comment documents
+_SHADE = "teal"
+
+
+def shade() -> str:
+    return _SHADE
+
+
+# a comment that fits at module level but runs past the width once the fix indents it inside the class method bodyx
+_DEEP = 2
+
+
+class Deep:
+    def method(self) -> int:
+        if self:
+            return _DEEP
+        return 0

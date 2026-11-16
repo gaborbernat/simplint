@@ -14,6 +14,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use super::fold::is_literal;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, fix_of, keep_debug_text, statement_lines};
 use crate::rules::rename::appears_in_strings;
 use crate::rules::{is_class_like, is_named_by_doctest};
@@ -42,10 +43,6 @@ pub fn single_user_constant(checker: &Checker) {
             || checker.project().is_attribute_assigned(name)
             || is_dunder(name)
             || is_class_like(name)
-            || checker.comment_above(stmt).is_some()
-            // `ruff format` wraps a value too long for its line in parentheses and moves the comment trailing it
-            // inside them, so a comment anywhere after the value counts.
-            || checker.has_comment_in(TextRange::new(value.end(), checker.source.line_end(stmt.end())))
         {
             continue;
         }
@@ -72,10 +69,7 @@ pub fn single_user_constant(checker: &Checker) {
         }
         let references: Vec<TextRange> = references.iter().map(|reference| reference.range).collect();
         let constant = Constant { stmt, name, annotation, value, function, references };
-        let (fix, adds_local) = match move_into_function(checker, &constant) {
-            Some((fix, adds_local)) => (Some(fix), adds_local),
-            None => (None, false),
-        };
+        let (fix, adds_local) = move_into_function(checker, &constant);
         let from_ruff = &checker.settings.from_ruff;
         if adds_local && from_ruff.ruff_runs(RuffRule::TooManyLocals) {
             let mut locals = StoredNameFinder::default();
@@ -103,22 +97,49 @@ struct Constant<'a> {
     references: Vec<TextRange>,
 }
 
-fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bool)> {
+// The fix, and whether moving the constant declares a local, which counts against Ruff's local-variable limit even
+// when a comment that cannot move withholds the fix.
+fn move_into_function(checker: &Checker, constant: &Constant) -> (Option<Fix>, bool) {
     // A computed write may set the constant, which a copy in the function would not see.
     if checker.project().is_computed_written() {
-        return None;
+        return (None, false);
     }
     let source = checker.source;
     let function = constant.function;
     // A value or a renamed local would change the source text a t-string keeps.
     let source_spans = checker.state().source_text_spans(checker);
-    if constant.references.iter().any(|reference| source_spans.iter().any(|span| span.contains_range(*reference))) {
-        return None;
+    if constant.references.iter().any(|reference| source_spans.iter().any(|span| span.contains_range(*reference)))
+        || !checker.is_alone_on_lines(constant.stmt.range())
+    {
+        return (None, false);
     }
-    if !checker.is_alone_on_lines(constant.stmt.range()) {
-        return None;
-    }
-    let deletion = Edit::range_deletion(statement_lines(source, constant.stmt.range(), Blanks::WiderSide));
+    let (start, comments) = attached_comments(checker, constant);
+    let anchor = anchor(function, constant.references[0]);
+    // A body on the `def` line, as in `def f(): return _X`, has no line of its own to declare the local on, and its
+    // statements move onto lines of their own, where `ruff format` would put them.
+    let on_header = has_leading_content(function.body[0].start(), source);
+    let indent = if on_header {
+        format!("{}{}", checker.indentation(function), checker.stylist.indentation().as_str())
+    } else {
+        checker.indentation(anchor).to_owned()
+    };
+    // Moved onto a line of its own, a directive such as `# noqa` would stop applying to the line it was written for,
+    // and a comment indented past the width would be too long for Ruff's E501.
+    let comments_stay = on_header && !comments.is_empty()
+        || comments.iter().any(|comment| {
+            is_tool_directive(comment)
+                || indent.chars().count() + comment.chars().count() > checker.settings.from_ruff.comment_width
+        });
+    let eol = checker.line_ending();
+    // Sphinx documents a module attribute from a `#:` comment, which means nothing on a local.
+    let comment_lines: String = comments
+        .iter()
+        .map(|comment| {
+            [indent.as_str(), "#", comment.strip_prefix("#:").map_or(&comment[1..], |rest| rest), eol].concat()
+        })
+        .collect();
+    let deletion =
+        Edit::range_deletion(statement_lines(source, TextRange::new(start, constant.stmt.end()), Blanks::WiderSide));
     let value_text = checker.parenthesized_text(constant.value, constant.stmt.into());
     // A comment or a triple-quoted string keeps a value on several lines whatever the layout, so it gets a local name.
     let spans_lines =
@@ -136,10 +157,54 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
             && (constant.value.is_number_literal_expr() || !context.in_fstring)
             && (!context.format_receiver || !constant.value.is_string_literal_expr())
         {
-            return inline_fix(checker, constant.value, value_text, deletion, *reference).map(|fix| (fix, false));
+            if comments_stay {
+                return (None, false);
+            }
+            let mut edits = vec![
+                deletion,
+                Edit::range_replacement(inline_text(checker, constant.value, value_text, *reference), *reference),
+            ];
+            if !comment_lines.is_empty() {
+                edits.push(Edit::insertion(comment_lines, source.line_start(anchor.start())));
+            }
+            return (keep_debug_text(checker, edits).and_then(|edits| fix_of(edits, Applicability::Unsafe)), false);
         }
     }
-    local_fix(checker, constant, value_text, deletion).map(|fix| (fix, true))
+    if comments_stay {
+        return (None, true);
+    }
+    let placement = Placement { anchor, on_header, indent, comment_lines };
+    (local_fix(checker, constant, value_text, deletion, placement), true)
+}
+
+// The own-line comments directly above the constant and the one after its value, which explain it and so move to its
+// use: the start of the first line to delete, and the comments.
+fn attached_comments<'a>(checker: &Checker<'a>, constant: &Constant) -> (TextSize, Vec<&'a str>) {
+    let source = checker.source;
+    let mut start = constant.stmt.start();
+    let mut above = Vec::new();
+    while let Some(comment) = checker.comment_above(TextRange::empty(start)) {
+        above.push(&source[comment]);
+        start = source.line_start(comment.start());
+    }
+    above.reverse();
+    // A comment inside the parentheses around the value stays with it, so only one after the statement moves.
+    let after = TextRange::new(constant.stmt.end(), source.line_end(constant.stmt.end()));
+    above.extend(checker.comment_ranges().comments_in_range(after).iter().map(|comment| &source[*comment]));
+    (start, above)
+}
+
+// A deferred read of this function lies in its body, so the statement holding it is the last one starting before it.
+fn anchor(function: &ast::StmtFunctionDef, reference: TextRange) -> &Stmt {
+    &function.body[function.body.partition_point(|stmt| stmt.start() <= reference.start()) - 1]
+}
+
+// Where the moved constant goes: before the statement that first reads it, after the comments that explained it.
+struct Placement<'a> {
+    anchor: &'a Stmt,
+    on_header: bool,
+    indent: String,
+    comment_lines: String,
 }
 
 // The type a local keeps from the constant's annotation. `Final` belongs to module scope only, so `Final[T]` keeps `T`
@@ -155,7 +220,7 @@ fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'
     }
 }
 
-fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit, reference: TextRange) -> Option<Fix> {
+fn inline_text(checker: &Checker, value: &Expr, value_text: &str, reference: TextRange) -> String {
     // A value the layout spreads over lines goes in on one, so the result does not depend on the layout.
     let (text, parenthesized) = if value_text.contains('\n') {
         (Generator::from(checker.stylist).expr(value), false)
@@ -168,32 +233,23 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     // Ruff's code generator writes a tuple without the parentheses its source may have.
     let wrap = !parenthesized
         && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr() || int_attribute);
-    let inlined = if wrap { format!("({text})") } else { text };
-    fix_of(
-        keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?,
-        Applicability::Unsafe,
-    )
+    if wrap { format!("({text})") } else { text }
 }
 
-fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion: Edit) -> Option<Fix> {
+fn local_fix(
+    checker: &Checker,
+    constant: &Constant,
+    value_text: &str,
+    deletion: Edit,
+    placement: Placement,
+) -> Option<Fix> {
     let source = checker.source;
     let function = constant.function;
+    let Placement { anchor, on_header, indent, comment_lines } = placement;
     let local = constant.name.trim_start_matches('_').to_lowercase();
     if !is_identifier(&local) || checker.name_token_count(&local) > 0 {
         return None;
     }
-    // A deferred read of this function lies in its body, so the statement holding it is the last one starting before
-    // it.
-    let anchor =
-        &function.body[function.body.partition_point(|stmt| stmt.start() <= constant.references[0].start()) - 1];
-    // A body on the `def` line, as in `def f(): return _X`, has no line of its own to declare the local on, and its
-    // statements move onto lines of their own, where `ruff format` would put them.
-    let on_header = has_leading_content(function.body[0].start(), source);
-    let indent = if on_header {
-        format!("{}{}", checker.indentation(function), checker.stylist.indentation().as_str())
-    } else {
-        checker.indentation(anchor).to_owned()
-    };
     let triple_quoted = value_text.contains("\"\"\"") || value_text.contains("'''");
     // A backslash continues a single-quoted string onto the next line, so the indentation added there becomes part of
     // the value.
@@ -225,7 +281,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
         }
         placements
     } else {
-        vec![Edit::insertion(format!("{indent}{declaration}{eol}"), source.line_start(anchor.start()))]
+        vec![Edit::insertion(format!("{comment_lines}{indent}{declaration}{eol}"), source.line_start(anchor.start()))]
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
