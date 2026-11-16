@@ -556,9 +556,14 @@ def _stranded_pragmas(root: Path) -> dict[str, int]:
     }
 
 
-#: Compiles the files of a tree, named by a JSON list of relative paths on stdin, and prints the ones that compile; one
-#: subprocess per tree runs it over every file.
-_COMPILE_TREE: Final[str] = """\
+# The running parser knows only this interpreter's grammar, so an older target compiles the files itself.
+def _compiling(root: Path, target: Interpreter | None) -> set[str]:
+    paths = {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
+    if target is None:
+        return {path for path in paths if _parses(root / path)}
+    # Compiles the files named by a JSON list of relative paths on stdin and prints the ones that compile, so one
+    # subprocess per tree runs it over every file.
+    compile_tree = """\
 import json
 import sys
 import warnings
@@ -575,15 +580,8 @@ for path in json.load(sys.stdin):
     compiling.append(path)
 json.dump(compiling, sys.stdout)
 """
-
-
-# The running parser knows only this interpreter's grammar, so an older target compiles the files itself.
-def _compiling(root: Path, target: Interpreter | None) -> set[str]:
-    paths = {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
-    if target is None:
-        return {path for path in paths if _parses(root / path)}
     compiling = subprocess.run(
-        [target.path, "-I", "-c", _COMPILE_TREE],
+        [target.path, "-I", "-c", compile_tree],
         cwd=root,
         input=json.dumps(sorted(paths)),
         capture_output=True,
