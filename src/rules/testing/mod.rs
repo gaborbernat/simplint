@@ -1,5 +1,6 @@
 mod conditional_in_test;
 mod constant_assert;
+mod imported_fixture;
 mod loop_in_test;
 mod mock_assertion_typo;
 mod mock_attribute_assignment;
@@ -21,6 +22,7 @@ mod up_unittest_enter_context;
 
 pub(crate) use conditional_in_test::{conditional_in_test, conditionals};
 pub(crate) use constant_assert::constant_assert;
+pub(crate) use imported_fixture::imported_fixture;
 pub(crate) use loop_in_test::loop_in_test;
 pub(crate) use mock_assertion_typo::mock_assertion_typo;
 pub(crate) use mock_attribute_assignment::mock_attribute_assignment;
