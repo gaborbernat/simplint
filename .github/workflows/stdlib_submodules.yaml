@@ -18,12 +18,13 @@ jobs:
         uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      # Only trees are read, so a blobless clone keeps every tag and branch without downloading the sources.
+      # Only trees are read, so a blobless clone keeps every tag and branch without downloading the sources. The path
+      # stays under the workspace, since actions/checkout v7 rejects a path outside it, and target/ is git-ignored.
       - name: 📥 Check out CPython
         uses: actions/checkout@v7.0.1
         with:
           repository: python/cpython
-          path: ${{ runner.temp }}/cpython
+          path: target/cpython
           fetch-depth: 0
           filter: blob:none
           persist-credentials: false
@@ -38,7 +39,7 @@ jobs:
         with:
           components: rustfmt
       - name: ⚙️ Regenerate the table
-        run: uv run tasks/stdlib_submodules.py ${{ runner.temp }}/cpython
+        run: uv run tasks/stdlib_submodules.py target/cpython
       # The first pass applies formatting hooks (mdformat rewrites the generated file), which fails it; the second
       # verifies the formatted output, so the saved patch carries the formatting.
       - name: 🧹 Run prek
