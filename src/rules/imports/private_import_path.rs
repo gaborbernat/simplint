@@ -5,13 +5,24 @@ use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
+use ruff_diagnostics::{Applicability, Edit, Fix};
+
+use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::edits::{fix_of, keep_debug_text};
+use crate::rules::rename::appears_in_strings;
 use crate::syntax::{Visibility, is_lazy};
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let caller = walker.checker.module_path();
     let file = walker.checker.path;
+    if let Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) = stmt {
+        let module = stmt.as_import_from_stmt().and_then(|from| from.module.as_ref()).map(ast::Identifier::as_str);
+        for alias in names {
+            private_alias(walker, module, alias);
+        }
+    }
     match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) => {
             for alias in names.iter().filter(|alias| private_count(alias.name.as_str()) > 0) {
@@ -56,6 +67,65 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         }
         _ => {}
     }
+}
+
+// A public name bound under a private alias, as `from ._api import canonical as _canonical`, hides that the module
+// borrows a public name.
+fn private_alias(walker: &Walker<'_, '_>, module: Option<&str>, alias: &ast::Alias) {
+    let checker = walker.checker;
+    let Some(asname) = alias.asname.as_ref().map(ast::Identifier::as_str) else {
+        return;
+    };
+    let name = alias.name.as_str();
+    let qualified = module.map_or_else(|| name.to_owned(), |module| format!("{module}.{name}"));
+    // `_` is gettext's translation function by convention, and Ruff's ICN001 owns the aliases of the modules its
+    // import conventions name, defaults and configured ones alike.
+    if asname == "_"
+        || Visibility::of(asname) != Visibility::Private
+        || private_count(name) > 0
+        || checker.settings.from_ruff.import_aliases.contains_key(&qualified)
+        // Ruff's preview adds these to its default conventions.
+        || matches!(qualified.as_str(), "plotly.graph_objects" | "statsmodels.api")
+    {
+        return;
+    }
+    let public = last_segment_of(name);
+    checker.report_fix(
+        Rule::PrivateImportPath,
+        alias.range(),
+        format!("Public `{name}` imported as private `{asname}`; import it by its public name"),
+        public_name_fix(checker, alias, asname, public),
+        format!("Import `{public}` as `{public}`"),
+    );
+}
+
+fn last_segment_of(name: &str) -> &str {
+    name.rsplit('.').next().unwrap_or(name)
+}
+
+// Drops the alias and renames the module's uses of it. A dotted `import a.b as _b` would need a `from` import to bind
+// `b`, and an import inside a function binds a local the module's index does not track, so neither gets a fix.
+fn public_name_fix(checker: &Checker, alias: &ast::Alias, asname: &str, public: &str) -> Option<Fix> {
+    let project = checker.project();
+    let ranges = checker.semantic().name_ranges(asname);
+    if alias.name.as_str() != public
+        || !ranges.iter().any(|range| alias.range().contains_range(*range))
+        || checker.name_token_count(public) != 1
+        || checker.name_token_count(asname) != ranges.len()
+        || project.is_used_elsewhere(asname)
+        || project.is_read_opaquely(asname)
+        || project.is_computed_written()
+        || appears_in_strings(checker, asname)
+        || ranges.iter().any(|range| checker.state().in_source_text(checker, *range))
+    {
+        return None;
+    }
+    let renames = ranges
+        .into_iter()
+        .filter(|range| !alias.range().contains_range(*range))
+        .map(|range| Edit::range_replacement(public.to_owned(), range));
+    let edits = std::iter::once(Edit::range_replacement(public.to_owned(), alias.range())).chain(renames).collect();
+    fix_of(keep_debug_text(checker, edits)?, Applicability::Unsafe)
 }
 
 fn private_count(path: &str) -> usize {

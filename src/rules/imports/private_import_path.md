@@ -1,5 +1,6 @@
-Flags imports of private names, private imports that reach beyond one direct relative module, and imports that bind a
-private module as an object. In tests, imports from private modules must match the test's path and name.
+Flags imports of private names, private imports that reach beyond one direct relative module, imports that bind a
+private module as an object, and public names imported under a private alias. In tests, imports from private modules
+must match the test's path and name.
 
 ## Why is this bad?
 
@@ -40,8 +41,8 @@ value = make()
 
 ## What it does
 
-The rule checks imports in module, class and function bodies. It offers no fix for an import alone: choosing a public
-re-export or replacing uses of a module object may require changes elsewhere.
+The rule checks imports in module, class and function bodies. It offers a fix only for a private alias (see Fix below):
+choosing a public re-export or replacing uses of a module object may require changes elsewhere.
 
 ### Active on
 
@@ -133,6 +134,26 @@ re-export or replacing uses of a module object may require changes elsewhere.
       assert api
   ```
 
+- **Public names under private aliases**, such as `from ._api import canonical as _canonical` or `import os as _os`. The
+  alias hides that the module uses a public name, and a reader looking for `canonical` misses it. Import the name as
+  itself.
+
+  ```python report file=package/consumer.py
+  from .windows import Windows as _Result
+
+  VALUE = _Result
+  ```
+
+  ```python fixed file=package/consumer.py
+  from .windows import Windows
+
+  VALUE = Windows
+  ```
+
+  ```python context file=package/windows.py
+  class Windows: ...
+  ```
+
 ### Exceptions
 
 - **A public name from a direct private child**: `from ._api import API` lets the package use a private sibling to build
@@ -195,18 +216,12 @@ re-export or replacing uses of a module object may require changes elsewhere.
       _exit(0)
   ```
 
-- **Private local aliases of public imports**: `from .windows import Windows as _Result` imports a public name. The
-  alias belongs to the importing module.
+### Fix
 
-  ```python ok file=package/consumer.py
-  from .windows import Windows as _Result
-
-  VALUE = _Result
-  ```
-
-  ```python context file=package/windows.py
-  class Windows: ...
-  ```
+**Unsafe fix**, for a public name under a private alias: the fix drops the alias and renames the module's uses of it,
+which breaks code elsewhere that reads the alias, such as a test patching `module._canonical`. No fix is offered when
+the public name is already taken in the file, another file or a string reads the alias, the import is dotted
+(`import a.b as _b`) or the import sits inside a function. The other cases need the code moved, so they get no fix.
 
 ## Ruff overlap
 
@@ -214,7 +229,9 @@ Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-na
 private import that a module or function uses at runtime or never uses, and this rule leaves those reports to it whether
 or not the project selects PLC2701. It keeps the rest, such as imports used only in annotations or bound in a class
 body, relative imports, imports within their own package, and `import package._api` without an alias, which Ruff does
-not report.
+not report. Ruff's [unconventional-import-alias](https://docs.astral.sh/ruff/rules/unconventional-import-alias/)
+(ICN001) owns the aliases of the modules its import conventions name, such as `numpy`, so this rule leaves a private
+alias of those to it.
 
 ## Other tools
 
