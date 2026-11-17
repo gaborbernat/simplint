@@ -1,7 +1,7 @@
 [build-system]
 build-backend = "maturin"
 requires = [
-  "maturin>=1.15,<2",
+  "maturin>=1.16,<2",
 ]
 
 [project]
@@ -61,8 +61,8 @@ test = [
 ]
 type = [
   "mypy==2.4.1",
-  "tox>=4.67.4",
-  "types-docutils>=0.23.0.20260923",
+  "tox>=4.67.13",
+  "types-docutils>=0.23.0.20261107",
   "types-jsonschema>=4.26.0.20261006",
   { include-group = "test" },
 ]
@@ -72,7 +72,7 @@ docs = [
   "pypandoc-binary>=1.17; python_version>='3.14'",
   "release-creator>=4.4; python_version>='3.15'",
   "sphinx>=9.1; python_version>='3.14'",
-  "sphinx-argparse-cli>=1.24.1; python_version>='3.14'",
+  "sphinx-argparse-cli>=1.24.2; python_version>='3.14'",
   "sphinx-copybutton>=0.5.2; python_version>='3.14'",
   "sphinx-design>=0.7; python_version>='3.14'",
   "sphinx-inline-tabs>=2025.12.21.14; python_version>='3.14'",
@@ -80,28 +80,28 @@ docs = [
   "sphinxcontrib-mermaid>=2.1.1; python_version>='3.14'",
 ]
 build = [
-  "cython>=3.3",
-  "maturin>=1.15,<2",
+  "cython>=3.3.1",
+  "maturin>=1.16,<2",
   "setuptools>=84.2.1",
 ]
 fix = [
-  "pre-commit-uv>=4.4.1",
+  "pre-commit-uv>=4.4.2",
 ]
 pkg-meta = [
   "check-wheel-contents>=0.6.3",
   "twine>=7",
-  "uv>=0.13.6",
+  "uv>=0.13.7",
 ]
 release-build = [
-  "cython>=3.3",
-  "maturin>=1.15,<2",
+  "cython>=3.3.1",
+  "maturin>=1.16,<2",
   "setuptools>=84.2.1",
 ]
 release-notes = [
   "release-creator>=4.4",
 ]
 release-prepare = [
-  "prek>=0.5.7",
+  "prek>=0.5.10",
   "release-creator>=4.4",
 ]
 
