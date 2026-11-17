@@ -284,7 +284,7 @@ rules! {
     TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module } since PY315),
     LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module } since PY315),
     ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS, working_directory]),
-    PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
+    PrivateImportPath => ("SMP310", "private-import-path", "Private names, module objects, imports beyond a direct relative path, and public names under private aliases", Sometimes, imports::private_import_path { statement } reads [cross_file]),
     FlattenedPackage => ("SMP311", "flattened-package", "Private modules sharing a name prefix instead of a package", None, imports::flattened_package { module } reads [cross_file]),
     UndeclaredDependency => ("SMP312", "undeclared-dependency", "Imports of third-party modules no requirement of the project installs", None, imports::undeclared_dependency { module } reads [cross_file, RUNTIME_IMPORTS]),
     UnusedDependency => ("SMP313", "unused-dependency", "Requirements of the project nothing outside the tests imports", None, imports::unused_dependency { module } reads [cross_file, IMPORTED_MODULES]),

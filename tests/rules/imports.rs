@@ -166,10 +166,10 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("from ._api import _\n", 0 ; "gettext_alias")]
 #[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from _typeshed import StrPath\n", 0 ; "typeshed_types")]
 #[test_case("from ._api import helper\nVALUE = helper\n", 0 ; "public_name_from_private_module")]
-#[test_case("from ._api import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_private_child")]
-#[test_case("from .public import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_public_sibling")]
-#[test_case("from package import helper as _helper\nVALUE = _helper\n", 0 ; "private_binding_from_project_package")]
-#[test_case("from external import helper as _helper\nVALUE = _helper\n", 0 ; "third_party_private_binding")]
+#[test_case("from ._api import helper as _helper\nVALUE = _helper\n", 1 ; "private_binding_from_private_child")]
+#[test_case("from .public import helper as _helper\nVALUE = _helper\n", 1 ; "private_binding_from_public_sibling")]
+#[test_case("from package import helper as _helper\nVALUE = _helper\n", 1 ; "private_binding_from_project_package")]
+#[test_case("from external import helper as _helper\nVALUE = _helper\n", 1 ; "third_party_private_binding")]
 #[test_case("from ._api import _helper\nVALUE = _helper\n", 1 ; "direct_private_symbol_from_private_module")]
 #[test_case("from ._api import _helper as helper\nVALUE = helper\n", 1 ; "aliased_direct_private_symbol")]
 #[test_case("from ._api import API, _helper\nVALUE = _helper\n", 1 ; "mixed_public_private_symbols")]
@@ -193,9 +193,9 @@ fn private_import_path(source: &str, expected: usize) {
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
-#[test_case("import package.public as _helper\nVALUE = _helper\n", 0 ; "private_binding_of_project_module")]
-#[test_case("import package as _helper\nVALUE = _helper\n", 0 ; "private_binding_of_project_package")]
-#[test_case("import external as _helper\nVALUE = _helper\n", 0 ; "third_party_private_module_binding")]
+#[test_case("import package.public as _helper\nVALUE = _helper\n", 1 ; "private_binding_of_project_module")]
+#[test_case("import package as _helper\nVALUE = _helper\n", 1 ; "private_binding_of_project_package")]
+#[test_case("import external as _helper\nVALUE = _helper\n", 1 ; "third_party_private_module_binding")]
 #[test_case("import package.public as public\nVALUE = public\n", 0 ; "public_binding_of_project_module")]
 fn private_import_path_module_alias(source: &str, expected: usize) {
     let root =
@@ -211,7 +211,7 @@ fn private_import_path_module_alias(source: &str, expected: usize) {
 #[test_case("src/package/public/__init__.py", "src/package/module.py", "src/package/__init__.py" ; "src_package")]
 #[test_case("src/package/public/__init__.pyi", "src/package/module.py", "src/package/__init__.py" ; "src_stub_package")]
 fn private_import_path_project_module_alias(target: &str, consumer: &str, package: &str) {
-    let root = common::project(&[(package, ""), (target, ""), (consumer, "import package.public as _helper\n")]);
+    let root = common::project(&[(package, ""), (target, ""), (consumer, "import package.public as helper\n")]);
     common::assert_report_count(root.path(), "SMP310", 0);
 }
 
@@ -1732,4 +1732,38 @@ fn unused_dependency_reports_requirements_nothing_imports(project: &str, reporte
         (reported.to_vec(), true),
         "{stdout}"
     );
+}
+
+#[test_case("from ._api import canonical as _canonical\n\nVALUE = _canonical\n", Some("from ._api import canonical\n\nVALUE = canonical\n") ; "from_import")]
+#[test_case("import os as _os\n\nVALUE = _os.sep\n", Some("import os\n\nVALUE = os.sep\n") ; "module_import")]
+#[test_case("import os.path as _path\n\nVALUE = _path.sep\n", None ; "dotted_import")]
+#[test_case("from ._api import canonical as _canonical\n\ncanonical = 1\nVALUE = _canonical\n", None ; "public_name_taken")]
+#[test_case("def read() -> str:\n    from ._api import canonical as _canonical\n\n    return _canonical\n", None ; "function_import")]
+#[test_case("from ._api import canonical as _canonical\n\nVALUE = _canonical\nNAME = \"_canonical\"\n", None ; "alias_in_string")]
+#[test_case("from ._api import canonical as _canonical\n\nVALUE = t\"{_canonical}\"\n", None ; "alias_in_template")]
+#[test_case("from ._api import canonical as _canonical\n\nVALUE = f\"{f'{_canonical=}'=}\"\n", None ; "alias_in_nested_debug_field")]
+fn private_import_path_drops_private_aliases_of_public_names(source: &str, fixed: Option<&str>) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"package\"\nrequires-python = \">=3.14\"\n"),
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def canonical() -> str:\n    return \"\"\n"),
+        ("package/consumer.py", source),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
+    common::check(root.path(), &["--no-cache", "--select", "SMP310", "--unsafe-fixes", "--fix"]);
+    assert_eq!(
+        (stdout.contains("imported as private"), common::read(root.path(), "package/consumer.py")),
+        (true, fixed.unwrap_or(source).to_owned()),
+        "{stdout}"
+    );
+}
+
+#[test_case("import numpy as _np\n" ; "default_convention")]
+#[test_case("import plotly.graph_objects as _go\n" ; "preview_convention")]
+#[test_case("from gettext import gettext as _\n" ; "gettext")]
+#[test_case("from ._api import canonical as __canonical__\n" ; "dunder_alias")]
+fn private_import_path_leaves_aliases_ruff_or_convention_owns(source: &str) {
+    let root = common::project(&[("package/__init__.py", ""), ("package/consumer.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
+    assert!(!stdout.contains("imported as private"), "{stdout}");
 }
