@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.13.0 (2026-11-17)
+
+<a name="release-0-13-0"></a>
+
+<a name="release-0-13-0-added"></a>
+
+### Added
+
+- New rule
+  [`imported-fixture`](https://github.com/gaborbernat/simplint/blob/0.13.0/src/rules/testing/imported_fixture.md)
+  (SMP822) reports a pytest fixture that another module imports or `__all__` lists; share fixtures through a
+  `conftest.py` or a plugin. `missing-from-all` no longer asks to list an imported fixture in `__all__`
+  ([#148](https://github.com/gaborbernat/simplint/pull/148)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-13-0-changes"></a>
+
+### Changes
+
+- [`private-import-path`](https://github.com/gaborbernat/simplint/blob/0.13.0/src/rules/imports/private_import_path.md)
+  reports a public name imported under a private alias, such as `from ._api import canonical as _canonical`, and its
+  unsafe fix imports the name as itself ([#149](https://github.com/gaborbernat/simplint/pull/149)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](https://github.com/gaborbernat/simplint/blob/0.13.0/src/rules/layout/single_user_constant.md)
+  no longer skips a constant with a comment above or after it: the comment moves with the value to where it is used
+  ([#147](https://github.com/gaborbernat/simplint/pull/147)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.12.4 (2026-11-14)
 
 <a name="release-0-12-4"></a>
