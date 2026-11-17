@@ -7,8 +7,8 @@ in later pull requests the constant may not be in the diff at all. For a number,
 pays for that distance: with one user, there is no duplication the constant avoids.
 
 A module-level constant also suggests the value is shared, so a reader has to search the module to learn that one
-function uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying
-it is built once for speed, keeps it at module level.
+function uses it. Defined in that function, its scope matches its use. A comment does not make it shared: the comment
+moves with the value to where it is used.
 
 ## Example
 
@@ -210,17 +210,6 @@ functions nested in it. These values count:
 
   def load() -> int:
       return UserId
-  ```
-
-- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value
-  lives at module level, such as being built once for speed.
-
-  ```python ok
-  _TIMEOUT = 30  # seconds
-
-
-  def connect(host: str) -> socket.socket:
-      return socket.create_connection((host, 443), timeout=_TIMEOUT)
   ```
 
 - **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore
@@ -450,6 +439,24 @@ The fix moves the value in one of two ways:
       return socket.create_connection((host, 443))
   ```
 
+The comments directly above the constant and the one after it on its line move with it, onto their own lines above the
+statement that reads the value, or above the local. A Sphinx `#:` comment becomes a plain `#` one, as it documents
+nothing on a local.
+
+```python report
+_TIMEOUT = 30  # seconds before the server drops us
+
+
+def connect(host: str) -> socket.socket:
+    return socket.create_connection((host, 443), timeout=_TIMEOUT)
+```
+
+```python fixed
+def connect(host: str) -> socket.socket:
+    # seconds before the server drops us
+    return socket.create_connection((host, 443), timeout=30)
+```
+
 ```mermaid
 flowchart TD
     constant["reported constant"] --> once{"used once, outside loops<br/>and nested scopes?"}
@@ -484,6 +491,29 @@ No fix is offered when:
   def connect(host: str) -> socket.socket:
       return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)
   ```
+
+- a comment that moves with the constant is another tool's directive, such as `# noqa: E501`, which would stop applying
+  to the line it was written for;
+
+  ```python report
+  _URL = "https://example.com/a/very/long/path"  # noqa: E501
+
+
+  def fetch() -> str:
+      return _URL
+  ```
+
+- a comment would move into a function whose body sits on its `def` line;
+
+  ```python report
+  _TICK = 1  # one step
+
+
+  def tick() -> int:
+      return _TICK
+  ```
+
+- a moved comment would run past Ruff's `line-length` once indented into the function;
 
 - the local name already appears in the file;
 

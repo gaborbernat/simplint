@@ -176,6 +176,17 @@ fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, expected: (i32, 
     );
 }
 
+// Each selector below suppresses nothing, but the first one's comment is all that keeps SMP531 from reporting the
+// statements it stands between, so removing every selector at once exposes a report and the fix keeps that one.
+#[test]
+fn unused_ignore_keeps_the_selector_whose_comment_silences_a_report() {
+    let needed = "def headers() -> dict[str, str]:\n    headers = {}\n    headers[\"Accept\"] = \"json\"  # simplint: \
+        ignore[SMP602]\n    headers[\"Cache\"] = \"no-store\"\n    return headers\n";
+    let root = common::project(&[("module.py", &format!("{needed}\n\nvalue = 2  # simplint: ignore[SMP603]\n"))]);
+    common::check(root.path(), &["--select", "SMP531,SMP009", "--fix"]);
+    assert_eq!(common::read(root.path(), "module.py"), format!("{needed}\n\nvalue = 2\n"));
+}
+
 #[test]
 fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
     let needed = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]\n\n\ndef read() -> str:\n    first = 1\

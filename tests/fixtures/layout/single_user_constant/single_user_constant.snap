@@ -6,6 +6,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 29:1 SMP202 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
 43:1 SMP202 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
 44:1 SMP202 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
+78:1 SMP202 `_LIMIT` is used by one function only; define it there [unsafe fix: Move `_LIMIT` into `verify`]
 86:1 SMP202 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
 94:1 SMP202 `_PORT` is used by one function only; define it there [unsafe fix: Move `_PORT` into `describe`]
 108:1 SMP202 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
@@ -18,13 +19,19 @@ expression: "lint_fixture(rule, fixture, target_version)"
 153:1 SMP202 `_CLASS` is used by one function only; define it there
 160:1 SMP202 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
 174:1 SMP202 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
+182:1 SMP202 `_WRAPPED` is used by one function only; define it there [unsafe fix: Move `_WRAPPED` into `unwrap`]
 191:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
 192:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
 201:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
 211:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
 235:1 SMP202 `_FIRST` is used by one function only; define it there [unsafe fix: Move `_FIRST` into `first`]
 236:1 SMP202 `_SECOND` is used by one function only; define it there [unsafe fix: Move `_SECOND` into `second`]
---- fixed (20 applied, 2 remaining) ---
+249:1 SMP202 `_ATTEMPTS` is used by one function only; define it there [unsafe fix: Move `_ATTEMPTS` into `allowed`]
+256:1 SMP202 `_LONG_URL` is used by one function only; define it there
+263:1 SMP202 `_SHORT` is used by one function only; define it there
+270:1 SMP202 `_SHADE` is used by one function only; define it there [unsafe fix: Move `_SHADE` into `shade`]
+278:1 SMP202 `_DEEP` is used by one function only; define it there
+--- fixed (24 applied, 5 remaining) ---
 from typing import Final
 
 print("loading")
@@ -96,13 +103,13 @@ _FORMATTED = f"{PREFIX_BASE}/x"
 _SPREAD = [*PARTS]
 _MERGED = {**DEFAULTS}
 _FLIPPED = -LIMIT_BASE
-_LIMIT = 30  # seconds before giving up
 
 
 def verify(token: str) -> object:
     _LOGGER.info(token)
     found = _JWT_CACHE.get(token) or _VERSION_RE.match(token) or _CONFIG_DIR / token or _CLIENT.get(token)
-    return found, _LEVEL, _ALIAS, _FORMATTED, _SPREAD, _MERGED, _FLIPPED, _LIMIT
+    # seconds before giving up
+    return found, _LEVEL, _ALIAS, _FORMATTED, _SPREAD, _MERGED, _FLIPPED, 30
 _SEEN_TYPES: Final[dict[str, int]] = {}
 
 
@@ -184,13 +191,11 @@ def scaled() -> int:
     return base + doubled
 
 
-_WRAPPED: Final[int] = (
-    3  # the trailing comment `ruff format` moved inside the parentheses
-)
-
-
-def wrapped() -> int:
-    return _WRAPPED
+def unwrap() -> int:
+    wrapped: int = (
+        3  # the trailing comment `ruff format` moved inside the parentheses
+    )
+    return wrapped
 
 
 class Links:
@@ -241,3 +246,39 @@ def first() -> int:
 
 def second() -> int:
     return 2
+
+
+def allowed() -> int:
+    # how many attempts the server allows
+    # before it locks the account
+    attempts = 5
+    return attempts + attempts
+
+
+_LONG_URL = "https://example.com/a/very/long/path"  # noqa: E501
+
+
+def fetch() -> str:
+    return _LONG_URL
+
+
+_SHORT = 1  # one tick
+
+
+def tick() -> int: return _SHORT
+
+
+def shade() -> str:
+    # the shade a sphinx attribute comment documents
+    return "teal"
+
+
+# a comment that fits at module level but runs past the width once the fix indents it inside the class method bodyx
+_DEEP = 2
+
+
+class Deep:
+    def method(self) -> int:
+        if self:
+            return _DEEP
+        return 0

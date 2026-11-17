@@ -13,27 +13,6 @@ from typing import Final
 
 from tasks.interpreters import Interpreter, minor_version, resolve
 
-#: The oldest release a block compiles under when its group names no lower bound.
-_DEFAULT_FLOOR: Final[int] = 11
-#: Reads the sources as a JSON list and prints, for each, its syntax error or null. Warnings are dropped: some examples
-#: show invalid code on purpose, and a syntax warning is not a failure.
-_COMPILE: Final[str] = """\
-import json
-import sys
-import warnings
-
-warnings.simplefilter("ignore")
-errors = []
-for source in json.load(sys.stdin):
-    try:
-        compile(source, "<example>", "exec", dont_inherit=True)
-    except SyntaxError as exc:
-        errors.append(f"{exc.msg} (line {exc.lineno})")
-    else:
-        errors.append(None)
-json.dump(errors, sys.stdout)
-"""
-
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Block:
@@ -95,14 +74,16 @@ def block_floor(config: dict[str, str] | None) -> int:
     #
     # :param config: the group's config, as its ``source`` text, or None when it has none
     # :returns: the minor number, the default when the config names neither
+    # The oldest release a block compiles under when its group names no lower bound.
+    default_floor: int = 11
     if config is None:
-        return _DEFAULT_FLOOR
+        return default_floor
     settings = tomllib.loads(config["source"])
     if target := settings.get("tool", {}).get("ruff", {}).get("target-version"):
         return int(target.removeprefix("py3"))
     if match := _BLOCK_FLOOR_PATTERN.match(settings.get("project", {}).get("requires-python", "")):
         return int(match.group(1))
-    return _DEFAULT_FLOOR
+    return default_floor
 
 
 def _check(blocks: list[Block], interpreters: list[Interpreter]) -> list[str]:
@@ -111,11 +92,29 @@ def _check(blocks: list[Block], interpreters: list[Interpreter]) -> list[str]:
     # :param blocks: the example blocks
     # :param interpreters: the CPythons to compile under
     # :returns: one line per failure, naming the block and the release that rejects it
+    # Reads the sources as a JSON list and prints, for each, its syntax error or null. Warnings are dropped: some
+    # examples show invalid code on purpose, and a syntax warning is not a failure.
+    compile_sources = """\
+import json
+import sys
+import warnings
+
+warnings.simplefilter("ignore")
+errors = []
+for source in json.load(sys.stdin):
+    try:
+        compile(source, "<example>", "exec", dont_inherit=True)
+    except SyntaxError as exc:
+        errors.append(f"{exc.msg} (line {exc.lineno})")
+    else:
+        errors.append(None)
+json.dump(errors, sys.stdout)
+"""
     failures = []
     for interpreter in interpreters:
         required = [block for block in blocks if interpreter.minor >= block.floor]
         errors = subprocess.run(
-            [interpreter.path, "-I", "-c", _COMPILE],
+            [interpreter.path, "-I", "-c", compile_sources],
             input=json.dumps([block.source for block in required]),
             capture_output=True,
             text=True,

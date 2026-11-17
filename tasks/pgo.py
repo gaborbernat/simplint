@@ -28,8 +28,6 @@ _MANIFEST: Final[Path] = _ROOT / "tasks" / "pgo_corpus.toml"
 #: Different shapes of code: a formatter, a package installer and an SDK core. A profile from the 532 projects of the
 #: validation corpus made the binary no faster than one from these three, at 140 times the training time.
 PROJECTS: Final[tuple[str, ...]] = ("black", "botocore", "pip")
-#: simplint lints Python modules and reads stubs for the names they declare; nothing else in a project matters to it.
-_PYTHON: Final[tuple[str, ...]] = (".py", ".pyi")
 #: What the optimized build prints, given ``-Cllvm-args=-pgo-warn-missing-function``, for a function the profile has no
 #: counts for, or counts of other code. Cargo hides the warnings of dependencies, so they all come from simplint's own
 #: codegen units, which also hold the instances of its dependencies' generic functions.
@@ -286,7 +284,8 @@ def extract(archive: Path, corpus: Path) -> None:
     skipped = []
     with tarfile.open(archive, "r|gz") as tar:
         for member in tar:
-            if member.isfile() and member.name.endswith(_PYTHON):
+            # simplint lints Python modules and reads stubs for the names they declare; nothing else matters to it.
+            if member.isfile() and member.name.endswith((".py", ".pyi")):
                 try:
                     tar.extract(member, destination, filter="data")
                 except (tarfile.FilterError, OSError) as error:

@@ -5,10 +5,6 @@ import sys
 from pathlib import Path
 from tarfile import open as tar_open
 from tempfile import TemporaryDirectory
-from typing import Final
-
-#: What the build and the test suite read.
-_SHIPPED: Final[tuple[str, ...]] = ("src", "tests", "docs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml")
 
 
 def main() -> None:
@@ -28,8 +24,13 @@ def main() -> None:
 
 
 def _ships_every_tracked_file(sdist: Path, root: Path) -> None:
+    # What the build and the test suite read.
     tracked = subprocess.run(
-        ["git", "ls-files", "--", *_SHIPPED], cwd=root, capture_output=True, text=True, check=True
+        ["git", "ls-files", "--", "src", "tests", "docs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.splitlines()
     with tar_open(sdist) as tar:
         shipped = {name.partition("/")[2] for name in tar.getnames()}

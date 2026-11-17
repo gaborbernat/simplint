@@ -139,13 +139,13 @@ fn crlf_reports_and_fixes_match_lf(select: &str, source: &str) {
 
 #[test_case("\n" ; "lf")]
 #[test_case("\r\n" ; "crlf")]
-fn comment_above_exempts_constant(line_ending: &str) {
+fn comment_above_moves_with_constant(line_ending: &str) {
     let source = "import sys\n\n# Reserved name; nothing else may claim it.\n_STORAGE_NAME = \"reserved\"\n\n\ndef \
         claim(names: list[str]) -> None:\n    names.append(_STORAGE_NAME)\n\n\nif __name__ == \"__main__\":\n    \
         claim(sys.argv)\n";
+    let fixed = "import sys\n\n\ndef claim(names: list[str]) -> None:\n    # Reserved name; nothing else may claim it.\n    \
+        names.append(\"reserved\")\n\n\nif __name__ == \"__main__\":\n    claim(sys.argv)\n";
     let root = common::project(&[("pyproject.toml", PROJECT), ("module.py", &source.replace('\n', line_ending))]);
-    assert_eq!(
-        common::check(root.path(), &["--no-cache", "--select", "SMP202"]),
-        (0, common::PASSED.to_owned(), String::new())
-    );
+    common::check(root.path(), &["--no-cache", "--select", "SMP202", "--unsafe-fixes", "--fix"]);
+    assert_eq!(common::read(root.path(), "module.py"), fixed.replace('\n', line_ending));
 }
