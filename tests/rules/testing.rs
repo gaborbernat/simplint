@@ -365,3 +365,34 @@ fn uncollected_test_module_used_elsewhere(other: &str, source: &str) {
     ]);
     common::assert_report_count(root.path(), "SMP821", 0);
 }
+
+const ORDER_FIXTURE: &str = "import pytest\n\n\n@pytest.fixture\ndef order() -> str:\n    return \"order-1\"\n\n\ndef helper() -> int:\n    return 1\n";
+
+#[test_case("from tests.helpers import order\n", "", true ; "imported")]
+#[test_case("", "__all__ = [\"order\"]\n", true ; "exported")]
+#[test_case("from tests.helpers import helper\n", "", false ; "helper_imported")]
+#[test_case("pytest_plugins = [\"tests.helpers\"]\n", "", false ; "loaded_as_plugin")]
+fn imported_fixture_reports_fixtures_shared_by_import(importer: &str, exports: &str, reported: bool) {
+    let root = common::project(&[
+        ("tests/__init__.py", ""),
+        ("tests/helpers.py", &format!("{exports}{ORDER_FIXTURE}")),
+        ("tests/test_orders.py", &format!("{importer}\n\ndef test_order_id(order: str) -> None:\n    assert order\n")),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP822"]);
+    assert_eq!(stdout.contains("Fixture `order` is shared by import"), reported, "{stdout}");
+}
+
+#[test]
+fn missing_from_all_leaves_imported_fixtures_unlisted() {
+    let root = common::project(&[
+        ("src/example/__init__.py", ""),
+        ("src/example/plugin.py", ORDER_FIXTURE),
+        ("src/example/cli.py", "from example.plugin import helper, order\n\nprint(helper(), order)\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
+    assert_eq!(
+        (stdout.contains("`helper` is imported by other modules"), stdout.contains("`order`")),
+        (true, false),
+        "{stdout}"
+    );
+}

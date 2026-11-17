@@ -13,9 +13,10 @@ use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
 use crate::rules::api::{AllList, exploded};
 use crate::rules::edits::fix_of;
+use crate::rules::testing::recognize::is_fixture;
 use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
-use crate::syntax::{Exports, Visibility, alias_binding, import_aliases, is_main_guard};
+use crate::syntax::{Exports, Visibility, alias_binding, import_aliases, is_main_guard, module_statements};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
@@ -38,6 +39,12 @@ pub fn missing_from_all(checker: &Checker) {
         .filter_map(|stmt| stmt.as_if_stmt().filter(|stmt| is_type_checking(&stmt.test, checker)))
         .map(|stmt| TextRange::new(stmt.body[0].start(), stmt.body[stmt.body.len() - 1].end()))
         .collect();
+    // pytest finds a fixture by name, so listing one would invite the import imported-fixture reports.
+    let fixtures: FxHashSet<&str> = module_statements(checker.body())
+        .filter_map(|stmt| stmt.as_function_def_stmt())
+        .filter(|function| function.decorator_list.iter().any(is_fixture))
+        .map(|function| function.name.as_str())
+        .collect();
     let mut missing: Vec<Missing> = checker
         .semantic()
         .all_bindings()
@@ -53,6 +60,7 @@ pub fn missing_from_all(checker: &Checker) {
                     && !checker.project().is_used_only_by_tests(name))
                     || checker.project().is_api_reached(name))
                 && !shadows_module(name)
+                && !fixtures.contains(name)
         })
         .map(|(name, bindings)| Missing {
             name,
