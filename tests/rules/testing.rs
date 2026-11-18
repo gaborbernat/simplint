@@ -407,3 +407,14 @@ fn mock_attribute_assignment_preserves_unrelated_constructors_and_side_effects(s
         (i32::from(reported), reported, source.to_owned())
     );
 }
+
+#[test]
+fn safe_fixes_keep_patches_registered_with_stopall() {
+    let source = "from unittest import TestCase, mock\n\nclass Tests(TestCase):\n    def test_clock(self):\n        patcher = mock.patch('time.time')\n        clock = patcher.start()\n        self.addCleanup(patcher.stop)\n        mock.patch.stopall()\n";
+    let root = common::project(&[("test_clock.py", source)]);
+    let (code, output, _) = common::check(root.path(), &["--fix", "--select", "SMP812", "--target-version", "py311"]);
+    assert_eq!(
+        (code, output.contains("unsafe fix"), common::read(root.path(), "test_clock.py")),
+        (1, true, source.to_owned())
+    );
+}
