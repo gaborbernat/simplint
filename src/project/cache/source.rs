@@ -90,6 +90,12 @@ mod tests {
     use crate::project::cache::FileKey;
 
     #[test]
+    fn an_unreadable_source_has_no_content_key() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        assert!(FileKey::of(dir.path(), FileTime::now()).is_none());
+    }
+
+    #[test]
     fn identical_replacement_uses_a_new_inode_key_after_the_clock_tick() {
         let dir = tempfile::tempdir().expect("temporary directory");
         let old = dir.path().join("original.py");

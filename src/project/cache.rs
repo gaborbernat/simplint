@@ -37,8 +37,7 @@ impl FileKey {
             // A writer can keep its last journal record open until it closes the handle.
             options.share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE);
         }
-        let mut file = options.open(path).ok()?;
-        let metadata = file.metadata().ok()?;
+        let (mut file, metadata) = options.open(path).and_then(|file| file.metadata().map(|meta| (file, meta))).ok()?;
         let mut hasher = CacheKeyHasher::new();
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
         if !source::change_key(&file, &metadata, checked, &mut hasher) {
