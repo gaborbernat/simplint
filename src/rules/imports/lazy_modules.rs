@@ -15,28 +15,22 @@ use crate::syntax::statement_index;
 use crate::syntax::{alias_binding, alias_root_binding, is_type_checking_name};
 
 // The modules a normal start of CPython 3.15 has loaded before any user code runs, so a lazy import of one defers
-// nothing. Both platforms' names are listed, as flake8-lazy's default preset does.
-const LOADED_AT_STARTUP: [&str; 22] = [
+// nothing. Linted code can run on a different platform than the linter.
+const LOADED_AT_STARTUP: [&str; 16] = [
     "abc",
     "builtins",
     "codecs",
     "encodings",
     "encodings.aliases",
     "encodings.utf_8",
-    "encodings.utf_8_sig",
     "errno",
     "genericpath",
     "marshal",
-    "nt",
-    "ntpath",
     "os",
     "os.path",
-    "posix",
-    "posixpath",
     "site",
     "stat",
     "sys",
-    "sys.monitoring",
     "time",
     "zipimport",
 ];

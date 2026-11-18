@@ -1166,6 +1166,7 @@ fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
 }
 
 // A hook configuration that cannot be read counts as no hook, with a warning from the runs whose rules read it.
+#[cfg(unix)]
 #[test_case("SMP101", (0, false) ; "rule_off_does_not_read_it")]
 #[test_case("absolute-sibling-import", (1, true) ; "rule_on_reads_it")]
 fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
@@ -1566,6 +1567,7 @@ fn backport_import_keeps_report_for_a_builtin_the_ignorelist_allows() {
 )]
 #[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    import json as fallback\n", true ; "try_handler")]
 #[test_case("import json\n\nfrom . import helper\n", true ; "relative_import_without_a_package")]
+#[test_case("import json, os\nimport json as backend\n", false ; "mixed_and_standalone")]
 #[test_case("import json\n\ndef load():\n    import json as local\n    return local\n", true ; "function_body")]
 fn lazy_modules_list_keeps_list_for_an_import_the_fix_leaves_eager(body: &str, fixable: bool) {
     let root = common::project(&[
@@ -1909,4 +1911,13 @@ fn missing_lazy_module_reports_an_unresolved_relative_import() {
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP314"]);
     assert_eq!(common::reports(&stdout, "SMP314").len(), 1, "{stdout}");
     assert!(stdout.contains("`.helper` is first used after the module loads"), "{stdout}");
+}
+
+#[test_case("nt" ; "windows")]
+#[test_case("posix" ; "unix")]
+fn platform_specific_modules_can_stay_lazy(module: &str) {
+    let source = format!("lazy import {module}\n");
+    let root = common::project(&[("platforms.py", &source)]);
+    let (code, _, _) = common::check(root.path(), &["--fix", "--select", "SMP316", "--target-version", "py315"]);
+    assert_eq!((code, common::read(root.path(), "platforms.py")), (0, source));
 }

@@ -23,21 +23,25 @@ pub fn up_lazy_modules_list(checker: &Checker) {
     let imports = module_imports(checker.body());
     let mut lazy_imports = Vec::new();
     let mut converted = FxHashSet::default();
-    let mut matched = false;
+    let mut mixed = false;
     for import in imports.iter().filter(|import| import.top) {
         let names: Vec<Module> =
             imported_modules(import.stmt).into_iter().map(|imported| imported.module.resolve(module_path)).collect();
         let listed_names: Vec<&Module> = names.iter().filter(|name| listed.contains(name)).collect();
-        matched |= !listed_names.is_empty();
+        if listed_names.is_empty() {
+            continue;
+        }
         // `lazy` covers the whole statement, so a statement mixing listed and unlisted modules keeps its entries.
         if is_lazy(import.stmt) {
             converted.extend(listed_names.into_iter().cloned());
-        } else if !listed_names.is_empty() && listed_names.len() == names.len() {
+        } else if listed_names.len() == names.len() {
             lazy_imports.push(Edit::insertion("lazy ".to_owned(), import.stmt.start()));
             converted.extend(listed_names.into_iter().cloned());
+        } else {
+            mixed = true;
         }
     }
-    if !matched {
+    if converted.is_empty() && !mixed {
         return;
     }
     // An import the list defers in a block keeps no `lazy` from the fix, so it would load eagerly once the list goes,
@@ -56,6 +60,7 @@ pub fn up_lazy_modules_list(checker: &Checker) {
                 .any(|imported| listed.contains(&imported.module.resolve(module_path)))
         });
     let fix = (modules.iter().all(|module| module.as_ref().is_some_and(|module| converted.contains(module)))
+        && !mixed
         && !stays_eager
         && checker.is_alone_on_lines(list.stmt.range()))
     .then(|| {
