@@ -233,6 +233,12 @@
           "items": {
             "type": "string"
           }
+        },
+        "require-lazy-modules": {
+          "description": "Make `missing-lazy-module` (`SMP314`) check every file. By default it checks only the files that already assign\n`__lazy_modules__`, so a project adopts lazy imports one module at a time.",
+          "type": [
+            "boolean"
+          ]
         }
       },
       "additionalProperties": false
@@ -388,6 +394,10 @@
         "SMP311",
         "SMP312",
         "SMP313",
+        "SMP314",
+        "SMP315",
+        "SMP316",
+        "SMP317",
         "SMP4",
         "SMP40",
         "SMP401",
@@ -587,6 +597,7 @@
         "imprecise-annotation",
         "in-place-result",
         "indistinct-error-class",
+        "ineffective-lazy-declaration",
         "init-module-content",
         "inline-regex",
         "iterator-reuse",
@@ -599,6 +610,7 @@
         "misplaced-arguments",
         "missing-final",
         "missing-from-all",
+        "missing-lazy-module",
         "missing-override",
         "mock-assertion-typo",
         "mock-attribute-assignment",
@@ -644,6 +656,7 @@
         "string-concatenation",
         "string-statement-comment",
         "super-forwarding-method",
+        "suppressed-lazy-import",
         "suppression-without-reason",
         "test-class",
         "test-module-docstring",
@@ -665,6 +678,7 @@
         "unnamed-regex-group",
         "unreachable-code",
         "unregistered-marker",
+        "unsorted-lazy-modules",
         "unused-default",
         "unused-definition",
         "unused-dependency",

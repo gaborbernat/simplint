@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:20 SMP315 `__lazy_modules__` is not sorted; list plain names first, then the `__spec__.parent` entries [fix: Sort `__lazy_modules__`]
+--- fixed (1 applied, 0 remaining) ---
+__lazy_modules__ = {"json", "zipfile"}

@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:13 SMP316 `ineffective_lazy_declaration_pkg` holds this file, so it has loaded before `lazy` could defer it [fix: Remove `lazy`]
+--- fixed (1 applied, 0 remaining) ---
+import ineffective_lazy_declaration_pkg
+lazy from ineffective_lazy_declaration_pkg import helper
+
+
+def use() -> object:
+    return ineffective_lazy_declaration_pkg, helper

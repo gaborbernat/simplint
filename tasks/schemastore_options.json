@@ -60,7 +60,8 @@
     "module-attribute-scope": [
       "project",
       "stdlib"
-    ]
+    ],
+    "require-lazy-modules": true
   },
   "logic": {
     "max-helper-statements": 2,

@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:1 SMP314 `missing_lazy_module_pkg` is first used after the module loads; list it in `__lazy_modules__` to load it then [unsafe fix: Add `missing_lazy_module_pkg` to `__lazy_modules__`]
+5:8 SMP314 `missing_lazy_module_pkg.helper` is first used after the module loads; list it in `__lazy_modules__` to load it then
+--- fixed (1 applied, 0 remaining) ---
+__lazy_modules__ = (
+    'argparse',
+    f'{__spec__.parent.rsplit(".", 1)[0]}',
+    f'{__spec__.parent.rsplit(".", 1)[0]}.helper',
+)
+
+import argparse
+from .. import helper
+from ..helper import VALUE
+
+
+def value() -> object:
+    return argparse, helper.VALUE + VALUE

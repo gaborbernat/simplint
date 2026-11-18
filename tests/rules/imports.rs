@@ -149,6 +149,80 @@ use crate::common;
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", Some("py315") ; "lazy_modules_list_set")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_nested.py", Some("py315") ; "lazy_modules_list_nested")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_lazy.py", Some("py315") ; "lazy_modules_list_already_lazy")]
+#[test_case("missing-lazy-module", "missing_lazy_module.py", None ; "missing_lazy_module")]
+#[test_case("missing-lazy-module", "missing_lazy_module.py", Some("py315") ; "missing_lazy_module_py315")]
+#[test_case("missing-lazy-module", "missing_lazy_module_pkg/consumer.py", None ; "missing_lazy_module_package")]
+#[test_case("missing-lazy-module", "missing_lazy_module_pkg/sub/tool.py", None ; "missing_lazy_module_parent")]
+#[test_case("missing-lazy-module", "missing_lazy_module_pkg/widget.py", None ; "missing_lazy_module_package_used_while_loading")]
+#[test_case("missing-lazy-module", "missing_lazy_module_unsorted.py", None ; "missing_lazy_module_unsorted")]
+#[test_case("missing-lazy-module", "missing_lazy_module_comments.py", None ; "missing_lazy_module_comments")]
+#[test_case(
+    "missing-lazy-module", "missing_lazy_module_own_line_comment.py", None
+    ; "missing_lazy_module_own_line_comment"
+)]
+#[test_case("missing-lazy-module", "missing_lazy_module_dynamic.py", None ; "missing_lazy_module_dynamic")]
+#[test_case("missing-lazy-module", "missing_lazy_module_bare_tuple.py", None ; "missing_lazy_module_bare_tuple")]
+#[test_case("missing-lazy-module", "missing_lazy_module_wide.py", None ; "missing_lazy_module_wide")]
+#[test_case("missing-lazy-module", "missing_lazy_module_absent.py", None ; "missing_lazy_module_absent")]
+#[test_case("missing-lazy-module", "missing_lazy_module_above_list.py", None ; "missing_lazy_module_above_list")]
+#[test_case("missing-lazy-module", "missing_lazy_module_load_paths.py", None ; "missing_lazy_module_load_paths")]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_late_future.py", None
+    ; "ineffective_lazy_declaration_late_future"
+)]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_above.py", Some("py315") ; "lazy_modules_list_above_import")]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules.py", None ; "unsorted_lazy_modules")]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules_sorted.py", None ; "unsorted_lazy_modules_sorted")]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules_exploded.py", None ; "unsorted_lazy_modules_exploded")]
+#[test_case(
+    "unsorted-lazy-modules", "unsorted_lazy_modules_inner_comment.py", None
+    ; "unsorted_lazy_modules_inner_comment"
+)]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules_bare_tuple.py", None ; "unsorted_lazy_modules_bare_tuple")]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules_set.py", None ; "unsorted_lazy_modules_set")]
+#[test_case("unsorted-lazy-modules", "unsorted_lazy_modules_single.py", None ; "unsorted_lazy_modules_single")]
+#[test_case("ineffective-lazy-declaration", "ineffective_lazy_declaration.py", None ; "ineffective_lazy_declaration")]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_inner_comment.py", None
+    ; "ineffective_lazy_declaration_inner_comment"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_late.py", None
+    ; "ineffective_lazy_declaration_late"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_late_commented.py", None
+    ; "ineffective_lazy_declaration_late_commented"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_late_shared_line.py", None
+    ; "ineffective_lazy_declaration_late_shared_line"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_lazy.py", Some("py315")
+    ; "ineffective_lazy_declaration_lazy"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_pkg/sub/tool.py", None
+    ; "ineffective_lazy_declaration_package"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_pkg/sub/other.py", Some("py315")
+    ; "ineffective_lazy_declaration_package_lazy"
+)]
+#[test_case(
+    "ineffective-lazy-declaration", "ineffective_lazy_declaration_toplevel.py", None
+    ; "ineffective_lazy_declaration_toplevel"
+)]
+#[test_case("suppressed-lazy-import", "suppressed_lazy_import.py", Some("py315") ; "suppressed_lazy_import")]
+#[test_case(
+    "suppressed-lazy-import", "suppressed_lazy_import_comment.py", None
+    ; "suppressed_lazy_import_comment"
+)]
+#[test_case(
+    "suppressed-lazy-import", "suppressed_lazy_import_shadowed.py", Some("py315")
+    ; "suppressed_lazy_import_shadowed"
+)]
 fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
@@ -1503,20 +1577,19 @@ fn lazy_modules_list_keeps_list_for_an_import_the_fix_leaves_eager(body: &str, f
 }
 
 // A relative import names the module after `from`, so `from . import helper` is held by a list of `pkg`, not by one of
-// `pkg.helper`, and `from .helper import VALUE` is held by `pkg.helper`.
-#[test_case("pkg.helper", "import pkg.helper", "from . import helper\n", true ; "relative_name_of_listed_submodule")]
+// `pkg.helper`, and `from .helper import VALUE` is held by `pkg.helper`. The fix makes a held import `lazy`.
+#[test_case("pkg.helper", "import pkg.helper", "from . import helper\n", false ; "relative_name_of_listed_submodule")]
 #[test_case(
-    "pkg.helper", "import pkg.helper", "from .helper import VALUE\n", false
+    "pkg.helper", "import pkg.helper", "from .helper import VALUE\n", true
     ; "relative_module_of_listed_module"
 )]
-#[test_case("pkg.helper", "import pkg.helper", "from . import other\n", true ; "relative_import_of_another_module")]
-#[test_case("pkg", "import pkg", "from . import helper\n", false ; "relative_name_under_listed_package")]
-fn lazy_modules_list_matches_a_relative_import_by_its_module(
-    listed: &str,
-    import: &str,
-    relative: &str,
-    fixable: bool,
-) {
+#[test_case("pkg.helper", "import pkg.helper", "from . import other\n", false ; "relative_import_of_another_module")]
+#[test_case("pkg", "import pkg", "from . import helper\n", true ; "relative_name_under_listed_package")]
+#[test_case(
+    "{__spec__.parent}.helper", "import pkg.helper", "from .helper import VALUE\n", true
+    ; "spec_parent_entry"
+)]
+fn lazy_modules_list_matches_a_relative_import_by_its_module(listed: &str, import: &str, relative: &str, held: bool) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
         ("pkg/__init__.py", ""),
@@ -1524,11 +1597,15 @@ fn lazy_modules_list_matches_a_relative_import_by_its_module(
         ("pkg/other.py", "VALUE = 2\n"),
         (
             "pkg/consumer.py",
-            &format!("__lazy_modules__ = [\"{listed}\"]\n\n{import}\n{relative}\nprint(pkg.helper.VALUE)\n"),
+            &format!(
+                "__lazy_modules__ = [{}\"{listed}\"]\n\n{import}\n{relative}\nprint(pkg.helper.VALUE)\n",
+                if listed.starts_with('{') { "f" } else { "" }
+            ),
         ),
     ]);
     common::fix_unsafe(root.path(), "SMP307");
-    assert_eq!(common::read(root.path(), "pkg/consumer.py").contains("__lazy_modules__"), !fixable);
+    let fixed = common::read(root.path(), "pkg/consumer.py");
+    assert_eq!((fixed.contains("__lazy_modules__"), fixed.contains(&format!("lazy {relative}"))), (false, held));
 }
 
 // A comment in the import the fix replaces would be deleted with it, so the import keeps its report and no fix.
@@ -1766,4 +1843,70 @@ fn private_import_path_leaves_aliases_ruff_or_convention_owns(source: &str) {
     let root = common::project(&[("package/__init__.py", ""), ("package/consumer.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
     assert!(!stdout.contains("imported as private"), "{stdout}");
+}
+
+// With `require-lazy-modules` the fix writes a list into a module that has none, below its docstring and `from
+// __future__` imports, and leaves a module with nothing to defer alone.
+#[test_case(
+    "\"\"\"Doc.\"\"\"\n\nfrom __future__ import annotations\n\nimport json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n",
+    "\"\"\"Doc.\"\"\"\n\nfrom __future__ import annotations\n\n__lazy_modules__ = [\"json\"]\n\nimport json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n"
+    ; "below_docstring_and_future"
+)]
+#[test_case(
+    "import json\n\nprint(json.dumps(1))\n", "import json\n\nprint(json.dumps(1))\n"
+    ; "used_while_loading"
+)]
+#[test_case("from __future__ import annotations\n", "from __future__ import annotations\n" ; "future_only")]
+#[test_case(
+    "from __future__ import annotations; import json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n",
+    "from __future__ import annotations; import json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n"
+    ; "future_shares_the_line"
+)]
+fn require_lazy_modules_writes_a_new_list(source: &str, expected: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"x\"\nrequires-python = \">=3.10\"\n\n[tool.simplint.imports]\nrequire-lazy-modules = true\n",
+        ),
+        ("mod.py", source),
+    ]);
+    common::fix_unsafe(root.path(), "SMP314");
+    assert_eq!(common::read(root.path(), "mod.py"), expected);
+}
+
+// An entry list the rule reads reports the entry no import matches; a list it cannot read reports nothing.
+#[test_case("[f\"{__spec__.parent}.x\"]", 1 ; "spec_parent")]
+#[test_case("[f\"{__spec__.parent.rsplit('.', 1)[0]}.x\"]", 1 ; "spec_parent_rsplit")]
+#[test_case("[f\"{(__spec__.parent or '').rsplit('.', 1)[0]}.x\"]", 1 ; "guarded_spec_parent_rsplit")]
+#[test_case("[f\"{__spec__.parent}.x\" \".y\"]", 0 ; "concatenated")]
+#[test_case("[f\"a{__spec__.parent}\"]", 0 ; "text_before_parent")]
+#[test_case("[f\"{__spec__.parent}x\"]", 0 ; "no_dot_after_parent")]
+#[test_case("[f\"{__spec__.parent!r}.x\"]", 0 ; "conversion")]
+#[test_case("[f\"{name}.x\"]", 0 ; "other_name")]
+#[test_case("[f\"{__spec__.parent[0]}.x\"]", 0 ; "subscript_of_attribute")]
+#[test_case("[f\"{split('.', 1)[0]}.x\"]", 0 ; "call_of_name")]
+#[test_case("[f\"{__spec__.parent.rsplit('.')[0]}.x\"]", 0 ; "rsplit_without_count")]
+#[test_case("[f\"{__spec__.parent.split('.', 1)[0]}.x\"]", 0 ; "split")]
+#[test_case("[f\"{(__spec__.parent or 'x').rsplit('.', 1)[0]}.x\"]", 0 ; "guard_with_text")]
+#[test_case("[\"json\"]\nother = __lazy_modules__", 0 ; "read_again")]
+#[test_case("other = [\"json\"]", 0 ; "chained_assignment")]
+fn lazy_modules_entry_spellings(value: &str, reports: usize) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/sub/__init__.py", ""),
+        ("pkg/sub/mod.py", &format!("__lazy_modules__ = {value}\n")),
+    ]);
+    common::assert_report_count(root.path(), "SMP316", reports);
+}
+
+// A relative import in a module outside a package resolves to no absolute name, so the report spells it as written.
+#[test]
+fn missing_lazy_module_reports_an_unresolved_relative_import() {
+    let root = common::project(&[(
+        "mod.py",
+        "__lazy_modules__ = []\n\nfrom .helper import VALUE\n\n\ndef value() -> int:\n    return VALUE\n",
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP314"]);
+    assert_eq!(common::reports(&stdout, "SMP314").len(), 1, "{stdout}");
+    assert!(stdout.contains("`.helper` is first used after the module loads"), "{stdout}");
 }

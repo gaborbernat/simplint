@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:21 SMP316 `".helper"` is relative, but CPython matches the absolute names of imports, so it defers nothing [unsafe fix: Spell it `f"{__spec__.parent}.helper"`]
+--- fixed (1 applied, 0 remaining) ---
+__lazy_modules__ = [f"{__spec__.parent}.helper"]
+
+from . import helper

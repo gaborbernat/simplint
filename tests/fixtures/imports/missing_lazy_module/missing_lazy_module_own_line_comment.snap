@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:8 SMP314 `json` is first used after the module loads; list it in `__lazy_modules__` to load it then

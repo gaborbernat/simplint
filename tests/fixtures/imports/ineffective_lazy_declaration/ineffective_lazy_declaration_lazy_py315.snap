@@ -1,0 +1,26 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:21 SMP316 `json` is imported with `lazy` only, which defers it without the list [fix: Remove `"json"`]
+4:13 SMP316 `os` loads when Python starts, so `lazy` defers nothing [fix: Remove `lazy`]
+5:11 SMP316 `sys` loads when Python starts, so `lazy` defers nothing [fix: Remove `lazy`]
+7:12 SMP316 `abc` loads when Python starts, so `lazy` defers nothing [fix: Remove `lazy`]
+8:13 SMP316 `sys` loads when Python starts, so `lazy` defers nothing
+12:11 SMP316 `pathlib` is also imported eagerly at module level, so `lazy` defers nothing
+--- fixed (4 applied, 2 remaining) ---
+__lazy_modules__ = ["csv"]
+
+lazy import json
+import os
+from sys import argv, path
+import abc
+lazy import sys, zipfile
+lazy from csv import reader
+import csv
+import pathlib
+lazy from pathlib import Path
+
+
+def use() -> object:
+    return argv, path, json, os, abc, sys, zipfile, reader, csv, pathlib, Path

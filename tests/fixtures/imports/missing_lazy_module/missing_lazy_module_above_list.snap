@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:8 SMP314 `csv` is first used after the module loads; list it in `__lazy_modules__` to load it then [unsafe fix: Add `csv` to `__lazy_modules__`]
+--- fixed (1 applied, 0 remaining) ---
+"""Doc."""
+
+import json
+
+__lazy_modules__ = ["argparse", "csv"]
+
+import argparse
+import csv
+
+
+def use() -> object:
+    return json, argparse, csv

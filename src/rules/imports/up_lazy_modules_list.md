@@ -64,7 +64,9 @@ print(json.dumps([1]), pathlib.Path("demo").name)
 ### Active on
 
 - **A module-level `__lazy_modules__` assigned a list, tuple or set of string literals**, when some `import` at module
-  level names one of its entries. The report sits on the list.
+  level names one of its entries. An entry spelled `f"{__spec__.parent}.name"`, as flake8-lazy writes one for a relative
+  import, names the module relative to the file's package. A relative import matches by the module it names after
+  `from`, so `from . import helper` matches a listed `pkg`, and not a listed `pkg.helper`. The report sits on the list.
 
   ```toml config
   [project]
@@ -80,10 +82,41 @@ print(json.dumps([1]), pathlib.Path("demo").name)
   print(json.dumps([1]))
   ```
 
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.15"
+  ```
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/helper.py
+  VALUE = 1
+  ```
+
+  ```python report file=pkg/consumer.py
+  # Demo module.
+  __lazy_modules__ = [f"{__spec__.parent}.helper"]
+
+  from .helper import VALUE
+
+  print(VALUE)
+  ```
+
+  ```python fixed file=pkg/consumer.py
+  # Demo module.
+
+  lazy from .helper import VALUE
+
+  print(VALUE)
+  ```
+
 ### Exceptions
 
-- **Values that are not literals**, such as a list built from a comprehension or a name: the rule cannot read the
-  entries, so it does not report them.
+- **Values that are not literals**, such as a list built from a comprehension or a name, or a list the module names
+  again after assigning it: the rule cannot read the entries, so it does not report them.
 
   ```toml config
   [project]
@@ -127,9 +160,8 @@ apply.
 
 The fix is also withheld when a listed module is imported again where the list keeps the import lazy and the fix would
 make it eager: under an `if`, `with`, `for`, `while` or `match` at module level, in the `else` of a `try` without a
-`finally`, or in its `finally`. A relative import is held by the module it names after `from`, so `from . import helper`
-is held by a listed `pkg`, and not by a listed `pkg.helper`. The list is what keeps those imports lazy, and deleting it
-would make them eager.
+`finally`, or in its `finally`. The list is what keeps those imports lazy, and deleting it would make them eager. So is
+a listed module imported above the list, which loads eagerly, while the fix would make that import lazy.
 
 ```toml config
 [project]
@@ -210,38 +242,6 @@ except ImportError:
     pass
 else:
     import json as fallback
-```
-
-```toml config
-[project]
-name = "demo"
-requires-python = ">=3.15"
-```
-
-```python context file=pkg/__init__.py
-# A package.
-```
-
-```python context file=pkg/helper.py
-VALUE = 1
-```
-
-```python report file=pkg/consumer.py
-__lazy_modules__ = ["pkg"]
-
-import pkg
-from . import helper
-
-print(pkg, helper.VALUE)
-```
-
-```python fixed file=pkg/consumer.py
-__lazy_modules__ = ["pkg"]
-
-import pkg
-from . import helper
-
-print(pkg, helper.VALUE)
 ```
 
 ## Other tools
