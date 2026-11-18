@@ -8,6 +8,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::lint::walker::Walker;
 use crate::rules::edits::{Import, ensure_import, with_import};
 use crate::rules::{is_class_like, is_sphinx_conf, isort_key};
 use crate::semantic::Semantic;
@@ -31,17 +32,6 @@ pub fn missing_final(checker: &Checker) {
             continue;
         };
         let name = target.id.as_str();
-        // The annotation already declares a constant, so every name qualifies, dunders and class-like names included.
-        if let Some(annotation) = annotation.filter(|annotation| is_bare_final(annotation)) {
-            checker.report_fix(
-                Rule::MissingFinal,
-                target.range,
-                format!("`{name}` is annotated bare `Final`; give it a type, as in `Final[int]`"),
-                bare_final_fix(checker, annotation, value),
-                format!("Give `{name}` its type inside `Final`"),
-            );
-            continue;
-        }
         if is_dunder(name)
             || is_class_like(name)
             || name == "TYPE_CHECKING"
@@ -78,6 +68,27 @@ pub fn missing_final(checker: &Checker) {
             format!("Annotate `{name}` with `Final`"),
         );
     }
+}
+
+pub fn statement(walker: &mut Walker, stmt: &Stmt) {
+    if walker.checker.target_version() < PythonVersion::PY38 {
+        return;
+    }
+    let Some((target, Some(annotation), value)) = single_assignment(stmt) else {
+        return;
+    };
+    if !is_bare_final(annotation) {
+        return;
+    }
+    // The annotation already declares a constant, so every name qualifies, dunders and class-like names included.
+    let name = target.id.as_str();
+    walker.checker.report_fix(
+        Rule::MissingFinal,
+        target.range,
+        format!("`{name}` is annotated bare `Final`; give it a type, as in `Final[int]`"),
+        bare_final_fix(walker.checker, annotation, value),
+        format!("Give `{name}` its type inside `Final`"),
+    );
 }
 
 // `Final` with no brackets, spelled `Final`, `typing.Final` or an alias such as `t.Final`.
