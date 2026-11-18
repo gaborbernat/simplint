@@ -19,6 +19,9 @@ pub(crate) fn default_argument_value(checker: &Checker) {
         .filter_map(Stmt::as_function_def_stmt)
         .filter(|function| {
             resolvable(checker, function)
+                && !checker
+                    .semantic()
+                    .decorated_by(&function.decorator_list, &[&["functools", "cache"], &["functools", "lru_cache"]])
                 && function
                     .parameters
                     .iter_non_variadic_params()
