@@ -8,12 +8,12 @@ mod files;
 mod overlay;
 mod rounds;
 
-use std::fs::OpenOptions;
-use std::io::{Seek, Write};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Seek, Write};
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use colored::Colorize;
 use log::warn;
 use ruff::args::ConfigArguments;
@@ -272,19 +272,24 @@ fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> 
     let mut file = OpenOptions::new().write(true).open(&target)?;
     // Keep the old tail until the replacement has been written. A short write can then be
     // undone even when the file-size limit is smaller than the original file.
-    let (error, restore) = match file.write_all(fixed.as_bytes()) {
-        Err(error) => (error, usize::try_from(file.stream_position()?)?.min(original.len())),
+    let (error, overwritten) = match file.write_all(fixed.as_bytes()) {
+        Err(error) => (error, file.stream_position()),
         Ok(()) => match file.set_len(fixed.len() as u64).and_then(|()| file.sync_all()) {
             Ok(()) => return Ok(()),
-            Err(error) => (error, original.len()),
+            Err(error) => (error, Ok(original.len().max(fixed.len()) as u64)),
         },
     };
-    file.rewind()?;
-    file.write_all(&original.as_bytes()[..restore])?;
-    if file.metadata()?.len() > original.len() as u64 {
-        file.set_len(original.len() as u64)?;
-    }
+    overwritten
+        .and_then(|end| restore_source(&mut file, original.as_bytes(), end))
+        .with_context(|| format!("could not restore {} after {error}", path.display()))?;
     Err(error.into())
+}
+
+fn restore_source(file: &mut File, original: &[u8], overwritten: u64) -> io::Result<()> {
+    file.rewind()?;
+    let end = usize::try_from(overwritten.min(original.len() as u64)).expect("bounded by the source length");
+    file.write_all(&original[..end])?;
+    if overwritten > original.len() as u64 { file.set_len(original.len() as u64) } else { Ok(()) }
 }
 
 // A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
@@ -397,13 +402,42 @@ mod tests {
         );
     }
 
-    // Linux takes a write to `/dev/null` but refuses to sync it, which fails the write.
+    // Linux accepts the write to /dev/null but refuses both attempts to truncate it.
     #[cfg(target_os = "linux")]
     #[test]
-    fn write_source_fails_when_the_file_takes_no_sync() {
+    fn write_source_reports_a_failed_restore() {
         let error = write_source(&PathBuf::from("/dev/null"), &[PathBuf::from("/dev")], "", "fixed = 1\n")
-            .expect_err("no sync");
-        assert_eq!(error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), Some(ErrorKind::InvalidInput));
+            .expect_err("cannot truncate");
+        assert_eq!(
+            (
+                error.to_string().contains("could not restore /dev/null"),
+                error.downcast_ref::<std::io::Error>().map(std::io::Error::kind)
+            ),
+            (true, Some(ErrorKind::InvalidInput))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restoring_a_prefix_reports_seek_and_write_errors() {
+        use std::fs::File;
+        use std::os::fd::OwnedFd;
+        use std::os::unix::net::UnixStream;
+
+        let (socket, _peer) = UnixStream::pair().expect("socket pair");
+        let mut unseekable = File::from(OwnedFd::from(socket));
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("module.py");
+        std::fs::write(&path, b"xyz").expect("write file");
+        let mut readonly = File::open(&path).expect("open read-only");
+        assert_eq!(
+            (
+                super::restore_source(&mut unseekable, b"abc", 3).expect_err("seek").raw_os_error(),
+                super::restore_source(&mut readonly, b"abc", 3).expect_err("write").raw_os_error(),
+                std::fs::read(path).expect("read file")
+            ),
+            (Some(libc::ESPIPE), Some(libc::EBADF), b"xyz".to_vec())
+        );
     }
 
     #[test]
