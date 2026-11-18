@@ -6,7 +6,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::package::PackageRoot;
 
 use super::files::{Documentation, ProjectInputs, RunFile};
-use crate::lint::registry::Rule;
+use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::FileKey;
 use crate::project::{Parts, SearchRoots};
 
@@ -25,7 +25,9 @@ pub(super) fn run_digest(
     let mut hasher = CacheKeyHasher::new();
     std::env::current_dir().unwrap_or_default().cache_key(&mut hasher);
     roots.cache_key(&mut hasher);
-    roots.layout_key(files.iter().map(|file| file.path), &mut hasher);
+    if files.iter().any(|file| file.linted && file.settings.rules.overlaps(RuleSet::cross_file())) {
+        roots.layout_key(files.iter().map(|file| file.path), &mut hasher);
+    }
     linted.cache_key(&mut hasher);
     for (file, key) in files.iter().zip(keys) {
         file.path.cache_key(&mut hasher);

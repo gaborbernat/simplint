@@ -132,6 +132,16 @@ fn cache_keeps_files_other_runs_checked() {
 }
 
 #[test]
+fn unrelated_directories_do_not_reindex_a_file_local_check() {
+    let root = project(&[("module.py", CLEAN_MODULE)]);
+    let args = ["--select", "SMP001", "module.py", "-v"];
+    let cold = check(root.path(), &args);
+    fs::create_dir_all(root.path().join("vendor/generated")).expect("create an unrelated directory");
+    let warm = check(root.path(), &args);
+    assert_eq!((cold.0, cold.2.contains("Indexed "), warm.0, warm.2.contains("Indexed ")), (0, true, 0, false));
+}
+
+#[test]
 fn cached_clean_file_is_checked_again_under_other_settings() {
     let root = project(&[("module.py", "x = 1\n")]);
     assert_eq!((check(root.path(), &["--select", "SMP001"]).0, check(root.path(), &["--select", "SMP101"]).0), (0, 1));
