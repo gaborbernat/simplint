@@ -1,5 +1,5 @@
 // Ruff's cache, adapted from the `ruff` crate's `cache.rs`: one file per package, keyed by the package root, remembers
-// per file, by its modification time, permissions and size, that it had nothing to report, so a later run skips it.
+// which files had nothing to report, so a later run can skip unchanged files.
 // Without fixes, a file with reports keeps them too.
 //
 // simplint also keeps each file's import facts, so the project index does not parse unchanged files, and a clean result

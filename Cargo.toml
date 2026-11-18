@@ -64,6 +64,12 @@ insta = "1.49.0"
 test-case = "3.4.0"
 similar = "3.2.1"
 
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+rustix = { version = "1.1.6", features = ["fs"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2.191"
+
 [target.'cfg(unix)'.dev-dependencies]
 libc = "0.2.191"
 
@@ -72,6 +78,7 @@ tikv-jemallocator = { version = "0.6.1", default-features = false, features = ["
 
 [target.'cfg(target_os = "windows")'.dependencies]
 mimalloc = { version = "0.1.52", default-features = false, features = ["v2"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl"] }
 
 # Ruff's release profile: fat LTO, and a single codegen unit for the crates that gain most from the costlier
 # optimization.

@@ -3031,6 +3031,7 @@ dependencies = [
  "ruff_text_size",
  "ruff_workspace",
  "rustc-hash",
+ "rustix",
  "schemars",
  "serde",
  "serde_json",
@@ -3043,6 +3044,7 @@ dependencies = [
  "ty_module_resolver",
  "url",
  "walkdir",
+ "windows-sys",
 ]
 
 [[package]]

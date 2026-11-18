@@ -1,6 +1,8 @@
+mod source;
+
 use std::fs;
 use std::hash::Hasher;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -25,11 +27,25 @@ impl CacheKey for FileKey {
 }
 
 impl FileKey {
-    pub fn of(path: &Path) -> Option<Self> {
-        let metadata = path.metadata().ok()?;
+    pub fn of(path: &Path, checked: FileTime) -> Option<Self> {
+        let mut options = fs::File::options();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_DELETE, FILE_SHARE_READ};
+            // A writer can keep its last journal record open until it closes the handle.
+            options.share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE);
+        }
+        let mut file = options.open(path).ok()?;
+        let metadata = file.metadata().ok()?;
         let mut hasher = CacheKeyHasher::new();
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
-        hasher.write(&fs::read(path).ok()?);
+        if !source::change_key(&file, &metadata, checked, &mut hasher) {
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).ok()?;
+            hasher.write(&bytes);
+        }
         permissions(&metadata).cache_key(&mut hasher);
         metadata.len().cache_key(&mut hasher);
         Some(Self { hash: hasher.finish(), length: metadata.len() })
