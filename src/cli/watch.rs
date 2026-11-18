@@ -8,7 +8,7 @@ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher, recommended_watc
 use ruff::ExitStatus;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
-use crate::cli::printer::Printer;
+use crate::cli::check::{mode, printer, write_diffs};
 use crate::project::Ending;
 use crate::run::{CacheUse, Resolved, check_files};
 use crate::settings::HOOK_CONFIGS;
@@ -20,8 +20,6 @@ pub(super) fn watch(
     global_options: &GlobalConfigArgs,
     files: &[PathBuf],
     mut resolved: Resolved,
-    usage: &CacheUse,
-    printer: &Printer,
     mut writer: Box<dyn Write>,
 ) -> Result<ExitStatus> {
     let (sender, receiver) = channel();
@@ -36,13 +34,18 @@ pub(super) fn watch(
             if change == Some(ChangeKind::Configuration) {
                 resolved = Resolved::new(cli, global_options)?;
             }
+            let mode = mode(cli, &resolved, files);
+            let printer = printer(cli, &resolved, &mode, global_options.log_level());
+            let usage = CacheUse::new(cli.no_cache, &mode, None);
             clearscreen::clear()?;
             printer.write_to_user(if change.is_some() {
                 "File change detected...\n"
             } else {
                 "Starting linter in watch mode...\n"
             });
-            printer.write_continuously(&mut writer, &check_files(files, &resolved, printer.mode, usage, Ending::Drop)?)
+            let mut diagnostics = check_files(files, &resolved, &mode, &usage, Ending::Drop)?;
+            write_diffs(&mut diagnostics, &mut writer)?;
+            printer.write_continuously(&mut writer, &diagnostics)
         },
     );
     Err(error)
