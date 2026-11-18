@@ -1,0 +1,65 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP601 `TIMEOUT` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `TIMEOUT` its type inside `Final`]
+7:5 SMP601 `RATE` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `RATE` its type inside `Final`]
+13:9 SMP601 `sbom` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `sbom` its type inside `Final`]
+14:9 SMP601 `min_parts` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `min_parts` its type inside `Final`]
+15:9 SMP601 `dist_info` is annotated bare `Final`; give it a type, as in `Final[int]`
+25:9 SMP601 `ceiling` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `ceiling` its type inside `Final`]
+31:9 SMP601 `ratio` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `ratio` its type inside `Final`]
+33:9 SMP601 `label` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `label` its type inside `Final`]
+35:9 SMP601 `enabled` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `enabled` its type inside `Final`]
+38:9 SMP601 `name` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `name` its type inside `Final`]
+40:9 SMP601 `size` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `size` its type inside `Final`]
+45:13 SMP601 `kind` is annotated bare `Final`; give it a type, as in `Final[int]` [unsafe fix: Give `kind` its type inside `Final`]
+--- fixed (11 applied, 1 remaining) ---
+from typing import Final
+
+TIMEOUT: Final[int] = 1
+
+
+class Config:
+    RATE: Final[int] = 2
+    NAMES: Final[list[str]] = []
+
+
+class Builder:
+    def build(self, x: str) -> None:
+        sbom: Final[str] = "virtualenv.pyz.cdx.json"
+        min_parts: Final[int] = 5
+        dist_info: Final = self.find_dist_info(x)
+        LOCAL = 3
+        print(sbom, min_parts, dist_info, LOCAL)
+
+    def find_dist_info(self, x: str) -> str:
+        return x
+
+
+def outer() -> None:
+    def inner() -> None:
+        ceiling: Final[float] = 1.5
+        print(ceiling)
+
+
+def blocks(flag: bool, items: list[str]) -> None:
+    if flag:
+        ratio: Final[float] = 0.5
+    for _ in items:
+        label: Final[bytes] = b"x"
+    while flag:
+        enabled: Final[bool] = True
+        break
+    with open("names.txt") as handle:
+        name: Final[str] = "x"
+    try:
+        size: Final[int] = 3
+    except OSError:
+        size = 0
+    match items:
+        case [first]:
+            kind: Final[str] = "k"
+        case _:
+            kind = "other"
+    print(ratio, label, enabled, handle, name, size, first, kind)

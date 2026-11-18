@@ -12,6 +12,7 @@ use crate::common;
 #[test_case("missing-final", "missing_final_shared_docstring.py", None ; "missing_final_shared_docstring")]
 #[test_case("missing-final", "missing_final_docstring_import.py", None ; "missing_final_docstring_import")]
 #[test_case("missing-final", "missing_final_bare.py", None ; "missing_final_import_at_top")]
+#[test_case("missing-final", "missing_final_bare_nested.py", None ; "missing_final_bare_in_nested_scopes")]
 #[test_case("missing-final", "missing_final_checking.py", Some("py310") ; "missing_final_type_checking_eager")]
 #[test_case("missing-final", "missing_final_checking.py", None ; "missing_final_type_checking_lazy")]
 #[test_case("missing-final", "missing_final_future.py", Some("py310") ; "missing_final_type_checking_future")]

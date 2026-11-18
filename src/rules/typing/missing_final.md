@@ -1,4 +1,5 @@
-Flags module-level variables that are assigned once and not annotated `Final`.
+Flags module-level variables that are assigned once and not annotated `Final`, and bare `Final` annotations in any
+scope.
 
 ## Why is this bad?
 
@@ -89,11 +90,12 @@ LIMIT: Final[int] = 10
   TIMEOUT: Final[int] = 30
   ```
 
-- **Module-level variables annotated with a bare
-  [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**, such as `TIMEOUT: Final = 1`, whatever the
-  name looks like, including class-like names and dunders. The type reads at a glance, and a type checker infers a bare
-  `Final` as a literal type that rejects nothing a wider type would. The fix adds the type inside the brackets and is
-  **unsafe**, since `Final[int]` widens the `Literal[1]` a checker infers.
+- **Variables annotated with a bare [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**, such as
+  `TIMEOUT: Final = 1`, in every scope: the module, a class or function body, and the blocks of an `if`, `for`, `while`,
+  `with`, `try` or `match` statement. The name may look like anything, including class-like names and dunders. The type
+  reads at a glance, and a type checker infers a bare `Final` as a literal type that rejects nothing a wider type would.
+  The fix adds the type inside the brackets and is **unsafe**, since `Final[int]` widens the `Literal[1]` a checker
+  infers.
 
   ```python report
   from typing import Final
@@ -111,9 +113,26 @@ LIMIT: Final[int] = 10
   __version__: Final[str] = "1"
   ```
 
+  ```python report
+  from typing import Final
+
+
+  def build() -> None:
+      sbom: Final = "virtualenv.pyz.cdx.json"
+  ```
+
+  ```python fixed
+  from typing import Final
+
+
+  def build() -> None:
+      sbom: Final[str] = "virtualenv.pyz.cdx.json"
+  ```
+
 ### Exceptions
 
-- **Assignments inside an `if`, `try` or other block**: only statements at the top level of the module are checked.
+- **Assignments inside an `if`, `try` or other block, or in a function or class body**: only statements at the top level
+  of the module are checked for a missing `Final`. A bare `Final` is reported at any level, as above.
 
   ```python ok
   if FLAG:
