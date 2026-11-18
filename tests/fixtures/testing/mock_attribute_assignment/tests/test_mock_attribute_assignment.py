@@ -1,5 +1,5 @@
 from typing import Final
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock, Mock, create_autospec
 
 
 OPTIONS: Final[dict[str, int]] = {}

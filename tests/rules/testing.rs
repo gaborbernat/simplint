@@ -396,3 +396,14 @@ fn missing_from_all_leaves_imported_fixtures_unlisted() {
         "{stdout}"
     );
 }
+
+#[test_case("class Mock: pass\nclient = Mock()\nclient.timeout = 5\n", false ; "local_mock")]
+#[test_case("from unittest.mock import Mock\nevents = []\nclient = Mock(return_value=events.append(1))\nclient.return_value = 2\n", true ; "keyword_has_effect")]
+fn mock_attribute_assignment_preserves_unrelated_constructors_and_side_effects(source: &str, reported: bool) {
+    let root = common::project(&[("test_client.py", source)]);
+    let (code, output, _) = common::fix_unsafe(root.path(), "SMP805");
+    assert_eq!(
+        (code, output.contains("SMP805"), common::read(root.path(), "test_client.py")),
+        (i32::from(reported), reported, source.to_owned())
+    );
+}

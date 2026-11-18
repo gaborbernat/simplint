@@ -7,8 +7,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, statement_lines};
-use crate::rules::testing::recognize::is_mock_constructor;
-use crate::syntax::{expr_mentions, for_each_body, last_segment, single_assignment};
+use crate::rules::testing::recognize::mock_constructor;
+use crate::syntax::{expr_mentions, for_each_body, single_assignment};
 
 pub fn mock_attribute_assignment(checker: &Checker) {
     for_each_body(checker.body(), &mut |statements, _| {
@@ -16,12 +16,10 @@ pub fn mock_attribute_assignment(checker: &Checker) {
             let Some((target, _, Expr::Call(call))) = single_assignment(stmt) else {
                 continue;
             };
-            if !is_mock_constructor(&call.func) {
-                continue;
-            }
+            let Some(constructor) = mock_constructor(checker.semantic(), &call.func) else { continue };
             let assignments = following_assignments(target.id.as_str(), &statements[index + 1..]);
             if !assignments.is_empty() {
-                report_assignments(checker, call, &assignments);
+                report_assignments(checker, call, &assignments, constructor == "create_autospec");
             }
         }
     });
@@ -76,9 +74,8 @@ fn following_assignments<'a>(mock: &str, statements: &'a [Stmt]) -> Vec<Assignme
     assignments
 }
 
-fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[Assignment]) {
+fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[Assignment], is_autospec: bool) {
     let source = checker.source;
-    let is_autospec = last_segment(&call.func) == Some("create_autospec");
     // A `**` splat may already carry any of the attributes, so the merged call could repeat a keyword.
     let fixable = call.arguments.keywords.iter().all(|keyword| keyword.arg.is_some())
         && assignments.iter().all(|assignment| checker.is_alone_on_lines(assignment.stmt.range()))
@@ -103,6 +100,9 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
                 };
                 let value = if bare { format!("({text})") } else { text.to_owned() };
                 if let Some(existing) = call.arguments.find_keyword(assignment.attr) {
+                    if !existing.value.is_literal_expr() {
+                        return None;
+                    }
                     edits.push(Edit::range_replacement(value, existing.value.range()));
                 } else {
                     keywords.push(format!("{}={value}", assignment.attr));

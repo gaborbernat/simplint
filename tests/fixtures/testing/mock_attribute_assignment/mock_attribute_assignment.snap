@@ -17,7 +17,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 63:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
 --- fixed (11 applied, 2 remaining) ---
 from typing import Final
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock, Mock, create_autospec
 
 
 OPTIONS: Final[dict[str, int]] = {}
