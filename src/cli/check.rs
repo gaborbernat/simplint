@@ -184,6 +184,7 @@ fn settings_text(settings: &Settings, target_version: PythonVersion, cache_dir: 
         list("linter.naming.catch_all_modules", &quoted(&mut knobs.catch_all_modules.iter())),
         list("linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter())),
         list("linter.imports.module_attribute_scope", &quoted(&mut knobs.module_attribute_scope.iter())),
+        format!("linter.imports.require_lazy_modules = {}", knobs.require_lazy_modules),
         format!("linter.logic.max_helper_statements = {}", knobs.max_helper_statements),
         format!("linter.logic.max_caller_statements = {}", knobs.max_caller_statements),
         format!("linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements),

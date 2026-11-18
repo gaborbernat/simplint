@@ -1,0 +1,21 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP316 `ineffective_lazy_declaration_pkg` holds this file, so it has loaded before the file runs [fix: Remove `"ineffective_lazy_declaration_pkg"`]
+4:5 SMP316 `"..helper"` is relative, but CPython matches the absolute names of imports, so it defers nothing [unsafe fix: Spell it `f"{__spec__.parent.rsplit('.', 1)[0]}.helper"`]
+5:5 SMP316 `'.missing'` is relative, but CPython matches the absolute names of imports, so it defers nothing [unsafe fix: Spell it `f"{__spec__.parent}.missing"`]
+6:5 SMP316 No module-level import of `ineffective_lazy_declaration_pkg.sub.other` runs where the list can defer it [fix: Remove `f"{__spec__.parent}.other"`]
+--- fixed (5 applied, 0 remaining) ---
+__lazy_modules__ = [
+    "ineffective_lazy_declaration_pkg.sub",
+    f"{__spec__.parent.rsplit('.', 1)[0]}.helper",
+]
+
+import ineffective_lazy_declaration_pkg
+from ineffective_lazy_declaration_pkg.sub import other
+from ..helper import VALUE
+
+
+def use() -> object:
+    return ineffective_lazy_declaration_pkg, other, VALUE

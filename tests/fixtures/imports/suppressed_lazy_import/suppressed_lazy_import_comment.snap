@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:12 SMP317 `__lazy_modules__` defers `ujson` past `suppress(ImportError)`, so a missing module raises at its first use on Python 3.15

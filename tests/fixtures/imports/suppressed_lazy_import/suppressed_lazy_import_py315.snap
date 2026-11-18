@@ -1,0 +1,56 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:5 SMP317 `lazy` defers this import past `suppress(ImportError)`, so a missing module raises at its first use [unsafe fix: Remove `lazy`]
+10:12 SMP317 `__lazy_modules__` defers `ujson` past `suppress(ImportError)`, so a missing module raises at its first use on Python 3.15 [unsafe fix: Remove `"ujson"` from `__lazy_modules__`]
+13:10 SMP317 `__lazy_modules__` defers `orjson` past `contextlib.suppress(KeyError, ModuleNotFoundError)`, so a missing module raises at its first use on Python 3.15 [unsafe fix: Remove `"orjson"` from `__lazy_modules__`]
+16:12 SMP317 `__lazy_modules__` defers `simplejson` past `suppress(Exception)`, so a missing module raises at its first use on Python 3.15 [unsafe fix: Remove `"simplejson"` from `__lazy_modules__`]
+16:24 SMP317 `__lazy_modules__` defers `rapidjson` past `suppress(Exception)`, so a missing module raises at its first use on Python 3.15 [unsafe fix: Remove `"rapidjson"` from `__lazy_modules__`]
+19:12 SMP317 `__lazy_modules__` defers `yaml` past `suppress(BaseException)`, so a missing module raises at its first use on Python 3.15
+22:5 SMP317 `lazy` defers this import past `suppress(ImportError)`, so a missing module raises at its first use [unsafe fix: Remove `lazy`]
+23:10 SMP317 `__lazy_modules__` defers `pickle` past `suppress(ImportError)`, so a missing module raises at its first use on Python 3.15 [unsafe fix: Remove `"pickle"` from `__lazy_modules__`]
+29:5 SMP317 `lazy` defers this import past `suppress(ImportError)`, so a missing module raises at its first use [unsafe fix: Remove `lazy`]
+--- fixed (8 applied, 1 remaining) ---
+import contextlib
+from contextlib import suppress
+
+__lazy_modules__ = ["yaml"]
+
+import yaml
+
+with suppress(ImportError):
+    import msgpack
+    import ujson
+
+with contextlib.suppress(KeyError, ModuleNotFoundError):
+    from orjson import dumps
+
+with suppress(Exception):
+    import simplejson, rapidjson
+
+with suppress(BaseException):
+    import yaml
+
+with suppress(ImportError):
+    from json import dumps as json_dumps, loads
+    from pickle import dumps as pickle_dumps, loads as pickle_loads
+
+with suppress(KeyError):
+    lazy import cbor2
+
+with suppress(ImportError), open("x"):
+    import toml
+
+with open("x"):
+    lazy import tomli
+
+with CONTEXT:
+    lazy import tomlkit
+
+with suppress(ValueError, ImportError):
+    pass
+
+
+def use() -> object:
+    return msgpack, ujson, dumps, simplejson, rapidjson, yaml, cbor2, toml, tomli, tomlkit, json_dumps, loads, pickle_dumps, pickle_loads

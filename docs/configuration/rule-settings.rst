@@ -78,6 +78,23 @@ it defines.
 
 ``--show-settings`` prints it as ``linter.imports.module_attribute_scope``.
 
+.. _require-lazy-modules:
+
+Lazy modules
+============
+
+:doc:`missing-lazy-module </rules/SMP314>` asks for an import nothing reads while the module loads to be listed in
+``__lazy_modules__``, so Python 3.15 loads it on first use. It checks only the modules that already assign
+``__lazy_modules__``, so a project adopts lazy imports one module at a time. ``imports.require-lazy-modules`` makes it
+check every module, and its fix then adds the list where a module has none:
+
+.. code-block:: toml
+
+    [tool.simplint.imports]
+    require-lazy-modules = true  # the default is false
+
+``--show-settings`` prints it as ``linter.imports.require_lazy_modules``.
+
 .. _logic:
 
 Logic

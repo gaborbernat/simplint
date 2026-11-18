@@ -1,0 +1,34 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:5 SMP316 No module-level import of `pathlib` runs where the list can defer it [fix: Remove `"pathlib"`]
+6:5 SMP316 `json` is listed twice [fix: Remove `"json"`]
+7:5 SMP316 `os` loads when Python starts, so listing it defers nothing [fix: Remove `"os"`]
+8:5 SMP316 No module-level import of `xml` runs where the list can defer it [fix: Remove `"xml"`]
+9:5 SMP316 No module-level import of `typing_extensions` runs where the list can defer it [fix: Remove `"typing_extensions"`]
+10:5 SMP316 No module-level import of `tomllib` runs where the list can defer it [fix: Remove `"tomllib"`]
+--- fixed (6 applied, 0 remaining) ---
+from typing import TYPE_CHECKING
+
+__lazy_modules__ = [
+    "json",
+    "csv",
+]
+
+import csv
+import json
+import os
+import xml.etree.ElementTree
+
+if TYPE_CHECKING:
+    import typing_extensions
+
+try:
+    import tomllib
+except ImportError:
+    tomllib = None
+
+
+def use() -> object:
+    return csv, json, os, xml, typing_extensions, tomllib

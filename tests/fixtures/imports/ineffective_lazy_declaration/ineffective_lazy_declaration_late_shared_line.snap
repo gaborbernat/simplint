@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP316 `__lazy_modules__` comes after the import of `json`, which has loaded eagerly by then

@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:8 SMP314 `json` is first used after the module loads; list it in `__lazy_modules__` to load it then [unsafe fix: Add `json` to `__lazy_modules__`]
+--- fixed (1 applied, 0 remaining) ---
+__lazy_modules__ = [
+    "argparse",
+    "concurrent.futures",
+    "email.mime.multipart",
+    "http.server",
+    "json",
+    "xml.etree.ElementTree",
+]
+
+import argparse
+import concurrent.futures
+import email.mime.multipart
+import http.server
+import json
+import xml.etree.ElementTree
+
+
+def parse() -> object:
+    return argparse, concurrent.futures, email.mime.multipart, http.server, json, xml.etree.ElementTree

@@ -1041,7 +1041,7 @@ max-cognitive-complexity = 15
                  [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\
                  \t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = \
                  [\n\t\"app.settings\",\n]\nlinter.imports.module_attribute_scope = [\n\t\"project\",\n]\n\
-                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = \
+                 linter.imports.require_lazy_modules = false\nlinter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = \
                  20\nlinter.logic.max_tuple_elements = \
                  3\n\
                  linter.logic.max_cognitive_complexity = \

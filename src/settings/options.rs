@@ -584,6 +584,18 @@ pub struct ImportsOptions {
         "#
     )]
     pub(crate) module_attribute_scope: Option<Vec<String>>,
+
+    /// Make `missing-lazy-module` (`SMP314`) check every file. By default it checks only the files that already assign
+    /// `__lazy_modules__`, so a project adopts lazy imports one module at a time.
+    #[option(
+        default = "false",
+        value_type = "bool",
+        example = r#"
+            # Ask for `__lazy_modules__` in every module.
+            require-lazy-modules = true
+        "#
+    )]
+    pub(crate) require_lazy_modules: Option<bool>,
 }
 
 impl ImportsOptions {
@@ -591,6 +603,7 @@ impl ImportsOptions {
         Self {
             module_attributes: self.module_attributes.or(other.module_attributes),
             module_attribute_scope: self.module_attribute_scope.or(other.module_attribute_scope),
+            require_lazy_modules: self.require_lazy_modules.or(other.require_lazy_modules),
         }
     }
 }
