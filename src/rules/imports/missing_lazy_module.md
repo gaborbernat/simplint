@@ -197,8 +197,7 @@ def main() -> None:
   still load a submodule on first use and is reported.
 
 - **Imports above `__lazy_modules__`**: they load before the list exists, so listing them defers nothing.
-  [`ineffective-lazy-declaration`](https://simplint.readthedocs.io/en/latest/rules/SMP316.html) reports a list placed
-  after an import it names.
+  [`ineffective-lazy-declaration`](SMP316.html) reports a list placed after an import it names.
 
 - **Imports in a block, a `try`, a function or a class**: only statements directly in the module body are reported.
   `try` imports stay eager under the list, and the rest usually depend on a condition.
@@ -208,12 +207,11 @@ def main() -> None:
 
 ### Fix
 
-The fix adds every missing module to the list in one edit, sorted as
-[`unsorted-lazy-modules`](https://simplint.readthedocs.io/en/latest/rules/SMP315.html) asks when the list is sorted, and
-at its end otherwise. A new list goes above the first import, below the docstring and the `from __future__` imports. The
-fix is unsafe: on Python 3.15 the module then loads on first use, so anything its import does, such as registering a
-handler, happens later or not at all. A comment inside the list other than at the end of an entry's line withholds the
-fix.
+The fix adds every missing module to the list in one edit, sorted as [`unsorted-lazy-modules`](SMP315.html) asks when
+the list is sorted, and at its end otherwise. A new list goes above the first import, below the docstring and the
+`from __future__` imports. The fix is unsafe: on Python 3.15 the module then loads on first use, so anything its import
+does, such as registering a handler, happens later or not at all. A comment inside the list other than at the end of an
+entry's line withholds the fix.
 
 ## Other tools
 
