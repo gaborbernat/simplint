@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.14.0 (2026-11-18)
+
+<a name="release-0-14-0"></a>
+
+<a name="release-0-14-0-added"></a>
+
+### Added
+
+- Four rules check lazy imports ([PEP 810](https://peps.python.org/pep-0810/)):
+  [`missing-lazy-module`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/imports/missing_lazy_module.md)
+  (SMP314) lists in `__lazy_modules__` an import nothing uses while the module loads,
+  [`unsorted-lazy-modules`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/imports/unsorted_lazy_modules.md)
+  (SMP315) sorts the list,
+  [`ineffective-lazy-declaration`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/imports/ineffective_lazy_declaration.md)
+  (SMP316) reports entries and `lazy` imports that defer nothing, and
+  [`suppressed-lazy-import`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/imports/suppressed_lazy_import.md)
+  (SMP317) reports a lazy import inside `suppress(ImportError)`. The `imports.require-lazy-modules` setting makes SMP314
+  check modules without a list ([#154](https://github.com/gaborbernat/simplint/pull/154)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-14-0-changes"></a>
+
+### Changes
+
+- [`up-lazy-modules-list`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/imports/up_lazy_modules_list.md)
+  (SMP307) reads `f"{__spec__.parent}.name"` entries and matches relative imports against the list, so it converts them
+  to `lazy` imports too ([#154](https://github.com/gaborbernat/simplint/pull/154)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-14-0-fixed"></a>
+
+### Fixed
+
+- [`missing-final`](https://github.com/gaborbernat/simplint/blob/0.14.0/src/rules/typing/missing_final.md) (SMP601)
+  reports a bare `Final` annotation in function and class bodies too, not only at module level
+  ([#153](https://github.com/gaborbernat/simplint/pull/153)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.13.0 (2026-11-17)
 
 <a name="release-0-13-0"></a>
