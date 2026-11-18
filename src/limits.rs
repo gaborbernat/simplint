@@ -5,8 +5,8 @@ const CHILD: &str = "SIMPLINT_TEST_LIMITED";
 
 #[derive(Clone, Copy)]
 pub enum Limit {
-    // No file can grow, so a write fails as on a full disk.
-    FileSize,
+    // Writes beyond this size fail as on a full disk.
+    FileSize(libc::rlim_t),
     // No file descriptor is left, so opening anything fails.
     #[cfg(target_os = "linux")]
     OpenFiles,
@@ -29,7 +29,7 @@ pub fn limited<T>(name: &str, limit: Limit, prepare: impl FnOnce() -> T, body: i
     }
     let prepared = prepare();
     let (resource, current) = match limit {
-        Limit::FileSize => (libc::RLIMIT_FSIZE, 0),
+        Limit::FileSize(bytes) => (libc::RLIMIT_FSIZE, bytes),
         // Descriptors are handed out lowest first, so a limit at the lowest free one leaves none to hand out.
         #[cfg(target_os = "linux")]
         Limit::OpenFiles => {

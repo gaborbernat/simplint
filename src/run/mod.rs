@@ -9,7 +9,7 @@ mod overlay;
 mod rounds;
 
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Seek, Write};
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
@@ -269,10 +269,22 @@ fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> 
     let target = std::fs::canonicalize(path)?;
     ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
     ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
-    let mut file = OpenOptions::new().write(true).truncate(true).open(&target)?;
-    file.write_all(fixed.as_bytes())?;
-    file.sync_all()?;
-    Ok(())
+    let mut file = OpenOptions::new().write(true).open(&target)?;
+    // Keep the old tail until the replacement has been written. A short write can then be
+    // undone even when the file-size limit is smaller than the original file.
+    let (error, restore) = match file.write_all(fixed.as_bytes()) {
+        Err(error) => (error, usize::try_from(file.stream_position()?)?.min(original.len())),
+        Ok(()) => match file.set_len(fixed.len() as u64).and_then(|()| file.sync_all()) {
+            Ok(()) => return Ok(()),
+            Err(error) => (error, original.len()),
+        },
+    };
+    file.rewind()?;
+    file.write_all(&original.as_bytes()[..restore])?;
+    if file.metadata()?.len() > original.len() as u64 {
+        file.set_len(original.len() as u64)?;
+    }
+    Err(error.into())
 }
 
 // A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
@@ -421,26 +433,34 @@ mod tests {
         );
     }
 
-    // A file that cannot grow fails the write, as on a full disk.
+    // One partial write overwrites only the prefix, and one also extends the file.
     #[cfg(unix)]
     #[test]
     fn write_source_fails_when_the_file_cannot_grow() {
+        const FILES: [(&str, &str); 2] = [("long.py", "read = 1\n"), ("short.py", "old")];
         crate::limits::limited(
             concat!(module_path!(), "::write_source_fails_when_the_file_cannot_grow"),
-            crate::limits::Limit::FileSize,
+            crate::limits::Limit::FileSize(5),
             || {
                 let directory = tempfile::TempDir::new().expect("temporary directory");
-                std::fs::write(directory.path().join("module.py"), "read = 1\n").expect("write file");
+                for (name, original) in FILES {
+                    std::fs::write(directory.path().join(name), original).expect("write file");
+                }
                 directory
             },
             |directory| {
                 let roots = [std::fs::canonicalize(directory.path()).expect("canonical directory")];
-                let error = write_source(&directory.path().join("module.py"), &roots, "read = 1\n", "fixed = 1\n")
-                    .expect_err("the file cannot grow");
-                assert_eq!(
-                    error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
-                    Some(ErrorKind::FileTooLarge)
-                );
+                for (name, original) in FILES {
+                    let path = directory.path().join(name);
+                    let error = write_source(&path, &roots, original, "fixed = 1\n").expect_err("file size limit");
+                    assert_eq!(
+                        (
+                            error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+                            std::fs::read_to_string(path).expect("read original")
+                        ),
+                        (Some(ErrorKind::FileTooLarge), original.to_owned())
+                    );
+                }
             },
         );
     }

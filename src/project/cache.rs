@@ -276,7 +276,7 @@ mod tests {
     fn writing_a_file_that_cannot_grow_fails() {
         crate::limits::limited(
             concat!(module_path!(), "::writing_a_file_that_cannot_grow_fails"),
-            crate::limits::Limit::FileSize,
+            crate::limits::Limit::FileSize(0),
             || TempDir::new().expect("create a temporary directory"),
             |root| {
                 let target = root.path().join("cache");
