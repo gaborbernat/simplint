@@ -22,8 +22,8 @@ or its ``--no-`` form, overrides them.
 Cache
 -----
 
-Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time and
-permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
+Like Ruff, simplint caches which files had nothing to report, keyed by each file's contents, modification time,
+permissions and size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
 depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
 only per-file rules check keeps its cached result.
 

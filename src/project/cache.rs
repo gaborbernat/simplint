@@ -11,9 +11,7 @@ use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use tempfile::NamedTempFile;
 
-// A file's modification time, permissions and size. Ruff's `FileCacheKey` hashes the first two; the size also catches a
-// rewrite within one tick of a coarse clock, or a copy that keeps the modification time. The size also bounds the
-// ranges of the facts cached under the key.
+// A generator or copy can preserve both timestamp and size while changing the source.
 #[derive(Clone, Copy)]
 pub struct FileKey {
     pub hash: u64,
@@ -31,6 +29,7 @@ impl FileKey {
         let metadata = path.metadata().ok()?;
         let mut hasher = CacheKeyHasher::new();
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
+        hasher.write(&fs::read(path).ok()?);
         permissions(&metadata).cache_key(&mut hasher);
         metadata.len().cache_key(&mut hasher);
         Some(Self { hash: hasher.finish(), length: metadata.len() })

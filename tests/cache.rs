@@ -127,8 +127,8 @@ fn cache_keeps_files_other_runs_checked() {
     let root = project(&[("module.py", CLEAN_MODULE), ("other.py", "OTHER = 1\n")]);
     check(root.path(), &["--select", "SMP101", "module.py"]);
     check(root.path(), &["--select", "SMP101", "other.py"]);
-    rewrite_keeping_mtime(&root.path().join("module.py"), "x = 12345\n");
-    assert_eq!(check(root.path(), &["--select", "SMP101", "module.py"]).0, 0);
+    let (code, _, log) = check(root.path(), &["--select", "SMP101", "module.py", "-v"]);
+    assert_eq!((code, log.contains("Indexed ")), (0, false));
 }
 
 #[test]
@@ -387,7 +387,6 @@ fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected
     let root = project(&[("module.py", "VALUE = 1\nNAME = 1\n"), ("other.py", "OTHER = 1\n")]);
     assert_eq!(check(root.path(), &["--select", select]).0, 0);
     write_file(root.path(), "other.py", "from module import VALUE\n");
-    rewrite_keeping_mtime(&root.path().join("module.py"), "VALUE = 1\nx = 1234\n");
     assert_eq!(check(root.path(), &["--select", select]).0, expected);
 }
 
@@ -544,15 +543,13 @@ fn documentation_cache_that_cannot_be_written_is_reported() {
     assert!(stderr.contains("Failed to write the documentation cache"), "{stderr}");
 }
 
-// The cache trusts the modification time and size: an edit that keeps both goes unseen, which shows the run reused the
-// cached result instead of linting again.
 #[test]
-fn cached_clean_result_is_reused() {
+fn equal_size_rewrite_with_preserved_timestamp_invalidates_a_clean_result() {
     let root = project(&[("module.py", CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101"]);
     rewrite_keeping_mtime(&root.path().join("module.py"), "x = 12345\n");
     let cached = check(root.path(), &["--select", "SMP101"]).0;
-    assert_eq!((cached, check(root.path(), &["--select", "SMP101", "--no-cache"]).0), (0, 1));
+    assert_eq!((cached, check(root.path(), &["--select", "SMP101", "--no-cache"]).0), (1, 1));
 }
 
 #[test]
@@ -579,17 +576,15 @@ fn fresh_run(root: &Path, args: &[&str]) -> (i32, String, String) {
     check(root, &[args, &["--no-cache"][..]].concat())
 }
 
-// An edit that keeps the modification time and size goes unseen, so the cached withdrawal holds back a fix the loop
-// would apply.
 #[test]
-fn settled_file_reuses_the_withdrawn_fixes() {
+fn equal_size_rewrite_invalidates_withdrawn_fixes() {
     let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
     fix_unsafe(root.path(), "SMP202");
     rewrite_keeping_mtime(&root.path().join("module.py"), ADDED);
     let cached = fix_unsafe(root.path(), "SMP202").0;
-    let unchanged = read(root.path(), "module.py");
+    let fixed = read(root.path(), "module.py");
     let fresh = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202", "--no-cache"]).0;
-    assert_eq!((cached, unchanged, fresh), (1, ADDED.to_owned(), 0));
+    assert_eq!((cached, fixed, fresh), (0, "def over(value: int) -> bool:\n    return value + 3\n".to_owned(), 0));
 }
 
 const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value + _LIMIT\n";
