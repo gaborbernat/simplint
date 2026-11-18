@@ -418,3 +418,14 @@ fn safe_fixes_keep_patches_registered_with_stopall() {
         (1, true, source.to_owned())
     );
 }
+
+#[test]
+fn mock_setup_keeps_rebound_fixtures_and_fixes_an_imported_alias() {
+    let source = "from pytest_mock import MockerFixture\nfrom unittest.mock import Mock as Stub\n\ndef test_client(mocker: MockerFixture):\n    client = mocker.Mock()\n    client.timeout = 1\n    mocker = other()\n    stub = Stub()\n    stub.timeout = 2\n    return client, stub\n";
+    let root = common::project(&[("test_client.py", source)]);
+    let (code, _, _) = common::fix_unsafe(root.path(), "SMP805");
+    assert_eq!(
+        (code, common::read(root.path(), "test_client.py")),
+        (0, source.replace("Stub()\n    stub.timeout = 2", "Stub(timeout=2)"))
+    );
+}

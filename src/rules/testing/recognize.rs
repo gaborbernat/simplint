@@ -12,9 +12,7 @@ pub(crate) fn mock_constructor(semantic: &Semantic, func: &Expr) -> Option<&'sta
     } else {
         let attribute = func.as_attribute_expr()?;
         let receiver = attribute.value.as_name_expr()?;
-        let bindings = semantic.resolved_bindings(receiver);
-        let [binding] = bindings.as_slice() else { return None };
-        let annotation = semantic.parameter_annotation(binding)?;
+        let annotation = semantic.unambiguous_parameter_annotation(receiver)?;
         if !semantic.resolves_to(annotation, &["pytest_mock", "MockerFixture"]) {
             return None;
         }

@@ -6,6 +6,7 @@ mod unused_imports;
 
 use std::path::Path;
 
+use itertools::Itertools;
 use ruff_linter::settings::LinterSettings;
 use ruff_python_ast::helpers::from_relative_import;
 use ruff_python_ast::identifier::Identifier;
@@ -360,6 +361,13 @@ impl<'a> Semantic<'a> {
         let receiver = function.parameters.posonlyargs.iter().chain(&function.parameters.args).next();
         receiver.is_some_and(|parameter| parameter.name().range() == binding.range)
             && (is_classmethod(function) || function.name.as_str() == "__new__")
+    }
+
+    pub fn unambiguous_parameter_annotation(&self, name: &ast::ExprName) -> Option<&'a Expr> {
+        let binding = self.model.binding(self.model.resolve_name(name)?);
+        let scope = &self.model.scopes[binding.scope];
+        let id = scope.get_all(name.id.as_str()).exactly_one().ok()?;
+        self.parameter_annotation(self.model.binding(id))
     }
 
     pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {

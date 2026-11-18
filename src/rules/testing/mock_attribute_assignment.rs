@@ -3,6 +3,7 @@ use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -16,9 +17,10 @@ pub fn mock_attribute_assignment(checker: &Checker) {
             let Some((target, _, Expr::Call(call))) = single_assignment(stmt) else {
                 continue;
             };
-            let Some(constructor) = mock_constructor(checker.semantic(), &call.func) else { continue };
             let assignments = following_assignments(target.id.as_str(), &statements[index + 1..]);
-            if !assignments.is_empty() {
+            if !assignments.is_empty()
+                && let Some(constructor) = mock_constructor(checker.semantic(), &call.func)
+            {
                 report_assignments(checker, call, &assignments, constructor == "create_autospec");
             }
         }
@@ -53,7 +55,8 @@ fn following_assignments<'a>(mock: &str, statements: &'a [Stmt]) -> Vec<Assignme
         "_spec_as_instance",
         "_eat_self",
     ];
-    let mut assignments: Vec<Assignment> = Vec::new();
+    let mut assignments = Vec::new();
+    let mut attributes = FxHashSet::default();
     for stmt in statements {
         let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
             break;
@@ -64,7 +67,7 @@ fn following_assignments<'a>(mock: &str, statements: &'a [Stmt]) -> Vec<Assignme
         let attr = attr.as_str();
         if owner.as_name_expr().is_none_or(|name| name.id.as_str() != mock)
             || RESERVED_KEYWORDS.contains(&attr)
-            || assignments.iter().any(|existing| existing.attr == attr)
+            || !attributes.insert(attr)
             || expr_mentions(value, mock)
         {
             break;
