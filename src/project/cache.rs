@@ -65,7 +65,9 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
 // rkyv reads an archive in place, which needs its bytes aligned to 16.
 pub fn read_aligned(path: &Path) -> io::Result<AlignedVec<16>> {
     let mut file = fs::File::open(path)?;
-    let mut bytes = AlignedVec::<16>::new();
+    // Leave room for the EOF read so a full buffer does not double in size just to finish reading.
+    let size = file.metadata()?.len().min(64 * 1024 * 1024);
+    let mut bytes = AlignedVec::<16>::with_capacity(usize::try_from(size).expect("64 MiB fits usize") + 1);
     bytes.extend_from_reader(&mut file)?;
     Ok(bytes)
 }
