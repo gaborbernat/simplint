@@ -11,7 +11,7 @@ use crate::rules::logic::name_uses::{LocalScope, NameUses, ScopeNodes};
 
 pub fn range_len_loop(checker: &Checker) {
     // A file that never names `range` has no loop to report.
-    if checker.state().unqualified_name_count(checker, "range") == 0 {
+    if !checker.has_unqualified_name("range") {
         return;
     }
     for scope in checker.state().local_scopes(checker).iter() {
