@@ -465,6 +465,12 @@ impl Parts {
         Self(self.0 | part.0)
     }
 
+    // Duplicate-code excludes test modules, so their statements never enter a comparison.
+    #[must_use]
+    pub fn for_file(self, is_test: bool) -> Self {
+        if is_test { Self(self.0 & !Self::STATEMENTS.0) } else { self }
+    }
+
     pub fn has(self, part: Self) -> bool {
         self.0 & part.0 == part.0
     }

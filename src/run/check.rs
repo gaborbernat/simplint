@@ -157,8 +157,13 @@ fn lint_alone<T: Send>(
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
         .remove(&files[0].nested)
         .unwrap_or_default();
-    let facts =
-        FileFacts::collect(absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
+    let facts = FileFacts::collect(
+        absolute,
+        source,
+        files[0].module_path.as_deref(),
+        files[0].importable.as_deref(),
+        parts.for_file(files[0].settings.is_test),
+    );
     let mut passes = index_and_lint(
         &files,
         (parts, &ProjectInputs::of(&files, &roots), &roots.startup_names()),
