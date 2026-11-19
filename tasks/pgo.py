@@ -178,8 +178,8 @@ def _train(binary: Path, work: Path, cache: Path, manifest: Path) -> None:
         command = [*check, *flags, str(corpus)]
         with _step(" ".join(["simplint check", *flags])):
             status = subprocess.run(command, stdout=subprocess.DEVNULL, env=environment, check=False).returncode
-        # Exit code 1 only reports violations or pending fixes; anything above is a failed run.
-        if status > 1:
+        # Exit code 1 reports violations or pending fixes. A signal gives a negative return code on POSIX.
+        if status not in {0, 1}:
             raise subprocess.CalledProcessError(status, command)
     merged = work / "simplint.profdata"
     subprocess.run([str(profdata), "merge", "--output", str(merged), str(profiles)], check=True)

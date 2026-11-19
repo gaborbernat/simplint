@@ -184,9 +184,14 @@ def _train(tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str
     return calls
 
 
-def test_train_stops_when_simplint_fails(tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str) -> None:
-    with pytest.raises(subprocess.CalledProcessError, match="exit status 2"):
-        _train(tmp_path, mocker, tar_gz, files_url, status=2)
+@pytest.mark.parametrize("status", [pytest.param(2, id="error"), pytest.param(-9, id="signal")])
+def test_train_stops_when_simplint_fails(
+    tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str, status: int
+) -> None:
+    with pytest.raises(subprocess.CalledProcessError) as exc:
+        _train(tmp_path, mocker, tar_gz, files_url, status=status)
+
+    assert exc.value.returncode == status
 
 
 _COMPILING: Final[str] = "   Compiling simplint v0.1.0 (/src)\n"
