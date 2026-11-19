@@ -88,7 +88,7 @@ jobs:
         # The shared workflow builds every other leg and the sdist.
         platform:
           - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu, bolt: true}
-          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl}
+          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl, ext_tsp: true}
           - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
           - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu, bolt: true}
@@ -171,8 +171,13 @@ jobs:
           key: ${{ steps.profile.outputs.cache-primary-key }}
       - name: ⚙️ Use PGO profile
         shell: bash
+        env:
+          EXT_TSP: ${{ matrix.platform.ext_tsp || false }}
         run: |
           flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
+          if [[ "$EXT_TSP" == true ]]; then
+            flags+=" -Cllvm-args=-enable-ext-tsp-block-placement"
+          fi
           echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
           echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
       - name: 🏗️ Build wheels
