@@ -73,13 +73,15 @@ default of the parameter it fills.
   ```
 
 - **Decorated or rebound functions**: a decorator may change the signature a call reaches, and a rebound name may reach
-  another function. A decorator that passes each call on unchanged keeps the function judged: `functools.wraps`,
+  another function. A decorator that passes each call on unchanged keeps the function judged:
+  [`functools.wraps`](https://docs.python.org/3/library/functools.html#functools.wraps),
   [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
   [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
   [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
 
-- **Cached functions**: `functools.cache` and `functools.lru_cache` can store separate results for an explicit default
-  and an omitted argument.
+- **Cached functions**: [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache) and
+  [`functools.lru_cache`](https://docs.python.org/3/library/functools.html#functools.lru_cache) can store separate
+  results for an explicit default and an omitted argument.
 
 - **Calls that unpack `*args` or `**kwargs`**, and calls of functions in other modules.
 

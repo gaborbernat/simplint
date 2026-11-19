@@ -223,8 +223,9 @@ entry's line withholds the fix.
   used. Open issue [#29175](https://github.com/astral-sh/ruff/issues/29175) asks it to write `__lazy_modules__` for
   older versions.
 - **[Lifeguard](https://github.com/meta/Lifeguard):** Meta's analyzer follows imports across a whole project, finds
-  module-level side effects that break when a module loads lazily, such as a registry filled on import or `sys.modules`
-  writes, and writes the modules that are safe to defer as JSON for
+  module-level side effects that break when a module loads lazily, such as a registry filled on import or
+  [`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules) writes, and writes the modules that are safe
+  to defer as JSON for
   [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter). This
   rule reads one file at a time and judges an import only by where the file uses its names, so it cannot see what
   loading the imported module does. Lifeguard answers which modules are safe to defer; this rule keeps each module's
