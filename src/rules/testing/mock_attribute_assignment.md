@@ -35,8 +35,9 @@ fetch = create_autospec(fetch_user, return_value=user, side_effect=None)
   [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,
   `NonCallableMock`, `NonCallableMagicMock` or
   [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call must
-  resolve to `unittest.mock`, the `mock` backport or a parameter annotated as `pytest_mock.MockerFixture`. Only that run
-  of statements is reported, since each one could be a keyword argument of the call.
+  resolve to [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock), the `mock`
+  backport or a parameter annotated as `pytest_mock.MockerFixture`. Only that run of statements is reported, since each
+  one could be a keyword argument of the call.
 
   - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines
 

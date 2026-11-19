@@ -5,9 +5,11 @@ Flags a lazy import directly inside a module-level
 
 `suppress(ImportError)` around an import makes a missing optional module harmless: the block ends and the module goes
 on. A lazy import does not load the module when the statement runs, so the block catches nothing, and a missing module
-raises `ImportError` at the first use of its name, far from the guard
-([PEP 810](https://peps.python.org/pep-0810/#what-happens-when-lazy-imports-encounter-errors)). The same holds for
-`ModuleNotFoundError`, `Exception` and `BaseException`, which cover it.
+raises [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) at the first use of its name, far
+from the guard ([PEP 810](https://peps.python.org/pep-0810/#what-happens-when-lazy-imports-encounter-errors)). The same
+holds for [`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError),
+[`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception) and
+[`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException), which cover it.
 
 ## Example
 
