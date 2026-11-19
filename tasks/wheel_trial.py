@@ -38,7 +38,8 @@ def main() -> None:
     with TemporaryDirectory() as temporary, Path("correctness.csv").open("w", newline="", encoding="utf-8") as stream:
         work = Path(temporary)
         (wheel,) = Path("dist").glob("*.whl")
-        binaries = (Path("reference/release/simplint").resolve(), executable(wheel, work / "emulated", "simplint"))
+        (control,) = Path("control").glob("*.whl")
+        binaries = (executable(control, work / "native", "simplint"), executable(wheel, work / "emulated", "simplint"))
         with Path("tasks/wheel_inputs.csv").open(encoding="utf-8") as fingerprints:
             expected = dict(csv.reader(fingerprints))
         env = os.environ | {"RAYON_NUM_THREADS": "4", "NO_COLOR": "1", "XDG_CONFIG_HOME": str(work / "config")}
@@ -47,7 +48,6 @@ def main() -> None:
             "--isolated",
             "--target-version",
             "py311",
-            "--no-cache",
             "--no-respect-gitignore",
             "--config",
             'include = ["*.py"]',
@@ -58,7 +58,7 @@ def main() -> None:
         with ThreadPoolExecutor(max_workers=4) as pool:
             for package, root in zip(_TOP, pool.map(unpack, _TOP, [work] * len(_TOP)), strict=True):
                 results = []
-                for binary in binaries:
+                for index, binary in enumerate(binaries):
                     files = subprocess.check_output([binary, *flags, "--show-files", "."], cwd=root, env=env)
                     paths = sorted(Path(line.decode()).relative_to(root).as_posix() for line in files.splitlines())
                     if hashlib.sha256("\n".join(paths).encode()).hexdigest() != expected[package.name]:
@@ -67,6 +67,8 @@ def main() -> None:
                         [
                             binary,
                             *flags,
+                            "--cache-dir",
+                            str(work / "cache" / str(index) / package.name),
                             "--no-fix",
                             "--select",
                             "ALL",

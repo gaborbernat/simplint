@@ -1,101 +1,46 @@
-name: 🏗️ build
+name: Check RISC-V release wheel
 on:
   workflow_dispatch:
     inputs:
-      pgo:
-        description: Build the wheels with profile-guided optimization, as a release does
-        type: boolean
-        default: false
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      candidate:
+        description: Run with the RISC-V release wheel
+        type: string
+        required: true
+      control:
+        description: Run with the shipping Linux wheel
+        type: string
+        required: true
 permissions: {}
 jobs:
-  maturin:
-    name: ⚙️ Read locked maturin version
+  compare:
     runs-on: ubuntu-26.04
     permissions:
       contents: read
-    outputs:
-      version: ${{ steps.maturin.outputs.version }}
+      actions: read
     steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
-          version: latest-known
-          enable-cache: false
-          python-version: "3.15"
-      - name: 📦 Install locked build tool
-        uses: tox-dev/github-workflows/install-locked-tools@6.8.5
-        with:
-          groups: release-build
-          venv: ${{ runner.temp }}/release-tools
-      - name: ⚙️ Read locked maturin version
-        id: maturin
-        shell: bash
-        run: |
-          version=$("$RUNNER_TEMP/release-tools/bin/maturin" --version)
-          printf 'version=v%s\n' "${version#maturin }" >>"$GITHUB_OUTPUT"
-  pgo:
-    name: 🏗️ PGO wheels
-    needs: maturin
-    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo) }}
-    runs-on: ${{ matrix.platform.runner }}
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - {runner: ubuntu-26.04, target: riscv64gc-unknown-linux-gnu, manylinux: "2_31", pgo: riscv64gc-unknown-linux-gnu}
-    env:
-      PGO_TARGET: ${{ matrix.platform.pgo }}
-    steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - name: ⚙️ Read source timestamp
-        shell: bash
-        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >>"$GITHUB_ENV"
-      - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@v10.3.3
-        env:
-          UV_VENV_SEED: "true"
-        with:
-          ignore-empty-workdir: true
-          version: latest-known
           enable-cache: false
           activate-environment: true
           python-version: "3.15"
-      - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
-        with:
-          components: llvm-tools-preview
-          cache: false
+      - name: Download the release wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ inputs.candidate }}
+          CONTROL: ${{ inputs.control }}
+        run: |
+          gh run download "$CANDIDATE" --name simplint-wheels-linux-riscv64gc --dir dist
+          gh run download "$CONTROL" --name simplint-wheels-pgo-x86_64-unknown-linux-gnu --dir control
       - name: Run RISC-V binaries under QEMU
-        if: matrix.platform.pgo == 'riscv64gc-unknown-linux-gnu'
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-user-binfmt libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
           echo 'QEMU_LD_PREFIX=/usr/riscv64-linux-gnu' >>"$GITHUB_ENV"
           cat /proc/sys/fs/binfmt_misc/qemu-riscv64
-      - name: Build the RISC-V release wheel
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.platform.target }}
-          manylinux: ${{ matrix.platform.manylinux }}
-          args: --locked --release --out dist
-          sccache: false
-      - name: Build the native reference
-        run: cargo build --locked --release --target-dir reference
       - name: Compare all diagnostics and fixes
         run: python -m tasks.wheel_trial
       - name: Upload correctness results
