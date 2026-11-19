@@ -23,7 +23,7 @@ from tasks.ecosystem import _TOP, Package
 
 def unpack(package: Package, work: Path) -> Path:
     archive = download(Pinned(url=package.url, sha256=package.sha256), work / "archives")
-    destination = work / package.name
+    destination = work / "sources" / package.name
     with tarfile.open(archive) as source:
         source.extractall(destination, filter="data")
     return next(destination.iterdir())
