@@ -80,7 +80,7 @@ jobs:
         # PGO legs stay here: each needs an instrumented build, a training run, and a profile check in one job.
         # The shared workflow builds every other leg and the sdist.
         platform:
-          - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu}
+          - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu, bolt: true}
           - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl}
           - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
@@ -138,7 +138,7 @@ jobs:
           RUSTFLAGS: -Cprofile-generate
       - name: 📦 Restore PGO corpus
         id: corpus
-        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
+        if: ${{ steps.profile.outputs.cache-hit != 'true' || matrix.platform.bolt }}
         uses: actions/cache/restore@v6.1.0
         with:
           path: pgo-corpus
@@ -172,7 +172,8 @@ jobs:
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
           target: ${{ matrix.platform.target }}
-          args: --locked --release --out dist --target-dir target
+          args: >-
+            --locked --release --out dist --target-dir target ${{ matrix.platform.bolt && '-- -Cstrip=none -Clink-arg=-Wl,--emit-relocs,-T,tasks/bolt.ld' || '' }}
           manylinux: ${{ matrix.platform.manylinux || 'auto' }}
           docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
           sccache: false
@@ -191,9 +192,30 @@ jobs:
       - name: 🔍 Check the PGO profile matched
         shell: bash
         run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
+      - name: ⚡ Optimize the Linux x86-64 executable
+        if: ${{ matrix.platform.bolt }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bolt-22 python3-wheel
+          work=$(mktemp -d)
+          /usr/bin/python3 -m wheel unpack --dest "$work/wheel" dist/*.whl
+          binary=("$work"/wheel/*/*.data/scripts/simplint)
+          python -m tasks.pgo download pgo-corpus --extract "$work/corpus"
+          llvm-bolt-22 "${binary[0]}" -instrument -instrumentation-file="$work/profile" -o "$work/train"
+          status=0
+          "$work/train" check --config tasks/pgo.toml --no-cache "$work/corpus" > /dev/null || status=$?
+          if (( status > 1 )); then exit "$status"; fi
+          llvm-bolt-22 "${binary[0]}" -data="$work/profile" -reorder-blocks=ext-tsp -reorder-functions=cdsort \
+            -split-functions -split-all-cold -o "$work/optimized"
+          strip --strip-all --remove-section=.note.bolt_info -o "${binary[0]}" "$work/optimized"
+          chmod +x "${binary[0]}"
+          "${binary[0]}" --version
+          mkdir dist-bolt
+          /usr/bin/python3 -m wheel pack --dest-dir dist-bolt "$work"/wheel/*
       - name: 📤 Upload wheels
         uses: actions/upload-artifact@v7.0.2
         with:
           name: simplint-wheels-pgo-${{ matrix.platform.target }}
-          path: dist
+          path: ${{ matrix.platform.bolt && 'dist-bolt' || 'dist' }}
           if-no-files-found: error

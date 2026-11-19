@@ -88,6 +88,22 @@ def test_main_downloads_the_pinned_sdists(tmp_path: Path, mocker: MockerFixture,
     assert (tmp_path / "cache" / "demo-1.0.tar.gz").read_bytes() == payload
 
 
+def test_main_extracts_cached_training_sources(tmp_path: Path, tar_gz: _TarGz, files_url: str) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    archive = cache / "demo-1.0.tar.gz"
+    archive.write_bytes(tar_gz({"demo.py": b"x = 1", "README.md": b"docs"}, {}))
+    manifest = tmp_path / "manifest.toml"
+    write_manifest(
+        manifest, [Pinned(url=f"{files_url}/{archive.name}", sha256=hashlib.sha256(archive.read_bytes()).hexdigest())]
+    )
+    corpus = tmp_path / "corpus"
+
+    main(["download", str(cache), "--manifest", str(manifest), "--extract", str(corpus)])
+
+    assert [(path.name, path.read_bytes()) for path in (corpus / "demo-1.0").iterdir()] == [("demo.py", b"x = 1")]
+
+
 def test_extract_keeps_only_python_files(tmp_path: Path, capsys: pytest.CaptureFixture[str], tar_gz: _TarGz) -> None:
     archive = tmp_path / "demo-1.0.tar.gz"
     archive.write_bytes(

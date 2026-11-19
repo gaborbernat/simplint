@@ -71,6 +71,7 @@ def main(arguments: list[str]) -> None:
     record.add_argument("--cache", type=Path, help="keeps verified downloads between runs, <work>/downloads by default")
     fetch = commands.add_parser("download", help="download the sdists into the cache the release builds restore")
     fetch.add_argument("into", type=Path, help="the cache directory to download into")
+    fetch.add_argument("--extract", type=Path, help="unpack the pinned Python sources into this directory")
     guard = commands.add_parser("verify", help="fail if the optimized build found no profile data for hot code")
     guard.add_argument("log", type=Path, help="the output of the build with -Cllvm-args=-pgo-warn-missing-function")
     guard.add_argument("profile", type=Path, help="the merged profile the build used")
@@ -82,7 +83,9 @@ def main(arguments: list[str]) -> None:
         return
     if options.command == "download":
         for sdist in read_manifest(options.manifest):
-            download(sdist, options.into)
+            archive = download(sdist, options.into)
+            if options.extract is not None:
+                extract(archive, options.extract)
         return
     if options.command == "verify":
         _verify(options.log, options.profile)
@@ -97,6 +100,7 @@ class _Options(argparse.Namespace):
     work: Path
     cache: Path | None
     into: Path
+    extract: Path | None
     log: Path
 
 
