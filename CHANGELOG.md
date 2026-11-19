@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.2 (2026-11-19)
+
+<a name="release-0-14-2"></a>
+
+<a name="release-0-14-2-documentation"></a>
+
+### Documentation
+
+- The lazy import, default argument and mock setup rule pages link to the Python documentation for the standard-library
+  names they mention ([#156](https://github.com/gaborbernat/simplint/pull/156)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-14-2-performance"></a>
+
+### Performance
+
+- Start linting larger files earlier during parallel checks. Size cache read buffers from the archive on disk to speed
+  up checks of unchanged projects ([#157](https://github.com/gaborbernat/simplint/pull/157)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.1 (2026-11-19)
 
 <a name="release-0-14-1"></a>
