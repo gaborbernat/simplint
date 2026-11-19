@@ -1,6 +1,5 @@
 use std::cell::OnceCell;
 
-use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::has_leading_content;
@@ -44,7 +43,6 @@ pub(crate) struct FileState<'a> {
     overload_implementations: OnceCell<FxHashSet<TextSize>>,
     // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
     call_ends: OnceCell<FxHashSet<TextSize>>,
-    unqualified_names: OnceCell<FxHashMap<&'a str, usize>>,
     attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
     scope_nesting: OnceCell<Nesting>,
     top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
@@ -164,23 +162,6 @@ impl<'a> FileState<'a> {
             ends.visit_body(checker.body());
             ends.ends
         })
-    }
-
-    // How many identifier tokens of the file spell `name` outside an attribute access, the whole file included.
-    pub(crate) fn unqualified_name_count(&self, checker: &Checker<'a>, name: &str) -> usize {
-        let counts = self.unqualified_names.get_or_init(|| {
-            let tokens = checker.parsed.tokens().in_range(checker.file_range());
-            let mut counts = FxHashMap::default();
-            for (index, token) in tokens.iter().enumerate() {
-                if token.kind() == TokenKind::Identifier
-                    && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
-                {
-                    *counts.entry(checker.text(token.range())).or_default() += 1;
-                }
-            }
-            counts
-        });
-        counts.get(name).copied().unwrap_or_default()
     }
 
     // The attributes the file reads off each name, whatever the name is bound to there.

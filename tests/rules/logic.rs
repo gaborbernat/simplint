@@ -1940,8 +1940,23 @@ fn explicit_default_keeps_its_cache_key(decorator: &str) {
 #[test_case("import ｒｅ as rx\n\nPATTERN = rx.compile('(x)(y)')\n", "SMP532", 1 ; "normalized_regex_import")]
 #[test_case("ｓｅｎｔｉｎｅｌ = 1\n_MISSING = object()\n", "SMP511", 0 ; "normalized_sentinel_binding")]
 #[test_case("class Obj:\n    pass\n\nObj.ｓｅｎｔｉｎｅｌ = 1\n_MISSING = object()\n", "SMP511", 1 ; "normalized_sentinel_attribute")]
+#[test_case("def show(items):\n    for i in ｒａｎｇｅ(len(items)):\n        print(items[i])\n", "SMP546", 1 ; "normalized_range")]
+#[test_case("import ｔｉｍｅ as t\nstart = t.time()\nprint(t.time() - start)\n", "SMP551", 1 ; "normalized_time")]
 fn normalized_identifiers(source: &str, rule: &str, expected: usize) {
     let root = common::project(&[("module.py", source)]);
     let (status, stdout, _) = check(root.path(), &["--select", rule, "--target-version", "py315", "--no-cache"]);
     assert_eq!((status, stdout.matches(rule).count()), (i32::from(expected > 0), expected), "{stdout}");
+}
+
+#[test]
+fn strptime_date_preserves_a_normalized_binding() {
+    let source = "from datetime import datetime\n\nｄａｔｅ = 42\nparsed = datetime.strptime('2000', '%Y').date()\n";
+    let root = common::project(&[("module.py", source)]);
+    let reports: Vec<serde_json::Value> = common::json(
+        root.path(),
+        &["check", "--isolated", "--select", "SMP514", "--target-version", "py314", "--output-format", "json"],
+    );
+    let [report] = reports.as_slice() else { panic!("expected one report: {reports:?}") };
+    assert_eq!(report["code"], "SMP514");
+    assert_eq!(report.get("fix"), Some(&serde_json::Value::Null));
 }

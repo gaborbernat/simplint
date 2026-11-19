@@ -26,6 +26,12 @@ use crate::semantic::{RuffMatches, Semantic};
 use crate::settings::FileSettings;
 use crate::syntax::{Exports, dunder_all, for_each_body, previous_line_start, string_values};
 
+#[derive(Default)]
+struct NameOccurrences {
+    total: usize,
+    unqualified: bool,
+}
+
 pub struct Related {
     pub path: PathBuf,
     pub range: TextRange,
@@ -46,7 +52,7 @@ pub struct Checker<'a> {
     dunder_all: OnceCell<Exports<'a>>,
     defs: OnceCell<(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>)>,
     module_classes: OnceCell<FxHashMap<&'a str, &'a ast::StmtClassDef>>,
-    name_tokens: OnceCell<FxHashMap<Cow<'a, str>, usize>>,
+    name_tokens: OnceCell<FxHashMap<Cow<'a, str>, NameOccurrences>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     project: OnceCell<FileIndex<'a>>,
     // The other files that reports point into, read once each, so their lines are indexed once for rendering.
@@ -381,18 +387,34 @@ impl<'a> Checker<'a> {
         })
     }
 
-    pub fn name_token_count(&self, name: &str) -> usize {
-        let counts = self.name_tokens.get_or_init(|| {
+    fn name_tokens(&self) -> &FxHashMap<Cow<'a, str>, NameOccurrences> {
+        self.name_tokens.get_or_init(|| {
             let mut counts = FxHashMap::default();
-            for token in self.parsed.tokens().iter().filter(|token| token.kind() == TokenKind::Identifier) {
-                let spelling = self.text(token.range());
-                let name =
-                    if spelling.is_ascii() { Cow::Borrowed(spelling) } else { Cow::Owned(spelling.nfkc().collect()) };
-                *counts.entry(name).or_default() += 1;
+            let mut after_dot = false;
+            for token in self.parsed.tokens() {
+                if token.kind() == TokenKind::Identifier {
+                    let spelling = self.text(token.range());
+                    let name = if spelling.is_ascii() {
+                        Cow::Borrowed(spelling)
+                    } else {
+                        Cow::Owned(spelling.nfkc().collect())
+                    };
+                    let occurrences: &mut NameOccurrences = counts.entry(name).or_default();
+                    occurrences.total += 1;
+                    occurrences.unqualified |= !after_dot;
+                }
+                after_dot = token.kind() == TokenKind::Dot;
             }
             counts
-        });
-        counts.get(name).copied().unwrap_or_default()
+        })
+    }
+
+    pub fn name_token_count(&self, name: &str) -> usize {
+        self.name_tokens().get(name).map_or(0, |occurrences| occurrences.total)
+    }
+
+    pub fn has_unqualified_name(&self, name: &str) -> bool {
+        self.name_tokens().get(name).is_some_and(|occurrences| occurrences.unqualified)
     }
 
     pub fn text(&self, ranged: impl Ranged) -> &'a str {

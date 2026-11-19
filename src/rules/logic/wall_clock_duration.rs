@@ -9,7 +9,7 @@ use crate::rules::logic::name_uses::LocalScope;
 
 pub fn wall_clock_duration(checker: &Checker) {
     // `time.time` is spelled `time` wherever it is imported or called.
-    if checker.state().unqualified_name_count(checker, "time") == 0 {
+    if !checker.has_unqualified_name("time") {
         return;
     }
     for scope in checker.state().local_scopes(checker).iter() {

@@ -88,7 +88,7 @@ fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(S
         let attribute = class.as_attribute_expr().expect("a resolved `strptime` hangs off a name or an attribute");
         return Some((format!("{}.{member}", checker.text(attribute.value.as_ref())), None));
     };
-    if checker.state().unqualified_name_count(checker, member) > 0 {
+    if checker.has_unqualified_name(member) {
         return None;
     }
     let alias = class_alias(checker.body(), name.id.as_str())?;
