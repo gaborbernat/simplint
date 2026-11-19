@@ -283,7 +283,7 @@ fn standard_input_reads_its_own_exports(select: &str, expected: &str) {
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
-    assert_eq!(stdout, common::native(expected));
+    assert_eq!(stdout, expected);
 }
 
 // A class a listed function returns is library API, so its docstring and its method's docstring stay when SMP901's

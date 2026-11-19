@@ -190,7 +190,10 @@ fn name_bound_to_several_modules_reads_each_of_them(body: &str, other_reported: 
     ]);
     let stdout = check(root.path(), &["--select", "SMP404"]).1;
     assert_eq!(
-        (stdout.contains("pkg/third.py:3:1: SMP404 `client`"), stdout.contains("pkg/other.py:3:1: SMP404 `engine`")),
+        (
+            stdout.contains(&common::native("pkg/third.py:3:1: SMP404 `client`")),
+            stdout.contains(&common::native("pkg/other.py:3:1: SMP404 `engine`"))
+        ),
         (true, other_reported),
         "{stdout}"
     );
@@ -254,7 +257,7 @@ fn dunder_import_fromlist_selects_the_module(call: &str, reported: &str, unrepor
         ("tests/test_a.py", &format!("def test_app(names) -> None:\n    assert {call}.helper\n")),
     ]);
     let stdout = check(root.path(), &["--select", "SMP404"]).1;
-    assert!(stdout.contains(reported) && !stdout.contains(unreported), "{stdout}");
+    assert!(stdout.contains(&common::native(reported)) && !stdout.contains(&common::native(unreported)), "{stdout}");
 }
 
 // A module a spec loads from a path the project names reads the names read off it, whichever way the path is spelled.

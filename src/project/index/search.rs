@@ -83,6 +83,42 @@ impl SearchRoots {
         }
     }
 
+    // ty can also resolve an import from an ancestor of the importing file inside its source root.
+    pub(super) fn module_names<'a>(&self, files: impl Iterator<Item = &'a Path>) -> Option<FxHashSet<String>> {
+        let mut roots: FxHashSet<&Path> = self.roots.iter().map(PathBuf::as_path).collect();
+        for parent in files.filter_map(Path::parent) {
+            if let Some(root) = self.roots.iter().find(|root| parent.starts_with(root)) {
+                roots.extend(parent.ancestors().take_while(|at| at.starts_with(root)));
+            }
+        }
+        let mut seen = FxHashSet::default();
+        let mut todo: Vec<PathBuf> = roots.iter().map(|root| root.to_path_buf()).collect();
+        let mut names = FxHashSet::default();
+        while let Some(directory) = todo.pop() {
+            if !seen.insert(directory.clone()) {
+                continue;
+            }
+            let prefixes: Vec<String> = directory
+                .ancestors()
+                .filter(|ancestor| roots.contains(*ancestor))
+                .filter_map(|root| {
+                    directory
+                        .strip_prefix(root)
+                        .expect("an ancestor is a prefix of the directory")
+                        .iter()
+                        .map(module_component)
+                        .collect::<Option<Vec<_>>>()
+                        .map(|parts| parts.join("."))
+                })
+                .collect();
+            let entries = fs::read_dir(&directory)
+                .ok()?
+                .map(|entry| entry.and_then(|entry| entry.file_type().map(|kind| (entry, kind))));
+            collect_module_names(entries, &prefixes, &mut todo, &mut names)?;
+        }
+        Some(names)
+    }
+
     pub fn new<'a>(settings: &ruff_workspace::Settings, packages: impl IntoIterator<Item = PackageRoot<'a>>) -> Self {
         let mut roots: Vec<PathBuf> = settings.linter.src.iter().filter(|path| path.is_dir()).cloned().collect();
         for root in packages.into_iter().filter_map(|package| package.path().parent()) {
@@ -122,6 +158,44 @@ impl SearchRoots {
             })
             .collect()
     }
+}
+
+fn collect_module_names(
+    entries: impl Iterator<Item = io::Result<(fs::DirEntry, fs::FileType)>>,
+    prefixes: &[String],
+    todo: &mut Vec<PathBuf>,
+    names: &mut FxHashSet<String>,
+) -> Option<()> {
+    for entry in entries {
+        let (entry, kind) = entry.ok()?;
+        let raw = entry.file_name();
+        // A directory link can give every module below it another name, including through a cycle.
+        if kind.is_symlink() && entry.path().is_dir() {
+            return None;
+        }
+        let name = if kind.is_dir() {
+            let Some(name) = module_component(&raw) else { continue };
+            todo.push(entry.path());
+            name
+        } else {
+            let Some(stem) =
+                raw.to_str().and_then(|name| name.strip_suffix(".py").or_else(|| name.strip_suffix(".pyi")))
+            else {
+                continue;
+            };
+            stem
+        };
+        for prefix in prefixes {
+            names.insert(if prefix.is_empty() { name.to_owned() } else { format!("{prefix}.{name}") });
+        }
+    }
+    Some(())
+}
+
+fn module_component(name: &OsStr) -> Option<&str> {
+    let name = name.to_str()?;
+    let name = name.strip_suffix("-stubs").unwrap_or(name);
+    is_identifier(name).then_some(name)
 }
 
 fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
@@ -170,7 +244,37 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::importable;
+    use super::{SearchRoots, collect_module_names, importable};
+    use ruff_python_ast::PythonVersion;
+
+    #[test]
+    fn module_names_include_stubs_and_importers_search_roots() {
+        let folder = TempDir::new().expect("create a project");
+        let root = folder.path();
+        let scripts = root.join("my-scripts");
+        fs::create_dir_all(scripts.join("lib-stubs/parts")).expect("create the stub package");
+        fs::write(scripts.join("lib-stubs/parts/mod.pyi"), "").expect("write the module stub");
+        fs::write(scripts.join("consumer.py"), "").expect("write the importing file");
+        fs::write(root.join("README"), "").expect("write an unrelated file");
+        let search = SearchRoots { roots: vec![root.to_owned()], python_version: PythonVersion::latest() };
+        let consumer = scripts.join("consumer.py");
+        let names = search.module_names([consumer.as_path()].into_iter()).expect("the search roots can be listed");
+        assert_eq!(
+            names,
+            ["lib", "lib.parts", "lib.parts.mod", "consumer"]
+                .map(str::to_owned)
+                .into_iter()
+                .collect::<rustc_hash::FxHashSet<_>>()
+        );
+        fs::remove_dir_all(&scripts).expect("remove the importer's directory");
+        assert!(search.module_names([consumer.as_path()].into_iter()).is_none());
+    }
+
+    #[test]
+    fn unreadable_entry_invalidates_the_module_inventory() {
+        let entries = std::iter::once(Err(io::Error::other("directory changed")));
+        assert!(collect_module_names(entries, &[], &mut Vec::new(), &mut rustc_hash::FxHashSet::default()).is_none());
+    }
 
     #[test]
     fn entry_whose_type_cannot_be_read_is_not_importable() {
@@ -195,5 +299,7 @@ mod tests {
             [importable_link("pkg", "real"), importable_link("module", "file.py"), importable_link("dangling", "gone")],
             [Some((root.join("pkg"), Some(root.join("real")))), None, None]
         );
+        let search = SearchRoots { roots: vec![root], python_version: PythonVersion::latest() };
+        assert!(search.module_names(std::iter::empty()).is_none());
     }
 }
