@@ -140,7 +140,8 @@ impl ImportResolver {
                 namesakes.entry(name).or_default().push(path);
             }
         }
-        let run = RunFiles { names, paths: &run_paths, namesakes: &namesakes };
+        let candidates = self.search.module_names(files.iter().map(|(path, _)| *path));
+        let run = RunFiles { names, paths: &run_paths, namesakes: &namesakes, candidates: candidates.as_ref() };
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
         let fresh: Vec<Vec<(FileId, ModuleFacts<PathBuf>)>> = groups
             .par_iter()
@@ -181,6 +182,7 @@ pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
 
 #[derive(Clone, Copy)]
 pub(super) struct RunFiles<'a> {
+    candidates: Option<&'a FxHashSet<String>>,
     names: &'a FxHashSet<String>,
     paths: &'a FxHashSet<PathBuf>,
     namesakes: &'a FxHashMap<&'a str, Vec<&'a PathBuf>>,
@@ -262,6 +264,14 @@ impl<F> ModuleFacts<F> {
     }
 }
 
+impl RunFiles<'_> {
+    fn found(self, db: &ModuleDb, environment: ResolverEnvironment<'_>, importing: Option<File>, module: &str) -> bool {
+        is_stdlib_root(PythonVersion::latest().minor, module)
+            || (self.candidates.is_none_or(|names| names.contains(module))
+                && ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some()))
+    }
+}
+
 impl ModuleFacts<PathBuf> {
     fn resolve<'f>(
         db: &ModuleDb,
@@ -277,6 +287,9 @@ impl ModuleFacts<PathBuf> {
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
         // The files of a directory name most modules several times, in imports, references and dataclass uses.
         let resolve_cached = |module: &'f str| -> Option<PathBuf> {
+            if run.candidates.is_some_and(|names| !names.contains(module)) {
+                return None;
+            }
             if let Some(file) = cache.borrow().get(module) {
                 return file.clone();
             }
@@ -286,7 +299,7 @@ impl ModuleFacts<PathBuf> {
         };
         // A module whose top name no file of the run is named after resolves outside the run, so the resolver is not
         // asked. A star import is the exception: it needs to tell an unresolved module from one outside the run.
-        let found = |module: &str| is_module_found(db, environment, importing, module);
+        let found = |module: &str| run.found(db, environment, importing, module);
         let resolved = |module: &'f str| -> Option<PathBuf> {
             let top = module.split_once('.').map_or(module, |(top, _)| top);
             if !run.names.contains(top) {
@@ -414,19 +427,6 @@ pub(super) fn normalized(path: &Path) -> PathBuf {
 fn search_paths(system: &OsSystem, roots: Vec<SystemPathBuf>) -> SearchPaths {
     let roots = roots.into_iter().filter(|root| system.is_directory(root)).collect();
     resolve_search_paths(system, roots, None).expect("directories are valid search roots")
-}
-
-// Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
-// with Python, whose stub has no file on disk. The newest Python's standard library decides, so a module older Pythons
-// ship and the newest lacks, such as `distutils`, is one a run file of its name may shadow.
-pub(super) fn is_module_found<'db>(
-    db: &'db ModuleDb,
-    environment: ResolverEnvironment<'db>,
-    importing: Option<File>,
-    module: &str,
-) -> bool {
-    is_stdlib_root(PythonVersion::latest().minor, module)
-        || ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some())
 }
 
 fn written_names<'f>(
