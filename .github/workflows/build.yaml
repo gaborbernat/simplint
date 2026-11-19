@@ -32,10 +32,10 @@ jobs:
       package-name: simplint
       matrix: |
         [
-          {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"},
-          {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"},
           {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}
           ${{ (!startsWith(github.ref, 'refs/tags/') && !inputs.pgo) && ',
+          {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"},
+          {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"},
           {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"},
           {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}' || '' }}
         ]
@@ -89,7 +89,9 @@ jobs:
         platform:
           - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu, bolt: true}
           - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl, ext_tsp: true}
+          - {runner: windows-11-arm, target: aarch64, pgo: aarch64-pc-windows-msvc}
           - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
+          - {runner: macos-26-intel, target: x86_64, pgo: x86_64-apple-darwin}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
           - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu, bolt: true}
           - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
@@ -133,6 +135,14 @@ jobs:
         with:
           components: llvm-tools-preview
           cache: false
+      # link.exe writes unreadable function names into the ARM64 training profile.
+      - name: Locate the ARM64 Windows profiling linker
+        if: ${{ matrix.platform.pgo == 'aarch64-pc-windows-msvc' && steps.profile.outputs.cache-hit != 'true' }}
+        id: profiler
+        shell: pwsh
+        run: |
+          $linker = Join-Path (rustc --print sysroot) "lib/rustlib/$env:PGO_TARGET/bin/rust-lld.exe"
+          "linker=$linker" >> $env:GITHUB_OUTPUT
       - name: 🏗️ Build instrumented binary
         if: ${{ steps.profile.outputs.cache-hit != 'true' }}
         uses: PyO3/maturin-action@v1.51.0
@@ -144,6 +154,7 @@ jobs:
           docker-options: --env SOURCE_DATE_EPOCH
           sccache: false
         env:
+          CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER: ${{ steps.profiler.outputs.linker }}
           RUSTFLAGS: -Cprofile-generate
       - name: 📦 Restore PGO corpus
         id: corpus
