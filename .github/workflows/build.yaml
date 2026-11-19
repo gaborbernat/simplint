@@ -7,9 +7,16 @@ on:
         type: string
         required: true
       control_run:
-        description: Use the candidate wheel from this run as the shipping control
+        description: Run containing the shipping control
         type: string
         default: ""
+      control_wheel:
+        description: Which wheel to use from the control run
+        type: choice
+        options:
+          - dist
+          - control
+        default: dist
       targets:
         description: JSON list of target triples
         type: string
@@ -42,12 +49,13 @@ jobs:
           RUN_ID: ${{ inputs.run }}
           TARGET: ${{ matrix.target }}
           CONTROL_RUN: ${{ inputs.control_run }}
+          CONTROL_WHEEL: ${{ inputs.control_wheel }}
         run: |
           gh run download "$RUN_ID" --name "measurements-$TARGET" --dir wheel-pair
           if [[ -n "$CONTROL_RUN" ]]; then
             gh run download "$CONTROL_RUN" --name "measurements-$TARGET" --dir reference
             mv wheel-pair/control matched-link
-            mv reference/dist wheel-pair/control
+            mv "reference/$CONTROL_WHEEL" wheel-pair/control
           fi
       - name: Compare on the full source distributions
         shell: bash
