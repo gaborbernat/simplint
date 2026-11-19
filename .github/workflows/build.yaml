@@ -27,7 +27,7 @@ permissions: {}
 jobs:
   build:
     name: 🏗️ Build distributions
-    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@ef0cd88bef592260a48345753b8b509b209ab189 # 6.8.3
+    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@b34c57a8a06e7b043c2ddd0b6b7a8a778d7aa8f7 # 6.8.5
     with:
       package-name: simplint
       matrix: >-
@@ -57,7 +57,7 @@ jobs:
           enable-cache: false
           python-version: "3.15"
       - name: 📦 Install locked build tool
-        uses: tox-dev/github-workflows/install-locked-tools@6.8.3
+        uses: tox-dev/github-workflows/install-locked-tools@6.8.5
         with:
           groups: release-build
           venv: ${{ runner.temp }}/release-tools
