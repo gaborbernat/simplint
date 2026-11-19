@@ -30,8 +30,15 @@ jobs:
     uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@b34c57a8a06e7b043c2ddd0b6b7a8a778d7aa8f7 # 6.8.5
     with:
       package-name: simplint
-      matrix: >-
-        [ {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"}, {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}, {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}, {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"}, {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"} ]
+      matrix: |
+        [
+          {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"},
+          {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"},
+          {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}
+          ${{ (!startsWith(github.ref, 'refs/tags/') && !inputs.pgo) && ',
+          {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"},
+          {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}' || '' }}
+        ]
       pre-build-command: ${{ !startsWith(github.ref, 'refs/tags/') && 'cargo install cargo-edit --version 0.13.13 --locked && cargo set-version --bump patch' || '' }}
       # sccache saves one cache entry per compiled object, which crowds the larger caches out of the repository quota.
       release-build: true
@@ -84,6 +91,8 @@ jobs:
           - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl}
           - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
+          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu}
+          - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
     env:
       PGO_TARGET: ${{ matrix.platform.pgo }}
     steps:
@@ -216,6 +225,6 @@ jobs:
       - name: 📤 Upload wheels
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: simplint-wheels-pgo-${{ matrix.platform.target }}
+          name: simplint-wheels-pgo-${{ matrix.platform.pgo }}
           path: ${{ matrix.platform.bolt && 'dist-bolt' || 'dist' }}
           if-no-files-found: error
