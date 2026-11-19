@@ -91,7 +91,7 @@ jobs:
           - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl}
           - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
-          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu}
+          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu, bolt: true}
           - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
     env:
       PGO_TARGET: ${{ matrix.platform.pgo }}
@@ -201,7 +201,7 @@ jobs:
       - name: 🔍 Check the PGO profile matched
         shell: bash
         run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
-      - name: ⚡ Optimize the Linux x86-64 executable
+      - name: ⚡ Optimize the Linux executable
         if: ${{ matrix.platform.bolt }}
         shell: bash
         run: |
@@ -211,7 +211,12 @@ jobs:
           /usr/bin/python3 -m wheel unpack --dest "$work/wheel" dist/*.whl
           binary=("$work"/wheel/*/*.data/scripts/simplint)
           python -m tasks.pgo download pgo-corpus --extract "$work/corpus"
-          llvm-bolt-22 "${binary[0]}" -instrument -instrumentation-file="$work/profile" -o "$work/train"
+          instrument=()
+          if [[ "$PGO_TARGET" == aarch64-* ]]; then
+            instrument+=(-no-lse-atomics)
+            export RAYON_NUM_THREADS=1
+          fi
+          llvm-bolt-22 "${binary[0]}" "${instrument[@]}" -instrument -instrumentation-file="$work/profile" -o "$work/train"
           status=0
           "$work/train" check --config tasks/pgo.toml --no-cache "$work/corpus" > /dev/null || status=$?
           if (( status > 1 )); then exit "$status"; fi
