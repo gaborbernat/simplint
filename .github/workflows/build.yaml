@@ -51,14 +51,7 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu}
-          - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
           - {runner: ubuntu-26.04, target: riscv64gc-unknown-linux-gnu, manylinux: "2_31", pgo: riscv64gc-unknown-linux-gnu}
-          - {runner: macos-26-intel, target: x86_64, pgo: x86_64-apple-darwin}
-          - {runner: windows-11-arm, target: aarch64, pgo: aarch64-pc-windows-msvc}
-          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl, layout: true}
-          - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc, layout: true}
-          - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin, layout: true}
     env:
       PGO_TARGET: ${{ matrix.platform.pgo }}
     steps:
@@ -101,7 +94,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-user-binfmt libc6-riscv64-cross libgcc-s1-riscv64-cross
+          sudo apt-get install -y qemu-user-binfmt libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
           echo 'QEMU_LD_PREFIX=/usr/riscv64-linux-gnu' >>"$GITHUB_ENV"
           cat /proc/sys/fs/binfmt_misc/qemu-riscv64
       - name: 🏋️ Collect PGO profile
