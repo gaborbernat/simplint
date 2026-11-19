@@ -158,6 +158,12 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🧪 Link BOLT relocations with manylinux build notes
+        run: |
+          rustc tests/fixtures/bolt/link.rs -Dlinker-messages -Clink-arg=-Wl,--emit-relocs,-T,tasks/bolt.ld -o "$RUNNER_TEMP/bolt-link"
+          "$RUNNER_TEMP/bolt-link"
+          readelf -SW "$RUNNER_TEMP/bolt-link" > "$RUNNER_TEMP/bolt-sections"
+          grep -F ' .rela.text ' "$RUNNER_TEMP/bolt-sections"
       # The wheel build reuses this binary from target/, so a Rust error shows in its own step.
       - name: 🏗️ Build the binary
         run: cargo build --profile ci --locked
