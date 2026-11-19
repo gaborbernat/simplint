@@ -78,17 +78,6 @@ jobs:
         with:
           components: llvm-tools-preview
           cache: false
-      - name: 🏗️ Build instrumented binary
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.platform.target }}
-          args: --locked --release --out target/pgo-wheels --target-dir target/pgo-build
-          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
-          docker-options: --env SOURCE_DATE_EPOCH
-          sccache: false
-        env:
-          RUSTFLAGS: -Cprofile-generate
       - name: Run RISC-V binaries under QEMU
         if: matrix.platform.pgo == 'riscv64gc-unknown-linux-gnu'
         shell: bash
@@ -97,90 +86,22 @@ jobs:
           sudo apt-get install -y qemu-user-binfmt libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
           echo 'QEMU_LD_PREFIX=/usr/riscv64-linux-gnu' >>"$GITHUB_ENV"
           cat /proc/sys/fs/binfmt_misc/qemu-riscv64
-      - name: 🏋️ Collect PGO profile
-        shell: bash
-        # The profile lives outside target, which the Linux build container creates as root.
-        run: python -m tasks.pgo train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
-      - name: ⚙️ Use PGO profile
-        shell: bash
-        run: |
-          flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
-          echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
-          echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
-      - name: Select control flags
-        if: ${{ !matrix.platform.layout }}
-        shell: bash
-        run: echo 'RUSTFLAGS=' >>"$GITHUB_ENV"
-      - name: 🏗️ Build wheels
-        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') }}
+      - name: Build the RISC-V release wheel
         uses: PyO3/maturin-action@v1.51.0
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
           target: ${{ matrix.platform.target }}
-          args: --locked --release --out dist --target-dir target
-          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
-          docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
+          manylinux: ${{ matrix.platform.manylinux }}
+          args: --locked --release --out dist
           sccache: false
-          before-script-linux: |
-            if [[ -n "${PGO_BUILD_LOG:-}" ]]; then
-              maturin() { command maturin "$@" 2>&1 | tee "$PGO_BUILD_LOG"; }
-            fi
-      - name: 🏗️ Build wheels with PGO
-        if: ${{ !startsWith(matrix.platform.runner, 'ubuntu') }}
-        shell: bash
-        run: |
-          uvx --from "maturin==${MATURIN_VERSION#v}" maturin build --locked --release --out dist --target-dir target \
-            --target "$PGO_TARGET" 2>&1 | tee pgo/build.log
-        env:
-          MATURIN_VERSION: ${{ needs.maturin.outputs.version }}
-      - name: Keep the control wheel
-        shell: bash
-        run: mv dist control
-      - name: ⚙️ Use PGO profile
-        shell: bash
-        env:
-          LAYOUT: ${{ matrix.platform.layout || false }}
-        run: |
-          flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
-          if [[ "$LAYOUT" == true ]]; then flags="$flags -Cllvm-args=-enable-ext-tsp-block-placement"; fi
-          echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
-          echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
-      - name: 🏗️ Build wheels
-        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') }}
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.platform.target }}
-          args: --locked --release --out dist --target-dir target
-          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
-          docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
-          sccache: false
-          before-script-linux: |
-            if [[ -n "${PGO_BUILD_LOG:-}" ]]; then
-              maturin() { command maturin "$@" 2>&1 | tee "$PGO_BUILD_LOG"; }
-            fi
-      - name: 🏗️ Build wheels with PGO
-        if: ${{ !startsWith(matrix.platform.runner, 'ubuntu') }}
-        shell: bash
-        run: |
-          uvx --from "maturin==${MATURIN_VERSION#v}" maturin build --locked --release --out dist --target-dir target \
-            --target "$PGO_TARGET" 2>&1 | tee pgo/build.log
-        env:
-          MATURIN_VERSION: ${{ needs.maturin.outputs.version }}
-      - name: 🔍 Check the PGO profile matched
-        shell: bash
-        run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
-      - name: Compare release wheels
-        shell: bash
+      - name: Build the native reference
+        run: cargo build --locked --release --target-dir reference
+      - name: Compare all diagnostics and fixes
         run: python -m tasks.wheel_trial
-      - name: Upload measurements
+      - name: Upload correctness results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: measurements-${{ matrix.platform.pgo }}
-          path: |
-            measurements.csv
-            totals.txt
-            control/*.whl
-            dist/*.whl
+          name: correctness-riscv64
+          path: correctness.csv
           if-no-files-found: warn
