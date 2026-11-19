@@ -14,6 +14,7 @@ use ruff_python_trivia::{CommentRanges, has_leading_content, has_trailing_conten
 use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
+use unicode_normalization::UnicodeNormalization;
 
 use crate::lint::noqa::Suppressions;
 use crate::lint::registry::Rule;
@@ -45,7 +46,7 @@ pub struct Checker<'a> {
     dunder_all: OnceCell<Exports<'a>>,
     defs: OnceCell<(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>)>,
     module_classes: OnceCell<FxHashMap<&'a str, &'a ast::StmtClassDef>>,
-    name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
+    name_tokens: OnceCell<FxHashMap<Cow<'a, str>, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     project: OnceCell<FileIndex<'a>>,
     // The other files that reports point into, read once each, so their lines are indexed once for rendering.
@@ -384,7 +385,10 @@ impl<'a> Checker<'a> {
         let counts = self.name_tokens.get_or_init(|| {
             let mut counts = FxHashMap::default();
             for token in self.parsed.tokens().iter().filter(|token| token.kind() == TokenKind::Identifier) {
-                *counts.entry(self.text(token.range())).or_default() += 1;
+                let spelling = self.text(token.range());
+                let name =
+                    if spelling.is_ascii() { Cow::Borrowed(spelling) } else { Cow::Owned(spelling.nfkc().collect()) };
+                *counts.entry(name).or_default() += 1;
             }
             counts
         });
@@ -404,8 +408,11 @@ impl<'a> Checker<'a> {
             .enumerate()
             .filter(|(index, token)| {
                 token.kind() == TokenKind::Identifier
-                    && self.text(token.range()) == name
                     && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
+                    && {
+                        let spelling = self.text(token.range());
+                        spelling == name || !spelling.is_ascii() && spelling.nfkc().eq(name.chars())
+                    }
             })
             .count()
     }
