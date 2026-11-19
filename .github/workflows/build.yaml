@@ -17,6 +17,13 @@ on:
           - dist
           - control
         default: dist
+      candidate_wheel:
+        description: Which wheel to measure from the candidate run
+        type: choice
+        options:
+          - dist
+          - control
+        default: dist
       targets:
         description: JSON list of target triples
         type: string
@@ -50,11 +57,17 @@ jobs:
           TARGET: ${{ matrix.target }}
           CONTROL_RUN: ${{ inputs.control_run }}
           CONTROL_WHEEL: ${{ inputs.control_wheel }}
+          CANDIDATE_WHEEL: ${{ inputs.candidate_wheel }}
         run: |
           gh run download "$RUN_ID" --name "measurements-$TARGET" --dir wheel-pair
           if [[ -n "$CONTROL_RUN" ]]; then
             gh run download "$CONTROL_RUN" --name "measurements-$TARGET" --dir reference
-            mv wheel-pair/control matched-link
+            if [[ "$CANDIDATE_WHEEL" == control ]]; then
+              mv wheel-pair/dist ordered
+              mv wheel-pair/control wheel-pair/dist
+            else
+              mv wheel-pair/control matched-link
+            fi
             mv "reference/$CONTROL_WHEEL" wheel-pair/control
           fi
       - name: Compare on the full source distributions
