@@ -104,37 +104,17 @@ impl SearchRoots {
                 .filter_map(|root| {
                     directory
                         .strip_prefix(root)
-                        .ok()?
+                        .expect("an ancestor is a prefix of the directory")
                         .iter()
                         .map(module_component)
                         .collect::<Option<Vec<_>>>()
                         .map(|parts| parts.join("."))
                 })
                 .collect();
-            for entry in fs::read_dir(&directory).ok()? {
-                let entry = entry.ok()?;
-                let kind = entry.file_type().ok()?;
-                let raw = entry.file_name();
-                // A directory link can give every module below it another name, including through a cycle.
-                if kind.is_symlink() && entry.path().is_dir() {
-                    return None;
-                }
-                let name = if kind.is_dir() {
-                    let Some(name) = module_component(&raw) else { continue };
-                    todo.push(entry.path());
-                    name
-                } else {
-                    let Some(stem) =
-                        raw.to_str().and_then(|name| name.strip_suffix(".py").or_else(|| name.strip_suffix(".pyi")))
-                    else {
-                        continue;
-                    };
-                    stem
-                };
-                for prefix in &prefixes {
-                    names.insert(if prefix.is_empty() { name.to_owned() } else { format!("{prefix}.{name}") });
-                }
-            }
+            let entries = fs::read_dir(&directory)
+                .ok()?
+                .map(|entry| entry.and_then(|entry| entry.file_type().map(|kind| (entry, kind))));
+            collect_module_names(entries, &prefixes, &mut todo, &mut names)?;
         }
         Some(names)
     }
@@ -178,6 +158,38 @@ impl SearchRoots {
             })
             .collect()
     }
+}
+
+fn collect_module_names(
+    entries: impl Iterator<Item = io::Result<(fs::DirEntry, fs::FileType)>>,
+    prefixes: &[String],
+    todo: &mut Vec<PathBuf>,
+    names: &mut FxHashSet<String>,
+) -> Option<()> {
+    for entry in entries {
+        let (entry, kind) = entry.ok()?;
+        let raw = entry.file_name();
+        // A directory link can give every module below it another name, including through a cycle.
+        if kind.is_symlink() && entry.path().is_dir() {
+            return None;
+        }
+        let name = if kind.is_dir() {
+            let Some(name) = module_component(&raw) else { continue };
+            todo.push(entry.path());
+            name
+        } else {
+            let Some(stem) =
+                raw.to_str().and_then(|name| name.strip_suffix(".py").or_else(|| name.strip_suffix(".pyi")))
+            else {
+                continue;
+            };
+            stem
+        };
+        for prefix in prefixes {
+            names.insert(if prefix.is_empty() { name.to_owned() } else { format!("{prefix}.{name}") });
+        }
+    }
+    Some(())
 }
 
 fn module_component(name: &OsStr) -> Option<&str> {
@@ -232,7 +244,7 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use super::{SearchRoots, importable};
+    use super::{SearchRoots, collect_module_names, importable};
     use ruff_python_ast::PythonVersion;
 
     #[test]
@@ -256,6 +268,12 @@ mod tests {
         );
         fs::remove_dir_all(&scripts).expect("remove the importer's directory");
         assert!(search.module_names([consumer.as_path()].into_iter()).is_none());
+    }
+
+    #[test]
+    fn unreadable_entry_invalidates_the_module_inventory() {
+        let entries = std::iter::once(Err(io::Error::other("directory changed")));
+        assert!(collect_module_names(entries, &[], &mut Vec::new(), &mut rustc_hash::FxHashSet::default()).is_none());
     }
 
     #[test]
