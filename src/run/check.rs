@@ -276,10 +276,10 @@ fn index_cached<'f, T: Send>(
     let groups: Vec<&[RunFile]> = indexed.chunk_by(|left, right| left.nested == right.nested).collect();
     let inputs: Vec<ProjectInputs> = groups.iter().map(|group| ProjectInputs::of(group, roots)).collect();
     let linted = indexed.iter().filter(|file| file.linted).count();
-    // Only the cache reads the digest, which stats every file and walks every directory an import can name, so a run
-    // without one skips it.
+    // Only the cache needs a digest of the project inputs.
     let opened = caches.as_ref().map(|caches| {
-        let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path)).collect();
+        let checked = filetime::FileTime::now();
+        let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path, checked)).collect();
         let run = run_digest(indexed, &keys, linted, roots, &startup, &inputs, &docs, parts);
         (caches.views(run), keys)
     });

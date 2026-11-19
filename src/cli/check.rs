@@ -40,20 +40,10 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         write_flushed(&mut writer, [text])?;
         return Ok(ExitStatus::Success);
     }
-    let run = &resolved.settings_resolver.root.run;
-    let fix_only = run.fix_only.unwrap_or(false);
-    let mode = Mode {
-        fix: if cli.diff {
-            flags::FixMode::Diff
-        } else if run.fix.unwrap_or(false) || fix_only {
-            flags::FixMode::Apply
-        } else {
-            flags::FixMode::Generate
-        },
-        unsafe_fixes: run.unsafe_fixes(),
-        noqa: if cli.ignore_noqa { flags::Noqa::Disabled } else { flags::Noqa::Enabled },
-        roots: linted_roots(&files),
-    };
+    if cli.watch {
+        return watch(cli, global_options, &files, resolved, writer);
+    }
+    let mode = mode(cli, &resolved, &files);
     let log_level = global_options.log_level();
     if let Some((reason, kind)) = cli.suppression() {
         let flag = suppression_flag(kind);
@@ -76,35 +66,15 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         }
         return Ok(ExitStatus::Success);
     }
-    let mut printer_flags = Flags::empty();
-    if !(cli.diff || fix_only) {
-        printer_flags |= Flags::SHOW_VIOLATIONS;
-    }
-    if run.show_fixes.unwrap_or(false) {
-        printer_flags |= Flags::SHOW_FIX_SUMMARY;
-    }
-    let printer = Printer {
-        format: run.output_format.unwrap_or_default(),
-        log_level,
-        mode: &mode,
-        flags: printer_flags,
-        preview: resolved.pyproject_config.settings.linter.preview.is_enabled(),
-        prefer_rule_codes: resolved.pyproject_config.settings.output_prefer_rule_codes,
-    };
-    if cli.watch {
-        let usage = CacheUse::new(cli.no_cache, &mode, None);
-        return watch(cli, global_options, &files, resolved, &usage, &printer, writer);
-    }
+    let fix_only = resolved.settings_resolver.root.run.fix_only.unwrap_or(false);
+    let printer = printer(cli, &resolved, &mode, log_level);
     let mut diagnostics = if is_stdin {
         check_standard_input(cli, &resolved, &mode)?
     } else {
         let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display(&resolved.cwd));
         check_files(&files, &resolved, &mode, &usage, Ending::Exit)?
     };
-    diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
-    // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
-    diagnostics.diffs.sort_by(|left, right| left.0.cmp(&right.0));
-    write_flushed(&mut std::io::stdout().lock(), diagnostics.diffs.iter().map(|(_, diff)| diff))?;
+    write_diffs(&mut diagnostics, &mut std::io::stdout().lock())?;
     // With fixed source going to standard output, the report goes to standard error.
     if is_stdin && !mode.fix.is_generate() && cli.output_file.is_none() {
         writer = Box::new(std::io::stderr());
@@ -118,6 +88,51 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     // The output is out, so the run's results go to the exit rather than being freed one by one.
     Ending::Exit.end(diagnostics);
     Ok(status)
+}
+
+pub(super) fn mode(cli: &CheckCommand, resolved: &Resolved, files: &[PathBuf]) -> Mode {
+    let run = &resolved.settings_resolver.root.run;
+    let fix_only = run.fix_only.unwrap_or(false);
+    Mode {
+        fix: if cli.diff {
+            flags::FixMode::Diff
+        } else if run.fix.unwrap_or(false) || fix_only {
+            flags::FixMode::Apply
+        } else {
+            flags::FixMode::Generate
+        },
+        unsafe_fixes: run.unsafe_fixes(),
+        noqa: if cli.ignore_noqa { flags::Noqa::Disabled } else { flags::Noqa::Enabled },
+        roots: linted_roots(files),
+    }
+}
+
+pub(super) fn printer<'a>(cli: &CheckCommand, resolved: &Resolved, mode: &'a Mode, log_level: LogLevel) -> Printer<'a> {
+    let run = &resolved.settings_resolver.root.run;
+    let fix_only = run.fix_only.unwrap_or(false);
+    let mut printer_flags = Flags::empty();
+    if !(cli.diff || fix_only) {
+        printer_flags |= Flags::SHOW_VIOLATIONS;
+    }
+    if run.show_fixes.unwrap_or(false) {
+        printer_flags |= Flags::SHOW_FIX_SUMMARY;
+    }
+    Printer {
+        format: run.output_format.unwrap_or_default(),
+        log_level,
+        mode,
+        flags: printer_flags,
+        preview: resolved.pyproject_config.settings.linter.preview.is_enabled(),
+        prefer_rule_codes: resolved.pyproject_config.settings.output_prefer_rule_codes,
+    }
+}
+
+pub(super) fn write_diffs(diagnostics: &mut Diagnostics, writer: &mut dyn Write) -> Result<()> {
+    diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
+    // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
+    diagnostics.diffs.sort_by(|left, right| left.0.cmp(&right.0));
+    write_flushed(writer, diagnostics.diffs.iter().map(|(_, diff)| diff))?;
+    Ok(())
 }
 
 // Ruff's `is_stdin`, so one command line reads the same source under both tools.

@@ -122,9 +122,10 @@ class ConfigTest(TestCase):
 
 ### Fix
 
-The fix is safe when the patcher name appears only in the three statements. It rewrites them as one assignment of
-`self.enterContext(...)` to the value's name, and keeps the indentation. A patcher name that the method uses elsewhere,
-a sequence with a comment in it, or statements that share a line with other code are reported without a fix.
+The fix is unsafe because `patch.stopall()` only stops patches registered by `start()`. The patcher name must appear
+only in the three statements. It rewrites them as one assignment of `self.enterContext(...)` to the value's name, and
+keeps the indentation. A patcher name that the method uses elsewhere, a sequence with a comment in it, or statements
+that share a line with other code are reported without a fix.
 
 ## Other tools
 

@@ -396,3 +396,43 @@ fn missing_from_all_leaves_imported_fixtures_unlisted() {
         "{stdout}"
     );
 }
+
+#[test_case("class Mock: pass\nclient = Mock()\nclient.timeout = 5\n", false ; "local_mock")]
+#[test_case("from client import Mock\nclient = Mock()\nclient.timeout = 5\n", false ; "other_module")]
+#[test_case("client = factories[0]()\nclient.timeout = 5\n", false ; "subscript")]
+#[test_case("client = factory().Mock()\nclient.timeout = 5\n", false ; "computed_receiver")]
+#[test_case("client = unknown.Mock()\nclient.timeout = 5\n", false ; "unbound_receiver")]
+#[test_case("from unittest.mock import Mock\nevents = []\nclient = Mock(return_value=events.append(1))\nclient.return_value = 2\n", true ; "keyword_has_effect")]
+fn mock_attribute_assignment_preserves_unrelated_constructors_and_side_effects(source: &str, reported: bool) {
+    let root = common::project(&[("test_client.py", source)]);
+    let (code, output, _) = common::fix_unsafe(root.path(), "SMP805");
+    assert_eq!(
+        (code, output.contains("SMP805"), common::read(root.path(), "test_client.py")),
+        (i32::from(reported), reported, source.to_owned())
+    );
+}
+
+#[test]
+fn safe_fixes_keep_patches_registered_with_stopall() {
+    let source = "from unittest import TestCase, mock\n\nclass Tests(TestCase):\n    def test_clock(self):\n        patcher = mock.patch('time.time')\n        clock = patcher.start()\n        self.addCleanup(patcher.stop)\n        mock.patch.stopall()\n";
+    let root = common::project(&[("test_clock.py", source)]);
+    let (code, output, _) = common::check(root.path(), &["--fix", "--select", "SMP812", "--target-version", "py311"]);
+    assert_eq!(
+        (code, output.contains("unsafe fix"), common::read(root.path(), "test_clock.py")),
+        (1, true, source.to_owned())
+    );
+}
+
+#[test_case("unittest.mock" ; "stdlib")]
+#[test_case("mock" ; "backport")]
+fn mock_setup_keeps_rebound_fixtures_and_fixes_an_imported_alias(module: &str) {
+    let source = format!(
+        "from pytest_mock import MockerFixture\nfrom {module} import Mock as Stub\n\ndef test_client(mocker: MockerFixture):\n    client = mocker.Mock()\n    client.timeout = 1\n    mocker = other()\n    stub = Stub()\n    stub.timeout = 2\n    return client, stub\n"
+    );
+    let root = common::project(&[("test_client.py", &source)]);
+    let (code, _, _) = common::fix_unsafe(root.path(), "SMP805");
+    assert_eq!(
+        (code, common::read(root.path(), "test_client.py")),
+        (0, source.replace("Stub()\n    stub.timeout = 2", "Stub(timeout=2)"))
+    );
+}

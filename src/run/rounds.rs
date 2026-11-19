@@ -111,7 +111,7 @@ fn lint_rounds<'f, T: Send>(
         if !overlay.is_empty() {
             return None;
         }
-        Some((file_caches[at]?.0, FileKey::of(files[at].path)?))
+        Some((file_caches[at]?.0, FileKey::of(files[at].path, filetime::FileTime::now())?))
     };
     // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
     if plumbing.rewrote.is_none() {

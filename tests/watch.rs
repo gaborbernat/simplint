@@ -36,6 +36,34 @@ fn check_watch_reruns_on_changes() {
     );
 }
 
+#[test]
+fn watch_stops_applying_fixes_when_configuration_disables_them() {
+    let root = project(&[
+        ("module.py", common::SECTIONED),
+        ("pyproject.toml", "[tool.simplint]\nfix = true\nper-file-ignores = { 'module.py' = ['SMP001'] }\n"),
+    ]);
+    let mut watched = Watched::start(root.path(), &["--select", "SMP001"]);
+    watched.wait_for("Found 0 errors.");
+    fs::write(root.path().join("new.txt"), "[tool.simplint]\nfix = false\n").expect("write configuration");
+    fs::rename(root.path().join("new.txt"), root.path().join("pyproject.toml")).expect("replace configuration");
+    watched.wait_for("Found 1 error.");
+    assert_eq!(
+        (common::read(root.path(), "module.py"), watched.stop(root.path()).0),
+        (common::SECTIONED.to_owned(), Some(2))
+    );
+}
+
+#[test]
+fn watch_diff_prints_the_edit() {
+    let root = project(&[("module.py", common::SECTIONED)]);
+    let mut watched = Watched::start(root.path(), &["--select", "SMP001", "--diff"]);
+    let removed = watched.wait_for("-# --- helpers ---");
+    assert_eq!(
+        (removed.as_str(), common::read(root.path(), "module.py"), watched.stop(root.path()).0),
+        ("-# --- helpers ---", common::SECTIONED.to_owned(), Some(2))
+    );
+}
+
 // A stub declares the API of its module, so editing one checks again even though stubs are not linted.
 #[test]
 fn check_watch_reruns_on_stub_changes() {

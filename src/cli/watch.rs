@@ -1,14 +1,14 @@
 use std::convert::Infallible;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::{Sender, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use anyhow::Result;
 use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher, recommended_watcher};
 use ruff::ExitStatus;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
-use crate::cli::printer::Printer;
+use crate::cli::check::{mode, printer, write_diffs};
 use crate::project::Ending;
 use crate::run::{CacheUse, Resolved, check_files};
 use crate::settings::HOOK_CONFIGS;
@@ -20,8 +20,6 @@ pub(super) fn watch(
     global_options: &GlobalConfigArgs,
     files: &[PathBuf],
     mut resolved: Resolved,
-    usage: &CacheUse,
-    printer: &Printer,
     mut writer: Box<dyn Write>,
 ) -> Result<ExitStatus> {
     let (sender, receiver) = channel();
@@ -30,21 +28,23 @@ pub(super) fn watch(
         sender,
         files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path),
     )?;
-    let Err(error) = rounds(
-        || receiver.recv().expect("the watcher keeps its channel open"),
-        |change| {
-            if change == Some(ChangeKind::Configuration) {
-                resolved = Resolved::new(cli, global_options)?;
-            }
-            clearscreen::clear()?;
-            printer.write_to_user(if change.is_some() {
-                "File change detected...\n"
-            } else {
-                "Starting linter in watch mode...\n"
-            });
-            printer.write_continuously(&mut writer, &check_files(files, &resolved, printer.mode, usage, Ending::Drop)?)
-        },
-    );
+    let Err(error) = rounds(&receiver, |change| {
+        if change == Some(ChangeKind::Configuration) {
+            resolved = Resolved::new(cli, global_options)?;
+        }
+        let mode = mode(cli, &resolved, files);
+        let printer = printer(cli, &resolved, &mode, global_options.log_level());
+        let usage = CacheUse::new(cli.no_cache, &mode, None);
+        clearscreen::clear()?;
+        printer.write_to_user(if change.is_some() {
+            "File change detected...\n"
+        } else {
+            "Starting linter in watch mode...\n"
+        });
+        let mut diagnostics = check_files(files, &resolved, &mode, &usage, Ending::Drop)?;
+        write_diffs(&mut diagnostics, &mut writer)?;
+        printer.write_continuously(&mut writer, &diagnostics)
+    });
     Err(error)
 }
 
@@ -59,15 +59,19 @@ fn watcher<'a>(
     Ok(watcher)
 }
 
-// Runs a round, then another on each change the events report, until a round or the events fail.
 fn rounds(
-    mut next_event: impl FnMut() -> notify::Result<notify::Event>,
+    events: &Receiver<notify::Result<Event>>,
     mut round: impl FnMut(Option<ChangeKind>) -> Result<()>,
 ) -> Result<Infallible> {
     round(None)?;
     loop {
-        if let Some(change) = change_detected(&next_event()?) {
-            round(Some(change))?;
+        let first = events.recv().expect("the watcher keeps its channel open");
+        let mut change = None;
+        for event in std::iter::once(first).chain(events.try_iter()) {
+            change = change.max(change_detected(&event?));
+        }
+        if change.is_some() {
+            round(change)?;
         }
     }
 }
@@ -75,8 +79,9 @@ fn rounds(
 // A change to a `.toml` file or a hook configuration can change the configuration; one to a Python file only needs
 // another check. Reads and other events need nothing.
 fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
-    // notify flags a rescan only on an event it reports as other, so the rescan branch Ruff keeps after this check
-    // never runs.
+    if event.need_rescan() {
+        return Some(ChangeKind::Configuration);
+    }
     if event.kind.is_access() || event.kind.is_other() {
         return None;
     }
@@ -95,15 +100,15 @@ fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
 }
 
 // Ruff's watch mode change detection, which the `ruff` crate keeps private.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ChangeKind {
-    Configuration,
     SourceFile,
+    Configuration,
 }
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::sync::mpsc::channel;
 
     use anyhow::anyhow;
     use notify::event::{AccessKind, ModifyKind};
@@ -117,15 +122,16 @@ mod tests {
 
     // The rounds run so far, and the events still to come; a round fails once the events run out.
     fn run(events: Vec<notify::Result<Event>>) -> (String, Vec<Option<ChangeKind>>) {
-        let events = RefCell::new(events.into_iter());
+        let (sender, receiver) = channel();
+        let empty = events.is_empty();
+        for event in events {
+            sender.send(event).expect("open receiver");
+        }
         let mut seen = Vec::new();
-        let Err(error) = rounds(
-            || events.borrow_mut().next().expect("an event"),
-            |change| {
-                seen.push(change);
-                if events.borrow().len() == 0 { Err(anyhow!("round failed")) } else { Ok(()) }
-            },
-        );
+        let Err(error) = rounds(&receiver, |change| {
+            seen.push(change);
+            if empty || change.is_some() { Err(anyhow!("round failed")) } else { Ok(()) }
+        });
         (error.to_string(), seen)
     }
 
@@ -142,15 +148,19 @@ mod tests {
     }
 
     #[test]
-    fn each_relevant_change_runs_a_round() {
+    fn queued_edits_share_one_round_and_reload_configuration() {
         let access = Ok(Event::new(EventKind::Access(AccessKind::Any)).add_path("module.py".into()));
 
-        let (error, seen) = run(vec![access, Ok(modified("pyproject.toml")), Ok(modified("module.py"))]);
+        let (error, seen) =
+            run(vec![access, Ok(modified("first.py")), Ok(modified("pyproject.toml")), Ok(modified("second.py"))]);
 
-        assert_eq!(
-            (error.as_str(), seen),
-            ("round failed", vec![None, Some(ChangeKind::Configuration), Some(ChangeKind::SourceFile)])
-        );
+        assert_eq!((error.as_str(), seen), ("round failed", vec![None, Some(ChangeKind::Configuration)]));
+    }
+
+    #[test]
+    fn an_overflow_reloads_configuration() {
+        let event = Event::new(EventKind::Other).set_flag(notify::event::Flag::Rescan);
+        assert_eq!(run(vec![Ok(event)]).1, vec![None, Some(ChangeKind::Configuration)]);
     }
 
     // A path that does not exist cannot be watched, which fails watching before any round.

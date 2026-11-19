@@ -11,6 +11,8 @@ keywords to the mock it creates, so the whole setup fits in one call.
 ## Example
 
 ```python report
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user)
 fetch.return_value = user
 fetch.side_effect = None
@@ -19,6 +21,8 @@ fetch.side_effect = None
 Use instead:
 
 ```python ok
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user, return_value=user, side_effect=None)
 ```
 
@@ -30,13 +34,15 @@ fetch = create_autospec(fetch_user, return_value=user, side_effect=None)
   or without an annotation, from a call to
   [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,
   `NonCallableMock`, `NonCallableMagicMock` or
-  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call
-  matches by the last part of its name, so `mocker.MagicMock()` counts too. Only that run of statements is reported,
-  since each one could be a keyword argument of the call.
+  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call must
+  resolve to `unittest.mock`, the `mock` backport or a parameter annotated as `pytest_mock.MockerFixture`. Only that run
+  of statements is reported, since each one could be a keyword argument of the call.
 
   - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines
 
     ```python report
+    from unittest.mock import create_autospec
+
     fetch = create_autospec(fetch_user)
     fetch.return_value = user
     fetch.side_effect = None
@@ -45,15 +51,21 @@ fetch = create_autospec(fetch_user, return_value=user, side_effect=None)
   - A `MagicMock` call assigned to a plain name
 
     ```python report
+    from unittest.mock import MagicMock
+
     client = MagicMock()
     client.timeout = 5
     ```
 
-  - An annotated assignment, here from `mocker.MagicMock()`
+  - A fixture parameter annotated as `MockerFixture`, here calling `mocker.MagicMock()`
 
     ```python report
-    client: MagicMock = mocker.MagicMock()
-    client.timeout = 5
+    from pytest_mock import MockerFixture
+
+
+    def test_client(mocker: MockerFixture):
+        client = mocker.MagicMock()
+        client.timeout = 5
     ```
 
 ### Exceptions
@@ -63,6 +75,8 @@ The run stops at:
 - **Any other statement, including `mock.child.attr = value`**: it is no longer a plain attribute of the new mock.
 
   ```python ok
+  from unittest.mock import MagicMock
+
   client = MagicMock()
   client.child.attr = 1
   ```
@@ -73,22 +87,30 @@ The run stops at:
   parameters, so passing one differs from setting the attribute or fails.
 
   ```python ok
+  from unittest.mock import MagicMock
+
   client = MagicMock()
   client.name = "api"
   ```
 
   ```python ok
+  from unittest.mock import MagicMock
+
   request = MagicMock()
   request.cls = int
   ```
 
   ```python report
+  from unittest.mock import MagicMock
+
   request = MagicMock()
   request.timeout = 5
   request.cls = int
   ```
 
   ```python fixed
+  from unittest.mock import MagicMock
+
   request = MagicMock(timeout=5)
   request.cls = int
   ```
@@ -97,18 +119,24 @@ The run stops at:
   second assignment. A later round of fixes folds it in, replacing the keyword's value.
 
   ```python report
+  from unittest.mock import MagicMock
+
   client = MagicMock()
   client.timeout = 5
   client.timeout = 6
   ```
 
   ```python fixed
+  from unittest.mock import MagicMock
+
   client = MagicMock(timeout=6)
   ```
 
 - **A value that refers to the mock itself**: the mock does not exist yet while its constructor's arguments run.
 
   ```python ok
+  from unittest.mock import MagicMock
+
   client = MagicMock()
   client.child = client.copy()
   ```
@@ -119,27 +147,37 @@ The fix moves the assignments into the constructor call as keyword arguments and
 keyword the call already passes replaces that keyword's value.
 
 ```python report
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user)
 fetch.return_value = user
 fetch.side_effect = None
 ```
 
 ```python fixed
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user, return_value=user, side_effect=None)
 ```
 
 ```python report
+from unittest.mock import MagicMock
+
 client = MagicMock(timeout=1)
 client.timeout = 5
 ```
 
 ```python fixed
+from unittest.mock import MagicMock
+
 client = MagicMock(timeout=5)
 ```
 
 A comment after the last argument does not hide its comma, so no second comma is added:
 
 ```python report
+from unittest.mock import MagicMock
+
 # fmt: off
 client = MagicMock(
     spec=dict,  # the real type
@@ -149,6 +187,8 @@ client.timeout = 3
 ```
 
 ```python fixed
+from unittest.mock import MagicMock
+
 # fmt: off
 client = MagicMock(
     spec=dict,  # the real type
@@ -161,11 +201,15 @@ spec is a function, `create_autospec` returns a wrapper function and hands the o
 the test no longer sees them on the object it holds.
 
 ```python report
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user)
 fetch.call_count = 0
 ```
 
 ```python fixed
+from unittest.mock import create_autospec
+
 fetch = create_autospec(fetch_user, call_count=0)
 ```
 
@@ -175,15 +219,21 @@ No fix is offered when:
   keyword;
 
   ```python report
+  from unittest.mock import MagicMock
+
   client = MagicMock(**options)
   client.timeout = 5
   ```
+
+- an existing keyword holds an expression whose evaluation would be lost;
 
 - an assignment shares a line with another statement;
 
 - a comment sits on its lines.
 
   ```python report
+  from unittest.mock import MagicMock
+
   client = MagicMock()
   client.timeout = 5  # seconds
   ```

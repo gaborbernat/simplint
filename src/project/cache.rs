@@ -1,6 +1,8 @@
+mod source;
+
 use std::fs;
 use std::hash::Hasher;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -11,9 +13,7 @@ use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use tempfile::NamedTempFile;
 
-// A file's modification time, permissions and size. Ruff's `FileCacheKey` hashes the first two; the size also catches a
-// rewrite within one tick of a coarse clock, or a copy that keeps the modification time. The size also bounds the
-// ranges of the facts cached under the key.
+// A generator or copy can preserve both timestamp and size while changing the source.
 #[derive(Clone, Copy)]
 pub struct FileKey {
     pub hash: u64,
@@ -27,10 +27,24 @@ impl CacheKey for FileKey {
 }
 
 impl FileKey {
-    pub fn of(path: &Path) -> Option<Self> {
-        let metadata = path.metadata().ok()?;
+    pub fn of(path: &Path, checked: FileTime) -> Option<Self> {
+        let mut options = fs::File::options();
+        options.read(true);
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_DELETE, FILE_SHARE_READ};
+            // A writer can keep its last journal record open until it closes the handle.
+            options.share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE);
+        }
+        let (mut file, metadata) = options.open(path).and_then(|file| file.metadata().map(|meta| (file, meta))).ok()?;
         let mut hasher = CacheKeyHasher::new();
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
+        if !source::change_key(&file, &metadata, checked, &mut hasher) {
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).ok()?;
+            hasher.write(&bytes);
+        }
         permissions(&metadata).cache_key(&mut hasher);
         metadata.len().cache_key(&mut hasher);
         Some(Self { hash: hasher.finish(), length: metadata.len() })
@@ -276,7 +290,7 @@ mod tests {
     fn writing_a_file_that_cannot_grow_fails() {
         crate::limits::limited(
             concat!(module_path!(), "::writing_a_file_that_cannot_grow_fails"),
-            crate::limits::Limit::FileSize,
+            crate::limits::Limit::FileSize(0),
             || TempDir::new().expect("create a temporary directory"),
             |root| {
                 let target = root.path().join("cache");

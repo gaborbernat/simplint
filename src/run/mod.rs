@@ -8,12 +8,12 @@ mod files;
 mod overlay;
 mod rounds;
 
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{self, Seek, Write};
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use colored::Colorize;
 use log::warn;
 use ruff::args::ConfigArguments;
@@ -269,10 +269,27 @@ fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> 
     let target = std::fs::canonicalize(path)?;
     ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
     ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
-    let mut file = OpenOptions::new().write(true).truncate(true).open(&target)?;
-    file.write_all(fixed.as_bytes())?;
-    file.sync_all()?;
-    Ok(())
+    let mut file = OpenOptions::new().write(true).open(&target)?;
+    // Keep the old tail until the replacement has been written. A short write can then be
+    // undone even when the file-size limit is smaller than the original file.
+    let (error, overwritten) = match file.write_all(fixed.as_bytes()) {
+        Err(error) => (error, file.stream_position()),
+        Ok(()) => match file.set_len(fixed.len() as u64).and_then(|()| file.sync_all()) {
+            Ok(()) => return Ok(()),
+            Err(error) => (error, Ok(original.len().max(fixed.len()) as u64)),
+        },
+    };
+    overwritten
+        .and_then(|end| restore_source(&mut file, original.as_bytes(), end))
+        .with_context(|| format!("could not restore {} after {error}", path.display()))?;
+    Err(error.into())
+}
+
+fn restore_source(file: &mut File, original: &[u8], overwritten: u64) -> io::Result<()> {
+    file.rewind()?;
+    let end = usize::try_from(overwritten.min(original.len() as u64)).expect("bounded by the source length");
+    file.write_all(&original[..end])?;
+    if overwritten > original.len() as u64 { file.set_len(original.len() as u64) } else { Ok(()) }
 }
 
 // A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
@@ -385,13 +402,42 @@ mod tests {
         );
     }
 
-    // Linux takes a write to `/dev/null` but refuses to sync it, which fails the write.
+    // Linux accepts the write to /dev/null but refuses both attempts to truncate it.
     #[cfg(target_os = "linux")]
     #[test]
-    fn write_source_fails_when_the_file_takes_no_sync() {
+    fn write_source_reports_a_failed_restore() {
         let error = write_source(&PathBuf::from("/dev/null"), &[PathBuf::from("/dev")], "", "fixed = 1\n")
-            .expect_err("no sync");
-        assert_eq!(error.downcast_ref::<std::io::Error>().map(std::io::Error::kind), Some(ErrorKind::InvalidInput));
+            .expect_err("cannot truncate");
+        assert_eq!(
+            (
+                error.to_string().contains("could not restore /dev/null"),
+                error.downcast_ref::<std::io::Error>().map(std::io::Error::kind)
+            ),
+            (true, Some(ErrorKind::InvalidInput))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restoring_a_prefix_reports_seek_and_write_errors() {
+        use std::fs::File;
+        use std::os::fd::OwnedFd;
+        use std::os::unix::net::UnixStream;
+
+        let (socket, _peer) = UnixStream::pair().expect("socket pair");
+        let mut unseekable = File::from(OwnedFd::from(socket));
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("module.py");
+        std::fs::write(&path, b"xyz").expect("write file");
+        let mut readonly = File::open(&path).expect("open read-only");
+        assert_eq!(
+            (
+                super::restore_source(&mut unseekable, b"abc", 3).expect_err("seek").raw_os_error(),
+                super::restore_source(&mut readonly, b"abc", 3).expect_err("write").raw_os_error(),
+                std::fs::read(path).expect("read file")
+            ),
+            (Some(libc::ESPIPE), Some(libc::EBADF), b"xyz".to_vec())
+        );
     }
 
     #[test]
@@ -421,26 +467,34 @@ mod tests {
         );
     }
 
-    // A file that cannot grow fails the write, as on a full disk.
+    // One partial write overwrites only the prefix, and one also extends the file.
     #[cfg(unix)]
     #[test]
     fn write_source_fails_when_the_file_cannot_grow() {
+        const FILES: [(&str, &str); 2] = [("long.py", "read = 1\n"), ("short.py", "old")];
         crate::limits::limited(
             concat!(module_path!(), "::write_source_fails_when_the_file_cannot_grow"),
-            crate::limits::Limit::FileSize,
+            crate::limits::Limit::FileSize(5),
             || {
                 let directory = tempfile::TempDir::new().expect("temporary directory");
-                std::fs::write(directory.path().join("module.py"), "read = 1\n").expect("write file");
+                for (name, original) in FILES {
+                    std::fs::write(directory.path().join(name), original).expect("write file");
+                }
                 directory
             },
             |directory| {
                 let roots = [std::fs::canonicalize(directory.path()).expect("canonical directory")];
-                let error = write_source(&directory.path().join("module.py"), &roots, "read = 1\n", "fixed = 1\n")
-                    .expect_err("the file cannot grow");
-                assert_eq!(
-                    error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
-                    Some(ErrorKind::FileTooLarge)
-                );
+                for (name, original) in FILES {
+                    let path = directory.path().join(name);
+                    let error = write_source(&path, &roots, original, "fixed = 1\n").expect_err("file size limit");
+                    assert_eq!(
+                        (
+                            error.downcast_ref::<std::io::Error>().map(std::io::Error::kind),
+                            std::fs::read_to_string(path).expect("read original")
+                        ),
+                        (Some(ErrorKind::FileTooLarge), original.to_owned())
+                    );
+                }
             },
         );
     }

@@ -22,10 +22,14 @@ or its ``--no-`` form, overrides them.
 Cache
 -----
 
-Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time and
-permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
-depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
-only per-file rules check keeps its cached result.
+Simplint caches which files had nothing to report. It checks modification time, permissions and size, and uses the
+filesystem's change information to detect edits that preserve all three. On local filesystems with reliable Unix
+change times it hashes recently changed files until the clock tick has passed. On Windows it uses the file's change
+journal record when available. Other filesystems use a content hash.
+
+With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also depends on the names other files use
+from that file, so editing an importer checks the files it imports again. Files checked only by per-file rules keep
+their cached results.
 
 A file whose fixes cannot be written is not cached, because whether its directory lets it be written is not part of its
 key. A ``--diff`` run caches nothing computed from a fix it keeps in memory, neither for the file it fixes nor for

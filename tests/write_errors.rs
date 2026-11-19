@@ -63,13 +63,14 @@ fn check_fails_when_the_output_file_is_full() {
     assert_eq!((code, stderr.contains(FULL)), (2, true), "{stderr}");
 }
 
-// A report larger than the pipe's buffer blocks until the reader goes away, so closing the pipe once the count is
-// out makes the report, not the notices before it, the write that fails. A closed pipe ends the run quietly.
-#[test]
-fn watch_ends_when_the_report_meets_a_closed_pipe() {
-    let root = project(&[("module.py", &"# --- helpers ---\nx = 1\n".repeat(500))]);
+// A report or patch larger than the pipe buffer is still being written when the reader closes it.
+#[test_case(&[], "Watching for file changes" ; "report")]
+#[test_case(&["--diff"], "--- " ; "diff")]
+fn watch_ends_when_its_output_meets_a_closed_pipe(flags: &[&str], marker: &str) {
+    let root = project(&[("module.py", &"# --- helpers ---\nx = 1\n".repeat(4000))]);
     let mut child = command(root.path())
         .args(["check", "--select", "SMP001", "--watch"])
+        .args(flags)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -77,9 +78,9 @@ fn watch_ends_when_the_report_meets_a_closed_pipe() {
         .expect("runs");
     let mut stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
     let mut line = String::new();
-    while !line.contains("Watching for file changes") {
+    while !line.contains(marker) {
         line.clear();
-        stdout.read_line(&mut line).expect("read stdout");
+        assert_ne!(stdout.read_line(&mut line).expect("read stdout"), 0, "missing {marker}");
     }
 
     drop(stdout);

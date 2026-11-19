@@ -4,8 +4,21 @@ use ruff_python_ast::{self as ast, Expr};
 use crate::semantic::Semantic;
 use crate::syntax::{MOCK_CLASSES, decorator_callee, last_segment};
 
-pub(crate) fn is_mock_constructor(func: &Expr) -> bool {
-    last_segment(func).is_some_and(|last| MOCK_CLASSES.contains(&last))
+pub(crate) fn mock_constructor(semantic: &Semantic, func: &Expr) -> Option<&'static str> {
+    let qualified = semantic.qualified_name(func);
+    let name = if let Some(ref name) = qualified {
+        let (["unittest", "mock", name] | ["mock", name]) = name.segments() else { return None };
+        *name
+    } else {
+        let attribute = func.as_attribute_expr()?;
+        let receiver = attribute.value.as_name_expr()?;
+        let annotation = semantic.unambiguous_parameter_annotation(receiver)?;
+        if !semantic.resolves_to(annotation, &["pytest_mock", "MockerFixture"]) {
+            return None;
+        }
+        attribute.attr.as_str()
+    };
+    MOCK_CLASSES.iter().copied().find(|&class| class == name)
 }
 
 // `create_autospec` takes the spec it builds the mock from, so it is never built without one.

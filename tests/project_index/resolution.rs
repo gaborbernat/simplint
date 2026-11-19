@@ -31,6 +31,29 @@ fn long_import_cycle_names_its_first_files_and_counts_the_rest() {
 }
 
 #[test]
+fn a_branch_in_a_cycle_keeps_each_modules_shortest_return_path() {
+    let root = project(&[
+        ("a.py", "import b\nimport c\n"),
+        ("b.py", "import c\n"),
+        ("c.py", "import d\n"),
+        ("d.py", "import e\n"),
+        ("e.py", "import a\n"),
+    ]);
+    let (_, reports, _) = check(root.path(), &["--select", "SMP308"]);
+    let chains: Vec<_> = reports.lines().filter_map(|line| line.split('`').nth(1)).collect();
+    assert_eq!(
+        chains,
+        [
+            "a.py -> b.py -> c.py -> d.py -> e.py -> a.py",
+            "b.py -> c.py -> d.py -> e.py -> a.py -> b.py",
+            "c.py -> d.py -> e.py -> a.py -> c.py",
+            "d.py -> e.py -> a.py -> c.py -> d.py",
+            "e.py -> a.py -> c.py -> d.py -> e.py",
+        ]
+    );
+}
+
+#[test]
 fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
     let body = "def run(log):\n    log(1)\n    log(2)\n    log(3)\n    log(4)\n    log(5)\n    log(6)\n";
     let names: Vec<String> = (0..5).map(|index| format!("copy{index}.py")).collect();

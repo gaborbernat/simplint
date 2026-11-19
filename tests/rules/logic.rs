@@ -1926,3 +1926,13 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         )
     );
 }
+
+#[test_case("cache" ; "cache")]
+#[test_case("lru_cache(maxsize=10)" ; "configured_lru_cache")]
+fn explicit_default_keeps_its_cache_key(decorator: &str) {
+    let source = format!(
+        "import functools\n@functools.{decorator}\ndef build(size=1):\n    return []\nassert build() is not build(1)\n"
+    );
+    let root = common::project(&[("factory.py", &source)]);
+    assert_eq!((common::fix_unsafe(root.path(), "SMP560").0, common::read(root.path(), "factory.py")), (0, source));
+}

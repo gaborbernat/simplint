@@ -59,7 +59,7 @@ fn check_sequence<'a>(
             checker.text(call.range()),
             checker.line_ending()
         );
-        Fix::safe_edit(Edit::range_replacement(replacement, source.full_lines_range(range)))
+        Fix::unsafe_edit(Edit::range_replacement(replacement, source.full_lines_range(range)))
     });
     checker.report_fix(
         Rule::UnittestEnterContext,
