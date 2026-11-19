@@ -67,6 +67,11 @@ pub(crate) fn local_function<'a>(
             if receiver(method) != Some(object.id.as_str()) || semantic.is_rebound(object.id.as_str()) {
                 return None;
             }
+            // A method defined here has a binding in the file. An inherited helper called in every test would
+            // otherwise scan the whole class for each call.
+            if semantic.local_bindings(attr.as_str()).is_empty() && semantic.bindings(attr.as_str()).is_empty() {
+                return None;
+            }
             let mut namesakes = class.body.iter().filter(|stmt| binds(stmt, attr.as_str()));
             let function = namesakes.next()?.as_function_def_stmt()?;
             if namesakes.next().is_some() {

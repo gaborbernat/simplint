@@ -55,3 +55,12 @@ def caller(cancel, cancel_msg, source, target, first, second, third, rest):
     triple(third, first)
     decorated(third, first, second)
     unknown(third, first, second)
+
+
+class Worker(str):
+    def call(self, first, second):
+        self.deliver(first, first, second)
+        self.replace(first, first, second)
+
+    def deliver(self, first, second, third):
+        pass
