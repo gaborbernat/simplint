@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.14.1 (2026-11-19)
+
+<a name="release-0-14-1"></a>
+
+<a name="release-0-14-1-fixed"></a>
+
+### Fixed
+
+- [`default-argument-value`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/logic/default_argument_value.md)
+  keeps explicit defaults on calls to cached functions, where omitting an argument can select a different cache entry
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- A partial write during `--fix`, `--add-noqa` or `--add-ignore` restores the original source, including the contents
+  visible through hard links ([#155](https://github.com/gaborbernat/simplint/pull/155)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A cached check with only file-local rules skips the import search directory walk
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`import-cycle`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/imports/import_cycle.md) shares the
+  return-path search across modules with one way into and out of an import cycle
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-lazy-modules-list`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/imports/up_lazy_modules_list.md)
+  keeps `__lazy_modules__` when a mixed import still needs it, even if a separate import of the same module can take
+  `lazy` ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-attribute-assignment`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/testing/mock_attribute_assignment.md)
+  checks the constructor binding before moving attributes into a mock call. A local class named `Mock` keeps its
+  assignments ([#155](https://github.com/gaborbernat/simplint/pull/155)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-attribute-assignment`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/testing/mock_attribute_assignment.md)
+  keeps an existing keyword value when replacing it would discard the evaluation of a nonliteral expression
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`up-unittest-enter-context`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/testing/up_unittest_enter_context.md)
+  requires `--unsafe-fixes` because `patch.stopall()` cannot stop a patch entered through `self.enterContext()`
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`ineffective-lazy-declaration`](https://github.com/gaborbernat/simplint/blob/0.14.1/src/rules/imports/ineffective_lazy_declaration.md)
+  keeps lazy imports of platform-specific modules such as `nt` and `posix`
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- A change to a Python file invalidates its cached results even when the new contents have the same length, permissions
+  and modification time. Unchanged files on supported local filesystems can reuse results without rereading the source
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--watch --diff` prints the patch for each changed file on every round that finds a fix
+  ([#155](https://github.com/gaborbernat/simplint/pull/155)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--watch` picks up changes to the fix settings in `pyproject.toml`, including turning off `fix` while the watcher is
+  running. File changes already queued are checked together ([#155](https://github.com/gaborbernat/simplint/pull/155))
+  by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.0 (2026-11-18)
 
 <a name="release-0-14-0"></a>
