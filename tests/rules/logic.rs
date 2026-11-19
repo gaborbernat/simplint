@@ -1936,3 +1936,12 @@ fn explicit_default_keeps_its_cache_key(decorator: &str) {
     let root = common::project(&[("factory.py", &source)]);
     assert_eq!((common::fix_unsafe(root.path(), "SMP560").0, common::read(root.path(), "factory.py")), (0, source));
 }
+
+#[test_case("import ｒｅ as rx\n\nPATTERN = rx.compile('(x)(y)')\n", "SMP532", 1 ; "normalized_regex_import")]
+#[test_case("ｓｅｎｔｉｎｅｌ = 1\n_MISSING = object()\n", "SMP511", 0 ; "normalized_sentinel_binding")]
+#[test_case("class Obj:\n    pass\n\nObj.ｓｅｎｔｉｎｅｌ = 1\n_MISSING = object()\n", "SMP511", 1 ; "normalized_sentinel_attribute")]
+fn normalized_identifiers(source: &str, rule: &str, expected: usize) {
+    let root = common::project(&[("module.py", source)]);
+    let (status, stdout, _) = check(root.path(), &["--select", rule, "--target-version", "py315", "--no-cache"]);
+    assert_eq!((status, stdout.matches(rule).count()), (i32::from(expected > 0), expected), "{stdout}");
+}
