@@ -64,9 +64,16 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
 
 // rkyv reads an archive in place, which needs its bytes aligned to 16.
 pub fn read_aligned(path: &Path) -> io::Result<AlignedVec<16>> {
-    let mut file = fs::File::open(path)?;
-    let mut bytes = AlignedVec::<16>::new();
-    bytes.extend_from_reader(&mut file)?;
+    let file = fs::File::open(path)?;
+    let size = file.metadata().map(|metadata| metadata.len());
+    read_archive(file, size)
+}
+
+fn read_archive(mut reader: impl Read, size: io::Result<u64>) -> io::Result<AlignedVec<16>> {
+    // Leave room for the EOF read so a full buffer does not double in size just to finish reading.
+    let size = size.unwrap_or_default().min(64 * 1024 * 1024);
+    let mut bytes = AlignedVec::<16>::with_capacity(usize::try_from(size).expect("64 MiB fits usize") + 1);
+    bytes.extend_from_reader(&mut reader)?;
     Ok(bytes)
 }
 
@@ -229,7 +236,7 @@ mod tests {
     use tempfile::TempDir;
     use test_case::test_case;
 
-    use super::{Modified, init, is_build_name, last_written, newest, read_aligned, write_atomically};
+    use super::{Modified, init, is_build_name, last_written, newest, read_aligned, read_archive, write_atomically};
 
     #[test_case("0.11.1-0123456789abcdef", true ; "release")]
     #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
@@ -238,6 +245,13 @@ mod tests {
     #[test_case("0.11.1-0123456789ABCDEF", false ; "uppercase_hash")]
     fn build_directory_names(name: &str, build: bool) {
         assert_eq!(is_build_name(name), build);
+    }
+
+    #[test_case(Err(std::io::ErrorKind::Unsupported) ; "unavailable")]
+    #[test_case(Ok(2) ; "underestimate")]
+    fn cache_reads_all_bytes_without_an_exact_size(size: Result<u64, std::io::ErrorKind>) {
+        let bytes = read_archive(b"archive".as_slice(), size.map_err(std::io::Error::from)).expect("read archive");
+        assert_eq!(bytes.as_slice(), b"archive");
     }
 
     #[test]
