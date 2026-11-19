@@ -173,8 +173,7 @@ jobs:
           maturin-version: ${{ needs.maturin.outputs.version }}
           target: ${{ matrix.platform.target }}
           args: >-
-            --locked --release --out dist --target-dir target
-            ${{ matrix.platform.bolt && '-- -Cstrip=none -Clink-arg=-Wl,--emit-relocs' || '' }}
+            --locked --release --out dist --target-dir target ${{ matrix.platform.bolt && '-- -Cstrip=none -Clink-arg=-Wl,--emit-relocs' || '' }}
           manylinux: ${{ matrix.platform.manylinux || 'auto' }}
           docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
           sccache: false
