@@ -26,7 +26,7 @@ def unpack(package: Package, work: Path) -> Path:
     destination = work / "sources" / package.name
     with tarfile.open(archive) as source:
         source.extractall(destination, filter="data")
-    return next(destination.iterdir())
+    return next(destination.iterdir()).resolve()
 
 
 def executable(wheel: Path, directory: Path, name: str) -> Path:
