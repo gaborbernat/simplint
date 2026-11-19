@@ -121,8 +121,16 @@ fn lint_rounds<'f, T: Send>(
     let lint = |file: &RunFile, project: &Project, cache| {
         work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
     };
-    let mut passes: Vec<Vec<T>> =
-        files.par_iter().zip(file_caches).map(|(file, cache)| vec![lint(file, &project, *cache)]).collect();
+    let mut passes = (0..files.len()).map(|_| Vec::new()).collect::<Vec<_>>();
+    // Workers take the largest files first so the last large module does not delay the entire round.
+    let mut order: Vec<_> = passes.iter_mut().enumerate().collect();
+    order.sort_by_cached_key(|&(at, _)| {
+        std::cmp::Reverse(
+            file_caches[at]
+                .map_or_else(|| files[at].path.metadata().map_or(0, |metadata| metadata.len()), |(_, key)| key.length),
+        )
+    });
+    order.into_iter().par_bridge().for_each(|(at, passes)| passes.push(lint(&files[at], &project, file_caches[at])));
     let Some(rewrote) = plumbing.rewrote else {
         plumbing.ending.end(project);
         return passes;
