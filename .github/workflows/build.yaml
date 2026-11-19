@@ -24,6 +24,10 @@ on:
           - dist
           - control
         default: dist
+      release_artifacts:
+        description: Compare wheels from two release workflow runs
+        type: boolean
+        default: false
       targets:
         description: JSON list of target triples
         type: string
@@ -38,7 +42,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(inputs.targets) }}
-    runs-on: ${{ fromJSON('{"aarch64-unknown-linux-gnu":"ubuntu-26.04-arm","aarch64-unknown-linux-musl":"ubuntu-26.04-arm","x86_64-unknown-linux-musl":"ubuntu-26.04","aarch64-apple-darwin":"macos-26","x86_64-apple-darwin":"macos-26-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[matrix.target] }}
+    runs-on: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-26.04","aarch64-unknown-linux-gnu":"ubuntu-26.04-arm","aarch64-unknown-linux-musl":"ubuntu-26.04-arm","x86_64-unknown-linux-musl":"ubuntu-26.04","aarch64-apple-darwin":"macos-26","x86_64-apple-darwin":"macos-26-intel","x86_64-pc-windows-msvc":"windows-2025","aarch64-pc-windows-msvc":"windows-11-arm"}')[matrix.target] }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -58,7 +62,13 @@ jobs:
           CONTROL_RUN: ${{ inputs.control_run }}
           CONTROL_WHEEL: ${{ inputs.control_wheel }}
           CANDIDATE_WHEEL: ${{ inputs.candidate_wheel }}
+          RELEASE_ARTIFACTS: ${{ inputs.release_artifacts }}
         run: |
+          if [[ "$RELEASE_ARTIFACTS" == true ]]; then
+            gh run download "$RUN_ID" --name "simplint-wheels-pgo-$TARGET" --dir wheel-pair/dist
+            gh run download "$CONTROL_RUN" --name "simplint-wheels-pgo-$TARGET" --dir wheel-pair/control
+            exit
+          fi
           gh run download "$RUN_ID" --name "measurements-$TARGET" --dir wheel-pair
           if [[ -n "$CONTROL_RUN" ]]; then
             gh run download "$CONTROL_RUN" --name "measurements-$TARGET" --dir reference
