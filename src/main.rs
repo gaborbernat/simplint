@@ -33,6 +33,7 @@ use crate::cli::subcommands;
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 #[cfg(all(
+    not(target_os = "macos"),
     not(target_os = "windows"),
     not(target_os = "openbsd"),
     not(target_os = "aix"),

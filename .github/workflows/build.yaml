@@ -1,50 +1,8 @@
-name: 🏗️ build
+name: Compare macOS system allocation
 on:
   workflow_dispatch:
-    inputs:
-      pgo:
-        description: Build the wheels with profile-guided optimization, as a release does
-        type: boolean
-        default: false
-  push:
-    branches: ["main"]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "docs/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "pyproject.toml"
-      - ".github/workflows/build.yaml"
-  workflow_call:
-  schedule:
-    - cron: "7 10 * * *"
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 permissions: {}
 jobs:
-  build:
-    name: 🏗️ Build distributions
-    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@b34c57a8a06e7b043c2ddd0b6b7a8a778d7aa8f7 # 6.8.5
-    with:
-      package-name: simplint
-      matrix: |
-        [
-          {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}
-          ${{ (!startsWith(github.ref, 'refs/tags/') && !inputs.pgo) && ',
-          {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"},
-          {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"},
-          {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"},
-          {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}' || '' }}
-        ]
-      pre-build-command: ${{ !startsWith(github.ref, 'refs/tags/') && 'cargo install cargo-edit --version 0.13.13 --locked && cargo set-version --bump patch' || '' }}
-      # sccache saves one cache entry per compiled object, which crowds the larger caches out of the repository quota.
-      release-build: true
-    permissions:
-      contents: read
-      pull-requests: read
   maturin:
     name: ⚙️ Read locked maturin version
     runs-on: ubuntu-26.04
@@ -77,7 +35,6 @@ jobs:
   pgo:
     name: 🏗️ PGO wheels
     needs: maturin
-    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo) }}
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
@@ -87,14 +44,8 @@ jobs:
         # PGO legs stay here: each needs an instrumented build, a training run, and a profile check in one job.
         # The shared workflow builds every other leg and the sdist.
         platform:
-          - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu, bolt: true}
-          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl, ext_tsp: true}
-          - {runner: windows-11-arm, target: aarch64, pgo: aarch64-pc-windows-msvc}
-          - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
-          - {runner: macos-26-intel, target: x86_64, pgo: x86_64-apple-darwin}
           - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
-          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu, bolt: true}
-          - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
+          - {runner: macos-26-intel, target: x86_64, pgo: x86_64-apple-darwin}
     env:
       PGO_TARGET: ${{ matrix.platform.pgo }}
     steps:
@@ -129,7 +80,7 @@ jobs:
         uses: actions/cache/restore@v6.1.0
         with:
           path: pgo/simplint.profdata
-          key: pgo-profile-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
+          key: pgo-profile-macos-system-allocator-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
@@ -182,13 +133,8 @@ jobs:
           key: ${{ steps.profile.outputs.cache-primary-key }}
       - name: ⚙️ Use PGO profile
         shell: bash
-        env:
-          EXT_TSP: ${{ matrix.platform.ext_tsp || false }}
         run: |
           flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
-          if [[ "$EXT_TSP" == true ]]; then
-            flags+=" -Cllvm-args=-enable-ext-tsp-block-placement"
-          fi
           echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
           echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
       - name: 🏗️ Build wheels
@@ -217,35 +163,50 @@ jobs:
       - name: 🔍 Check the PGO profile matched
         shell: bash
         run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
-      - name: ⚡ Optimize the Linux executable
-        if: ${{ matrix.platform.bolt }}
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bolt-22 python3-wheel
-          work=$(mktemp -d)
-          /usr/bin/python3 -m wheel unpack --dest "$work/wheel" dist/*.whl
-          binary=("$work"/wheel/*/*.data/scripts/simplint)
-          python -m tasks.pgo download pgo-corpus --extract "$work/corpus"
-          instrument=()
-          if [[ "$PGO_TARGET" == aarch64-* ]]; then
-            instrument+=(-no-lse-atomics)
-            export RAYON_NUM_THREADS=1
-          fi
-          llvm-bolt-22 "${binary[0]}" "${instrument[@]}" -instrument -instrumentation-file="$work/profile" -o "$work/train"
-          status=0
-          "$work/train" check --config tasks/pgo.toml --no-cache "$work/corpus" > /dev/null || status=$?
-          if (( status > 1 )); then exit "$status"; fi
-          llvm-bolt-22 "${binary[0]}" -data="$work/profile" -reorder-blocks=ext-tsp -reorder-functions=cdsort \
-            -split-functions -split-all-cold -o "$work/optimized"
-          strip --strip-all --remove-section=.note.bolt_info -o "${binary[0]}" "$work/optimized"
-          chmod +x "${binary[0]}"
-          "${binary[0]}" --version
-          mkdir dist-bolt
-          /usr/bin/python3 -m wheel pack --dest-dir dist-bolt "$work"/wheel/*
       - name: 📤 Upload wheels
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: simplint-wheels-pgo-${{ matrix.platform.pgo }}
-          path: ${{ matrix.platform.bolt && 'dist-bolt' || 'dist' }}
+          name: macos-system-${{ matrix.platform.pgo }}
+          path: dist
           if-no-files-found: error
+  measure:
+    name: Compare cold checks on ${{ matrix.runner }}
+    needs: pgo
+    permissions:
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: macos-26, target: aarch64-apple-darwin}
+          - {runner: macos-26-intel, target: x86_64-apple-darwin}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: latest-known
+          enable-cache: false
+          activate-environment: true
+          python-version: "3.15"
+      - name: Download paired wheels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          gh run download 44684457946 --name "simplint-wheels-pgo-$TARGET" --dir control
+          gh run download "$GITHUB_RUN_ID" --name "macos-system-$TARGET" --dir dist
+      - run: python -m tasks.wheel_trial
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: measurements-${{ matrix.target }}
+          path: |
+            totals.txt
+            measurements.csv
+            control/*.whl
+            dist/*.whl
+          if-no-files-found: warn
