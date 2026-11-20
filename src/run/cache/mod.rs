@@ -362,9 +362,14 @@ impl<'a> Cache<'a> {
         let directory = self.path.parent().expect("a cache file lies in the build directory");
         // Another simplint build may have removed the directory as stale since this run opened it.
         fs::create_dir_all(directory).context("Failed to create cache directory")?;
-        let serialized = rkyv::to_bytes::<rkyv::rancor::Error>(&package).expect("the cache archives into memory");
         let mut temp_file = tempfile_in(directory).context("Failed to create temporary file")?;
-        temp_file.write_all(&serialized).context("Failed to write serialized cache to temporary file.")?;
+        {
+            let mut buffer = io::BufWriter::with_capacity(64 * 1024, &mut temp_file);
+            let writer = rkyv::ser::writer::IoWriter::new(&mut buffer);
+            rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(&package, writer)
+                .context("Failed to write serialized cache to temporary file.")?;
+            buffer.flush().context("Failed to write serialized cache to temporary file.")?;
+        }
         let persisted = temp_file.persist(&self.path).map(drop);
         // On Windows another simplint process may hold the cache file open; its run writes the cache instead.
         #[cfg(windows)]
