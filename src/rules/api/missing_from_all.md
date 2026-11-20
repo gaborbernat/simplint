@@ -332,6 +332,26 @@ signature reaches it:
   print(_LIMIT)
   ```
 
+- **pytest fixtures**. Even when another module imports a fixture, this rule leaves it out of `__all__`.
+  [imported-fixture](SMP822.html) flags the fixture definition.
+
+  ```python ok file=helpers.py
+  import pytest
+
+  __all__ = []
+
+
+  @pytest.fixture
+  def order() -> str:
+      return "order-1"
+  ```
+
+  ```python context file=cli.py
+  from helpers import order
+
+  print(order)
+  ```
+
 - **`__init__.py` files**: these are not checked.
 
   ```python ok file=pkg/__init__.py
@@ -894,6 +914,8 @@ print(local())
 ### Related rules
 
 [unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.
+
+[imported-fixture](SMP822.html) flags fixtures that another module imports or that their module lists in `__all__`.
 
 ## Other tools
 
