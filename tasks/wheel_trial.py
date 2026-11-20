@@ -106,9 +106,7 @@ def measure() -> None:
                             if rep < 0
                             else ["--output-format", "concise"]
                         )
-                        run_env = (
-                            env | {"_RJEM_MALLOC_CONF": "tcache_gc_incr_bytes:524288"} if name == "candidate" else env
-                        )
+                        run_env = env | {"MIMALLOC_PURGE_DELAY": "100"} if name == "candidate" else env
                         start = time.perf_counter()
                         result = subprocess.run(
                             [binaries[name], *flags, *options, "--cache-dir", str(Path(cache) / name), "."],
