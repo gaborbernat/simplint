@@ -500,7 +500,7 @@ mod tests {
     use ruff_diagnostics::{Edit, Fix};
     use ruff_text_size::TextSize;
 
-    use super::{assert_disjoint_edits, source_file_at};
+    use super::{assert_disjoint_edits, disjoint_edits, source_file_at};
     use crate::lint::registry::Rule;
 
     #[test]
@@ -516,17 +516,19 @@ mod tests {
             [Edit::insertion("x".to_owned(), TextSize::new(2))],
         );
 
+        assert!(disjoint_edits(&fix));
         assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
     }
 
     #[test]
-    #[should_panic(expected = "unused-ignore built a fix with overlapping edits")]
+    #[cfg_attr(debug_assertions, should_panic(expected = "unused-ignore built a fix with overlapping edits"))]
     fn overlapping_edits_fail_the_check() {
         let fix = Fix::safe_edits(
             Edit::deletion(TextSize::new(0), TextSize::new(3)),
             [Edit::deletion(TextSize::new(2), TextSize::new(4))],
         );
 
+        assert!(!disjoint_edits(&fix));
         assert_disjoint_edits(Rule::UnusedIgnore, Some(&fix));
     }
 }
