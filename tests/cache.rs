@@ -1146,6 +1146,30 @@ fn unwritten_fix_is_not_cached_as_clean() {
     );
 }
 
+#[test]
+fn fixing_a_large_module_checks_the_rewritten_source() {
+    let padding = format!("# {}\n", "a".repeat(64 * 1024));
+    let root = project(&[
+        ("module.py", &format!("{padding}# --- helpers ---\nVALUE = 1\n")),
+        ("other.py", &format!("{padding}# --- more helpers ---\nOTHER = 2\n")),
+    ]);
+    let args = ["--select", "SMP001,SMP530"];
+    let fixed = check(root.path(), &[&args[..], &["--fix"]].concat());
+    assert_eq!((fixed.0, read(root.path(), "module.py").strip_prefix(&padding)), (0, Some("VALUE = 1\n")));
+    assert_eq!(read(root.path(), "other.py").strip_prefix(&padding), Some("OTHER = 2\n"));
+    assert_eq!(check(root.path(), &args), fresh_run(root.path(), &args));
+}
+
+#[test]
+fn a_large_invalid_module_reports_the_same_parse_error_with_a_cold_cache() {
+    let source = format!("# {}\ndef broken(:\n", "a".repeat(64 * 1024));
+    let root = project(&[("invalid.py", &source)]);
+    let args = ["--select", "SMP530"];
+    let checked = check(root.path(), &args);
+    assert!(checked.2.contains("does not parse"), "{}", checked.2);
+    assert_eq!(checked, fresh_run(root.path(), &args));
+}
+
 // A `--diff` run keeps its fixes in memory. A file linted after a fix in another file sees that fix, so its reports are
 // not the disk's and a later run must not reuse them: `writer.py` repeats `reader.py` only until `reader.py`'s fix
 // changes its statements.

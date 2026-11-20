@@ -317,10 +317,12 @@ fn index_cached<'f, T: Send>(
             return Ok(Some(in_file_order(passes)));
         }
     }
+    let retain = retained_parses(indexed, &file_caches);
     let mut facts: Vec<Option<FileFacts>> = indexed
         .par_iter()
         .zip(&file_caches)
-        .map(|(file, cached)| file_facts(file, *cached, parts, plumbing.overlay))
+        .zip(retain)
+        .map(|((file, cached), retain)| file_facts(file, *cached, parts, plumbing.overlay, retain))
         .collect();
     let mut passes: Vec<(usize, Vec<T>)> = Vec::new();
     let no_docs = DocReferences::default();
@@ -349,6 +351,28 @@ fn index_cached<'f, T: Send>(
     }
     persist_views(opened.map(|(views, _)| views), plumbing.ending)?;
     Ok(Some(in_file_order(passes)))
+}
+
+// Large files benefit most from a second use of the tree. Limit the total source bytes retained across the run.
+fn retained_parses(indexed: &[RunFile], file_caches: &[Option<(&Cache, FileKey)>]) -> Vec<bool> {
+    let mut sizes: Vec<_> = file_caches
+        .iter()
+        .enumerate()
+        .filter_map(|(at, cache)| {
+            let size = cache.as_ref()?.1.length;
+            (indexed[at].linted && size > 48 * 1024).then_some((size, at))
+        })
+        .collect();
+    sizes.sort_unstable_by(|a, b| b.cmp(a));
+    let mut retain = vec![false; indexed.len()];
+    let mut budget = 8 * 1024 * 1024;
+    for (size, at) in sizes {
+        if size <= budget {
+            retain[at] = true;
+            budget -= size;
+        }
+    }
+    retain
 }
 
 // Writes the caches the run changed, each package's on its own thread.

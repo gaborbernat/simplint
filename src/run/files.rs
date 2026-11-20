@@ -1,10 +1,13 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::Result;
 use itertools::Itertools;
 use rayon::prelude::*;
 use ruff_linter::package::PackageRoot;
+use ruff_python_ast::ModModule;
 use ruff_python_ast::helpers::to_module_path;
+use ruff_python_parser::Parsed;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::Resolved;
@@ -119,6 +122,7 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
 // around a file of a namespace package, yet Python resolves its relative imports, so such a file is `importable` from
 // a search root instead.
 pub(super) struct RunFile<'a> {
+    pub(super) first_parse: OnceLock<Box<WorkerParse>>,
     pub(super) path: &'a Path,
     // The path the index keys the file by. The run's paths may be relative to the working directory, so they are made
     // absolute once here rather than at every lookup.
@@ -134,6 +138,11 @@ pub(super) struct RunFile<'a> {
     pub(super) linted: bool,
     // The directory of the nested project the file is in, which the index of the run keeps apart from the rest.
     pub(super) nested: Option<PathBuf>,
+}
+
+pub(super) struct WorkerParse {
+    pub(super) worker: usize,
+    pub(super) syntax: Mutex<Option<(String, Parsed<ModModule>)>>,
 }
 
 impl<'a> RunFile<'a> {
@@ -172,6 +181,7 @@ impl<'a> RunFile<'a> {
             module_path,
             importable,
             sibling_init,
+            first_parse: OnceLock::new(),
             at: 0,
             linted: true,
             nested,
