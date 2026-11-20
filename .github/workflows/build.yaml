@@ -1,50 +1,8 @@
-name: 🏗️ build
+name: Compare RISC-V and native diagnostics
 on:
   workflow_dispatch:
-    inputs:
-      pgo:
-        description: Build the wheels with profile-guided optimization, as a release does
-        type: boolean
-        default: false
-  push:
-    branches: ["main"]
-    paths:
-      - "src/**"
-      - "tests/**"
-      - "docs/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
-      - "pyproject.toml"
-      - ".github/workflows/build.yaml"
-  workflow_call:
-  schedule:
-    - cron: "7 10 * * *"
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 permissions: {}
 jobs:
-  build:
-    name: 🏗️ Build distributions
-    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@b34c57a8a06e7b043c2ddd0b6b7a8a778d7aa8f7 # 6.8.5
-    with:
-      package-name: simplint
-      matrix: |
-        [
-          {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}
-          ${{ (!startsWith(github.ref, 'refs/tags/') && !inputs.pgo) && ',
-          {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"},
-          {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"},
-          {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"},
-          {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}' || '' }}
-        ]
-      pre-build-command: ${{ !startsWith(github.ref, 'refs/tags/') && 'cargo install cargo-edit --version 0.13.13 --locked && cargo set-version --bump patch' || '' }}
-      # sccache saves one cache entry per compiled object, which crowds the larger caches out of the repository quota.
-      release-build: true
-    permissions:
-      contents: read
-      pull-requests: read
   maturin:
     name: ⚙️ Read locked maturin version
     runs-on: ubuntu-26.04
@@ -74,27 +32,18 @@ jobs:
         run: |
           version=$("$RUNNER_TEMP/release-tools/bin/maturin" --version)
           printf 'version=v%s\n' "${version#maturin }" >>"$GITHUB_OUTPUT"
-  pgo:
-    name: 🏗️ PGO wheels
+  compare:
+    name: Compare the RISC-V wheel with native Linux
     needs: maturin
-    if: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo) }}
     runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
-        # PGO legs stay here: each needs an instrumented build, a training run, and a profile check in one job.
-        # The shared workflow builds every other leg and the sdist.
         platform:
-          - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu, bolt: true}
-          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl, ext_tsp: true}
-          - {runner: windows-11-arm, target: aarch64, pgo: aarch64-pc-windows-msvc}
-          - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
-          - {runner: macos-26-intel, target: x86_64, pgo: x86_64-apple-darwin}
-          - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
-          - {runner: ubuntu-26.04-arm, target: aarch64, manylinux: "2_28", pgo: aarch64-unknown-linux-gnu, bolt: true}
-          - {runner: ubuntu-26.04-arm, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: aarch64-unknown-linux-musl}
+          - {runner: ubuntu-26.04, target: riscv64gc-unknown-linux-gnu, manylinux: "2_31", pgo: riscv64gc-unknown-linux-gnu}
     env:
       PGO_TARGET: ${{ matrix.platform.pgo }}
     steps:
@@ -116,136 +65,44 @@ jobs:
           enable-cache: false
           activate-environment: true
           python-version: "3.15"
-      - name: ⚙️ Read package version
-        id: version
-        shell: bash
-        run: echo "version=$(python tasks/cargo_version.py Cargo.toml)" >>"$GITHUB_OUTPUT"
-      - name: ⚙️ Read Rust toolchain channel
-        id: toolchain
-        shell: bash
-        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >>"$GITHUB_OUTPUT"
-      - name: 📦 Restore PGO profile
-        id: profile
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: pgo/simplint.profdata
-          key: pgo-profile-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           components: llvm-tools-preview
           cache: false
-      # link.exe writes unreadable function names into the ARM64 training profile.
-      - name: Locate the ARM64 Windows profiling linker
-        if: ${{ matrix.platform.pgo == 'aarch64-pc-windows-msvc' && steps.profile.outputs.cache-hit != 'true' }}
-        id: profiler
-        shell: pwsh
-        run: |
-          $linker = Join-Path (rustc --print sysroot) "lib/rustlib/$env:PGO_TARGET/bin/rust-lld.exe"
-          "linker=$linker" >> $env:GITHUB_OUTPUT
-      - name: 🏗️ Build instrumented binary
-        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.platform.target }}
-          args: --locked --release --out target/pgo-wheels --target-dir target/pgo-build
-          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
-          docker-options: --env SOURCE_DATE_EPOCH
-          sccache: false
-        env:
-          CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER: ${{ steps.profiler.outputs.linker }}
-          RUSTFLAGS: -Cprofile-generate
-      - name: 📦 Restore PGO corpus
-        id: corpus
-        if: ${{ steps.profile.outputs.cache-hit != 'true' || matrix.platform.bolt }}
-        uses: actions/cache/restore@v6.1.0
-        with:
-          path: pgo-corpus
-          key: pgo-corpus-${{ runner.os }}-${{ hashFiles('tasks/pgo_corpus.toml') }}
-      - name: 🏋️ Collect PGO profile
-        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
-        shell: bash
-        # The profile lives outside target, which the Linux build container creates as root.
-        run: python -m tasks.pgo train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
-      - name: 💾 Save PGO corpus
-        if: ${{ steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: pgo-corpus
-          key: ${{ steps.corpus.outputs.cache-primary-key }}
-      - name: 💾 Save PGO profile
-        if: ${{ steps.profile.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6.1.0
-        with:
-          path: pgo/simplint.profdata
-          key: ${{ steps.profile.outputs.cache-primary-key }}
-      - name: ⚙️ Use PGO profile
-        shell: bash
-        env:
-          EXT_TSP: ${{ matrix.platform.ext_tsp || false }}
-        run: |
-          flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
-          if [[ "$EXT_TSP" == true ]]; then
-            flags+=" -Cllvm-args=-enable-ext-tsp-block-placement"
-          fi
-          echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
-          echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
-      - name: 🏗️ Build wheels
-        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') }}
-        uses: PyO3/maturin-action@v1.51.0
-        with:
-          maturin-version: ${{ needs.maturin.outputs.version }}
-          target: ${{ matrix.platform.target }}
-          args: >-
-            --locked --release --out dist --target-dir target ${{ matrix.platform.bolt && '-- -Cstrip=none -Clink-arg=-Wl,--emit-relocs,-T,tasks/bolt.ld' || '' }}
-          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
-          docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
-          sccache: false
-          before-script-linux: |
-            if [[ -n "${PGO_BUILD_LOG:-}" ]]; then
-              maturin() { command maturin "$@" 2>&1 | tee "$PGO_BUILD_LOG"; }
-            fi
-      - name: 🏗️ Build wheels with PGO
-        if: ${{ !startsWith(matrix.platform.runner, 'ubuntu') }}
-        shell: bash
-        run: |
-          uvx --from "maturin==${MATURIN_VERSION#v}" maturin build --locked --release --out dist --target-dir target \
-            --target "$PGO_TARGET" 2>&1 | tee pgo/build.log
-        env:
-          MATURIN_VERSION: ${{ needs.maturin.outputs.version }}
-      - name: 🔍 Check the PGO profile matched
-        shell: bash
-        run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
-      - name: ⚡ Optimize the Linux executable
-        if: ${{ matrix.platform.bolt }}
+      - name: Run RISC-V binaries under QEMU
+        if: matrix.platform.pgo == 'riscv64gc-unknown-linux-gnu'
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bolt-22 python3-wheel
-          work=$(mktemp -d)
-          /usr/bin/python3 -m wheel unpack --dest "$work/wheel" dist/*.whl
-          binary=("$work"/wheel/*/*.data/scripts/simplint)
-          python -m tasks.pgo download pgo-corpus --extract "$work/corpus"
-          instrument=()
-          if [[ "$PGO_TARGET" == aarch64-* ]]; then
-            instrument+=(-no-lse-atomics)
-            export RAYON_NUM_THREADS=1
-          fi
-          llvm-bolt-22 "${binary[0]}" "${instrument[@]}" -instrument -instrumentation-file="$work/profile" -o "$work/train"
-          status=0
-          "$work/train" check --config tasks/pgo.toml --no-cache "$work/corpus" > /dev/null || status=$?
-          if (( status > 1 )); then exit "$status"; fi
-          llvm-bolt-22 "${binary[0]}" -data="$work/profile" -reorder-blocks=ext-tsp -reorder-functions=cdsort \
-            -split-functions -split-all-cold -o "$work/optimized"
-          strip --strip-all --remove-section=.note.bolt_info -o "${binary[0]}" "$work/optimized"
-          chmod +x "${binary[0]}"
-          "${binary[0]}" --version
-          mkdir dist-bolt
-          /usr/bin/python3 -m wheel pack --dest-dir dist-bolt "$work"/wheel/*
-      - name: 📤 Upload wheels
+          sudo apt-get install -y qemu-user-binfmt libc6-riscv64-cross libgcc-s1-riscv64-cross libatomic1-riscv64-cross
+          echo 'QEMU_LD_PREFIX=/usr/riscv64-linux-gnu' >>"$GITHUB_ENV"
+          cat /proc/sys/fs/binfmt_misc/qemu-riscv64
+      - name: Build the RISC-V release wheel
+        uses: PyO3/maturin-action@v1.51.0
+        with:
+          maturin-version: ${{ needs.maturin.outputs.version }}
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux }}
+          args: --locked --release --out dist
+          sccache: false
+      - name: Check out the pinned benchmark
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: 022d40b0ae63a94eed4982cad9f7e0ccc1a77ad6
+          path: benchmark
+          persist-credentials: false
+      - name: Compare all diagnostics and fixes
+        working-directory: benchmark
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mv ../dist .
+          gh run download 44710992131 --name wheel-ubuntu-26.04 --dir control
+          python -m tasks.wheel_trial
+      - name: Upload comparison
         uses: actions/upload-artifact@v7.0.2
         with:
-          name: simplint-wheels-pgo-${{ matrix.platform.pgo }}
-          path: ${{ matrix.platform.bolt && 'dist-bolt' || 'dist' }}
+          name: correctness-riscv64
+          path: benchmark/correctness.csv
           if-no-files-found: error
