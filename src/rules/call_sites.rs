@@ -8,7 +8,7 @@ use crate::project::constructors::{CallContexts, CallSites, Use, Uses};
 use crate::rules::public_api::Need;
 use crate::syntax::Visibility;
 
-// The uses of every candidate function by its name, found in one walk of the module rather than one per function.
+// Collect all candidates in one walk to avoid rescanning the module for each function.
 pub(crate) fn module_uses<'a>(checker: &'a Checker) -> FxHashMap<&'a str, Vec<Use<'a>>> {
     let owners: FxHashMap<TextRange, &str> = checker
         .body()
@@ -37,14 +37,13 @@ pub(crate) fn module_candidate(checker: &Checker, function: &ast::StmtFunctionDe
     resolvable(checker, function) && !is_public(checker, function)
 }
 
-// A module-level function whose name reaches its definition in each call of this file. Any other decorator may register
-// or wrap it and Python calls dunders itself, so the calls written out are not all the calls it gets.
+// Rebinding and arbitrary decorators can redirect a call. Python can also invoke dunder methods implicitly.
 pub(crate) fn resolvable(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
     plain(checker, function) && !checker.semantic().is_rebound(function.name.as_str())
 }
 
-// Decorators that pass each call on to the function unchanged and keep no reference that calls it later. A
-// `staticmethod` takes no receiver, which the calls of a method skip, so it is not one of them.
+// These decorators preserve the caller's arguments after binding a receiver, if any. Static methods are excluded
+// because method analysis skips the first parameter.
 const FORWARDS_CALLS: &[&[&str]] = &[
     &["", "classmethod"],
     &["abc", "abstractmethod"],
@@ -69,8 +68,7 @@ fn is_public(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
     checker.state().public_api(checker).covers(function.range(), Need::Any)
 }
 
-// Every call of a module-level function the run makes: those of the other files, through its module, and those of this
-// file, by its name. `None` when calls the run cannot see may reach it.
+// Calls through an unknown reference can leave the collected sites marked opaque.
 pub(crate) fn module_sites(
     checker: &Checker,
     function: &ast::StmtFunctionDef,
@@ -87,8 +85,7 @@ pub(crate) fn module_sites(
     Some(sites)
 }
 
-// Whether each call passes `param`, by position or by keyword. A method's calls skip its receiver, so `skip` leading
-// positional parameters take no argument of theirs.
+// Bound method calls omit the receiver when supplying positional arguments.
 pub(crate) fn always_passes(
     sites: &CallSites,
     parameters: &ast::Parameters,
@@ -149,8 +146,7 @@ pub(crate) fn add_use(sites: &mut CallSites, found: &Use) {
     }
 }
 
-// A star import of this module can call its functions under names no file spells out, so none is judged. A module
-// only tests import serves them, so its calls are test code.
+// A star import can hide callers. Calls made only by test helpers do not establish how production uses a function.
 pub(crate) fn judges_call_sites(checker: &Checker) -> bool {
     let project = checker.project();
     !(checker.is_test_module() || project.calls().is_test_support() || project.is_star_import_source())
@@ -188,22 +184,19 @@ impl<'a> OwnCalls<'a> {
     }
 }
 
-// The module-level functions the call-site rules judge. Code outside the run may call a name `__all__` lists, so those
-// are not judged, whatever the project kind.
+// External callers may use a function listed in `__all__`, even in an application.
 pub(crate) fn candidate_functions<'a>(checker: &'a Checker) -> impl Iterator<Item = &'a ast::StmtFunctionDef> {
     checker.body().iter().filter_map(Stmt::as_function_def_stmt).filter(move |function| {
         !checker.dunder_all().lists(function.name.as_str()) && module_candidate(checker, function)
     })
 }
 
-// A module-level class whose methods a call through `self` can reach, with no base a subclass or a framework may
-// override it from.
+// An inherited method, an override or a metaclass can add callers outside the class body.
 pub(crate) fn is_closed_class(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     class.bases().is_empty() && class.keywords().is_empty() && !checker.project().is_base_class(class.name.as_str())
 }
 
-// A method whose every load is a call through `self` of its class, so the uses found are all of its calls. The rules
-// that judge methods add these uses to their own counts, which differ.
+// Count a method's uses only if every attribute load with that name is a `self` reference in this class.
 pub(crate) fn self_only_uses<'u, 'a>(
     checker: &Checker,
     name: &str,

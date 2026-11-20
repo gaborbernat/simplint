@@ -8,7 +8,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-// The methods that change a list, dict, set or deque in place.
 const MUTATORS: [&str; 18] = [
     "add",
     "append",
@@ -30,9 +29,7 @@ const MUTATORS: [&str; 18] = [
     "update",
 ];
 
-// Repeating a list of rows only copies references, so `[[0] * n] * m` holds one row `m` times. That is harmless while
-// nothing changes a row, as with data handed to `numpy.array()`, so only a stored repetition whose element is then
-// changed through the stored name, such as `grid[i][j] = 1` or `grid[i].append(x)`, is reported.
+// Sharing rows is harmless until one is mutated. Check for a mutation through the assignment target.
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
         return;
@@ -63,7 +60,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Some(element) = elements.iter().find(|element| is_mutable(checker, element)) else {
         return;
     };
-    // A local name is changed in its own function; a module name or an attribute anywhere in the file.
+    // An attribute assigned in one method can be mutated in another.
     let region = match (target, walker.scopes().last()) {
         (Expr::Name(_), Some(Scope::Function(function))) => function.body.as_slice(),
         _ => checker.body(),
@@ -156,7 +153,7 @@ impl<'a> Visitor<'a> for Mutation<'_> {
     }
 }
 
-// A display, a comprehension or a call that builds a new mutable object, and a list repeated by `*`, which is a list.
+// Adding or repeating a list also produces a mutable list.
 fn is_mutable(checker: &Checker, element: &Expr) -> bool {
     match element {
         Expr::BinOp(ast::ExprBinOp { left, op: Operator::Mult | Operator::Add, right, .. }) => {

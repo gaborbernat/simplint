@@ -9,7 +9,6 @@ use serde::Deserialize;
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata, import_names};
 use crate::syntax::Visibility;
 
-// What `project-kind` asks for; `auto` reads it from how the project builds.
 #[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectKindOption {
@@ -50,11 +49,9 @@ impl Display for DocstringStyle {
     }
 }
 
-// Which modules make up a library's public API: those of its API packages whose path has no `_` segment.
 pub struct ApiScope {
     pub(crate) kind: ProjectKind,
-    // The top-level packages and modules the distribution ships; `None` when none could be found, so every module
-    // outside the documentation and the tests counts.
+    // An explicit empty list disables API packages. `None` enables the fallback in `role`.
     pub(crate) packages: Option<BTreeSet<String>>,
 }
 
@@ -85,7 +82,6 @@ impl ApiScope {
             Some((last, rest)) if last == "__init__" => rest,
             _ => module_path,
         };
-        // The most specific API package containing the module, so a nested package wins over its parent.
         let root = match &self.packages {
             Some(packages) => packages
                 .iter()
@@ -125,9 +121,7 @@ impl CacheKey for ModuleRole {
     }
 }
 
-// Something builds and installs the project, so others can import it: a `[build-system]`, or the `setup.py` or
-// `setup.cfg` pip falls back to without one. uv's `package = false` and maturin's binary-only builds install no Python
-// package.
+// A build declaration marks a potential library. uv can disable packaging and maturin can build only a binary.
 fn is_installable(root: &Path, build: &BuildConfiguration) -> bool {
     let declared = build.has_build_system || root.join("setup.py").is_file() || root.join("setup.cfg").is_file();
     declared && build.uv_package != Some(false) && build.maturin_bindings.as_deref() != Some("bin")

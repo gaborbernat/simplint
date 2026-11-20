@@ -1,4 +1,3 @@
-// Shared parts of the reStructuredText docstring rules: field parsing, targets, attributes and fix edits.
 mod attributes;
 mod edits;
 mod parse;

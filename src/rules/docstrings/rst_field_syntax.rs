@@ -33,7 +33,6 @@ pub fn rst_field_syntax(checker: &Checker) {
             let range = field.range_in(docstring);
             let text = field.text();
             if field.joins_text {
-                // A blank line before the field separates the field list from the paragraph above it.
                 checker.report_fix(
                     Rule::RstFieldSyntax,
                     range,
@@ -67,7 +66,7 @@ pub fn rst_field_syntax(checker: &Checker) {
                 checker.report(Rule::RstFieldSyntax, range, problem);
                 continue;
             }
-            // `:raises:` may name one exception twice, for each of the conditions that raise it.
+            // Separate fields can document different causes of the same exception.
             let repeatable = matches!(field.kind, FieldKind::Raises | FieldKind::Meta | FieldKind::Unknown);
             if !repeatable && !seen.insert((field.kind, field.subject())) {
                 checker.report(Rule::RstFieldSyntax, range, format!("Field `{text}` repeats an earlier field"));

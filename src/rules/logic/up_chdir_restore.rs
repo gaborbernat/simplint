@@ -9,7 +9,6 @@ use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, w
 use crate::rules::logic::sole_name_target;
 use crate::syntax::{for_each_body, sole_argument};
 
-// Since Python 3.11 `contextlib.chdir` enters a directory and returns to the one it left on exit.
 pub fn up_chdir_restore(checker: &Checker) {
     for_each_body(checker.body(), &mut |body, _| {
         for window in body.windows(3) {

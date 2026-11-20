@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::syntax::all_literal;
 
-// The one-name-per-line layout `ruff format` gives a list with a trailing comma, so the fix needs no formatter pass.
+// Use the formatter's default layout so adding an export changes one line.
 pub(super) fn exploded(checker: &Checker, base: &str, items: &[String]) -> String {
     let indent = checker.stylist.indentation().as_str();
     let eol = checker.line_ending();
@@ -13,7 +13,7 @@ pub(super) fn exploded(checker: &Checker, base: &str, items: &[String]) -> Strin
     format!("[{eol}{lines}{base}]")
 }
 
-// The statement bounds where a parenthesized element ends, so it is kept with the elements.
+// Keep the statement range to recover parentheses around individual elements.
 pub(super) struct AllList<'a> {
     stmt: &'a Stmt,
     value: TextRange,

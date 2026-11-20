@@ -3,11 +3,10 @@ the package is imported.
 
 ## Why is this bad?
 
-An import of a module the project does not declare works on the author's machine, where a development tool or another
-package happened to install it, and fails with
-[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError) for a user who installs
-only what the project lists. A module another requirement pulls in is no safer: that requirement can drop it in any
-release.
+An undeclared import may work locally because a development tool installed the package. A user installing only the
+declared requirements can then get a
+[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError). A transitive dependency
+can also disappear when the package that installed it changes its requirements.
 
 ## Example
 
@@ -45,16 +44,16 @@ import yaml
 
 ## What it does
 
-The rule reads the modules that importing a top-level package of the project, or running its `__main__.py`, loads
-through module-level imports. In each it checks the absolute imports that run when the module loads against the
-`dependencies` and `optional-dependencies` of `[project]`. A distribution matches the modules named after it, such as
+simplint follows runtime imports from top-level package initializers and every non-test `__main__.py`, including those
+in nested packages. It checks absolute imports in the reachable non-test modules of the shipped packages against
+`project.dependencies` and `project.optional-dependencies`. A distribution matches the modules named after it, such as
 `google.auth` for `google-auth`, the modules whose name it contains, such as `serial` for `pyserial`, and a few known
 renames, such as `yaml` for `pyyaml`.
 
 ### Exceptions
 
-- **Projects whose `[project]` leaves `dependencies` to the build backend** through `dynamic`, or that have no
-  `[project]` table: the rule cannot see their requirements.
+- **Projects without `project.name` or with `dependencies` in `project.dynamic`**. The rule needs static project
+  metadata.
 
 - **Modules the package never imports itself**, such as a pytest plugin, a tool's hook or an optional integration a user
   imports by name, and the tests and scripts beside the package: they run where their user installed what they import.
@@ -72,13 +71,11 @@ renames, such as `yaml` for `pyyaml`.
   import pytest
   ```
 
-- **Optional and deferred imports**: an import in a `try` that handles
-  [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError), and the fallback in its handler, one
-  under `if TYPE_CHECKING:`, one under a check of
-  [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info),
-  [`sys.platform`](https://docs.python.org/3/library/sys.html#sys.platform) or
-  [`os.name`](https://docs.python.org/3/library/os.html#os.name), and one inside a function, which runs only when
-  called.
+- **Function bodies and import guards**. simplint skips imports inside functions, `if TYPE_CHECKING:` bodies and the
+  body and handlers of a `try` that catches an import error. Bare handlers and handlers for
+  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception) or
+  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException) also qualify. The rule still
+  checks imports in `else` and `finally` clauses of that `try`.
 
   ```toml config
   [project]
@@ -103,14 +100,20 @@ renames, such as `yaml` for `pyyaml`.
       print(matplotlib, rich)
   ```
 
-- **The standard library of any Python version**, so `tomllib` behind a version check is not a requirement, and modules
-  of the run, such as a second top-level package the distribution ships.
+- **Environment checks**. simplint skips an entire `if` statement when its initial condition references
+  [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info),
+  [`sys.platform`](https://docs.python.org/3/library/sys.html#sys.platform),
+  [`sys.implementation`](https://docs.python.org/3/library/sys.html#sys.implementation),
+  [`os.name`](https://docs.python.org/3/library/os.html#os.name) or an attribute of `platform`.
+
+- **Modules whose top-level name belongs to the standard library in any checked version from Python 3.7 through 3.15**,
+  so `tomllib` behind a version check is not a requirement, and modules of the run, such as a second top-level package
+  the distribution ships.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** no rule.
-- [deptry](https://github.com/fpgmaas/deptry) reports the same imports as DEP001 (missing) and DEP003 (transitive),
-  across every module of the project, deferred and guarded imports included, with its own name mapping read from the
-  installed distributions.
-- [Pylint](https://github.com/pylint-dev/pylint)'s `import-error` (E0401) reports a module the environment it runs in
-  cannot import, so it misses a module some other package installed.
+- [deptry](https://deptry.com/rules-violations/) distinguishes missing dependencies (DEP001) from transitive
+  dependencies (DEP003). It scans imports in the files selected for its run and uses installed distributions to help
+  match imports to dependencies.
+- [Pylint](https://github.com/pylint-dev/pylint)'s `import-error` (E0401) checks whether it can locate the imported
+  module. A transitive dependency that is already installed passes that check.

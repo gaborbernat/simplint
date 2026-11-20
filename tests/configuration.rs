@@ -262,8 +262,7 @@ fn isolated_rejects_a_config_file() {
     );
 }
 
-// The configuration replaces the project's, which selects only SMP001; a `ruff.toml` holds no simplint options, so the
-// defaults apply.
+// The explicit ruff.toml overrides the project's selection. Without simplint settings its defaults apply.
 #[test_case(
     "pyproject.toml",
     "[tool.simplint]\nselect = [\"SMP101\"]\n",
@@ -1114,8 +1113,7 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
     assert_eq!(shown_setting(&stdout, "linter.project_kind", "\n"), format!("linter.project_kind = {kind}"));
 }
 
-// setuptools names an entry point as a dotted `attr` string; a `file` source, a value that is no string and a name
-// without a module name none.
+// Only a dotted attr reference names a module. File references, non-string values and undotted names do not.
 #[test]
 fn setuptools_tables_name_entry_points_by_dotted_attribute() {
     let pyproject = "[tool.setuptools.dynamic]\nversion = { attr = \"pkg.__version__\" }\nreadme = { file = \
@@ -1165,7 +1163,7 @@ fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&st
     );
 }
 
-// Ruff has no namesake for these options, so an inline `--config` must not hand them to Ruff's parser.
+// These options exist only in simplint. Forwarding them to Ruff would make an inline override fail to parse.
 #[test]
 fn inline_config_sets_options_ruff_does_not_know() {
     let root = project(&[("module.py", "")]);
@@ -1200,7 +1198,7 @@ fn extend_outside_the_project_is_named_without_its_text() {
     assert_eq!((code, stderr.contains("hunter2"), stderr.contains("is not valid configuration")), (2, false, true));
 }
 
-// The same goes for a nested configuration file that `extend`s outside the project, which Ruff loads per directory.
+// Redact the external configuration even when Ruff discovers the extend in a nested directory.
 #[test]
 fn nested_extend_outside_the_project_is_named_without_its_text() {
     let root = project(&[
@@ -1251,8 +1249,7 @@ fn isolated_run_reads_no_nested_pyproject() {
     assert_eq!((code, stdout.contains("SMP101")), (1, true));
 }
 
-// The release's PGO training lints with this configuration, so a Ruff rule it turns on that conflicts with simplint
-// fails the release.
+// A conflict in this configuration would prevent release builds from collecting a training profile.
 #[test]
 fn pgo_training_config_has_no_ruff_conflict() {
     let root = project(&[("pgo.toml", include_str!("../tasks/pgo.toml")), ("module.py", "x = 1\n")]);

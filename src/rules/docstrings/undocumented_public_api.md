@@ -2,12 +2,9 @@ Flags functions, classes, methods and variables of a library's public API that h
 
 ## Why is this bad?
 
-Users of a library reach its public API through their editor's hover help and the generated reference. A docstring is
-what they read there: what the function promises, what each parameter means, what it returns and what it raises.
-[PEP 257](https://peps.python.org/pep-0257/#what-is-a-docstring) asks for docstrings on the functions and classes a
-module exports, and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) treats undocumented
-interfaces as internal, so an undocumented export leaves users unsure they may rely on it. Internal code needs less: its
-readers have the source open, so [function-docstring](SMP901.html) asks for no docstring there.
+An exported name tells users what they can import. Its documentation tells them how to use it, including parameter
+meanings, return values and failures to handle. [PEP 257](https://peps.python.org/pep-0257/#what-is-a-docstring)
+recommends docstrings on exported functions and classes.
 
 ## Example
 
@@ -200,8 +197,9 @@ Checks that a library's public API is documented. No fix is offered, since only 
 
 - **Functions, classes and methods a public module defines**: each needs a
   [docstring](https://docs.python.org/3/glossary.html#term-docstring), which Ruff's pydocstyle rules
-  [D101 to D103 and D106](https://www.pydocstyle.org/en/stable/error_codes.html) report. This rule leaves them to Ruff
-  only when the project's Ruff configuration selects the rule for the definition's kind.
+  [D101 to D103 and D106](https://github.com/PyCQA/pydocstyle/blob/master/src/pydocstyle/violations.py#L180-L208)
+  report. This rule leaves them to Ruff only when the project's Ruff configuration selects the rule for the definition's
+  kind.
 
   ```toml config
   [tool.simplint]
@@ -220,8 +218,8 @@ Checks that a library's public API is documented. No fix is offered, since only 
       pass
   ```
 
-- **Functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload)**: the
-  implementation carries the docstring; [function-docstring](SMP901.html) leaves their docstrings alone too.
+- **Functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload)**: document
+  the implementation once. [function-docstring](SMP901.html) also allows docstrings on public overloads.
 
   ```toml config
   [tool.simplint]
@@ -236,7 +234,8 @@ Checks that a library's public API is documented. No fix is offered, since only 
   def load(path: int) -> int: ...
   ```
 
-- **Dunder methods, such as `__init__`**: the class docstring describes their parameters.
+- **Dunder methods.** The rule makes docstrings optional for methods such as `__init__`. A class docstring can document
+  its constructor parameters.
 
   ```toml config
   [tool.simplint]
@@ -284,7 +283,7 @@ Checks that a library's public API is documented. No fix is offered, since only 
       def name(self, value: str) -> None: ...
   ```
 
-- **Test modules, as defined in [test-class](SMP801.html)**: users never import tests, so nothing in them is public API.
+- **Test modules, as defined in [test-class](SMP801.html)**: simplint excludes test modules from this check.
 
   ```toml config
   [tool.simplint]
@@ -295,7 +294,7 @@ Checks that a library's public API is documented. No fix is offered, since only 
   def test_fetch() -> None: ...
   ```
 
-- **Every module of an application**: an application has no Python API.
+- **Every module of an application**: simplint requires documentation for library exports.
 
   ```python ok
   def fetch() -> None:
@@ -320,9 +319,9 @@ Checks that a library's public API is documented. No fix is offered, since only 
 
 ### The public API
 
-The public API is what users of the library can import, following the
-[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
-and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):
+simplint uses the following rules to identify a library's public API. The export conventions come from the
+[typing specification](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
+and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces).
 
 - a module is public when it belongs to one of the library's API packages and no part of its path starts with `_`, so
   everything under `package/_internal/` or in `package/_core.py` is internal; a dunder module such as `__about__` is
@@ -368,14 +367,12 @@ flowchart TD
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [D101](https://docs.astral.sh/ruff/rules/undocumented-public-class/),
-  [D102](https://docs.astral.sh/ruff/rules/undocumented-public-method/),
-  [D103](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
-  [D106](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/), which cover definitions in public modules
-  and which this rule leaves to them while the project selects them, except a function that `ignore-decorators` lists,
-  which Ruff skips; this rule covers public variables and names re-exported from private modules (variables: open issue
-  [#20766](https://github.com/astral-sh/ruff/issues/20766)).
-- [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a
-  docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and
-  [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.
+- Ruff checks undocumented public [classes](https://docs.astral.sh/ruff/rules/undocumented-public-class/),
+  [methods](https://docs.astral.sh/ruff/rules/undocumented-public-method/),
+  [functions](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
+  [nested classes](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/). simplint defers when the
+  corresponding Ruff rule is enabled and would report the definition. simplint also checks public variables and
+  re-exports from private modules. [Ruff issue #20766](https://github.com/astral-sh/ruff/issues/20766) proposes checks
+  for undocumented variables.
+- [pydocstyle D102 and D103](https://github.com/PyCQA/pydocstyle/blob/master/src/pydocstyle/violations.py#L180-L208)
+  cover public methods and functions.

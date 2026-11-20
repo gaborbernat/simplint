@@ -2,9 +2,8 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// A module no file of the run resolves, such as `distutils.log` for a tree that shims its own `log`, reads the run's
-// file of the same last name when the call's value is used, and only then, so the function returning that value is not
-// reported.
+// The unresolved `distutils.log` could refer to the local shim. A caller using its return value rules out reporting
+// that every caller discards the result.
 #[test_case(
     concat!(
         "from distutils import log\n",
@@ -47,8 +46,7 @@ fn namesake_module_reads_count_only_with_their_value(caller: &str, reported: boo
     assert_eq!(stdout.contains(&common::native("pkg/log.py:1:5: SMP411")), reported, "{stdout}");
 }
 
-// A doctest in a module runs in the module's globals, so an example that names a class of the module uses it without
-// importing it, while a docstring that only describes the class leaves it unused.
+// Doctests can read module globals without importing them.
 #[test_case(
     concat!(
         "    \"\"\"A release.\n",
@@ -70,9 +68,7 @@ fn class_named_by_its_own_module_doctest_is_used(docstring: &str, reported: bool
     assert_eq!(stdout.contains(&common::native("pkg/version.py:1:7: SMP409 `_Trimmed`")), reported, "{stdout}");
 }
 
-// A doctest reads a name off a module, which the call-site rules must see as a use, yet it imports nothing for the
-// other modules: a function only a doctest calls is not reported as unread, and a name a doctest reads is not imported
-// by the others.
+// An attribute used by a doctest may be callable. Counting it as an import would also change export diagnostics.
 #[test_case(">>> q.calc.ratio(3)\n1.5", "" ; "doctest_reads_ratio")]
 #[test_case(">>> q.calc.total(3)\n3", "`ratio`" ; "doctest_reads_total")]
 fn doctest_reads_are_opaque_to_call_sites_but_not_imports(read: &str, unused: &str) {
@@ -95,7 +91,6 @@ fn doctest_reads_are_opaque_to_call_sites_but_not_imports(read: &str, unused: &s
     );
 }
 
-// A name a doctest reads off the module of another file counts as used there, though the doctest imports no name of it.
 #[test]
 fn doctest_module_reads_leave_the_definition_public_and_used() {
     let root = project(&[
@@ -117,7 +112,7 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
     assert!(check(without_doc.path(), &["--select", "SMP402"]).1.contains("`other`"));
 }
 
-// A constant a doctest of its module reads is kept, as inlining it would leave the example reading a name that is gone.
+// Inlining the constant would break the doctest that refers to it by name.
 #[test]
 fn constant_read_by_its_own_module_doctest_is_kept() {
     let root = project(&[(
@@ -130,8 +125,6 @@ fn constant_read_by_its_own_module_doctest_is_kept() {
     assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`_TIMEOUT` is used by one function only"));
 }
 
-// The stdlib's `json` is a module of its own, so a `json.loads` value a file of the run reads is not a read of the
-// run's `codec/json.py`, and a `json.dumps` call with its own `indent` is not a call of the run's `dumps`.
 #[test]
 fn stdlib_module_reads_are_not_namesake_reads() {
     let root = project(&[
@@ -155,8 +148,7 @@ fn stdlib_module_reads_are_not_namesake_reads() {
     assert!(check(defaults.path(), &["--select", "SMP506"]).1.contains("Every call to"));
 }
 
-// Another module's write to a module variable withholds the rename, so SMP102 leaves a mixedCase store to Ruff's N816,
-// which reports it with no fix.
+// Rewriting a binding would leave the assignment in the other module pointing to its old name.
 #[test_case("cli.py", "from pkg import report\n\nreport.tableJson = 5\n" ; "assignment")]
 #[test_case("cli.py", "from pkg import report\n\nsetattr(report, \"tableJson\", 5)\n" ; "setattr")]
 #[test_case(
@@ -180,8 +172,6 @@ fn stored_module_variable_left_to_n816_without_fix(path: &str, body: &str) {
     assert_ne!(common::read(unwritten.path(), "pkg/report.py"), report);
 }
 
-// A library directory whose name only starts with `test`, such as `testkit`, is not a nested test project, though its
-// `sub` holds a `conf.py`, so the docstring rule still checks its public function.
 #[test]
 fn test_prefixed_library_directory_is_not_a_nested_project() {
     let root = project(&[
@@ -194,8 +184,7 @@ fn test_prefixed_library_directory_is_not_a_nested_project() {
     assert!(stdout.contains(&common::native("testkit/sub/mod.py")), "{stdout}");
 }
 
-// A doctest reads a name through a package whose `__init__.py` does not bind the submodule it names, so the name counts
-// as read by that submodule's file, which no import reaches.
+// A doctest can name the submodule through its package even when no Python file imports it.
 #[test_case("\"\"\"Guide.\n\n>>> import pkg\n>>> pkg.reportviews._build()\n1\n\"\"\"\n", false ; "doctest_reads_it")]
 #[test_case("\"\"\"Guide.\"\"\"\n", true ; "docstring_reads_nothing")]
 fn doctest_reads_through_a_package_reach_the_submodule(guide: &str, reported: bool) {

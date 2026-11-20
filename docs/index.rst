@@ -6,9 +6,8 @@ simplint
     <section class="hero">
       <img class="hero-logo" src="_static/logo.webp" alt="" width="256" height="256">
       <p class="hero-title">Python that is <span>easier to read and review</span>.</p>
-      <p class="hero-tagline">A fast companion linter for <a href="https://docs.astral.sh/ruff/">Ruff</a>, written in
-      <a href="https://rust-lang.org/">Rust</a>. It checks for what reviewers keep pointing out, and fixes most of what
-      it finds.</p>
+      <p class="hero-tagline">A companion linter for <a href="https://docs.astral.sh/ruff/">Ruff</a> that checks
+      Python definitions, imports, exports and tests.</p>
       <div class="hero-actions">
         <a class="primary" href="tutorial/getting-started.html">Get started</a>
         <a class="secondary" href="rules.html">Browse the rules</a>
@@ -16,58 +15,40 @@ simplint
       </div>
     </section>
 
-``simplint`` is a companion linter for `Ruff <https://docs.astral.sh/ruff/>`__. It adds checks that make Python code
-easier to read and review:
-
-- :doc:`definitions ordered like a book <rules/SMP201>`
-- :doc:`explicit exports <rules/SMP403>`
-- :doc:`Final constants <rules/SMP601>`
-- :doc:`flat test modules <rules/SMP801>`
-- and more
-
-The rules are opinionated, so select the ones that fit your project. :doc:`explanation/design-principles` says where
-the opinions come from.
-
-simplint is written in `Rust <https://rust-lang.org/>`__ on top of Ruff's parser crates, and lints the 264 files of
-:gh:`tox-dev/tox` in about 10 ms. When the fix for a report is mechanical, it can apply it for you. The
-:doc:`release history <changelog>` lists the changes in each version.
-
 .. grid:: 1 1 2 2
     :gutter: 3
 
-    .. grid-item-card:: ⚡ Fast
+    .. grid-item-card:: Rules
         :class-card: feature
 
-        Rust on Ruff's parser: a whole project lints in milliseconds, fast enough for a pre-commit hook.
+        Order :doc:`definitions after their callers <rules/SMP201>`, declare :doc:`module exports <rules/SMP403>`,
+        annotate :doc:`constants with Final <rules/SMP601>` or :doc:`flatten test classes <rules/SMP801>`.
+        Select the rules that fit your project.
 
-    .. grid-item-card:: 🛠️ Fixes, not just reports
+    .. grid-item-card:: Fixes
         :class-card: feature
 
-        Most rules rewrite the code for you. Fixes that could change behavior run only with ``--unsafe-fixes``.
+        Most rules offer a fix. Apply safe fixes with ``simplint check --fix``. Add ``--unsafe-fixes`` to include
+        changes that may affect behavior.
 
-    .. grid-item-card:: 🔗 Knows the whole project
+    .. grid-item-card:: Cross-file checks
         :class-card: feature
 
-        An import index across every file keeps fixes from renaming or moving a name another module uses.
+        Check the whole project, including tests, so rules can see where another module imports a name.
 
-    .. grid-item-card:: 🤝 Built to pair with Ruff
+    .. grid-item-card:: Ruff configuration
         :class-card: feature
 
-        simplint does not report what Ruff reports, and both tools read the same ``noqa`` comments and
-        ``pyproject.toml``.
+        simplint uses Ruff's file exclusions and reads its rule settings to check for conflicting fixes.
+        Both tools recognize ``# noqa`` comments.
 
-A run over two tox modules, limited to two rules:
+For example, given a file named ``module.py`` containing ``x = 1``:
 
 .. code-block:: console
 
-    $ simplint check --output-format concise --select SMP202,SMP601 src/tox/util/path.py src/tox/util/spinner.py
-    src/tox/util/path.py:16:1: SMP202 `_CACHEDIR_TAG` is used by one function only; define it there
-    src/tox/util/path.py:16:1: SMP601 `_CACHEDIR_TAG` is never reassigned; annotate it `Final`
-    src/tox/util/spinner.py:41:1: SMP601 `MISS_DURATION` is never reassigned; annotate it `Final`
-    src/tox/util/spinner.py:181:1: SMP202 `_PERIODS` is used by one function only; define it there
-    src/tox/util/spinner.py:181:1: SMP601 `_PERIODS` is never reassigned; annotate it `Final`
-    Found 5 errors.
-    4 unsafe fixes available with `--fix --unsafe-fixes`.
+    $ simplint check --select SMP101 --output-format concise module.py
+    module.py:1:1: SMP101 Single-letter name `x`; use a descriptive name
+    Found 1 error.
 
 Documentation
 -------------
@@ -79,25 +60,25 @@ Documentation
         :link: tutorial/getting-started
         :link-type: doc
 
-        For when you are new to simplint and want to run it on a project, step by step.
+        Install simplint and run your first check.
 
     .. grid-item-card:: How-to guides
         :link: how-to/index
         :link-type: doc
 
-        For when you want to get one task done, such as choosing which rules run.
+        Choose rules, configure a hook or suppress a report.
 
     .. grid-item-card:: Reference
         :link: rules
         :link-type: doc
 
-        For when you need the exact name, option or default of something.
+        Look up a rule, setting or command-line option.
 
     .. grid-item-card:: Explanation
         :link: explanation/how-it-works
         :link-type: doc
 
-        For when you want to understand how simplint works and how it fits with Ruff.
+        Read how cross-file checks work and how simplint handles Ruff findings.
 
 .. toctree::
    :hidden:

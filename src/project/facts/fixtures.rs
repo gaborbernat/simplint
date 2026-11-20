@@ -14,15 +14,15 @@ impl FactVisitor<'_> {
     pub(super) fn request_parameters(&mut self, function: &ast::StmtFunctionDef) {
         let parameters: Vec<String> =
             function.parameters.iter().map(|parameter| parameter.name().to_string()).collect();
-        // pytest resolves only the parameters of tests and fixtures, wherever they are defined.
+        // Only test and fixture parameters count as requests outside recognized test files.
         if function.name.starts_with("test") || has_decorator(&function.decorator_list, &["fixture"]) {
             self.pytest_requests.extend(parameters.clone());
         }
         self.fixture_requests.extend(parameters);
     }
 
-    // A plugin may request fixtures of the run by name. The index records that as a request under `pytest_plugins`,
-    // which no fixture can take; pytest's own plugins request none.
+    // An external plugin can request local fixtures by name, even if the scan finds no local request. Record that
+    // possibility under `pytest_plugins`.
     pub(super) fn load_plugins(&mut self, value: &Expr) {
         let plugins: Vec<&Expr> = match value {
             Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().collect(),

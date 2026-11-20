@@ -21,7 +21,6 @@ def test_main_sets_up_docs_and_mermaid_with_the_headless_shell_only(tmp_path: Pa
 
 
 def _conf(folder: Path, script: str) -> Path:
-    # The test processes write into the folder, so it is their working directory.
     conf = folder / "conf.py"
     command = shlex.join([sys.executable, "-c", f"import os; os.chdir({str(folder)!r}); {script}"])
     conf.write_text(f"mermaid_cmd: str = {command!r}\n", encoding="utf-8")

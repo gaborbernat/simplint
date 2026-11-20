@@ -1,7 +1,7 @@
 Command line
 ============
 
-Every option ``simplint`` accepts, generated from the binary itself.
+The command reference below comes from the public options in the binary.
 
 .. tip::
 
@@ -10,7 +10,7 @@ Every option ``simplint`` accepts, generated from the binary itself.
 Options
 -------
 
-The options of ``simplint check`` are the ones ``ruff check`` has, with the same meaning:
+Common ``simplint check`` options are listed below.
 
 .. list-table::
     :header-rows: 1
@@ -20,8 +20,8 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
       - What they do
     * - ``--unsafe-fixes``, ``--diff``, ``--fix-only``, ``--show-fixes``
       - ``--unsafe-fixes`` also applies the fixes that can change behavior. ``--diff`` prints the fixes as a unified
-        diff and writes nothing, after the same fix rounds as ``--fix``. ``--fix-only`` fixes without reporting what is
-        left. ``--show-fixes`` lists what was fixed.
+        diff after the same fix rounds as ``--fix`` and leaves source files unchanged. ``--fix-only`` applies fixes and
+        omits remaining reports. ``--show-fixes`` lists what was fixed.
     * - ``--select``, ``--extend-select``, ``--ignore``
       - Take comma-separated rule codes (``SMP701``), code prefixes (``SMP2``) or rule names
         (``dataclass-frozen``). ``--select`` replaces the selection from ``pyproject.toml``.
@@ -34,7 +34,8 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
         ``grouped``, ``json``, ``json-lines``, ``junit``, ``github``, ``gitlab``, ``pylint``, ``rdjson``, ``azure`` or
         ``sarif``. ``--statistics`` counts the reports per rule.
     * - ``--watch``
-      - Checks again whenever a Python or TOML file changes.
+      - Checks again when a watched ``.py``, ``.pyi``, ``.pyw`` or ``.ipynb`` file changes. Changes to TOML files,
+        ``.pre-commit-config.yaml`` or ``.pre-commit-config.yml`` also reload configuration.
     * - ``--stdin-filename``
       - Reads standard input and lints it as the file the name gives, ignoring the paths beside it. See
         `Standard input`_.
@@ -55,11 +56,19 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
     * - ``--quiet``, ``--silent``, ``--verbose``
       - Set the log level, as in Ruff.
     * - ``--preview``
-      - Turns on Ruff's preview mode. simplint has no preview rules, so it only changes the output, which names rules
-        instead of showing their codes, and lets simplint's fixes account for Ruff's preview rules.
+      - Enables Ruff's preview mode. This affects rule names in the output and which Ruff rules simplint considers
+        when checking fixes and conflicts. simplint has no preview rules.
 
-Several names for one file, through hard links or symlinks, are linted once, under the smallest path in sort order, with
-symlinks last.
+When several symlinks point to one file, simplint checks it once. On Unix and Windows, it also detects hard links when
+it can read a file ID. Direct paths take precedence over symlinks, then paths sort lexicographically. A symlink to a
+file outside the linted roots is skipped.
+
+Environment variables
+---------------------
+
+``SIMPLINT_OUTPUT_FORMAT``, ``SIMPLINT_OUTPUT_FILE``, ``SIMPLINT_NO_CACHE`` and ``RUFF_CACHE_DIR`` supply values for
+``--output-format``, ``--output-file``, ``--no-cache`` and ``--cache-dir``. An explicit flag takes precedence.
+A nonempty ``FORCE_COLOR`` enables color unless ``--color never`` overrides it.
 
 Standard input
 --------------
@@ -119,7 +128,7 @@ E902 reports the failed write beside them, with no fix counted:
 Other commands
 --------------
 
-As in Ruff, simplint has commands besides ``check``. All but ``clean`` take ``--output-format json``.
+All commands in this table except ``clean`` accept ``--output-format json``.
 
 .. list-table::
     :header-rows: 1

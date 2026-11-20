@@ -169,8 +169,8 @@ struct Found<T> {
     end: Option<T>,
 }
 
-// The searches of a paragraph's inline markup. Each start-string asks for the end of its construct, so the ends are
-// memoized, and so is the simple name a word starts: a name from any position inside another name ends where it does.
+// Repeated opening delimiters can search the same suffix for a closer. Cache the end of each construct and simple
+// name so those searches share work.
 struct Scanner<'a> {
     text: &'a str,
     name: (usize, usize),
@@ -237,7 +237,6 @@ impl<'a> Scanner<'a> {
         None
     }
 
-    // The length of the simple name at `at`, which is zero unless a word character starts there.
     fn name_len(&mut self, at: usize) -> usize {
         let text = self.text;
         if !text[at..].starts_with(char::is_alphanumeric) {
@@ -564,8 +563,7 @@ fn count_backticks(text: &str) -> usize {
     text.chars().take_while(|&char| char == '`').count()
 }
 
-// The maximal runs of backticks of a text, by their length, so the run that closes a code span is found by a search
-// rather than a scan from each opening run.
+// Index backtick runs by length so each opener can find its matching closer without rescanning the paragraph.
 struct BacktickRuns(HashMap<usize, Vec<usize>>);
 
 impl BacktickRuns {

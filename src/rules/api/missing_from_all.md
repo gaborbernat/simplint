@@ -1,4 +1,4 @@
-Flags public module-level names that another file in the same run imports but `__all__` does not list.
+Flags public names missing from `__all__` when production code imports them or an exported signature refers to them.
 
 ## Why is this bad?
 
@@ -57,12 +57,11 @@ __all__ = ["LIMIT", "local", "shared"]
 
 ## Conflicts with Ruff
 
-Ruff's [unused-import](https://docs.astral.sh/ruff/rules/unused-import/) (F401) reports an import this rule also reports
-when another module imports it, and its safe fix deletes that import. Ruff cannot see the importer, so after
-`ruff check --fix` the importer fails with an
-[`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError), and neither tool reports anything. The
-run does not stop for this pair, since the fixes do not undo each other: once this rule's fix lists the name, F401 stops
-reporting it.
+Ruff's [unused-import](https://docs.astral.sh/ruff/rules/unused-import/) (F401) can remove an import that another module
+relies on. For example, if `cli.py` imports a name that `config.py` imported solely to re-export, Ruff sees no use in
+`config.py`. After `ruff check --fix`, importing the name from `config.py` raises
+[`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError). Listing the name in `__all__` satisfies
+both rules.
 
 Keep the import with `# noqa: F401  # <reason>` on its line: F401 respects the comment, and this rule's fix removes it
 once it lists every name on that line. Without the comment, `simplint check --fix` must run before `ruff check --fix`,
@@ -211,8 +210,8 @@ signature reaches it:
   LIMIT: int
   ```
 
-- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is
-  reported.
+- **Imports used as re-exports** qualify when another production module imports the name and the defining module has no
+  local references to it.
 
   ```python report file=config.py
   from os import sep
@@ -330,6 +329,26 @@ signature reaches it:
   from config import _LIMIT
 
   print(_LIMIT)
+  ```
+
+- **pytest fixtures**. Even when another module imports a fixture, this rule leaves it out of `__all__`.
+  [imported-fixture](SMP822.html) flags the fixture definition.
+
+  ```python ok file=helpers.py
+  import pytest
+
+  __all__ = []
+
+
+  @pytest.fixture
+  def order() -> str:
+      return "order-1"
+  ```
+
+  ```python context file=cli.py
+  from helpers import order
+
+  print(order)
   ```
 
 - **`__init__.py` files**: these are not checked.
@@ -461,9 +480,9 @@ signature reaches it:
       pass
   ```
 
-- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or
-  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the
-  module runs, so nothing is reported.
+- **Dynamically built export lists** can depend on how the module runs. The rule skips a module that builds its export
+  list with an unrecognized operation such as `list(...)` or `.remove(...)`, or binds it inside an `if`, `try` or
+  function.
 
   - a call, such as `list(...)`
 
@@ -532,15 +551,14 @@ What the fix does depends on whether the module already has an `__all__`, and on
 - **Code outside the tests reads `__all__` off a module it imports by a computed name**: no fix is offered, as a plugin
   loader that walks `__import__(name).__all__` would load the new names too.
 
-**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,
-annotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,
-since the rewrite would drop it. When a comment ends the last element's line, the new names go on the lines after it, so
-the comment stays with its element; no fix is offered when that line holds other code, such as the closing bracket.
+The fix adds names to the literal in the last assignment to `__all__`, including annotated and `+=` assignments. It
+preserves a comment after the last name by inserting new lines. It withholds the fix if the literal is empty and
+contains a comment, or if other code sits between the last name and its comment.
 
 A `# noqa: F401` comment on an import is removed with its names only when every name the import binds on that line is
 listed.
 
-- Each name goes before the first listed name that Ruff's
+- For a single-line literal or one with one name per line, each new name goes before the first listed name that Ruff's
   [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`
   stays sorted.
 
@@ -788,9 +806,8 @@ def beta() -> int:
     return 2
 ```
 
-**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last
-statement, or above a closing `if __name__ == "__main__":` block. **Unsafe fix:** it narrows what `from module import *`
-exports.
+To create an export list, the fix inserts a sorted `__all__` with one name per line at the end of the module, before any
+trailing `if __name__ == "__main__":` block. This fix is unsafe because it narrows what `from module import *` exports.
 
 - Last statement of the module:
 
@@ -894,6 +911,8 @@ print(local())
 ### Related rules
 
 [unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.
+
+[imported-fixture](SMP822.html) flags fixtures that another module imports or that their module lists in `__all__`.
 
 ## Other tools
 

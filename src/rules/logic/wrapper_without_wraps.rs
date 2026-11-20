@@ -20,8 +20,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let checker = walker.checker;
     for wrapper in decorator.body.iter().filter_map(Stmt::as_function_def_stmt) {
         let name = wrapper.name.as_str();
-        // A wrapper forwards whatever its caller passes; a closure with a fixed signature that calls the parameter is a
-        // callback factory, which keeps a name of its own.
+        // A fixed-signature closure can be a callback with a name of its own.
         let forwards = wrapper.parameters.vararg.is_some() || wrapper.parameters.kwarg.is_some();
         if !forwards || !wrapper.decorator_list.is_empty() || parameters.contains(&name) {
             continue;
@@ -94,8 +93,6 @@ impl Calls<'_, '_, '_> {
     }
 }
 
-// Whether the decorator returns the wrapper, and whether it copies the wrapped function's metadata some other way, by
-// `functools.update_wrapper` or by setting a dunder on the wrapper.
 struct DecoratorFacts<'a> {
     wrapper: &'a str,
     returned: bool,
@@ -137,12 +134,9 @@ impl<'a> Visitor<'a> for DecoratorFacts<'_> {
     }
 }
 
-// The decorator goes on its own line above the wrapper, at the wrapper's indentation, spelled the way the file already
-// imports `wraps`.
 fn wraps_fix(checker: &Checker, wrapper: &ast::StmtFunctionDef, inner: &str) -> Option<ruff_diagnostics::Fix> {
     let source = checker.source;
     let line_start = source.line_start(wrapper.start());
-    // A `def` starts its line, so all before it is indentation.
     let indentation = &source[TextRange::new(line_start, wrapper.start())];
     let (spelling, import) = if checker.state().top_level_imports(checker).contains(&("functools", Some("wraps"))) {
         ("wraps", ensure_import(checker, "functools", Some("wraps"), wrapper.range())?)

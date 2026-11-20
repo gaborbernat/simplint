@@ -6,8 +6,7 @@ use ruff_python_semantic::analyze::class::any_qualified_base_class;
 use ruff_python_semantic::{Modules, SemanticModel};
 use ruff_text_size::{Ranged, TextRange};
 
-// The body statements of a Django model that DJ012 reports: each is out of the Django Style Guide's order, below a
-// statement of a later section. A run of one section is reported at its first statement only.
+// DJ012 reports the first statement of each misplaced section in a Django model.
 pub(super) fn unordered_model_statements(semantic: &SemanticModel, class: &ast::StmtClassDef) -> Vec<TextRange> {
     if !semantic.seen_module(Modules::DJANGO) || !is_model(class, semantic) {
         return Vec::new();
@@ -23,7 +22,7 @@ pub(super) fn unordered_model_statements(semantic: &SemanticModel, class: &ast::
             continue;
         }
         previous = Some(content);
-        // A statement out of order is not kept as a section that a later one may follow.
+        // A misplaced section must not affect the order expected of later sections.
         if seen.iter().any(|&earlier| earlier > content) {
             reported.push(stmt.range());
         } else {

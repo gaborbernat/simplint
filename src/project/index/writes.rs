@@ -15,8 +15,8 @@ pub(super) struct Writes {
     pub(super) unslottable_bases: FxHashSet<String>,
     pub(super) stateful_bases: FxHashSet<String>,
     pub(super) pickles_low_protocol: bool,
-    // Whether code sets an attribute no class of the run gives its instances on an object of unknown class, which may
-    // be an instance of any dataclass. A dunder name is left out, as code sets those on functions and classes.
+    // An unknown receiver with an undeclared attribute may gain new instance state. Ignore __-prefixed names, which are
+    // also commonly set on functions and classes.
     pub(super) strangers: bool,
     pub(super) namesakes: FxHashMap<String, usize>,
 }
@@ -45,8 +45,8 @@ impl Writes {
             for (class, attribute) in &facts.typed {
                 writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
             }
-            // An annotation naming a class the run does not define, such as `Any`, a protocol or a type alias, gives an
-            // object of unknown class, whose writes the field checks read by name.
+            // An annotation can name a protocol, type alias or external class. Match these writes by attribute name
+            // when the concrete class is unknown.
             for (class, attribute) in &facts.declared {
                 if classes.contains(class.as_str()) {
                     writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
@@ -97,8 +97,6 @@ mod tests {
     use crate::project::index::FileIds;
     use crate::project::{FileFacts, Parts};
 
-    // A class attribute reaches every base once, though a diamond reaches the shared base on two paths; a computed name
-    // written on an object of a class the run does not define names no field.
     #[test]
     fn class_attributes_reach_each_base_once() {
         let source = "from typing import Any\n\n\nclass Base:\n    pass\n\n\nclass Left(Base):\n    pass\n\n\n\

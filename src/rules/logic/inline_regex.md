@@ -4,17 +4,9 @@ constant can hold instead, compiled once.
 
 ## Why is this bad?
 
-A module-level `re` function such as `re.fullmatch(pattern, text)` skips compiling its pattern only while the pattern is
-in `re`'s cache. Each call runs
-[`re._compile`](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L332-L373), which looks the pattern
-up in two caches that hold 256 and 512 patterns
-([lines 328 and 329](https://github.com/python/cpython/blob/v3.16.0a2/Lib/re/__init__.py#L328-L329)), so a program that
-uses more patterns than that compiles some of them again on every call. A module-level constant is compiled once, when
-the module loads, and each call skips the lookup.
-
-Measured with `timeit` on CPython 3.15.2, a warm-cache `re.fullmatch(p, s)` took about 235 ns against 107 ns for
-`_P.fullmatch(s)`, 2.2 times as long. With 600 patterns cycled, so each is evicted before its next use, every inline
-call compiled its pattern and took about 21.6 µs against 69 ns precompiled, over 300 times as long.
+`re.fullmatch(pattern, text)` [looks up the pattern in a cache](https://docs.python.org/3/library/re.html#re.compile)
+and compiles it on a miss. A module-level `re.compile()` builds the pattern when the module loads. Subsequent calls to
+its `fullmatch()` method skip the lookup, even if other patterns have displaced it from the cache.
 
 A module-level constant also names the pattern, and it is the place where [unexplained-regex](SMP533.html) asks for
 comments on its parts.
@@ -50,11 +42,13 @@ def is_image(image_name: str) -> bool:
   concatenation. The functions are `compile`, `match`, `prefixmatch`, `search`, `fullmatch`, `finditer`, `findall`,
   `split`, `sub` and `subn`, called through `re`, an alias of it, or a name imported from it with `from re import`. A
   call in a nested function, a method, a lambda or a comprehension inside one is reported too. The `regex` module counts
-  the same way. The flags, if any, must be constant, as [`re.I`](https://docs.python.org/3/library/re.html#re.I),
-  `re.VERBOSE | re.M` or `flags=re.I`.
+  the same way. The rule recognizes integer flags and named flags such as
+  [`re.I`](https://docs.python.org/3/library/re.html#re.I), including combinations such as `re.VERBOSE | re.M`.
 
   **Unsafe fix:** the pattern compiles when the module loads, so an invalid pattern raises at import instead of at the
-  call. The fix adds the `Final` and `re` imports the file lacks.
+  call. The fix adds the imports it needs for `Final` and the regex module. The flags expression must also work at
+  module level. For example, `re.X | flags` enables verbose mode, so the rule reports it even if `flags` is a local
+  parameter. Keep that pattern inside the function when its flags depend on the caller.
 
   ```python report
   import re
@@ -77,13 +71,14 @@ def is_image(image_name: str) -> bool:
       return found.group(0) if found else None
   ```
 
-  The constant's name comes from the name the call's result is assigned to when that name has three or more letters, and
-  from the function otherwise, in upper case. `_PATTERN` follows unless the last word of the name already says pattern
-  or regex, so `pattern = re.compile(...)` gives `_PATTERN`, `version_re = re.compile(...)` gives `_VERSION_RE`, and
-  `m = re.match(...)` in `parse_version` gives `_PARSE_VERSION_PATTERN`. A name the file already spells gets a number
-  after it.
+  The fix uses the assignment target's name unless it is short or generic, such as `m`, `pattern` or `regex`. In that
+  case it uses the enclosing function's name. For example, `version_re = re.compile(...)` becomes `_VERSION_RE`, while
+  `pattern = re.compile(...)` in `parse_version` becomes `_PARSE_VERSION_PATTERN`. If the target's name is taken, the
+  fix tries the function's name before adding a numeric suffix. For simple local `re.compile()` assignments, the fix can
+  remove the assignment and replace its uses with the constant.
 
-  A call with a comment inside it is reported without a fix, since the rewritten call would drop the comment.
+  The rule reports a call without a fix when the call contains a comment or sits in a module-level lambda. The fix also
+  skips modules with top-level imports after executable statements.
 
   ```python report
   import re
@@ -99,7 +94,7 @@ def is_image(image_name: str) -> bool:
 
 ### Exceptions
 
-- **Calls at module level or in a class body** run when the module loads, so nothing is reported.
+- **Calls at module level or in a module-level class body** run when the module loads, so nothing is reported.
 
   ```python ok
   import re
@@ -107,13 +102,12 @@ def is_image(image_name: str) -> bool:
   IS_IMAGE = re.compile(r"[a-z0-9]+(?:/[a-z0-9]+)*")
   ```
 
-- **Plain-text calls that Ruff rewrites**: a pattern with no regular expression metacharacter, called through `re`, is
-  left to [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) when Ruff rewrites the call to a
-  `str` method. Ruff rewrites a `split` with a non-empty pattern and two arguments, a `sub` with three arguments whose
-  replacement is a literal without an escape that `re` rejects, and a `match`, `prefixmatch`, `search` or `fullmatch`
-  with two arguments whose result is only tested for truth or compared to `None`. A module constant would hold such a
-  pattern without a reason, so these calls stay with Ruff. Any other plain-text call is reported, such as a result
-  stored in a name, a `re` call with flags or a third argument, or a pattern passed to `regex`.
+- **Plain-text calls covered by Ruff.** [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/)
+  suggests string methods for some calls to `re`. The rule skips a `split` with a non-empty pattern and two arguments, a
+  `sub` with three arguments whose replacement is a literal or a name bound once to a literal, subject to the escape
+  checks in RUF055, and a `match`, `prefixmatch`, `search` or `fullmatch` with two arguments whose result is only tested
+  for truth or compared to `None`. Other plain-text calls can still be reported, such as a search whose result is
+  assigned to a name, a call with recognized flags, or a call through `regex`.
 
   ```python ok
   import re
@@ -132,8 +126,8 @@ def is_image(image_name: str) -> bool:
       return found.group(0) if found else None
   ```
 
-- **Flags that are not constant**, such as a parameter, are not reported, since the flags decide what the constant
-  compiles to.
+- **Unknown verbose mode.** When a parameter supplies the flags, the rule usually cannot tell whether verbose mode is
+  enabled. It skips these calls.
 
   ```python ok
   import re
@@ -150,13 +144,9 @@ Ruff's preview rule
 [unnecessary-regular-expression-compile](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression-compile/)
 reports a method called on an inline [`re.compile`](https://docs.python.org/3/library/re.html#re.compile), such as
 `re.compile(p).match(s)`, and asks for [`re.match(p, s)`](https://docs.python.org/3/library/re.html#re.match) or a
-stored pattern. Inside a function both rules report that call. Ruff has no fix; this rule's fix stores the pattern in a
-module-level constant, which neither rule reports, so the two can stay on together.
-
-Of Ruff's two suggestions, only the stored pattern settles both rules. `re.match(p, s)` in a function still pays the
-cache lookup on every call, and the compile once the cache is evicted, so this rule reports it and moves the pattern to
-a constant as well. The measurements under Why is this bad? put such a call at about 2.2 times a precompiled one on a
-warm cache, and at about 310 to 320 times once the cache is evicted.
+stored pattern. When `p` is a literal inside a function, both rules can report the inline
+[`compile()`](https://docs.python.org/3/builtins/functions.html#compile) call. Moving it to a module-level constant
+satisfies both.
 
 ## Other tools
 

@@ -31,7 +31,7 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
                 for parameter in &function.parameters {
                     if let Some(annotation) = parameter.annotation() {
                         let variadic = matches!(parameter, AnyParameterRef::Variadic(_));
-                        // ANN401 rejects `Any` here, so `object` is the one annotation both tools accept.
+                        // Both tools accept `object` for arbitrary positional and keyword arguments.
                         if variadic && is_object(walker, annotation) {
                             continue;
                         }
@@ -95,8 +95,7 @@ fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
     if ann401 {
         ann401_anys(walker, annotation, &mut left_to_ann401);
     }
-    // The collector visits a subscript before its elements, so the return of a `Callable` is known before `object` is
-    // picked. `Callable[..., object]` says the return value is ignored, which is the point of `object` there.
+    // The visitor sees a `Callable` before its arguments, so it can exempt a direct `object` result type.
     let mut callable_returns = FxHashSet::default();
     // The arguments of `Annotated` after the first are metadata, where `object` is a value rather than a type.
     let mut metadata = Vec::new();
@@ -165,9 +164,8 @@ fn slice_elements(slice: &Expr) -> &[Expr] {
     }
 }
 
-// The `def`s that implement an `@overload` set. Ruff's ANN401 skips them, since the type checker reads the signature
-// from the stubs. Ruff reads the definitions in order, so a stub carries on through the bodies of an `if` or a `try`
-// that follow it, until a `def` or a class resets it.
+// Mirror ANN401's source-order matching of overload implementations. A stub can carry across an `if` or `try`
+// body until another function or class resets it.
 pub(crate) fn overload_implementations(checker: &Checker) -> FxHashSet<TextSize> {
     let mut implementations = FxHashSet::default();
     overload_implementations_in(checker, checker.body(), &mut None, &mut implementations);

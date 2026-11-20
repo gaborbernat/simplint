@@ -40,10 +40,8 @@ pub fn rst_unraised_exception(checker: &Checker) {
     }
 }
 
-// What a function body can raise: the exceptions its `raise` statements name with the classes they derive from, and the
-// operations that raise built-in exceptions on their own. A call this module does not define, a loop over an unknown
-// iterable, a `with`, an `await` or a `raise` of a value whose class is unknown can raise anything, so the body is then
-// unknown.
+// An unresolved call can raise exceptions outside the set inferred here. Suppress the check when the analysis
+// encounters one.
 #[expect(clippy::struct_excessive_bools, reason = "each flag records one kind of operation that raises on its own")]
 struct Effects<'c, 'a> {
     checker: &'c Checker<'a>,
@@ -55,9 +53,7 @@ struct Effects<'c, 'a> {
     unknown: bool,
     caught: Vec<Vec<&'a str>>,
     bound: FxHashMap<&'a str, Vec<&'a str>>,
-    // The class of the documented method, whose methods a call through its receiver reaches.
     class: Option<&'a ast::StmtClassDef>,
-    // The method of that class whose body the walk is in.
     method: Option<&'a ast::StmtFunctionDef>,
     pending: Vec<&'a ast::StmtFunctionDef>,
 }
@@ -88,7 +84,7 @@ impl<'c, 'a> Effects<'c, 'a> {
                 self.method = self.class.and_then(|class| {
                     class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|method| std::ptr::eq(*method, next))
                 });
-                // Python checks the defaults and decorators when it defines the function, not when it calls it.
+                // Decorators and defaults run at definition time.
                 self.visit_body(&next.body);
             }
         }
@@ -145,8 +141,7 @@ impl<'a> Visitor<'a> for Effects<'_, 'a> {
                 self.visit_body(body);
                 for handler in handlers {
                     let ast::ExceptHandler::ExceptHandler(handler) = handler;
-                    // What the handler re-raises is a caught class or a subclass of one, which a field for any of
-                    // their bases documents.
+                    // A field naming a base class covers subclasses re-raised by the handler.
                     let types: Vec<&str> = handled_types(handler).map_or_else(
                         || vec!["BaseException"],
                         |types| {
@@ -165,7 +160,6 @@ impl<'a> Visitor<'a> for Effects<'_, 'a> {
             }
             Stmt::Raise(ast::StmtRaise { exc, cause, .. }) => {
                 match exc.as_deref() {
-                    // A bare `raise` re-raises what the handler around it caught.
                     None => match self.caught.last() {
                         Some(types) => self.raised.extend(types.iter().copied()),
                         None => self.unknown = true,
@@ -217,7 +211,7 @@ impl<'a> Visitor<'a> for Effects<'_, 'a> {
     }
 }
 
-// Iterating anything but a literal display calls the iterable's `__iter__`, which can raise anything.
+// A user-defined iterator can raise exceptions outside the set tracked here.
 fn unknown_iteration(generators: &[ast::Comprehension]) -> bool {
     generators.iter().any(|generator| !matches!(generator.iter, Expr::List(_) | Expr::Tuple(_) | Expr::Set(_)))
 }

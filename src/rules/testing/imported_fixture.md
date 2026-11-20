@@ -2,12 +2,12 @@ Flags a pytest fixture that another module imports, or that its module lists in 
 
 ## Why is this bad?
 
-pytest finds fixtures by name, through `conftest.py` files and plugins
-([pytest docs](https://docs.pytest.org/en/stable/how-to/fixtures.html#scope-sharing-fixtures-across-classes-modules-packages-or-session)).
-Importing a fixture into a test module bypasses that lookup: the import binds the fixture function, the test parameter
-of the same name shadows it, and the import looks unused. Ruff's
-[unused-import](https://docs.astral.sh/ruff/rules/unused-import/) then removes it, or a reader does, and the tests stop
-finding the fixture. Listing a fixture in `__all__` invites that same import.
+A fixture defined in `conftest.py` is available to tests in that directory and its subdirectories. A plugin can also
+provide fixtures. If a test module imports a fixture, pytest can discover it there, but the test requests it through a
+parameter. The import then looks unused. Removing it can make the test fail with a missing fixture. Listing a fixture in
+`__all__` encourages the same import. See
+[pytest's fixture lookup rules](https://docs.pytest.org/en/stable/reference/fixtures.html#fixture-availability) and
+[Ruff's unused-import rule](https://docs.astral.sh/ruff/rules/unused-import/).
 
 ## Example
 
@@ -63,3 +63,7 @@ def order() -> str:
   def order() -> str:
       return "order-1"
   ```
+
+### Related rules
+
+[missing-from-all](SMP401.html) leaves fixtures out of the names it asks `__all__` to list.

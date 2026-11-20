@@ -2,7 +2,7 @@ use super::*;
 use crate::common::{check, native, project};
 use test_case::test_case;
 
-// A source root under `src` holds the `.pth` file the interpreter reads, as a project laid out with `src/` does.
+// A project may ship a startup `.pth` file from its `src` directory.
 #[test]
 fn startup_pth_under_src_keeps_the_name() {
     let root = project(&[
@@ -20,9 +20,7 @@ fn startup_pth_under_src_keeps_the_name() {
     assert!(check(without_pth.path(), &["--select", "SMP408"]).1.contains("`_run` is used only by tests"));
 }
 
-// A production module that passes another module on as a value calls that module's functions through the value, which
-// no import of a name shows, so they are not used only by tests. Only such a load counts: a module that production only
-// imports still reports the functions the tests alone call.
+// Passing the module as a value can hide production callers. Importing the module alone supplies no such evidence.
 #[test_case(
     "from pkg import fast\n\nCODEC = fast if CHOSEN else None\n",
     common::PASSED ; "conditional_alias"
@@ -57,8 +55,6 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A `.pth` file that is not UTF-8 is skipped with a warning, as an unreadable Python file is, so the names it would
-// read are reported and the run goes on.
 #[test]
 fn non_utf8_startup_pth_is_skipped_with_a_warning() {
     let root = project(&[

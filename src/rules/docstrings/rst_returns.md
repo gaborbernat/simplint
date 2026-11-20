@@ -2,12 +2,12 @@ Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStr
 
 ## Why is this bad?
 
-A missing field leaves the result to the annotation, which gives its type but not its meaning, while
-[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) lists return values among what a function's docstring
-documents. A `:returns:` on a function that returns nothing, or on a generator, describes a value no caller receives.
-The [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) and
-[numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html#yields) give generators their own section for what
-[`next()`](https://docs.python.org/3/builtins/functions.html#next) hands out.
+A return annotation such as `int` cannot tell a caller whether the value is a byte count or an exit status. For a
+generator, describe what each iteration yields. A generator can also return a final value through
+[`StopIteration.value`](https://docs.python.org/3/builtins/exceptions.html#StopIteration.value), which is distinct from
+the items it yields.
+[Python's return statement](https://docs.python.org/3/reference/simple_stmts.html#the-return-statement) and
+[numpydoc's generator convention](https://numpydoc.readthedocs.io/en/latest/format.html#yields) explain the distinction.
 
 ## Example
 
@@ -67,9 +67,9 @@ stops with an error when either applies to the same file, so turn the Ruff rules
 
 ## What it does
 
-Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, when `docstring-style = "rst"`. A
-**missing** field is reported in a docstring of a library's public API (see [undocumented-public-api](SMP903.html)); a
-**wrong** field is reported in any docstring.
+Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, when `docstring-style = "rst"`. It checks
+for missing fields on the [public API](SMP903.html), including definitions named by autodoc. It also checks for
+misplaced fields on internal functions and classes.
 
 ### Active on
 
@@ -176,7 +176,8 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
       print(message)
   ```
 
-- **`:returns:` and no `:yields:` on a generator**: the fix renames the field to `:yields:`, keeping its description.
+- **`:returns:` and no `:yields:` on a generator**: the fix renames the first return field to `:yields:`, keeping its
+  description. A generator with both fields keeps them.
 
   ```toml config
   [project]
@@ -378,20 +379,14 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
 
 **Unsafe fix:** each fix changes the docstring, and code may read it through `__doc__`.
 
-No fix is offered when escapes in the docstring make its text differ from the source.
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source. For a
+deletion, if the field ends the docstring, a comment after the closing quotes also prevents the fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules
-  [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and
-  [DOC402](https://docs.astral.sh/ruff/rules/docstring-missing-yields/), which cannot read `:returns:` and `:yields:`
-  fields, so simplint refuses to run with them on reST docstrings; open pull request
-  [#13286](https://github.com/astral-sh/ruff/pull/13286) adds Sphinx support.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports missing or extra return and yield sections as
-  [DOC201](https://jsh9.github.io/pydoclint/violation_codes.html),
-  [DOC202](https://jsh9.github.io/pydoclint/violation_codes.html),
-  [DOC402](https://jsh9.github.io/pydoclint/violation_codes.html) and
-  [DOC403](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
-- [darglint](https://github.com/terrencepreilly/darglint) reports the same return sections as
-  [DAR201](https://github.com/terrencepreilly/darglint) and [DAR202](https://github.com/terrencepreilly/darglint), with
-  no fix.
+- Ruff's [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and
+  [DOC402](https://docs.astral.sh/ruff/rules/docstring-missing-yields/) check for missing Returns and Yields sections.
+  [Ruff PR #13286](https://github.com/astral-sh/ruff/pull/13286) proposes support for Sphinx fields.
+- [pydoclint DOC201, DOC202, DOC402 and DOC403](https://jsh9.github.io/pydoclint/violation_codes.html) check missing and
+  extra return and yield sections. [darglint DAR201 and DAR202](https://github.com/terrencepreilly/darglint) check
+  return sections.

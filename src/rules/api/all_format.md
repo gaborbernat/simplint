@@ -2,18 +2,17 @@ Flags an `__all__` written as a tuple, or as a list without a trailing comma aft
 
 ## Why is this bad?
 
-A trailing comma after the last name makes Ruff's formatter put each name on its own line, unless
-[`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) is set. Adding or
-removing an export then changes one line, so the diff shows which name changed and `git blame` shows which commit added
-it, the layout
-[Black](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#how-black-wraps-lines) and
-[PEP 8](https://peps.python.org/pep-0008/#when-to-use-trailing-commas) recommend.
+With Ruff's default formatter settings, a trailing comma puts each export on its own line. Adding or removing a name
+then changes one line.
+[Black](https://black.readthedocs.io/en/stable/the_black_code_style/current_style.html#how-black-wraps-lines) uses the
+same convention, and [PEP 8](https://peps.python.org/pep-0008/#when-to-use-trailing-commas) recommends it for
+collections that grow over time.
 
-A list is the form the [tutorial](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) shows. It is
-also the only form that accepts the `.append`, `.extend` and `.remove` calls that the
-[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
-lets type checkers follow, and the shape the [missing-from-all](SMP401.html) fix writes for a new `__all__`. To also
-sort the names, see Ruff's [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).
+A list supports `.append`, `.extend` and `.remove`, three ways to update `__all__` that
+[type checkers recognize](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols).
+The [Python tutorial](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) uses a list, and
+[missing-from-all](SMP401.html) creates one. Ruff's
+[unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) checks the order of the names.
 
 ## Example
 
@@ -54,8 +53,9 @@ literal.
 
 - **Lists without a trailing comma**: a list must have a trailing comma after its last name, so the formatter splits it
   one name per line. With Ruff's
-  [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) set, the
-  formatter keeps the list as written, with or without the comma, so the rule does not report it.
+  [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) set, Ruff may
+  put a short list on one line even if it has a trailing comma. simplint skips the trailing-comma check for lists under
+  that setting.
 
   - a plain assignment:
 
@@ -112,8 +112,7 @@ literal.
 
 - **An augmented assignment while a plain assignment keeps `__all__` a tuple**: `tuple += list` raises, so the `+=` is
   left alone when a plain assignment is not a list or tuple literal, such as `tuple([...])`. A tuple nested in a block
-  or with a `noqa` for this rule stays a tuple too, since the fix does not convert it. Other augmented assignments do
-  not change the type of `__all__`, so they are not affected.
+  or with a `noqa` for this rule stays a tuple too, since the fix does not convert it.
 
   ```python ok
   __all__ = tuple(["load"])
@@ -184,7 +183,8 @@ __all__ = ()
 __all__ = []
 ```
 
-The fix keeps the names in their order. The layout depends on how the literal is written:
+The fix preserves the order of the names. The examples below use the default formatter settings. With
+`skip-magic-trailing-comma` set, a one-line tuple becomes a one-line list.
 
 - **On one line**: it becomes a list with one name per line and a trailing comma, the layout `ruff format` gives it, so
   `("load", "save")` needs no formatter pass. A list on one line is rewritten the same way.
@@ -238,7 +238,8 @@ The fix keeps the names in their order. The layout depends on how the literal is
   # fmt: on
   ```
 
-- **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.
+- **A parenthesized tuple across several lines** keeps its layout. The fix changes the parentheses to brackets and adds
+  a missing trailing comma unless `skip-magic-trailing-comma` is set.
 
   ```python report
   __all__ = (
@@ -256,12 +257,11 @@ The fix keeps the names in their order. The layout depends on how the literal is
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which reports a missing trailing comma when the
-  closing bracket is on its own line and which this rule leaves to it for a list while it runs; this rule covers the
-  rest of the layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open
-  issues [#22443](https://github.com/astral-sh/ruff/issues/22443) and
-  [#27983](https://github.com/astral-sh/ruff/issues/27983).
+- Ruff's [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) checks for a missing comma before a closing
+  bracket on its own line. When COM812 is enabled, simplint leaves those lists to Ruff. It still reports tuples so it
+  can change them to lists. Ruff issues [#22443](https://github.com/astral-sh/ruff/issues/22443) and
+  [#27983](https://github.com/astral-sh/ruff/issues/27983) request multiline export lists and a warning for tuples,
+  respectively.
 - [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports
   [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It
   accepts tuples, which this rule reports, and it does not check the trailing comma.

@@ -1,8 +1,7 @@
 How-to guides
 #############
 
-Each guide walks through one task, assuming you already have simplint running; the :doc:`/tutorial/getting-started`
-tutorial gets you there.
+For installation and a first check, see :doc:`/tutorial/getting-started`.
 
 - :doc:`select-rules`: turn rules and their fixes on or off, for the whole project or some files.
 - :doc:`suppress-a-report`: silence one report with a comment, and say why.

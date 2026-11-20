@@ -12,7 +12,7 @@ use crate::rules::testing::collected_tests;
 use crate::syntax::{alias_binding, decorator_callee, docstring, last_segment, receiver};
 
 pub fn test_without_assertion(checker: &Checker) {
-    // pytest never runs the tests of a module it does not collect, such as a type checker's input.
+    // Check names matched by python_files so type-checker fixtures can contain example tests.
     if !checker.is_test_module() || !checker.settings.project.pytest.collects(checker.file_name()) {
         return;
     }
@@ -20,8 +20,10 @@ pub fn test_without_assertion(checker: &Checker) {
     let mut verdicts = FxHashMap::default();
     for test in collected_tests(checker) {
         if is_skipped(test)
-            // pytest-benchmark's fixtures measure rather than check.
-            || test.parameters.iter().any(|parameter| matches!(parameter.name().as_str(), "benchmark" | "aio_benchmark"))
+            || test
+                .parameters
+                .iter()
+                .any(|parameter| matches!(parameter.name().as_str(), "benchmark" | "aio_benchmark"))
             || only_runs(checker, test)
             || test
                 .decorator_list
@@ -85,7 +87,7 @@ fn is_testing_path(module: &str) -> bool {
     module.split('.').any(|segment| segment != "pytest" && segment.contains("test"))
 }
 
-// Tests pytest always skips or expects to fail are placeholders, not checks that went missing.
+// A skipped or expected-to-fail test may intentionally have no check.
 fn is_skipped(test: &ast::StmtFunctionDef) -> bool {
     test.decorator_list.iter().any(|decorator| {
         UnqualifiedName::from_expr(decorator_callee(decorator)).is_some_and(|name| {
@@ -108,7 +110,7 @@ fn only_runs(checker: &Checker, test: &ast::StmtFunctionDef) -> bool {
     })
 }
 
-// A warning filter set to `error` fails the test on any warning the code emits.
+// A matching warning can fail a test when the filter action is error.
 fn escalates_warnings(call: &ast::ExprCall) -> bool {
     let is_error =
         |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str().starts_with("error"));
@@ -139,17 +141,13 @@ struct Checks<'a, 'b> {
     support: &'a FxHashSet<&'b str>,
     parameters: FxHashSet<&'b str>,
     class: Option<&'b ast::StmtClassDef>,
-    // The method of `class` whose body the walk is in.
     method: Option<&'b ast::StmtFunctionDef>,
     // The local helpers already followed for this test, so recursion ends.
     seen: FxHashSet<TextRange>,
-    // Whether each helper checks, by its range and the class of the test, shared by the tests of the module, which
-    // often call the same helpers.
+    // Several tests in a module can use the same helper. Its meaning can depend on the test class.
     verdicts: &'a mut FxHashMap<(TextRange, Option<TextRange>), bool>,
-    // Whether the walk of the current helper stopped at a helper already being followed, which leaves its verdict
-    // unknown, so it is not kept.
+    // A recursive call leaves the current result uncertain. Avoid caching it.
     cut: bool,
-    // How many helpers deep the walk is, 0 in the test itself.
     depth: usize,
     checked: bool,
 }
@@ -263,8 +261,7 @@ impl<'b> Checks<'_, 'b> {
         }
     }
 
-    // A local function or a method of the test's class handed to a call as a callback, such as an event handler,
-    // runs its checks when the code under test calls it.
+    // A callback can assert when the code under test invokes it.
     fn passes_check(&mut self, call: &'b ast::ExprCall) -> bool {
         let semantic = self.checker.semantic();
         call.arguments.args.iter().chain(call.arguments.keywords.iter().map(|keyword| &keyword.value)).any(|value| {

@@ -2,19 +2,11 @@ Flags a trailing call in a runnable module when importing that module would exec
 
 ## Why is this bad?
 
-Python executes top-level statements when it imports a module, so a final call to the entrypoint without an
-`if __name__ == "__main__":` guard runs the command whenever something imports the file. A
-[console script](https://packaging.python.org/en/latest/specifications/entry-points/#use-for-scripts) imports the
-configured callable before calling it, so the command runs twice. A test that imports the module to check one function
-also runs the whole command, the case the
-[`__main__` docs](https://docs.python.org/3/library/__main__.html#idiomatic-usage) give for the guard.
-
-Under multiprocessing's
-[spawn and forkserver start methods](https://docs.python.org/3/library/multiprocessing.html#the-spawn-and-forkserver-start-methods),
-each child imports the main module again, so an unguarded call starts the command in every child process.
-
-The [`__main__` docs](https://docs.python.org/3/library/__main__.html#id1) leave a package's `__main__.py` unguarded for
-consistency. This rule still requires the guard, since that file can also be imported as a module.
+Importing a module executes its top-level statements. An unguarded entrypoint can start the command during test
+collection or when a child process imports the main module. A
+[console script](https://packaging.python.org/en/latest/specifications/entry-points/#use-for-scripts) that imports and
+calls the same function can run it twice. Putting the call under a
+[main guard](https://docs.python.org/3/library/__main__.html#idiomatic-usage) limits it to direct execution.
 
 ## Example
 
@@ -47,7 +39,7 @@ if __name__ == "__main__":
 
 The rule checks the final top-level statement of a module. A direct call, a call inside
 [`sys.exit(...)`](https://docs.python.org/3/library/sys.html#sys.exit), and a call inside `raise SystemExit(...)` count.
-The callable's name does not matter.
+In a script identified by its filename, shebang or executable bit, any callable name qualifies.
 
 ### Active on
 
@@ -118,8 +110,8 @@ A call is reported when one of these signals identifies a runnable module:
       sync()
   ```
 
-- **Script target**: `[project.scripts]` or `[project.gui-scripts]` names the called object, such as `main` in
-  `pkg = "pkg.cli:main"`.
+- **Script target**. `[project.scripts]` or `[project.gui-scripts]` names the called object, such as `main` in
+  `pkg = "pkg.cli:main"`. A call to that object may also appear inside another call's positional or keyword arguments.
 
   ```toml config
   [project]

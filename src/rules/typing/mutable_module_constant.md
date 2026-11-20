@@ -1,18 +1,13 @@
-Flags a module constant bound to a list, set or dict that no code changes, and makes it a tuple, a frozenset or a
-read-only mapping.
+Flags lists, sets and dictionaries assigned to module constants when simplint finds only read access. The fix changes
+the collection type.
 
 ## Why is this bad?
 
-A module constant is shared by every caller, and a mutable one can be changed by any of them: a function that appends to
-it changes what every other caller reads, for the rest of the process. `Final`
-([PEP 591](https://peps.python.org/pep-0591/#specification)) stops rebinding the name, not changing the value it holds.
-An immutable value states that the constant does not change, and the runtime enforces it: a
-[`tuple`](https://docs.python.org/3/builtins/stdtypes.html#tuple) and a
-[`frozenset`](https://docs.python.org/3/builtins/stdtypes.html#frozenset) have no methods that change them, and
-[`frozendict`](https://docs.python.org/3.15/library/stdtypes.html#frozendict), added in Python 3.15 by
-[PEP 814](https://peps.python.org/pep-0814/), or a
-[`MappingProxyType`](https://docs.python.org/3/library/types.html#types.MappingProxyType) before it, raises on
-assignment. A frozenset and a frozendict are also hashable, so the constant can serve as a dict key or a cache argument.
+A caller can append to a module-level list and change what other callers see.
+[`Final`](https://peps.python.org/pep-0591/#specification) prevents reassignment during type checking. To prevent
+changes to the collection itself, use a tuple, a frozenset or a read-only mapping. Python 3.15 added
+[`frozendict`](https://peps.python.org/pep-0814/), which is hashable when all its values are hashable. On earlier
+versions the fix uses [`MappingProxyType`](https://docs.python.org/3/library/types.html#types.MappingProxyType).
 
 ## Example
 
@@ -118,7 +113,9 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
       return NAMES
   ```
 
-- **A name another module imports**: that module may change the value, which this module cannot see.
+- **Names used or written by another module in the run**. Another module may mutate the collection or replace it. A star
+  import or a write through a computed attribute name can affect any name in the module. Writes through
+  [`globals()`](https://docs.python.org/3/builtins/functions.html#globals) in the defining module count too.
 
   ```python ok file=app/settings.py
   PLUGINS = ["core"]
@@ -140,7 +137,8 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
   LEVELS = ["debug", *LEVELS]
   ```
 
-- **A lowercase name without `Final`, and a dunder**: neither reads as a constant.
+- **Names outside the convention**. simplint skips lowercase names without `Final`, dunder names and tool-defined names
+  such as `pytestmark`.
 
   ```python ok
   handlers = ["console"]
@@ -161,15 +159,15 @@ value: it subscripts it, iterates it, tests it, compares it, calls a method that
 | annotation [`typing.List`](https://docs.python.org/3/library/typing.html#typing.List) or a string | no fix                                                                          |      |
 | a read that sees the type, listed below                                                           | no fix                                                                          |      |
 
-A read in the module that sees the type leaves the fix off, as the immutable value would change what it does:
+simplint withholds the fix when the module uses the collection in any of these ways.
 
 - **A list compared**: a tuple never equals a list, and ordering the two raises
   [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). Being the container of an `in` test is
   fine.
-- **An operator**: `+` raises between a tuple and a list, and `|` on a `frozenset` or a mapping view returns a
-  `frozenset` or a `dict` where a `set` or the view came back before.
+- **A binary operator** can change the result type or fail after conversion. For example, a tuple cannot be concatenated
+  with a list, and a union with a frozenset as its left operand produces a frozenset.
 - **`copy()` on a list**: a tuple has no `copy` method.
-- **`isinstance`, `type`, `repr`, `str` or `print`**: each shows the new type.
+- **`isinstance`, `type`, `repr`, `str` or `print`**: these calls can reveal the change of type.
 
 ```python report
 LEGACY = ["==2.1.0.3"]
@@ -179,9 +177,9 @@ def is_legacy(specifier: str) -> bool:
     return specifier in LEGACY + ["<1.0"]
 ```
 
-The fix is still unsafe: code the module cannot see, such as a caller that compares what a function built from the
-value, may rely on the list, set or dict API. An abstract annotation, such as `Sequence[str]`, already fits the
-immutable value and stays.
+The fix is unsafe because callers can rely on the original collection type. For example, slicing a list returns a list,
+while slicing a tuple returns a tuple. An abstract annotation such as `Sequence[str]` can describe either type and stays
+in place.
 
 ```python report
 PORTS: dict[str, int] = {"http": 80}
@@ -211,15 +209,12 @@ SINGLE: tuple[str, ...] = ("only",)
 
 ## Ruff overlap
 
-Ruff's [mutable-class-default](https://docs.astral.sh/ruff/rules/mutable-class-default/) (RUF012) reports mutable class
-attributes, not module constants. Ruff's
-[unnecessary-collection-call](https://docs.astral.sh/ruff/rules/unnecessary-collection-call/) (C408) rewrites
-`dict(a=1)` as `{"a": 1}`; this rule's fix then wraps the display, so the two compose.
+[Ruff RUF012](https://docs.astral.sh/ruff/rules/mutable-class-default/) checks mutable class attributes.
+[C408](https://docs.astral.sh/ruff/rules/unnecessary-collection-call/) can rewrite `dict(a=1)` as `{"a": 1}`. simplint
+can freeze the resulting module constant.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not implemented; requested in a comment on
-  [#3845](https://github.com/astral-sh/ruff/issues/3845).
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports a mutable module
   constant as
   [WPS407](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.MutableModuleConstantViolation),

@@ -1,9 +1,9 @@
-Flags a function used as a condition without calling it, as `if is_ready:` where `if is_ready():` was meant.
+Flags a condition that tests a function object, such as `if is_ready:`.
 
 ## Why is this bad?
 
-A function object is always true. The condition never depends on what the function would return, so the branch always
-runs, a `while not ready` loop never runs, and an `assert` always passes.
+A function object is always truthy. `if ready:` always enters the branch, `while not ready:` never enters the loop, and
+`assert ready` always passes. Call the function to test its return value.
 
 ## Example
 
@@ -39,8 +39,9 @@ def start() -> str:
   of `and` or `or`. The name must be a function of the same file, or of another module of the run the file imports, or
   `self.method` inside a method of the class that defines it.
 
-  **Unsafe fix:** when the function takes no arguments, the fix calls it, which runs its body where the test is. A
-  function that needs arguments, or one from another module, is reported without a fix.
+  **Unsafe fix:** when the function can be called without arguments, the fix calls it, which runs its body where the
+  test is. A function that needs arguments, or one from another module, is reported without a fix. Parameters with
+  defaults, `*args` and `**kwargs` can all be omitted.
 
   ```python report
   class Queue:

@@ -9,8 +9,8 @@ const DOCSTRINGED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(
     \"\"\"Register the flag.\"\"\"\n    print(parser)\n\n\n__all__ = [\"Formatter\"]\n\n\nclass Formatter:\n    \
     \"\"\"Format messages.\"\"\"\n";
 
-// A bare module entry point is loaded whole by its host, which finds the hooks and fixtures it defines by name, so its
-// public names are public API whatever `__all__` lists. An entry point naming an attribute makes only that one public.
+// A plugin host can discover hooks by name after loading a whole module. An entry point that specifies an attribute
+// exposes just that target.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
     DOCSTRINGED_PLUGIN,
@@ -81,8 +81,6 @@ fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str
     assert_eq!(check(root.path(), &["--select", rule]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A target that is no module name, a standard library module or a namespace package names no file of the run, so the
-// plugin's hook stays internal.
 #[test_case("pkg..plugin" ; "invalid_module_name")]
 #[test_case("json" ; "standard_library")]
 #[test_case("space" ; "namespace_package")]
@@ -107,7 +105,6 @@ fn entry_point_without_a_run_file_names_nothing(target: &str) {
     );
 }
 
-// A project directory whose name is not UTF-8 is no search path, so its entry points name nothing.
 #[cfg(unix)]
 #[test]
 fn entry_point_of_a_project_whose_directory_is_not_utf8_names_nothing() {
@@ -127,8 +124,7 @@ fn entry_point_of_a_project_whose_directory_is_not_utf8_names_nothing() {
     assert_eq!(common::reports(&stdout, "SMP901").len(), 1, "{code} {stdout} {stderr}");
 }
 
-// A `from __future__` import binds a compiler flag that the host of a bare module entry point never reads, so it is no
-// public name for `missing-from-all` to list.
+// A future import controls compilation. The plugin host does not need to import that name.
 #[test]
 fn bare_module_future_import_is_not_public_api() {
     let root = project(&[
@@ -172,8 +168,6 @@ fn bare_module_future_import_is_not_public_api() {
 const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    \
     print(parser)\n\n\ndef helper() -> None:\n    print(\"helper\")\n\n\n__all__ = [\"pytest_addoption\"]\n";
 
-// The host of a bare module entry point uses every public name of it, so none of them is unused, and an `__all__` entry
-// it does not import is not a stale export.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
     common::PASSED ; "bare_module_names_are_used"
@@ -194,8 +188,7 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP402,SMP409"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A bare package entry point is its `__init__.py`, whose imports from a private module are public API the way a
-// re-export is. Without the entry point, a plain import in a module without `__all__` keeps the name internal.
+// A bare package entry point also exposes names its `__init__.py` imports from private modules.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg\"\n",
     concat!(
@@ -214,8 +207,6 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
     assert_eq!(check(root.path(), &["--select", "SMP903"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// The `__all__` of a public module of a library is the interface its users import, so no module of the run needs to
-// import it. A private module of the same library still reports the names nothing imports.
 #[test_case("pkg/errors.py", common::PASSED ; "public_module_kept")]
 #[test_case(
     "pkg/_errors.py",
@@ -235,8 +226,7 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
-// through it, so none of its names is reported. Reading only one name through a module leaves the others reported.
+// Passing a module as a value can hide later reads. A direct attribute access identifies the specific name used.
 #[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", common::PASSED ; "loaded_as_value")]
 #[test_case("from app import *\n\nprint(config.LIMIT)\n", common::PASSED ; "star_bound_by_package_all")]
 #[test_case(
@@ -262,8 +252,6 @@ fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, stdout.replace("app/", &native("app/")));
 }
 
-// Only a production file's star import binds the submodules a package's `__all__` lists, so a test's star import of the
-// package exempts none of them.
 #[test]
 fn star_import_in_a_test_exempts_no_submodule_name() {
     let root = project(&[
@@ -281,8 +269,6 @@ fn star_import_in_a_test_exempts_no_submodule_name() {
     );
 }
 
-// A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a
-// module the run defines.
 #[test]
 fn all_read_off_an_unnamed_module_keeps_other_modules_checked() {
     let root = project(&[

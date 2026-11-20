@@ -22,8 +22,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         (Some(empty), None) => (right, empty),
         _ => return,
     };
-    // An `assert` that a result equals `[]` also checks its type, which a truth test would not; so does a comparison
-    // next to one that tells the value from `None` or another literal.
+    // Assertions and comparisons to other literals may intentionally distinguish an empty list from other falsy values.
     if matches!(walker.statement(), Some(Stmt::Assert(_)))
         || tells_types_apart(walker, expr, value)
         || may_be_none(walker, value)

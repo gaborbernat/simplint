@@ -1,9 +1,11 @@
 #![allow(dead_code, reason = "every test binary compiles this module and uses only the helpers of its own concern")]
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{MAIN_SEPARATOR_STR, Path, PathBuf};
 use std::process;
+use std::sync::LazyLock;
 
 use assert_cmd::Command;
 use serde::de::DeserializeOwned;
@@ -61,8 +63,7 @@ pub fn simplint_with(root: &Path, args: &[&str], stdin: &str, env: &[(&str, &str
     )
 }
 
-// The user's own Ruff configuration and simplint's environment variables would leak into every test, so neither is
-// visible to the binary.
+// Keep user configuration, output settings and cache overrides out of CLI tests.
 pub fn command(root: &Path) -> process::Command {
     let mut command = process::Command::new(assert_cmd::cargo::cargo_bin("simplint"));
     command
@@ -166,7 +167,7 @@ pub fn make_read_only(path: &Path) {
     fs::set_permissions(path, permissions).expect("make read-only");
 }
 
-// Windows denies reading only through access control lists, so the tests of unreadable files run on Unix.
+// A Unix mode change makes a file unreadable for this test. Windows access control works differently.
 #[cfg(unix)]
 pub fn set_mode(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
@@ -197,8 +198,8 @@ fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-// The snapshot is named after the rule, then the fixture's suffix, then the target version unless it is Python 3.14. It
-// sits in the rule's fixture folder, which mirrors `src/rules`.
+// The default target (py314) has no suffix. Fixtures whose file name omits the rule name use their relative path
+// to distinguish snapshots.
 pub fn assert_rule_snapshot(rule: &str, fixture: &str, target_version: &str) {
     let rule_name = rule.replace('-', "_");
     let stem = fixture.trim_end_matches(".py");
@@ -240,6 +241,10 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
         };
         let location = &diagnostic["location"];
         let (code, message) = (text(&diagnostic["code"]), text(&diagnostic["message"]));
+        assert!(
+            !fix.is_empty() || !ALWAYS_FIXABLE.contains(code),
+            "{fixture}: {code} advertises an always-available fix but offered none for {message}"
+        );
         writeln!(output, "{}:{} {code} {message}{fix}", location["row"], location["column"]).expect("write");
     }
     if diagnostics.iter().any(|diagnostic| !diagnostic["fix"].is_null()) {
@@ -254,10 +259,12 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
     output
 }
 
-// Every fixture is copied so rules that look across modules see the same project. Its configuration matches what the
-// rule fixtures assume. Only the Ruff rules that overlap fixtures select run, so the fixes show simplint's own work.
-// The rule folders merge into one project root, so each fixture keeps its module name and can import the fixtures of
-// other rules, as `consumer/use.py` does.
+static ALWAYS_FIXABLE: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+    let rules: Vec<Value> = json(empty_project().path(), &["rules", "--output-format", "json"]);
+    rules.iter().filter(|rule| rule["fix"] == "Always").map(|rule| text(&rule["code"]).to_owned()).collect()
+});
+
+// Merge the rule fixture directories into one project so imports resolve across rules, as in `consumer/use.py`.
 pub fn fixture_project() -> TempDir {
     let root = TempDir::new().expect("temporary directory");
     let fixtures = fixtures();

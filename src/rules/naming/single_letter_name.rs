@@ -21,8 +21,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     }
 }
 
-// Ruff's E741, E742 and E743 flag `l`, `I` and `O` on the variables, classes and functions of their kind, so those
-// letters are left to them. No Ruff rule checks imports, patterns or type parameters, which keep them.
+// Ruff covers these letters on variables, classes and functions. Import aliases, pattern captures and type
+// parameters use the separate simplint-only path.
 fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, site: NameSite<'a>) {
     report(walker, scope, site, !matches!(site.text, "l" | "I" | "O"));
 }

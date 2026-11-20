@@ -1,4 +1,3 @@
-// Infers the few kinds an expression shows for sure, from the scopes around it.
 mod bindings;
 mod declared;
 mod members;
@@ -25,7 +24,7 @@ pub(super) enum Kind {
     Path,
     // A `str` or `None`, as `str | None` declares.
     OptionalStr,
-    // A list, tuple, set or `str`-keyed mapping whose items, indexed or iterated, are each a `str`.
+    // Iteration yields strings. For a mapping, both keys and values must be strings.
     StrItems,
     // The same, with each item an `int`.
     IntItems,
@@ -37,8 +36,8 @@ pub(super) enum Kind {
 
 pub(super) struct Kinds<'w, 'a> {
     walker: &'w Walker<'w, 'a>,
-    // The scopes the expression being read sits in, outermost first, the module left out: those around the spot, or
-    // those of the method that sets an attribute the spot reads.
+    // Enclosing scopes, outermost first, excluding the module. While resolving an attribute, use the scopes
+    // around the assignment that supplies its value.
     scopes: Vec<Scope<'a>>,
     // Whether `scopes` are those around the spot, where the walker knows the comprehensions too.
     at_spot: bool,
@@ -48,8 +47,8 @@ pub(super) struct Kinds<'w, 'a> {
     // The attributes whose values are being checked, by class and name, with the length of `resolving` then: one that
     // reads itself stays unknown.
     reading: Vec<(TextRange, &'a str, usize)>,
-    // The shortest length of `resolving` the kind being found relies on: a self-read assumed at index `i` relies on
-    // `i + 1` entries, an attribute read while it was being checked on as many as `resolving` held when that started.
+    // Minimum stack depth this result depends on. A recursive name lookup depends on its assumed kind at that
+    // depth. A recursive attribute lookup depends on the depth where checking that attribute began.
     relies_on: usize,
 }
 
@@ -62,7 +61,7 @@ pub(crate) struct KindsCache<'a> {
     members: RefCell<FxHashMap<(TextRange, &'a str), Rc<Members<'a>>>>,
     // Where the module writes or deletes an attribute of each name.
     attribute_writes: OnceCell<FxHashMap<&'a str, Vec<TextRange>>>,
-    // The kinds of names, by the scope they resolve in, whose bindings read no assumption made before their own, so
-    // they hold wherever the name is read; caching only those keeps a chain of names that each read themselves linear.
+    // Cache only results independent of assumptions about enclosing lookups. They can be reused throughout the
+    // scope without repeatedly tracing a chain of self-referential assignments.
     resolved: RefCell<FxHashMap<(&'a str, TextRange), Option<Kind>>>,
 }

@@ -10,7 +10,6 @@ pub(super) use statements::{Blanks, statement_block, statement_deletion, stateme
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
 
-// The fix that applies the edits, in the order its constructor sorts them; none when there are no edits.
 pub(super) fn fix_of(edits: impl IntoIterator<Item = Edit>, applicability: Applicability) -> Option<Fix> {
     let mut edits = edits.into_iter();
     let first = edits.next()?;

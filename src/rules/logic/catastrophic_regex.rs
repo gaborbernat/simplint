@@ -11,8 +11,7 @@ pub fn catastrophic_regex(checker: &Checker) {
         let Some(nodes) = Parser::new(&pattern, scan.verbose).alternatives() else {
             continue;
         };
-        // Only a call that must match up to the end can fail after the pattern's last part, and a compiled pattern may
-        // be used for one.
+        // fullmatch can fail at the end of the pattern. A compiled pattern may later be used with fullmatch.
         let open_end = !matches!(call.attr, "fullmatch" | "compile");
         let Some(repeat) = nodes.iter().find_map(|node| find_nested(node, open_end)) else {
             continue;
@@ -41,8 +40,7 @@ impl<'p> Parser<'p> {
         Self { pattern, index: 0, verbose }
     }
 
-    // The whole pattern, as the sequences of its top-level alternatives. `None` for a construct the check does not
-    // read, as a conditional `(?(1)...)` or a scoped verbose flag is, which leaves the pattern unreported.
+    // Skip the whole pattern if any branch uses unsupported syntax.
     fn alternatives(&mut self) -> Option<Vec<Node>> {
         let group = self.group_body()?;
         (self.index == self.pattern.len()).then(|| vec![Node::Group { alternatives: group, atomic: false }])
@@ -121,12 +119,12 @@ impl<'p> Parser<'p> {
             [b'(', b'?', ..] => {
                 let flags = rest[2..].iter().take_while(|byte| INLINE_FLAGS.contains(byte)).count();
                 match rest.get(2 + flags)? {
-                    // A global flag; the scan already read a verbose one.
+                    // The initial scan already applied any global verbose flag.
                     b')' => {
                         self.index += 3 + flags;
                         return Some(Node::Group { alternatives: vec![Vec::new()], atomic: true });
                     }
-                    // A scoped verbose flag changes how the rest of the group reads, which this parser does not track.
+                    // A scoped x flag would require changing whitespace handling for this group.
                     b':' if !rest[2..2 + flags].contains(&b'x') => (3 + flags, false, false),
                     _ => return None,
                 }
@@ -139,7 +137,7 @@ impl<'p> Parser<'p> {
             return None;
         }
         self.index += 1;
-        // A lookaround matches no text, so a repeat of it cannot split any.
+        // Lookarounds consume no text for a surrounding repeat to split.
         if lookaround {
             return Some(Node::Group { alternatives: vec![Vec::new()], atomic: true });
         }
@@ -178,16 +176,13 @@ impl<'p> Parser<'p> {
 }
 
 enum Node {
-    // A character, class, escape, anchor or backreference: something that matches without backtracking inside.
     Atom,
-    // A group's alternatives, each a sequence of nodes. An atomic group never backtracks into itself.
     Group { alternatives: Vec<Vec<Node>>, atomic: bool },
     Repeat { node: Box<Node>, min: u32, unbounded: bool, possessive: bool, span: (usize, usize) },
 }
 
 impl Node {
-    // Whether the node matches at any position. A lookaround, a comment and a global flag share the empty atomic group,
-    // and a lookaround can fail, so that group counts as one that may.
+    // Lookarounds share this empty atomic group with comments and global flags. A lookaround can still fail.
     fn never_fails(&self) -> bool {
         match self {
             Node::Atom => false,
@@ -210,11 +205,7 @@ impl Node {
     }
 }
 
-// The first repeat that the input can drive into exponential backtracking: an unbounded repeat of a group where one
-// alternative is a single unbounded repeat with everything else around it optional, as `(a+)+`, `(\w+\s*)*` or
-// `(x|y+)+` are. A string of `y`s then splits between the outer and inner repeat in exponentially many ways.
-// A repeat followed only by parts that never fail is left alone: the first way the repeat matches lets the rest match
-// too, so the engine never backtracks into it. `safe_tail` says whether what follows the node never fails.
+// Report ambiguous nested repeats only when a later failure could force the engine to try another split.
 fn find_nested(node: &Node, safe_tail: bool) -> Option<(usize, usize)> {
     match node {
         Node::Atom => None,
@@ -248,7 +239,7 @@ fn splits(sequence: &[Node]) -> bool {
     })
 }
 
-// A verbose pattern drops its comments and the whitespace around its pieces, so the message keeps to one line.
+// Keep a multiline verbose pattern on one diagnostic line.
 fn shown(repeat: &[u8], verbose: bool) -> String {
     let text = String::from_utf8_lossy(repeat);
     if !verbose {

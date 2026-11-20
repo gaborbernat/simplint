@@ -5,11 +5,8 @@ use rustc_hash::FxHashSet;
 use super::definition_time::bound_names;
 use crate::syntax::{ReturnVisitor, first_positional, is_classmethod};
 
-// The classmethods that are alternative constructors: those that return a call of the receiver, as `return cls(...)`
-// does, or that annotate their return as `Self` or the class, and those that return the call of another alternative
-// constructor through the receiver, as `return cls.fromordinal(...)` does. A returned local name counts as the call
-// bound to it when that assignment is the only statement outside a branch that binds the name, such as
-// `result = cls(...)`; a branch may rebind it, as `result = tz.fromutc(result)` does.
+// Returning an instance through another constructor still counts as construction. A unique assignment outside
+// branches identifies a returned local even when a branch later transforms it.
 pub(super) fn alternative_constructors(class: &ast::StmtClassDef) -> FxHashSet<&str> {
     let mut factories = FxHashSet::default();
     let mut delegates: Vec<(&str, Vec<&str>)> = Vec::new();
@@ -57,7 +54,7 @@ pub(super) fn alternative_constructors(class: &ast::StmtClassDef) -> FxHashSet<&
             delegates.push((function.name.as_str(), targets));
         }
     }
-    // Each pass takes in one delegate, so methods that only delegate to each other end the loop.
+    // A delegation cycle with no known constructor has no factory to propagate.
     while let Some(position) =
         delegates.iter().position(|(_, targets)| targets.iter().any(|target| factories.contains(target)))
     {

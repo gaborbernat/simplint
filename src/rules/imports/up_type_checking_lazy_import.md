@@ -1,6 +1,5 @@
-Flags an `if `[`TYPE_CHECKING`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)`:` block that holds
-only imports and no `else`, where Python 3.15 can spell each import as a
-[`lazy`](https://docs.python.org/3/reference/simple_stmts.html#lazy-imports) import.
+Flags module-level `if TYPE_CHECKING:` blocks that contain only imports and have no `else` or `elif`. On Python 3.15,
+those imports can use [`lazy`](https://docs.python.org/3/reference/simple_stmts.html#lazy-imports).
 
 ## Why is this bad?
 
@@ -46,10 +45,8 @@ def first(values: Sequence[int]) -> int:
 
 ## Configuration
 
-- The Python version the code targets, taken from
-  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to
-  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);
-  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
+- The [target Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) for
+  the file
 
   ```toml config
   [tool.ruff]
@@ -67,11 +64,10 @@ def first(values: Sequence[int]) -> int:
 
 ### Active on
 
-- **`if TYPE_CHECKING:` (or `typing.TYPE_CHECKING`) at module level**, with a body of `import` and `from ... import`
-  statements only and no `else` or `elif`. The report sits on the condition. The fix is unsafe: a `lazy` import loads
-  the module on first use, so a name a program never touches costs nothing, while a name it does touch runs the import
-  then. An import cycle or a module missing at runtime, such as `_typeshed`, then surfaces at that point instead of
-  never.
+- **`if TYPE_CHECKING:` (or
+  [`typing.TYPE_CHECKING`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)) at module level**, with
+  a body of `import` and `from ... import` statements only and no `else` or `elif`. The report sits on the condition.
+  The fix is unsafe because reading a name at runtime may now load its module and expose an import error or cycle.
 
   ```toml config
   [project]
@@ -135,8 +131,8 @@ def first(values: Sequence[int]) -> int:
       from os import *
   ```
 
-- **Blocks inside another statement**, such as a `try` or a function: `lazy` imports are not allowed there, so the rule
-  does not look at them.
+- **Nested blocks**. The rule checks only guards directly in the module body. Python forbids `lazy` inside functions and
+  `try` bodies.
 
   ```toml config
   [project]
@@ -156,10 +152,9 @@ def first(values: Sequence[int]) -> int:
 
 ### Fix
 
-The fix is unsafe, as described under "Active on" above. It replaces the block with one `lazy` import per statement,
-leaving a statement that is `lazy` already as it is, and, when `TYPE_CHECKING` is then unused, removes its
-`from typing import TYPE_CHECKING` line. A block with a comment in it is reported without a fix, because the fix would
-drop the comment. A block importing `_typeshed` is too.
+The fix moves each import out of the guard and adds `lazy` where needed. It also removes a standalone
+`from typing import TYPE_CHECKING` if this guard was its only use. Imports of `_typeshed` get no fix because that module
+is for type checkers. Comments inside the block, an inline body or imports that share a line also prevent the fix.
 
 ```toml config
 [project]
@@ -204,5 +199,5 @@ lazy from os import PathLike
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29378](https://github.com/astral-sh/ruff/issues/29378).
-  [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/), with `require-lazy` set, adds `lazy` to the imports
-  in the block but keeps the `if TYPE_CHECKING:` guard this rule removes.
+  [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/), with `require-lazy` set, can add `lazy` to a
+  matching single-name import inside the guard. It keeps the guard.

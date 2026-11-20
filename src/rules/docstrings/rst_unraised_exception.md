@@ -1,11 +1,10 @@
-Flags `:raises Error:` fields in a public API function's reStructuredText docstring for an exception the function never
-raises.
+Flags documented exceptions that simplint cannot trace in a public API function.
 
 ## Why is this bad?
 
-Callers write handlers for the exceptions a docstring promises. A field for an exception the code no longer raises sends
-them to handle a failure that cannot happen and hides which ones can. The field usually outlives a refactor that moved
-or dropped the `raise`.
+After a function stops raising an exception, its old `:raises:` field can lead callers to write a handler they no longer
+need. Review the field before removing it. A user-defined method such as `__getitem__` can raise exceptions the rule
+cannot infer.
 
 ## Example
 
@@ -68,16 +67,21 @@ def parse(text: str) -> str:
 ## What it does
 
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
-`docstring-style = "rst"`, for `:raises Error:` fields whose exception the function cannot raise. It is the other side
-of [rst-missing-raises](SMP924.html), which asks for the fields a `raise` needs.
+`docstring-style = "rst"`, for `:raises Error:` fields without a matching source of that exception.
+[rst-missing-raises](SMP924.html) checks the reverse case.
 
-The fix removes the field. It is offered when the field's lines can be deleted on their own.
+The unsafe fix removes the field and its continuation lines. Check that calls or overloaded operators cannot raise the
+documented exception. Removing a field also changes `__doc__`. The field must start below the opening quotes in a single
+triple-quoted string whose text matches the source. If the field ends the docstring, a comment after the closing quotes
+also prevents the fix.
+
+It also checks functions documented by the project's autodoc directives.
 
 ### Active on
 
-- **Bodies whose every source of exceptions is known**: the function's `raise` statements, the module functions and
-  methods of the same class it calls by name, and operations that raise a built-in exception on their own. A field
-  matches by the exception's last name or a second name, such as
+- **Exceptions the rule can trace.** It checks `raise` statements, follows calls to undecorated local functions and
+  methods of the same class, and accounts for selected built-in exceptions from operations listed below. A field matches
+  by the exception's last name or a second name, such as
   [`IOError`](https://docs.python.org/3/builtins/exceptions.html#IOError) for
   [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError), and a field for a base, such as
   `:raises OSError:`, matches a raised subclass such as
@@ -114,9 +118,11 @@ The fix removes the field. It is offered when the field's lines can be deleted o
 
 ### Exceptions
 
-- **Anything that can raise what the code does not show**: a call of a function this module does not define, a loop or
-  comprehension over anything but a literal display, a `with`, an `await`, a `yield from`, or a `raise` of a value whose
-  class is unknown. The rule then judges none of the function's fields.
+- **Code the rule cannot trace.** It skips the whole function for an unresolved call, a decorated callee, a generator
+  expression, `with`, `await`, `yield from`, or a `raise` whose class it cannot identify. A loop or comprehension over
+  anything except a list, tuple or set display also triggers this exception. Calls named `isinstance`, `issubclass`,
+  `len`, `repr`, `id`, `type`, `callable`, `hasattr` and `print` do not trigger it. The rule does not trace their
+  implementations.
 
   ```toml config
   [project]
@@ -143,16 +149,15 @@ The fix removes the field. It is offered when the field's lines can be deleted o
       return json.loads(text)
   ```
 
-- **Exceptions an operation raises on its own**: a subscript can raise
-  [`KeyError`](https://docs.python.org/3/builtins/exceptions.html#KeyError),
-  [`IndexError`](https://docs.python.org/3/builtins/exceptions.html#IndexError),
-  [`LookupError`](https://docs.python.org/3/builtins/exceptions.html#LookupError) or
-  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), an attribute read
-  [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError), an arithmetic operator or
-  comparison [`ZeroDivisionError`](https://docs.python.org/3/builtins/exceptions.html#ZeroDivisionError),
-  [`ArithmeticError`](https://docs.python.org/3/builtins/exceptions.html#ArithmeticError),
-  [`OverflowError`](https://docs.python.org/3/builtins/exceptions.html#OverflowError) or `TypeError`, and an `assert`
-  [`AssertionError`](https://docs.python.org/3/builtins/exceptions.html#AssertionError).
+- **Built-in exceptions associated with operations.** The rule accepts the following fields when it sees the
+  corresponding operation.
+
+  | Operation                                     | Documented exceptions                                                                                                                                                                                                                                                                                                  |
+  | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Subscript                                     | [`KeyError`](https://docs.python.org/3/builtins/exceptions.html#KeyError), [`IndexError`](https://docs.python.org/3/builtins/exceptions.html#IndexError), [`LookupError`](https://docs.python.org/3/builtins/exceptions.html#LookupError), [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) |
+  | Attribute access                              | [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError)                                                                                                                                                                                                                                  |
+  | Binary operator, unary operator or comparison | [`ZeroDivisionError`](https://docs.python.org/3/builtins/exceptions.html#ZeroDivisionError), [`ArithmeticError`](https://docs.python.org/3/builtins/exceptions.html#ArithmeticError), [`OverflowError`](https://docs.python.org/3/builtins/exceptions.html#OverflowError), `TypeError`                                 |
+  | `assert`                                      | [`AssertionError`](https://docs.python.org/3/builtins/exceptions.html#AssertionError)                                                                                                                                                                                                                                  |
 
   ```toml config
   [project]
@@ -210,14 +215,12 @@ The fix removes the field. It is offered when the field's lines can be deleted o
       return text
   ```
 
-- **`:raises Exception:` and `:raises BaseException:`**: they document any failure.
+- **`:raises Exception:` and `:raises BaseException:`**: the rule always accepts these broad fields.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):**
-  [DOC502](https://docs.astral.sh/ruff/rules/docstring-extraneous-exception/) reports the same case in Google and
-  numpydoc sections, and cannot read `:raises:` fields.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports documented exceptions the body does not raise as
-  [DOC502 and DOC503](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
-- [darglint](https://github.com/terrencepreilly/darglint) reports them as
-  [DAR402](https://github.com/terrencepreilly/darglint), with no fix.
+- [Ruff DOC502](https://docs.astral.sh/ruff/rules/docstring-extraneous-exception/) checks exception sections in Google
+  and NumPy docstrings.
+- [pydoclint DOC502 and DOC503](https://jsh9.github.io/pydoclint/violation_codes.html) cover a Raises section without a
+  raise statement and mismatched exception names respectively.
+  [darglint DAR402](https://github.com/terrencepreilly/darglint) reports extraneous exception documentation.

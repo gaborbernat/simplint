@@ -1,14 +1,13 @@
-Flags own-line comments whose every word is an identifier or keyword of the statement below, such as `# close file`
-above [`file.close()`](https://docs.python.org/3/reference/datamodel.html#file.close). A statement across several lines
-counts in full.
+Flags comments on their own lines when every word repeats an identifier or keyword in the next statement. A multiline
+statement counts in full.
 
 ## Why is this bad?
 
-A comment that repeats the line under it tells the reader nothing new, and it goes stale without anyone noticing when
-the code changes. [PEP 8](https://peps.python.org/pep-0008/#inline-comments) calls comments that state the obvious
-distracting, and the
-[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.8.5-block-and-inline-comments) says not
-to describe the code. Comments are for the reasons behind the code, which the code cannot show.
+`# close file` adds nothing above [`file.close()`](https://docs.python.org/3/reference/datamodel.html#file.close). A
+comment explaining why the file must close at that point gives the reader information the call itself omits.
+[PEP 8](https://peps.python.org/pep-0008/#inline-comments) and the
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.8.5-block-and-inline-comments) both
+discourage comments that repeat the code.
 
 ## Example
 
@@ -28,10 +27,10 @@ file.close()
 ### Active on
 
 - **Own-line comments above code**: every word of the comment appears among the identifiers and keywords of the next
-  line. Words compare without case, and a name matches only as a whole: `# create user` does not restate
-  `create_user()`, since `create` and `user` are not words of the code.
+  statement. Names match as whole words, ignoring case. `# create user` does not restate `create_user()`, since `create`
+  and `user` are not words of the code.
 
-  Consecutive own-line comments form one block, which is judged as a whole and removed whole.
+  Consecutive own-line comments form one block, so a word on any line can keep the whole block.
 
   ```python report
   def run(result: int) -> int:
@@ -60,8 +59,8 @@ file.close()
   user = create_user()
   ```
 
-- **Comments that quote syntax**: punctuation other than a sentence's, such as `*`, `[`, `(`, `=` or `>`, writes a piece
-  of syntax or a condition, which says more than the names in it.
+- **Comments that quote syntax**. Characters such as `*`, `[`, `(`, `=` or `>` can express a condition or quote code.
+  The rule skips comments containing them.
 
   ```python ok
   # *args
@@ -81,8 +80,7 @@ file.close()
 
 ### Fix
 
-The fix deletes the comment's line. It is safe, since a comment never changes behavior, and the words it had are all in
-the code it leaves in place.
+The safe fix removes the matching comment block.
 
 ```python report
 # close file
@@ -96,14 +94,10 @@ file.close()
 ## Ruff overlap
 
 Ruff's [commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) (ERA001) reports some of the same
-comments without a fix that applies. This rule keeps those comments and reports them with its safe fix, which deletes
-the comment.
+comments. simplint offers a safe fix for those it identifies as restatements.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [ERA001](https://docs.astral.sh/ruff/rules/commented-out-code/), which reports some of the same comments without an
-  applicable fix; this rule keeps them (see Ruff overlap).
-- [flake8-comments](https://github.com/orsinium-labs/flake8-comments) reports the same comments as
+- [flake8-comments](https://github.com/orsinium-labs/flake8-comments) reports redundant comments as
   [CM001](https://github.com/orsinium-labs/flake8-comments/blob/master/flake8_comments/_checker.py), such as
-  `# create user` above `user.create()`. It only reports them, where this rule's fix deletes the comment.
+  `# create user` above `user.create()`. simplint can also remove the comment.

@@ -1,10 +1,10 @@
-Flags mocks and patches created without a spec.
+Flags mocks and patches that lack a spec or use one that does not check call signatures.
 
 ## Why is this bad?
 
-A mock without a spec accepts any attribute and any call signature, so a test keeps passing after the real code renames
-a method or changes its parameters. [Autospeccing](https://docs.python.org/3/library/unittest.mock.html#autospeccing)
-makes the mock fail the same way the real object would.
+If production code renames a method or adds a required argument, a plain mock can still accept the old call.
+[Autospeccing](https://docs.python.org/3/library/unittest.mock.html#autospeccing) restricts attribute access and checks
+the signatures it can inspect.
 
 ## Example
 
@@ -66,8 +66,8 @@ in for, and that cannot be inferred from the call.
 
 - **Specs that do not check call signatures**: a `spec` or `spec_set` keyword or a positional spec, and a `wraps`
   keyword. `spec` limits the attribute names a mock has, but its methods still accept any arguments, so a call with the
-  wrong arguments passes, and `wraps` delegates to the real object without checking them either. Only autospeccing
-  checks them: `create_autospec` or `autospec=True`.
+  wrong arguments passes, and `wraps` delegates calls to the wrapped object. Use `create_autospec` or `autospec=True` to
+  check signatures on the mock itself.
 
   ```python report file=tests/test_client.py
   from unittest.mock import MagicMock
@@ -110,8 +110,8 @@ in for, and that cannot be inferred from the call.
 
 `patch` is a common method name, so it matches only in these forms, and `patch.object` follows the same rule:
 
-- a dotted name ending in `mock.patch` or `mocker.patch`, such as `unittest.mock.patch` or the
-  [pytest-mock](https://pytest-mock.readthedocs.io/en/latest/usage.html) fixture's `mocker.patch`;
+- a call that resolves to `unittest.mock.patch` or the `mock` backport's `patch`, including calls through an imported
+  module;
 
   ```python report
   import unittest.mock
@@ -119,8 +119,8 @@ in for, and that cannot be inferred from the call.
   unittest.mock.patch("app.service.fetch")
   ```
 
-- `patch` imported from [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#module-unittest.mock) or
-  `mock`, under any alias.
+- an imported alias such as `mock_patch`, or a dotted name ending in the
+  [pytest-mock](https://pytest-mock.readthedocs.io/en/latest/usage.html) fixture's `mocker.patch`.
 
   ```python report
   from unittest.mock import patch as mock_patch
@@ -130,7 +130,7 @@ in for, and that cannot be inferred from the call.
 
 ### Exceptions
 
-These count as a spec:
+The rule skips the following calls.
 
 - **An `autospec` or `new_callable` keyword on a `patch` or `patch.object` call**, unless its value is `None` or
   `False`: those values spell out the default, no spec. A mock constructor reads the keyword as an attribute, so it
@@ -185,7 +185,7 @@ These count as a spec:
       client.fetch()
   ```
 
-- **A `new` keyword on a patch, always**: its value replaces the target, so no mock is created, whatever the value.
+- **A patch with `new`.** The rule skips any explicit replacement, including `new=DEFAULT`.
 
   ```python ok
   mocker.patch("app.service.fetch", new=fake_fetch)
@@ -214,5 +214,5 @@ These are not reported either:
   [TMS010](https://github.com/jdkandersson/flake8-mock-spec), and a `patch` call without one as
   [TMS020](https://github.com/jdkandersson/flake8-mock-spec).
 - [hacking](https://github.com/openstack/hacking) reports `mock.patch` calls without `autospec` as
-  [H210](https://github.com/openstack/hacking/blob/master/hacking/checks/mock_checks.py). It accepts only `autospec`,
-  and this rule now accepts the same, plus a `spec` for a class the module defines whose members the test reads.
+  [H210](https://github.com/openstack/hacking/blob/master/hacking/checks/mock_checks.py). H210 accepts `autospec`,
+  `new`, `new_callable`, `spec`, `spec_set` and `wraps`, as well as a positional replacement.

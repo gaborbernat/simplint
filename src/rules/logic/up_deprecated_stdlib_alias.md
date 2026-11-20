@@ -1,16 +1,11 @@
-Flags attribute references to deprecated standard library names that name a replacement.
+Flags reads of deprecated or removed standard library attributes with known replacements.
 
 ## Why is this bad?
 
-Each name warns when it is used, or is gone in a later Python release, and a replacement does the same work. A removed
-name raises [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) on the versions where
-it is gone. A deprecated name emits a
-[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning) that Python
-[hides by default](https://docs.python.org/3/library/warnings.html#default-warning-filter) outside `__main__`, while
-[pytest shows](https://docs.pytest.org/en/stable/how-to/capture-warnings.html#deprecationwarning-and-pendingdeprecationwarning)
-it, so a suite that turns warnings into errors fails.
-[PEP 387](https://peps.python.org/pep-0387/#making-incompatible-changes) allows removal after the warning period, so the
-replacement is the name that keeps working.
+A removed attribute raises [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError). Some
+older functions emit [`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning) when
+called. Python normally [hides those warnings](https://docs.python.org/3/library/warnings.html#default-warning-filter)
+outside `__main__`, but a test suite can treat them as errors.
 
 ## Example
 
@@ -65,11 +60,10 @@ def describe(month):
 
 ### Active on
 
-Each name is reported from the Python version in its table row, where it is deprecated or removed, when the code reads
-it. A name imported with `from module import name` is not reported, as renaming it would also rename its uses.
+The table gives the first target version where simplint reports each attribute. The rule checks reads such as
+`threading.currentThread` and skips direct imports such as `from threading import currentThread`.
 
-- **Renames**: the attribute is replaced with the new name, which does the same work. **Safe fix**, except for the
-  `calendar` months, where it is unsafe.
+- **Renames.** simplint can replace the attribute name. It marks the calendar month fixes as unsafe.
 
   | Name                                    | From | Replacement                                                                                                                                                                      |
   | --------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -122,15 +116,12 @@ it. A name imported with `from module import name` is not reported, as renaming 
 
 ### Fix
 
-`threading.currentThread` warns and returns `threading.current_thread()`, so the rename only drops the warning, and
-`configparser.SafeConfigParser` is gone from the versions the rule reports, so no code that runs changes. Both fixes are
-safe.
+Calling `threading.currentThread()` or `threading.activeCount()` emits a warning and calls its snake_case counterpart.
+Python 3.12 removed `configparser.SafeConfigParser`. simplint marks these renames as safe.
 
-The `calendar` fix is unsafe: `calendar.January` is the plain integer `1`, while `calendar.JANUARY` is the
-[`calendar.Month`](https://docs.python.org/3/library/calendar.html#calendar.Month)`.JANUARY` member. The two compare
-equal, but [`repr()`](https://docs.python.org/3/builtins/functions.html#repr) and
-[`type()`](https://docs.python.org/3/builtins/functions.html#type) differ, which shows in output and in
-`type(value) is `[`int`](https://docs.python.org/3/builtins/functions.html#int) checks.
+The calendar fix changes the type. For example, `calendar.January` is the integer `1`, and `calendar.JANUARY` is a
+member of [`calendar.Month`](https://docs.python.org/3/library/calendar.html#calendar.Month). They compare equal, but
+have different representations and give different results for `type(value) is int`.
 
 No fix is offered for replacements that need a review.
 
@@ -184,7 +175,8 @@ No fix is offered for replacements that need a review.
       return sys.last_exc if hasattr(sys, "last_exc") else sys.last_value
   ```
 
-- **Targets before the version in the table**: the name still works without a warning there.
+- **Earlier targets.** The rule checks each name from the version listed in the table. For example, `SafeConfigParser`
+  already warned before Python 3.12, when it was removed.
 
   ```toml config
   [tool.ruff]
@@ -201,9 +193,10 @@ No fix is offered for replacements that need a review.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970)
-  (pylint `deprecated-method`) and [#1507](https://github.com/astral-sh/ruff/issues/1507). Ruff's pyupgrade rules such
-  as [UP005](https://docs.astral.sh/ruff/rules/deprecated-unittest-alias/) cover other deprecated names, not these.
-- [pylint](https://github.com/pylint-dev/pylint) reports calls to the same deprecated standard library names as
-  [deprecated-method](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/deprecated-method.html), with
-  no fix.
+- [Ruff issue #970](https://github.com/astral-sh/ruff/issues/970) tracks Pylint compatibility.
+  [Issue #1507](https://github.com/astral-sh/ruff/issues/1507) discusses using banned APIs for deprecation checks.
+  Ruff's [UP005](https://docs.astral.sh/ruff/rules/deprecated-unittest-alias/) handles deprecated unittest assertion
+  names.
+- Pylint's
+  [deprecated-method](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/deprecated-method.html)
+  reports calls to deprecated methods.

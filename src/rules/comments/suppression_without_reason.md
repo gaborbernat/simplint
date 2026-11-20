@@ -2,13 +2,10 @@ Flags suppression comments, such as `# noqa: F401` or `# type: ignore[...]`, tha
 
 ## Why is this bad?
 
-A suppression outlives the problem it hid. Without a reason, a later reader cannot tell whether the error is a false
-positive, a known stub gap or a bug someone meant to fix, so nobody dares remove it. The
+A reason helps the next reader decide whether a suppression still applies. For example, a comment can identify the stub
+that declares the wrong type. The
 [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.1.4-decision) asks for an explanation
-only when the rule name does not make the reason clear, and
-[ESLint's docs](https://eslint.org/docs/latest/use/configure/rules#comment-descriptions) say to document the reason in
-its disable comments. simplint asks for a reason on each suppression, since a name says what is hidden, and the reader
-still has to learn why it is acceptable on that line.
+when the rule name leaves the reason unclear. simplint checks every recognized suppression.
 
 ## Example
 
@@ -28,13 +25,13 @@ VALUE = os.sep  # type: ignore[attr-defined]  # stub omits sep on this platform
 
 ## What it does
 
-No fix is offered: only the author knows why the error was suppressed.
+Supply the reason by hand.
 
 ### Active on
 
-Each of these suppression comments is reported when it has no **reason**: any text after the error codes, or another `#`
-comment on the same line, or a comment on the line above. A comment with neither codes nor a reason is reported here for
-the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
+A suppression needs explanatory text on the same line. For a trailing suppression, an immediately preceding comment
+block can also supply the reason. [blanket-ignore](SMP004.html) separately checks for missing codes on the directives it
+covers.
 
 - **Ruff**: [error suppression](https://docs.astral.sh/ruff/linter/#error-suppression) comments, in these forms:
 
@@ -45,7 +42,7 @@ the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
     import os  # noqa: F401
     ```
 
-  - `ruff: noqa`: the same suppression with the `ruff:` prefix, on a line of its own.
+  - `ruff: noqa` or `flake8: noqa` on a line of its own.
 
     ```python report
     # ruff: noqa: F401
@@ -58,7 +55,7 @@ the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
     import sys  # ruff: ignore[unused-import]
     ```
 
-  - `ruff: file-ignore[...]`: a comment on a line of its own with codes in brackets.
+  - `ruff: file-ignore[...]` at the start of an unindented line, with codes in brackets.
 
     ```python report
     # ruff: file-ignore[unused-import]
@@ -94,7 +91,8 @@ the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
 
 ### Exceptions
 
-- **Suppressions with a reason**: any text after the codes, or another comment on the same line, counts as the reason.
+- **Suppressions with a reason**: text after the codes, or a separate piece of prose anywhere in the same comment,
+  counts. Another suppression alone supplies no reason.
 
   ```python ok
   import os  # noqa: F401  # re-exported for plugins
@@ -120,7 +118,5 @@ the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Closed issue
-  [#10070](https://github.com/astral-sh/ruff/issues/10070) (fixed by pull request
-  [#21294](https://github.com/astral-sh/ruff/pull/21294)) only lets `--add-noqa` write a reason; no Ruff rule reports a
-  suppression without one.
+[Ruff's `--add-noqa`](https://github.com/astral-sh/ruff/pull/21294) can write a reason when adding a suppression.
+simplint checks existing comments for one.

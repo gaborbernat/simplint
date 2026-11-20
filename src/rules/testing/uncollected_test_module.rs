@@ -21,7 +21,7 @@ pub fn uncollected_test_module(checker: &Checker) {
     let Some(first) = tests.first() else {
         return;
     };
-    // A test another module imports runs where that module is collected.
+    // Another module may collect the imported test.
     if tests.iter().any(|test| checker.project().is_imported(test.name.as_str())) {
         return;
     }
@@ -35,13 +35,11 @@ pub fn uncollected_test_module(checker: &Checker) {
     );
 }
 
-// Python imports a module only from a lowercase `.py` file, whatever the file system's case rules.
 fn is_python(name: &str) -> bool {
     Path::new(name).extension().is_some_and(|extension| extension == "py")
 }
 
-// A script with a main guard, a module another test names as data for `pytester`, or one whose docstring gives the
-// command that runs it is kept out of the default run on purpose.
+// These modules may be scripts, test inputs or tests invoked by filename.
 fn is_run_on_purpose(checker: &Checker, file_name: &str) -> bool {
     let stem = file_name.trim_end_matches(".py");
     checker.body().iter().any(is_main_guard)
@@ -49,7 +47,7 @@ fn is_run_on_purpose(checker: &Checker, file_name: &str) -> bool {
         || docstring(checker.body()).is_some_and(|text| text.value.to_str().contains(file_name))
 }
 
-// Outside a directory pytest collects from, such as one holding type-checker inputs, `test_*` functions are not tests.
+// A directory containing only samples, such as type-checker inputs, can also contain test-shaped code.
 fn has_collected_sibling(checker: &Checker, pytest: &PytestConfig) -> bool {
     checker
         .project()

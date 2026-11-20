@@ -27,8 +27,7 @@ use crate::cli::args::{Cli, Command, TerminalColor};
 use crate::cli::check::check;
 use crate::cli::subcommands;
 
-// Ruff's allocators, on the same platforms: linting allocates many small objects across threads, which the system
-// allocator serves slower.
+// Use the same allocator selection as Ruff for multithreaded linting.
 #[cfg(target_os = "windows")]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -45,8 +44,7 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Deeply nested source, such as a list nested thousands of levels deep, recurses past the default stack of a thread
-    // in the parser and in every visitor, so rayon's workers get a larger one, and the work runs on one of them.
+    // Parsing and visiting deeply nested Python can exhaust the default thread stack.
     if let Err(error) = ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global() {
         return report_error(&error.into());
     }

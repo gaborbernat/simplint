@@ -19,7 +19,6 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 }
 
 fn excess(generators: &[Comprehension]) -> Option<(TextRange, String)> {
-    // Two loops read as one pairing; a third is where the reader loses track of which loop each name belongs to.
     if let [_, _, third, ..] = generators {
         return Some((
             third.range(),

@@ -1,19 +1,12 @@
-Flags class members defined outside their section of the class layout. A class body reads in a fixed order: nested
-classes, class attributes, constructors, alternative constructors, other dunder methods, properties, then the other
-methods. A member that sits above a member of an earlier section is reported, and the fix moves it into place.
+Flags a class definition or method that belongs above an earlier member. The layout groups nested classes, attributes,
+constructors, alternative constructors, other dunder methods, properties and remaining methods in that order.
 
 ## Why is this bad?
 
-A class is read to learn how its instances come to be, what they hold and what they can do. The layout puts each kind of
-member where a reader looks for it. A constructor placed after a dozen methods sends the reader past all of them, and a
-property defined between two methods splits the list of the methods the class offers.
-
-The same order in every class means a reader who knows one class knows where to look in the next. Other guides order
-members in a similar way.
-[wemake-python-styleguide](https://wemake-python-styleguide.readthedocs.io/en/1.7.1/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.WrongMethodOrderViolation)
-wants the important parts before the details, and
+A consistent layout makes the constructor easy to find and keeps related members, such as a property and its setter,
+together.
 [Django's model style](https://docs.djangoproject.com/en/dev/internals/contributing/writing-code/coding-style/#model-style)
-lists fields, `Meta` and dunder methods before custom methods.
+also places fields and special methods before custom methods.
 
 ## Example
 
@@ -49,7 +42,8 @@ The rule checks the members of each class body, in the order of these sections:
 
 1. **Nested classes**, such as `class Meta:`.
 1. **Class attributes and fields**: the statements that are not definitions, such as `LIMIT = 3` or `__slots__`.
-1. **Constructors**: `__init_subclass__`, `__new__`, `__init__` and `__post_init__`, in the order Python runs them.
+1. **Constructors**: `__init_subclass__`, `__new__`, `__init__` and `__post_init__`, in that order. `__init_subclass__`
+   runs when a subclass is created. The other hooks concern instance construction.
 1. **Alternative constructors**: classmethods that return a call of the class, such as `return cls(...)`, that return
    the result of another alternative constructor through `cls`, such as `return cls.fromordinal(...)`, or whose return
    annotation is `Self`, [`typing.Self`](https://docs.python.org/3/library/typing.html#typing.Self) or the class's own
@@ -59,8 +53,8 @@ The rule checks the members of each class body, in the order of these sections:
 1. **Properties**: a `property` or `cached_property` with its setter and deleter right after it.
 1. **Methods**: instance, static and class methods alike, public or private.
 
-Members of a section keep their source order, so adding a method never reorders the file. Sections are not sorted by
-name or by visibility. The docstring of the class stays first.
+Within a section, independent members keep their source order. Helpers follow their first caller, and the class
+docstring stays first.
 
 ```python ok
 class Layout:
@@ -174,9 +168,9 @@ class Layout:
           return str(self.ordinal)
   ```
 
-- **Members out of section order**: a member in a section below a later section's member is reported. The message names
-  the section it belongs with and the first member of a later section above which it sits. A property and its setter are
-  reported on their own lines, since each is a member of its own:
+- **Members out of section order**: simplint reports a definition found below a member that should follow it. The
+  message names its section and the first member it should precede. A property and its setter are reported on their own
+  lines, since each is a member of its own:
 
   ```python report
   class Box:
@@ -419,10 +413,10 @@ Some members stay where they are, and some reports come without a fix:
 
 ### Fix
 
-The fix rewrites the span from the first to the last moved statement in the expected order. Only the first report of a
-class body that the layout can resolve carries it, since that one fix reorders every member of the body. A member keeps
-its decorators and the comment lines directly above it. A comment indented deeper than the member below it belongs to
-the member above, so it stays in place, and when it lies inside the span the report has no fix.
+The fix rewrites the span from the first to the last moved statement in the expected order. One report carries the fix
+for the class. simplint prefers a member it can move that Ruff's DJ012 does not report. A member keeps its decorators
+and the comment lines directly above it. A comment indented deeper than the member below it belongs to the member above,
+so it stays in place, and when it lies inside the span the report has no fix.
 
 ```python report
 # fmt: off
@@ -446,13 +440,10 @@ class A:
 # fmt: on
 ```
 
-The fix is safe when every moved member is undecorated or has only pure decorators: `property`, `cached_property`,
-`classmethod`, `staticmethod`, `overload`, and the accessor decorators `setter`, `getter` and `deleter`. **Unsafe fix:**
-a moved class, a moved method with any other decorator, such as `@cache` or `@functools.lru_cache()`, or a call in a
-moved method's default values or in a moved statement, because
-[decorators](https://docs.python.org/3/glossary.html#term-decorator), calls and class creation then run in a different
-order. A call can also see which names the class body has bound so far, as
-[`locals()`](https://docs.python.org/3/builtins/functions.html#locals) does:
+simplint marks the fix unsafe when it moves a nested class, a statement containing a call, or a method with a call in a
+default value. For method decorators it accepts the names `property`, `cached_property`, `classmethod`, `staticmethod`,
+`overload`, `setter`, `getter` and `deleter`. Other decorators and decorator calls make the fix unsafe because changing
+the order can change what runs during class creation.
 
 ```python report
 import itertools
@@ -502,10 +493,9 @@ attached to a definition, or when two statements share a line.
 
 ### With definition-before-use
 
-[`definition-before-use`](SMP201.html) places the helpers, and this rule places the sections. Both compute one expected
-order for a class body, so the two never disagree: each helper follows the same caller in both, and the sections are the
-same in both. When both rules are enabled, one `--fix` settles a class body: the fix of either leads to the order the
-other one wants, and a second run finds nothing.
+[`definition-before-use`](SMP201.html) places helpers after their first caller. Both rules choose the same caller when
+more than one method uses a helper. A member pinned by a definition-time dependency can still have a report after
+fixing.
 
 When this rule is enabled alone, its fix moves each helper together with its caller, since the layout places the helper
 there, but it reports no helper. When [`definition-before-use`](SMP201.html) is enabled alone, it does not sort the
@@ -513,11 +503,6 @@ sections, and its fix moves only the helpers.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), which orders Django model bodies
-  and which this rule leaves to it, except the report that carries the fix DJ012 lacks; the general order is open issues
-  [#2425](https://github.com/astral-sh/ruff/issues/2425) and [#3845](https://github.com/astral-sh/ruff/issues/3845)
-  (WPS338).
 - [pyorder](https://github.com/Winipedia/pyorder) has the same
   [constructor-first](https://github.com/Winipedia/pyorder#ordering-rules) rule, and sorts abstract, overriding, special
   and class methods first as well.

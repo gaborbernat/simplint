@@ -52,7 +52,6 @@ pub fn up_pytest_deprecated_api(checker: &Checker) {
     calls.visit_body(checker.body());
 }
 
-// A nose-style hook pytest 8 no longer calls, with the pytest hook that runs at the same point.
 fn nose_hook(checker: &Checker, function: &ast::StmtFunctionDef, hooks: &[(&str, &str, &str)]) {
     let Some((name, replacement, when)) = hooks.iter().find(|(name, ..)| function.name.as_str() == *name) else {
         return;
@@ -68,7 +67,7 @@ fn nose_hook(checker: &Checker, function: &ast::StmtFunctionDef, hooks: &[(&str,
         Rule::PytestDeprecatedApi,
         function.name.range(),
         format!("pytest 8 no longer calls the nose-style `{name}`; name it `{replacement}` to run it {when}"),
-        // pytest stopped calling it, so renaming it makes it run again: a change in behavior.
+        // The rename makes pytest execute a hook it previously ignored.
         Some(Fix::unsafe_edit(Edit::range_replacement((*replacement).to_owned(), function.name.range()))),
         format!("Rename to `{replacement}`"),
     );
@@ -99,7 +98,7 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
     }
     for parameter in &function.parameters {
         let name = parameter.name().as_str();
-        // The `py.path` fixtures pytest keeps only in its `legacypath` plugin, and the pathlib fixture replacing each.
+        // The pytest replacements use pathlib for paths.
         let replacement = match name {
             "tmpdir" => "tmp_path",
             "tmpdir_factory" => "tmp_path_factory",
@@ -114,7 +113,7 @@ fn function_checks(checker: &Checker, function: &ast::StmtFunctionDef) {
     }
 }
 
-// A module that imports the `legacypath` plugin tests its fixtures, so it requests them on purpose.
+// A test of the compatibility plugin may need its legacy fixtures.
 fn tests_legacypath(checker: &Checker) -> bool {
     checker.body().iter().any(|stmt| match stmt {
         Stmt::Import(import) => import.names.iter().any(|alias| alias.name.as_str().contains("legacypath")),
@@ -128,7 +127,7 @@ struct Calls<'a, 'b> {
 }
 
 impl<'a> Visitor<'a> for Calls<'_, '_> {
-    // A call in the body of `pytest.raises` checks that pytest rejects it.
+    // The expected error may come from the obsolete argument itself.
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if let Stmt::With(with) = stmt
             && with.items.iter().any(|item| {

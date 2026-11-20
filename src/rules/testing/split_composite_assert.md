@@ -3,12 +3,10 @@ assert over a tuple would compare together.
 
 ## Why is this bad?
 
-Each assert stops the test at its first mismatch, so a failing run shows one field and hides the others. Comparing the
-fields as one tuple checks them in the same order, and pytest's
-[assertion rewriting](https://docs.pytest.org/en/stable/how-to/assert.html#making-use-of-context-sensitive-comparisons)
-then prints every value on both sides and the first index that differs. The tuple also drops the repeated object name.
-Ruff's [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) asks to split `assert a and b`, since a
-combined assertion does not name the failing condition; a tuple comparison names every value.
+With separate assertions, a test stops at the first mismatched field. A tuple comparison puts the actual and expected
+fields side by side.
+[pytest's assertion output](https://docs.pytest.org/en/stable/how-to/assert.html#making-use-of-context-sensitive-comparisons)
+can show the first differing index. Use a tuple when the fields describe one result.
 
 ## Example
 
@@ -30,8 +28,8 @@ def test_user(result):
 ### Active on
 
 - **Two or more consecutive asserts on fields of one object**: each assert has no message, compares with `==` an
-  attribute or a key of an object, and the object is written the same way in each. A test function is a `test*` function
-  in a test module, as pytest collects it.
+  attribute or a key of an object, and the object is written the same way in each. The rule checks `test*` functions in
+  [test modules](SMP801.html).
 
   ```python report file=tests/test_fields.py
   def test_attributes(result):
@@ -117,6 +115,8 @@ The fix replaces the run with one assert that keeps the original order of the fi
 
 No fix is offered when:
 
+- the run shares a line with another statement;
+
 - the joined assert would be wider than the line length, measured as the formatter measures a joined line;
 
   ```python report file=tests/test_long_line.py
@@ -136,5 +136,5 @@ No fix is offered when:
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** released rule
-  [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) splits one assertion joined by `and` or `or`;
-  this rule combines consecutive field comparisons into one tuple comparison. Neither reports the other's cases.
+  [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) splits independent conditions such as
+  `assert a and b` or `assert not (a or b)`. This rule combines consecutive equality checks on fields of one object.

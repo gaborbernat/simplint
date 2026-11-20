@@ -18,23 +18,20 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16281/badge)](https://www.bestpractices.dev/projects/16281)
 
 simplint is a companion linter for [Ruff](https://docs.astral.sh/ruff/), written in [Rust](https://www.rust-lang.org/).
-It adds checks that make Python code easier to read and review:
+It checks how Python modules organize their definitions, exports and tests. For example, simplint can flag
+[helpers defined above their callers](https://simplint.readthedocs.io/en/latest/rules/SMP201.html),
+[public definitions missing from `__all__`](https://simplint.readthedocs.io/en/latest/rules/SMP403.html),
+[constants missing `Final`](https://simplint.readthedocs.io/en/latest/rules/SMP601.html) and
+[tests grouped in classes](https://simplint.readthedocs.io/en/latest/rules/SMP801.html).
 
-- [definitions ordered like a book](https://simplint.readthedocs.io/en/latest/rules/SMP201.html)
-- [explicit exports](https://simplint.readthedocs.io/en/latest/rules/SMP403.html)
-- [Final constants](https://simplint.readthedocs.io/en/latest/rules/SMP601.html)
-- [flat test modules](https://simplint.readthedocs.io/en/latest/rules/SMP801.html)
-- and more
-
-Most rules rewrite the code for you; fixes that could change behavior run only with `--unsafe-fixes`. An import index
-across every file keeps fixes from renaming or moving a name another module uses. A whole project lints in milliseconds,
-simplint never reports what a `Ruff` rule reports, and both tools read the same `noqa` comments and `pyproject.toml`.
-
-The rules are opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible.
+Most rules offer a fix. `simplint check --fix` applies safe fixes. Add `--unsafe-fixes` to apply changes that may affect
+behavior. Run it over the whole project, including tests, so rules that rename or move definitions can check which
+modules use them. Choose the rules that fit your project in `[tool.simplint]` in `pyproject.toml`.
 
 ## Install
 
-With [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/stable/):
+Install with [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/stable/). The wheel requires Python 3.11 or
+later.
 
 ```bash
 uv tool install simplint  # or: pipx install simplint
@@ -50,10 +47,9 @@ simplint check .
 
 ## Links
 
-- [Documentation](https://simplint.readthedocs.io/en/latest/): start with the
-  [getting started](https://simplint.readthedocs.io/en/latest/tutorial/getting-started.html) tutorial, then the
-  [how-to guides](https://simplint.readthedocs.io/en/latest/how-to/index.html) for single tasks, and the
-  [reference](https://simplint.readthedocs.io/en/latest/rules.html) for rules, configuration and the command line
+- [Getting started](https://simplint.readthedocs.io/en/latest/tutorial/getting-started.html)
+- [How-to guides](https://simplint.readthedocs.io/en/latest/how-to/index.html)
+- [Rule reference](https://simplint.readthedocs.io/en/latest/rules.html)
 - [PyPI package](https://pypi.org/project/simplint)
 - [Release history](https://simplint.readthedocs.io/en/latest/changelog.html)
 - [CONTRIBUTING.md](https://github.com/gaborbernat/simplint/blob/main/CONTRIBUTING.md): repository layout and

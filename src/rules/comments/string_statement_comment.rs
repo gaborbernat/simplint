@@ -12,7 +12,7 @@ use crate::semantic::future_import;
 use crate::syntax::for_each_body;
 
 pub fn string_statement_comment(checker: &Checker) {
-    // The compiler checks where a `from __future__` import sits against the statements before it, and a string is one.
+    // Removing an earlier string can change whether Python accepts a `from __future__` import.
     let has_future_import = checker.body().iter().any(|stmt| future_import(stmt).is_some());
     for_each_body(checker.body(), &mut |body, owner| {
         for (index, stmt) in body.iter().enumerate() {
@@ -22,8 +22,7 @@ pub fn string_statement_comment(checker: &Checker) {
             let Some(literal) = value.as_string_literal_expr() else {
                 continue;
             };
-            // Triple quotes mark a block of text; a short quoted string is more often a marker, such as a line a tracer
-            // or a test expects to run.
+            // A tracer or test can use a short string statement as a line marker.
             if !literal.value.iter().all(|part| part.flags.is_triple_quoted())
                 || is_docstring(index, owner)
                 || is_attribute_docstring(body, index)
@@ -42,20 +41,17 @@ pub fn string_statement_comment(checker: &Checker) {
     });
 }
 
-// The first statement of a module, class or function body, which Python keeps as its docstring.
 fn is_docstring(index: usize, owner: Option<&Stmt>) -> bool {
     index == 0 && owns_docstring(owner)
 }
 
-// A string after an assignment documents the attribute it assigns, as Sphinx reads it.
+// Source-based documentation tools can read strings following assignments as attribute documentation.
 fn is_attribute_docstring(body: &[Stmt], index: usize) -> bool {
     index > 0 && matches!(body[index - 1], Stmt::Assign(_) | Stmt::AnnAssign(_))
 }
 
-// One comment line per line of the string, so the code after it keeps its line numbers. The strings of a body that
-// holds nothing else cannot all become comments, which would leave the body empty; a string sharing its line with code
-// or a comment, an escape the compiler reads, a text that would start a tool directive, or a line past the comment
-// width stays.
+// Preserve line numbers for the code after the string. Decline the edit if it would hide escapes, create a tool
+// directive, erase other source on the same line or leave a body empty.
 fn comment_replacement(
     checker: &Checker,
     body: &[Stmt],

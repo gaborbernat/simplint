@@ -241,15 +241,13 @@ impl RunOptions {
     }
 }
 
-/// The `[tool.simplint]` table. Like `[tool.ruff]`, it rejects keys it does not know, so a typo fails loudly instead of
-/// being ignored.
+/// The `[tool.simplint]` table rejects unknown keys.
 #[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SimplintOptions {
-    /// The style in which violation messages should be formatted: `"full"` (default) (shows source), `"concise"`,
-    /// `"grouped"` (group messages by file), `"json"` (machine-readable), `"json-lines"`, `"junit"` (machine-readable
-    /// XML), `"github"` (GitHub Actions annotations), `"gitlab"` (GitLab CI code quality report), `"pylint"` (Pylint
-    /// text format), `"rdjson"`, `"azure"` (Azure Pipeline logging commands) or `"sarif"`.
+    /// Format for reported violations. The default, `"full"`, shows the source. Use `"concise"` for one line per
+    /// violation or `"grouped"` to group violations by file. Other formats include JSON (`"json"`, `"json-lines"`),
+    /// CI reports (`"junit"`, `"github"`, `"gitlab"`, `"azure"`, `"sarif"`), `"pylint"` and `"rdjson"`.
     #[option(
         default = r#""full""#,
         value_type = r#""full" | "concise" | "grouped" | "json" | "json-lines" | "junit" | "github" | "gitlab" | "pylint" | "rdjson" | "azure" | "sarif""#,
@@ -260,22 +258,22 @@ pub struct SimplintOptions {
     )]
     pub(crate) output_format: Option<OutputFormat>,
 
-    /// Enable fix behavior by-default when running `simplint` (overridden by the `--fix` and `--no-fix` command-line
-    /// flags). Only includes automatic fixes unless `--unsafe-fixes` is provided.
+    /// Apply safe fixes by default with `simplint check`. Enable `unsafe-fixes` to include unsafe fixes.
+    /// The `--fix` and `--no-fix` flags override this setting.
     #[option(default = "false", value_type = "bool", example = "fix = true")]
     pub(crate) fix: Option<bool>,
 
-    /// Enable application of unsafe fixes. If excluded, a hint will be displayed when unsafe fixes are available. If
-    /// set to false, the hint will be hidden.
+    /// Allow unsafe fixes. When unset, the text summary shows a hint if unsafe fixes are available.
+    /// Set this to `false` to hide the hint.
     #[option(default = r#"null"#, value_type = "bool", example = "unsafe-fixes = true")]
     pub(crate) unsafe_fixes: Option<bool>,
 
-    /// Like [`fix`](#fix), but disables reporting on leftover violation. Implies [`fix`](#fix).
+    /// Apply fixes and omit remaining violations from the report and exit status. Implies [`fix`](#fix).
     #[option(default = "false", value_type = "bool", example = "fix-only = true")]
     pub(crate) fix_only: Option<bool>,
 
-    /// Whether to show an enumeration of all fixed lint violations (overridden by the `--show-fixes` command-line
-    /// flag).
+    /// In text output, list the fixes applied to each file with a count per rule. `--show-fixes` and `--no-show-fixes`
+    /// override this setting.
     #[option(
         default = "false",
         value_type = "bool",
@@ -286,15 +284,13 @@ pub struct SimplintOptions {
     )]
     pub(crate) show_fixes: Option<bool>,
 
-    /// A list of rule codes, prefixes or names to enable. Prefixes can specify exact rules (like `SMP601`), entire
-    /// groups (like `SMP1`), or anything in between. An opt-in rule runs only when an entry names it by code or name;
-    /// `ALL` and prefixes leave it out.
+    /// Select rules by code (`SMP601`), prefix (`SMP1`) or name (`missing-final`). An explicit `ALL` includes
+    /// `unused-ignore` (`SMP009`), which is off when `select` is unset. Opt-in rules such as `init-module-content`
+    /// (`SMP407`) require their full code or name.
     ///
-    /// When breaking ties between enabled and disabled rules (via `select` and `ignore`, respectively), more specific
-    /// prefixes override less specific prefixes. `ignore` takes precedence over `select` if the same prefix appears in
-    /// both.
+    /// More specific selectors take precedence within a configuration layer. `ignore` wins a tie with `select`.
     #[option(
-        default = r#"["ALL"]"#,
+        default = "all rules except unused-ignore and opt-in rules",
         value_type = "list[RuleSelector]",
         example = r#"
             # Only enable the test rules.
@@ -304,7 +300,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) select: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to enable, in addition to those specified by [`select`](#select).
+    /// Enable additional rules using the same selectors as [`select`](#select).
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -316,8 +312,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) extend_select: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to ignore. Prefixes can specify exact rules (like `SMP601`), entire
-    /// groups (like `SMP1`), or anything in between.
+    /// Disable rules by code, code prefix or name.
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -329,7 +324,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) ignore: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to consider fixable. By default, all rules are considered fixable.
+    /// Allow fixes for the selected rules. By default, simplint can offer any fix a rule provides.
     #[option(
         default = r#"["ALL"]"#,
         value_type = "list[RuleSelector]",
@@ -341,8 +336,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) fixable: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to consider fixable, in addition to those specified by
-    /// [`fixable`](#fixable).
+    /// Allow fixes for additional rules beyond [`fixable`](#fixable).
     #[option(
         default = r#"[]"#,
         value_type = "list[RuleSelector]",
@@ -354,7 +348,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) extend_fixable: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to consider non-fixable.
+    /// Hide and disable fixes for rules matching these codes, code prefixes or names.
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -366,8 +360,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) unfixable: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to consider non-fixable, in addition to those specified by
-    /// [`unfixable`](#unfixable).
+    /// Disable fixes for additional rules beyond [`unfixable`](#unfixable).
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -379,7 +372,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) extend_unfixable: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names for which unsafe fixes should be considered safe.
+    /// Treat unsafe fixes as safe for rules matching these codes, code prefixes or names.
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -391,7 +384,7 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) extend_safe_fixes: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names for which safe fixes should be considered unsafe.
+    /// Require unsafe fixes to be enabled for rules matching these codes, code prefixes or names.
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
@@ -403,12 +396,9 @@ pub struct SimplintOptions {
     #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub(crate) extend_unsafe_fixes: Option<Vec<String>>,
 
-    /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, when considering any matching
-    /// files. A pattern matches the file's name, or its path relative to the project root. An initial '!' negates the
-    /// file pattern.
-    ///
-    /// For more information on the glob syntax, refer to the [`globset`
-    /// documentation](https://docs.rs/globset/latest/globset/#syntax).
+    /// Map file patterns to rule codes, prefixes or names to ignore. Match a filename or a path relative to the
+    /// project root. A leading `!` applies the ignore to files outside the pattern. See the
+    /// [`globset` syntax](https://docs.rs/globset/latest/globset/#syntax).
     #[option(
         default = "{}",
         value_type = "dict[str, list[RuleSelector]]",
@@ -424,8 +414,7 @@ pub struct SimplintOptions {
     #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
     pub(crate) per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
-    /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, in addition to any rules
-    /// excluded by [`per-file-ignores`](#per-file-ignores).
+    /// Add patterns and rule selectors to [`per-file-ignores`](#per-file-ignores).
     #[option(
         default = "{}",
         value_type = "dict[str, list[RuleSelector]]",
@@ -438,10 +427,9 @@ pub struct SimplintOptions {
     #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
     pub(crate) extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
-    /// Whether the project is a `"library"`, whose public API other code imports, or an `"application"`, which has no
-    /// Python API, so all of its code is internal. `"auto"` picks `"library"` when something installs the project: a
-    /// `[build-system]` table, or a `setup.py` or `setup.cfg`, unless `[tool.uv]` sets `package = false` or maturin
-    /// builds only a binary.
+    /// Treat the project as a `"library"` with a public Python API or an `"application"` whose modules are internal.
+    /// The default, `"auto"`, selects `"library"` if the project has `[build-system]`, `setup.py` or `setup.cfg`.
+    /// Setting `tool.uv.package = false` or `tool.maturin.bindings = "bin"` selects `"application"` in auto mode.
     #[option(
         default = r#""auto""#,
         value_type = r#""auto" | "library" | "application""#,
@@ -452,11 +440,11 @@ pub struct SimplintOptions {
     )]
     pub project_kind: Option<ProjectKindOption>,
 
-    /// The top-level packages and modules a library ships, whose modules make up its public API. By default they come
-    /// from the build backend's settings, then from the packages holding a `py.typed` marker, then from the package
-    /// named after the project; when none is found, every module outside `docs` and the tests counts.
+    /// Packages and modules that can expose a library's public API. When unset, simplint tries the build backend's
+    /// package list, then packages with `py.typed`, then a package or module named for the project. If none match,
+    /// public import paths outside `doc`, `docs` and the tests qualify. An explicit empty list selects no packages.
     #[option(
-        default = "[]",
+        default = "null",
         value_type = "list[str]",
         example = r#"
             api-packages = ["my_package"]
@@ -464,9 +452,8 @@ pub struct SimplintOptions {
     )]
     pub(crate) api_packages: Option<Vec<String>>,
 
-    /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP924`, check: `"rst"` for
-    /// reStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not
-    /// report.
+    /// Set to `"rst"` to check reStructuredText docstrings with `SMP910` through `SMP925`. These rules check inline
+    /// markup and fields such as `:param name:`, `:returns:` and `:raises Error:`. They skip files when this is unset.
     #[option(
         default = "null",
         value_type = r#""rst""#,
@@ -476,8 +463,8 @@ pub struct SimplintOptions {
     )]
     pub(crate) docstring_style: Option<DocstringStyle>,
 
-    /// The most words a paragraph may hold: a comment paragraph for `long-paragraph` (`SMP002`), and a docstring
-    /// paragraph for `long-docstring-paragraph` (`SMP904`).
+    /// Maximum words in a comment paragraph (`long-paragraph`, `SMP002`) or docstring paragraph
+    /// (`long-docstring-paragraph`, `SMP904`).
     #[option(
         default = "100",
         value_type = "int",
@@ -520,8 +507,8 @@ pub struct NamingOptions {
     )]
     pub(crate) keep_names: Option<Vec<String>>,
 
-    /// Words that name a variable, parameter or attribute without saying what it holds, which `meaningless-name`
-    /// (`SMP103`) reports. A word matches in lower or upper case, with or without leading or trailing underscores.
+    /// Variable, parameter and attribute names for `meaningless-name` (`SMP103`) to flag. A name matches the
+    /// configured spelling or its uppercase form after stripping leading and trailing underscores.
     #[option(
         default = r#"["foo", "baz", "qux", "quux"]"#,
         value_type = "list[str]",
@@ -571,10 +558,9 @@ pub struct ImportsOptions {
     )]
     pub(crate) module_attributes: Option<Vec<String>>,
 
-    /// The modules `module-attribute-import` (`SMP304`) checks: `"project"` for the modules of the run,
-    /// `"stdlib"` for the standard library, `"third-party"` for every other installed module, or the absolute name of
-    /// one module, which covers its submodules too. A module imported under the alias Ruff's
-    /// `flake8-import-conventions` asks for, such as `numpy` as `np`, or one its `banned-from` lists, stays out.
+    /// Modules to check with `module-attribute-import` (`SMP304`). Use `"project"` for modules in the run, `"stdlib"`
+    /// for standard-library modules or `"third-party"` for other external imports. A dotted module name includes its
+    /// submodules. For external imports, the rule respects Ruff's `flake8-import-conventions` aliases and `banned-from`.
     #[option(
         default = r#"["project"]"#,
         value_type = "list[str]",
@@ -585,8 +571,8 @@ pub struct ImportsOptions {
     )]
     pub(crate) module_attribute_scope: Option<Vec<String>>,
 
-    /// Make `missing-lazy-module` (`SMP314`) check every file. By default it checks only the files that already assign
-    /// `__lazy_modules__`, so a project adopts lazy imports one module at a time.
+    /// Check eligible imports with `missing-lazy-module` (`SMP314`) even in modules without `__lazy_modules__`.
+    /// By default the rule requires an existing list. It skips Python 3.15 and later targets.
     #[option(
         default = "false",
         value_type = "bool",
@@ -612,19 +598,20 @@ impl ImportsOptions {
 #[derive(Deserialize, Default, Clone, Copy, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LogicOptions {
-    /// The most statements a private helper may have for `single-caller-helper` (`SMP505`) to suggest inlining it into
-    /// its one caller. A docstring does not count.
+    /// Only suggest inlining a helper with fewer than this many top-level statements (`single-caller-helper`,
+    /// `SMP505`). With the default of 3, up to two statements qualify. A leading docstring does not count.
     #[option(
         default = "3",
         value_type = "int",
         example = r#"
-            # Only one-line helpers are inlined.
+            # Only suggest inlining single-statement helpers.
             max-helper-statements = 2
         "#
     )]
     pub(crate) max_helper_statements: Option<usize>,
 
-    /// The most statements the caller of such a helper may have once the helper's statements are added to its own.
+    /// Maximum combined number of top-level statements in the helper and its caller for `single-caller-helper`
+    /// (`SMP505`). Leading docstrings do not count.
     #[option(
         default = "20",
         value_type = "int",
@@ -634,8 +621,7 @@ pub struct LogicOptions {
     )]
     pub(crate) max_caller_statements: Option<usize>,
 
-    /// The most elements a tuple returned from a function may hold before `long-tuple-return` (`SMP528`) reports it. A
-    /// longer tuple is a record whose fields are known only by position; a dataclass or a named tuple names them.
+    /// Maximum number of elements in a returned tuple before `long-tuple-return` (`SMP528`) reports it.
     #[option(
         default = "2",
         value_type = "int",
@@ -646,8 +632,8 @@ pub struct LogicOptions {
     )]
     pub(crate) max_tuple_elements: Option<usize>,
 
-    /// The highest cognitive complexity a function may have before `cognitive-complexity` (`SMP529`) reports it. The
-    /// score counts each branch, loop and handler more the deeper it is nested, as `SonarSource` defines it.
+    /// Maximum cognitive complexity of a function for `cognitive-complexity` (`SMP529`). Nested `if` statements,
+    /// loops and exception handlers cost more than the same constructs at the top level.
     #[option(
         default = "20",
         value_type = "int",
@@ -657,8 +643,8 @@ pub struct LogicOptions {
     )]
     pub(crate) max_cognitive_complexity: Option<usize>,
 
-    /// The fewest statements in a row another module must repeat for `duplicate-code` (`SMP530`) to report them.
-    /// Statements count as those of one body, each nested block counting as one.
+    /// Minimum number of consecutive statements that must match across modules for `duplicate-code` (`SMP530`) to
+    /// report them. A compound statement and its body count as one statement in the surrounding block.
     #[option(
         default = "6",
         value_type = "int",
@@ -669,9 +655,9 @@ pub struct LogicOptions {
     )]
     pub(crate) min_duplicate_statements: Option<usize>,
 
-    /// The highest complexity an expression may have before `expression-complexity` (`SMP561`) reports it. Each
-    /// operator, call, subscript, conditional expression, lambda and comprehension adds one to the operands it holds,
-    /// and the score is the deepest such nesting, so a long flat chain of `and` or `+` counts once.
+    /// Maximum expression nesting score for `expression-complexity` (`SMP561`). Operators, calls, subscripts,
+    /// conditional expressions, assignments with `:=`, lambdas and comprehensions each add a level. A flat chain of
+    /// `and` or `+` counts once, as does a chain of calls and subscripts on the same receiver.
     #[option(
         default = "8",
         value_type = "int",
@@ -699,8 +685,8 @@ impl LogicOptions {
 #[derive(Deserialize, Default, Clone, Copy, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ClassesOptions {
-    /// The most attributes a class's instances may hold before `too-many-attributes` (`SMP711`) reports it: the
-    /// attributes its methods set on the instance, and a dataclass's fields.
+    /// Maximum distinct instance attributes per class for `too-many-attributes` (`SMP711`). The rule counts
+    /// attributes assigned by instance methods and fields declared by dataclasses.
     #[option(
         default = "12",
         value_type = "int",

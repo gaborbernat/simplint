@@ -12,7 +12,7 @@ use crate::rules::api::{AllList, exploded};
 use crate::syntax::{AllBinding, all_binding, module_statements};
 
 pub fn all_format(checker: &Checker) {
-    // A test that reads `__all__`, by importing it or by its name, may check that it is a tuple, so a tuple stays one.
+    // A consumer may rely on the tuple type, including tests that inspect exports by name.
     let project = checker.project();
     let listable = !project.is_all_read() && !project.tests_read_all();
     for stmt in checker.body() {
@@ -74,7 +74,7 @@ pub fn all_format(checker: &Checker) {
             }
             continue;
         }
-        // A list holds the same names; only code that concatenates `__all__` with a tuple would notice the change.
+        // Changing the type can break tuple concatenation or code that inspects the type of `__all__`.
         let parenthesized = value.as_tuple_expr().is_some_and(|tuple| tuple.parenthesized);
         let fix = if parenthesized && (checker.source.contains_line_break(value.range()) || has_comment) {
             // Swapping the brackets keeps the layout of a tuple written one name per line.
@@ -105,8 +105,7 @@ pub fn all_format(checker: &Checker) {
     }
 }
 
-// Whether a plain binding of `__all__` stays a tuple after the rule: it converts only a tuple at the top level that no
-// `noqa` suppresses, so a tuple nested in a block or suppressed, and any value that is not a literal, keeps it one.
+// An assignment outside the fix can leave a tuple in place. Converting a later `+=` operand to a list would break it.
 fn keeps_a_tuple(checker: &Checker) -> bool {
     module_statements(checker.body())
         .filter_map(|stmt| Some((stmt, all_binding(stmt)?)))

@@ -3,14 +3,12 @@ Flags [`asyncio.iscoroutinefunction()`](https://docs.python.org/3/whatsnew/3.14.
 
 ## Why is this bad?
 
-Python 3.14 [deprecates](https://docs.python.org/3/whatsnew/3.14.html#new-deprecations) `asyncio.iscoroutinefunction()`,
-a duplicate of `inspect.iscoroutinefunction()`, for removal in 3.16. The asyncio version calls the `inspect` one and
-adds one check, for the `_is_coroutine` marker that the
-[`asyncio.coroutine`](https://docs.python.org/3/whatsnew/3.11.html#whatsnew311-python-api-removed) decorator set before
-it was removed in Python 3.11. The two differ only for functions carrying that marker. A sync function that returns a
-coroutine can use
-[`inspect.markcoroutinefunction()`](https://docs.python.org/3/library/inspect.html#inspect.markcoroutinefunction),
-available from 3.12.
+Python 3.14 [deprecates `asyncio.iscoroutinefunction()`](https://docs.python.org/3/whatsnew/3.14.html#new-deprecations)
+and schedules its removal for 3.16. It also recognizes the private `_is_coroutine` marker used by
+[`asyncio.coroutine`](https://docs.python.org/3/whatsnew/3.11.html#whatsnew311-python-api-removed) before Python 3.11.
+From 3.12, a synchronous function that returns a coroutine can use
+[`inspect.markcoroutinefunction()`](https://docs.python.org/3/library/inspect.html#inspect.markcoroutinefunction) to be
+recognized by `inspect.iscoroutinefunction()`.
 
 ## Example
 
@@ -46,8 +44,7 @@ async def run(task):
 
 ## Configuration
 
-No setting changes the report. Every target version has `inspect.iscoroutinefunction()`, so the rule reports on every
-target.
+The rule applies to every supported target version.
 
 ## What it does
 
@@ -87,8 +84,8 @@ target.
 
 ### Fix
 
-The import goes before the first top-level import that sorts after `inspect`, or after the last top-level import. When a
-comment sits directly above that import, the new import goes above the comment, so the comment stays with its import:
+The fix adds `import inspect` to the standard library imports at the start of the module. It keeps comments with the
+import they precede.
 
 ```toml config
 [project]
@@ -118,10 +115,9 @@ def check(task):
     return inspect.iscoroutinefunction(task), asyncio.run, os.sep
 ```
 
-No fix is offered when:
+simplint reports the call without a fix in these cases.
 
-- `inspect` is already bound to something else in the module, or by a parameter, local or loop variable of a function,
-  lambda, class body or comprehension that encloses the call, which the import or the call would pick up;
+- Another binding in the module or an enclosing scope would hide or be replaced by `inspect`.
 
   ```toml config
   [project]
@@ -158,7 +154,7 @@ No fix is offered when:
       return asyncio.iscoroutinefunction(task)
   ```
 
-- the module docstring shares its line with code, since an import above it would leave `__doc__` as `None`.
+- The import would come before the module docstring and change `__doc__`.
 
   ```toml config
   [project]
@@ -187,9 +183,9 @@ No fix is offered when:
       return asyncio.iscoroutinefunction(task)
   ```
 
-- a `from __future__` import shares its line with code, since an import above it is a syntax error.
+- The import would come before a `from __future__` import and cause a syntax error.
 
-- the last import shares its line with code, since the new import would land below that code, which would run first.
+- The insertion point follows a standard library import that shares its line with another statement.
 
   ```toml config
   [project]
@@ -207,7 +203,3 @@ No fix is offered when:
   import asyncio; print(asyncio.iscoroutinefunction(print))
   # fmt: on
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -31,7 +31,7 @@ class _Command(TypedDict):
 
 
 def build_parser() -> ArgumentParser:
-    # `simplint cli-schema`, committed and kept equal to the binary's by `tests/docs_data.rs`
+    # Reading the checked-in schema lets Sphinx generate CLI help without building the binary.
     schema: _Command = json.loads((Path(__file__).parent / "_data" / "cli-schema.json").read_text(encoding="utf-8"))
     parser = ArgumentParser(prog="simplint", description=schema["about"], formatter_class=RawDescriptionHelpFormatter)
     _add_arguments(parser, schema)
@@ -49,7 +49,7 @@ def _add_arguments(parser: ArgumentParser, command: _Command) -> None:
 
 
 def _add_argument(parser: ArgumentParser, argument: _Argument) -> None:
-    # clap help uses Markdown code spans; sphinx-argparse-cli renders help as reStructuredText
+    # Convert Markdown code spans in clap help to reStructuredText literals for Sphinx.
     help_text = _CODE_SPAN_PATTERN.sub(r"``\1``", argument["help"] or "")
     if argument["delimiter"] == ",":
         help_text = f"{help_text}; comma-separated"

@@ -15,28 +15,26 @@ use crate::rules::classes::{Offer, require_options, splatted_options};
 use crate::rules::edits::keep_debug_text;
 use crate::syntax::{ExprCollector, dataclass_decorator, is_classmethod, is_name, receiver};
 
-// `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
+// Dataclasses gained the `slots` and `kw_only` decorator options in Python 3.10.
 pub(super) const SINCE: PythonVersion = PythonVersion::PY310;
 
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
     require_options(checker, Rule::DataclassKwOnly, &["kw_only"], |decorated, missing| {
-        // Without a generated `__init__`, `kw_only` changes nothing.
+        // A class with init=False has no generated constructor to rewrite.
         if decorated.option("init").and_then(Expr::as_boolean_literal_expr).is_some_and(|init| !init.value) {
             return Some(Offer::unreported());
         }
         let module = module.get_or_init(|| ModuleClasses::of(checker));
         let class = decorated.class;
         let call_message = "positional arguments pass the fields by position";
-        // The report names every positional call of the class, here and in other files; the fix needs all of them in
-        // this file, since a rewrite does not reach another file.
+        // A fix can edit only the defining file. Keep cross-file calls as related locations.
         let mut related: Vec<Related> = positional_calls(checker.source, module, class)
             .into_iter()
             .map(|range| Related { path: checker.path.to_path_buf(), range, message: call_message.to_owned() })
             .collect();
         let calls = checker.project().calls().positional_calls(class.name.as_str());
-        // A call that suppresses this rule leaves the report, but still withholds the fix, which would pass that call
-        // by keyword anyway, against the comment's wish.
+        // Suppressed calls in other files still need positional arguments. They prevent the fix.
         let others: Vec<&CallSite> = calls
             .iter()
             .filter(|site| !site.comments.iter().any(|comment| noqa::suppresses(comment, Rule::DataclassKwOnly.code())))
@@ -62,7 +60,6 @@ pub fn dataclass_kw_only(checker: &Checker) {
     });
 }
 
-// The module-level classes by name in source order, and every use of them in the module, found in one walk.
 struct ModuleClasses<'a> {
     classes: FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
     uses: FxHashMap<&'a str, Vec<Use<'a>>>,
@@ -92,8 +89,7 @@ impl<'a> ModuleClasses<'a> {
     }
 }
 
-// The module-level class names a string annotation spells, with where each is. Ruff resolves no reference inside a
-// string annotation, so the names are matched by name, as the string is read as an expression of the module.
+// String annotations have no semantic references, so match class names using their parsed source ranges.
 struct StringNames<'c, 'a> {
     source: &'c str,
     classes: &'c FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
@@ -135,8 +131,7 @@ fn positional_calls(source: &str, module: &ModuleClasses, class: &ast::StmtClass
         .collect()
 }
 
-// The calls a classmethod makes of its first parameter, which is the class. A method's first parameter is the instance
-// or something else, so a `cls` there is not the class.
+// A classmethod can construct the class through its first parameter, regardless of the parameter's name.
 fn receiver_calls<'a>(source: &'a str, class: &'a ast::StmtClassDef) -> Vec<Use<'a>> {
     let mut found = Vec::new();
     for method in class.body.iter().filter_map(Stmt::as_function_def_stmt).filter(|method| is_classmethod(method)) {
@@ -150,9 +145,7 @@ fn receiver_calls<'a>(source: &'a str, class: &'a ast::StmtClassDef) -> Vec<Use<
     found
 }
 
-// The edits that pass every positional call of `class` in this module by keyword, or `None` when some use of the class
-// could still pass fields by position once it is keyword-only: a call unpacking `*args`, the class handed around as a
-// value, or a subclass.
+// Rewriting the decorator requires every positional call to be known and editable in this file.
 fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtClassDef) -> Option<Vec<Edit>> {
     let name = class.name.as_str();
     if !module.is_module_level(class)
@@ -204,7 +197,7 @@ fn positional_fields(checker: &Checker, module: &ModuleClasses, class: &ast::Stm
     init_fields(class, decorator, &base_fields)
 }
 
-// Each positional argument gets its field's name; a bare generator or walrus needs brackets as a keyword's value.
+// Assignment expressions and bare generators need parentheses when they become keyword values.
 fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> Option<Vec<Edit>> {
     match CallKind::of(call) {
         CallKind::Unpacked => return None,

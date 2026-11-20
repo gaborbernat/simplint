@@ -1,7 +1,7 @@
 Rules
 =====
 
-Each rule below reports a pattern that makes code harder to read or review, and most can fix it.
+Use the table to find a rule, read its examples and check whether it offers a fix.
 
 - Filter the table by code, name or description, or narrow it to a group or to rules with a fix.
 - The address bar keeps the filter, so you can share a filtered view as a link.
@@ -9,5 +9,4 @@ Each rule below reports a pattern that makes code harder to read or review, and 
 
 .. include:: _derived/rules-table.inc
 
-Rules marked ✓ under **Cross-file** read other files of the run; :doc:`/explanation/how-it-works` explains how. Which
-fixes count as safe is under :ref:`fix-safety`.
+See :ref:`cross-file-rules` for how other files affect findings, and :ref:`fix-safety` for the safety of fixes.

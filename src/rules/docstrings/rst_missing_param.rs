@@ -14,8 +14,6 @@ pub fn rst_missing_param(checker: &Checker) {
             .subjects(&[FieldKind::Param])
             .chain(target.constructor.iter().flat_map(|docstring| docstring.subjects(&[FieldKind::Param])))
             .collect();
-        // A parameter with a leading underscore is internal, a knob the documentation leaves out. The description
-        // of a parameter is for a person to write, so the report carries no fix.
         for name in parameters
             .iter()
             .map(|parameter| parameter.name)

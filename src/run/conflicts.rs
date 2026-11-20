@@ -28,10 +28,8 @@ pub(super) struct Scope<'a> {
     pub(crate) package: Option<PackageRoot<'a>>,
 }
 
-// Fails when a simplint rule and Ruff rules on for the same file work against each other: one side's fix undoes the
-// other's, or leaves what the other reports, so no run of `ruff check --fix` and `simplint check --fix` leaves the file
-// clean. Per-file ignores can turn either side off for some files, so every file counts, but files that share both
-// settings conflict the same way, and the search for each pair of settings stops at its first conflicting file.
+// Check for incompatible rules before linting. Per-file ignores can resolve a conflict in just part of the tree.
+// Report the first conflicting file for each pair of settings.
 pub(super) fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
     let found = find_conflicts(scopes);
     if found.is_empty() {
@@ -178,10 +176,8 @@ struct Conflict<'a> {
     rules: Vec<usize>,
 }
 
-// A simplint rule, the Ruff rules on the other side, and code on which those report whenever they apply to a file, so
-// a Ruff run over it tells whether Ruff's settings turn them on for that file. `undoes_fixes` tells a Ruff fix that
-// reverts simplint's from a Ruff report that only asks for what simplint removes. `fix` names the recommended way out
-// first.
+// Probe Ruff with an example that triggers the conflicting rules under the file's settings. Some Ruff fixes undo
+// simplint's fixes. Other rules ask for code simplint removes. The report recommends which rule to disable first.
 struct Clash {
     simplint: Rule,
     ruff: &'static [RuffRule],

@@ -2,8 +2,6 @@ use super::*;
 use crate::common::{check, empty_project, project};
 use test_case::test_case;
 
-// A nested project under a `tests` directory is not a test module of the outer project, as its files are its own, while
-// a directory of the tests without a marker of its own is.
 #[test_case("tests/roots/test-c", true, false ; "nested_project_is_not_a_test_module")]
 #[test_case("tests/roots/fixtures", false, true ; "test_directory_without_a_marker_is_a_test_module")]
 fn test_module_docstring_follows_the_project_of_the_file(directory: &str, marked: bool, reported: bool) {
@@ -16,7 +14,6 @@ fn test_module_docstring_follows_the_project_of_the_file(directory: &str, marked
     assert_eq!(stdout.contains(" SMP902 "), reported, "{stdout}");
 }
 
-// A nested project takes the kind of the project around it, as a library's nested roots are library modules.
 #[test_case("library", false ; "library")]
 #[test_case("application", true ; "application")]
 fn nested_project_takes_the_project_kind_around_it(kind: &str, reported: bool) {
@@ -32,7 +29,6 @@ fn nested_project_takes_the_project_kind_around_it(kind: &str, reported: bool) {
     assert_eq!(stdout.contains(&common::native("roots/test-a/mod.py")), reported, "{stdout}");
 }
 
-// A `[tool.simplint]` of a nested project's own replaces the project kind around it.
 #[test_case("[tool.simplint]\nproject-kind = \"application\"\n", true ; "own_application_kind")]
 #[test_case("[tool.simplint]\nproject-kind = \"library\"\n", false ; "own_library_kind")]
 fn nested_project_with_its_own_settings_takes_them(nested: &str, reported: bool) {
@@ -49,8 +45,6 @@ fn nested_project_with_its_own_settings_takes_them(nested: &str, reported: bool)
     assert_eq!(stdout.contains(&common::native("roots/test-a/mod.py")), reported, "{stdout}");
 }
 
-// A nested project's documentation names its own definitions as used, and the documentation of the run's project does
-// not reach them, nor the other way round.
 #[test]
 fn nested_project_names_its_own_documentation() {
     let root = project(&[
@@ -73,8 +67,7 @@ fn nested_project_names_its_own_documentation() {
     );
 }
 
-// A nested project is indexed on its own, so the run's stores to an attribute reach its names as its reads do: a
-// `missing-final` there leaves a name the run assigns alone.
+// Assignments in the outer project can rule out `Final` on a nested project's attribute.
 #[test_case("        self.ffi = object()\n", false ; "outer_store_assigns_the_name")]
 #[test_case("        pass\n", true ; "without_a_store_the_name_is_reported")]
 fn nested_project_sees_the_attributes_the_run_stores_to(store: &str, reported: bool) {
@@ -89,7 +82,6 @@ fn nested_project_sees_the_attributes_the_run_stores_to(store: &str, reported: b
     assert_eq!(stdout.contains(" SMP601 "), reported, "{stdout}");
 }
 
-// A nested project's `pyproject.toml` that does not parse is an error, as the one of the project around it is.
 #[test_case("[project\n" ; "invalid_toml")]
 #[test_case("[project]\nname = 1\n" ; "invalid_metadata")]
 fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
@@ -103,8 +95,6 @@ fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
     assert_eq!((code, stderr.contains("Failed to parse")), (2, true), "{stderr}");
 }
 
-// A run from a directory whose name is not UTF-8 cannot resolve its imports, whether it checks a file or standard
-// input.
 #[cfg(unix)]
 #[test_case(false ; "linted_file")]
 #[test_case(true ; "standard_input")]
@@ -122,8 +112,6 @@ fn working_directory_that_is_not_utf8_is_an_error(stdin: bool) {
     assert_eq!((code, stderr.contains("is not a UTF-8 path")), (2, true), "{stderr}");
 }
 
-// A name the run's project reads counts as used in a nested project, so the test module of the run that imports a
-// function of a nested project does not leave it unused.
 #[test]
 fn name_read_by_the_outer_project_is_used_in_a_nested_project() {
     let root = project(&[
@@ -142,7 +130,6 @@ fn name_read_by_the_outer_project_is_used_in_a_nested_project() {
     assert!(check(unread.path(), &["--select", "SMP409"]).1.contains(&common::native("roots/test-a/support.py")));
 }
 
-// A name a nested project reads does not count as used in the run's project, which does not see the nested project.
 #[test]
 fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
     let root = project(&[
@@ -156,9 +143,8 @@ fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
     assert!(stdout.contains(&common::native("pkg/support.py:1:5: SMP409 `helper`")), "{stdout}");
 }
 
-// What `automodule` with `:members:` documents: the module's public names when it has no `__all__`, the names its
-// `__all__` lists when it has one, and with the directive's options the names it excludes or takes in. A directive
-// without `:members:` documents the module alone.
+// Without an explicit list, `:members:` follows the module's `__all__` if present. Directive options can narrow or
+// extend that selection.
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n", &["_hidden"] ; "members_are_the_public_names")]
 #[test_case(
     &format!("__all__ = [\"public\"]\n\n\n{FUNCTIONS}"),
@@ -208,9 +194,7 @@ fn automodule_members_are_used_as_sphinx_renders_them(source: &str, directive: &
     assert_eq!(unused_names(&stdout), expected, "{stdout}");
 }
 
-// Files of a nested test project are test input for the rules that judge their docstrings and the visibility of their
-// names, so an internal docstring, an undocumented public function and a name `__all__` omits are left alone there,
-// while another rule still checks them. The same code outside a nested project is reported.
+// The nested fixture contains deliberately undocumented and unexported names. Other rules still check its code.
 #[test_case("roots/test-a", false ; "nested_project")]
 #[test_case("roots/fixtures", true ; "directory_outside_a_nested_project")]
 fn nested_project_is_not_judged_for_docstrings_or_exports(directory: &str, reported: bool) {
@@ -260,8 +244,7 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
     assert!(check(outside.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
-// A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
-// the patch, so SMP304 offers no fix for any of the patch forms.
+// Binding the attribute with a `from` import would bypass later patches to the module.
 #[test_case(
     concat!(
         "from unittest import mock\n",
@@ -333,8 +316,6 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
     );
 }
 
-// A store to one attribute of a module from another file, or a dotted string patching one, touches only that attribute:
-// the module's other attributes still move into the importer.
 #[test_case(
     "pkg/setup.py",
     concat!(
@@ -375,8 +356,7 @@ fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, exp
     assert_eq!(stdout, common::native(expected));
 }
 
-// A doctest reads a module's name, which is no patch of it, so the module's own reads still get the import fix. A
-// `from` line without `import` imports nothing.
+// An attribute read in a doctest gives no reason to expect later reassignment.
 #[test]
 fn doctest_read_does_not_patch_module() {
     let root = project(&[
@@ -400,8 +380,6 @@ fn doctest_read_does_not_patch_module() {
     );
 }
 
-// A nested test project's pages name its own definitions, and do not count as the run's project's documentation, which
-// leaves the run's unused definition reported.
 #[test]
 fn nested_project_pages_do_not_name_the_run_projects_definitions() {
     let root = project(&[
@@ -430,8 +408,6 @@ fn sarif_related_location_is_a_file_uri() {
     assert_eq!((primary.starts_with("file://"), related.starts_with("file://")), (true, true), "{related}");
 }
 
-// An autodoc directive names a package's function by the package, so the `__init__.py` function it documents is public
-// documentation rather than internal code.
 #[test]
 fn autodoc_names_a_package_function_by_its_package() {
     let root = project(&[
@@ -460,7 +436,6 @@ fn autodoc_names_a_package_function_by_its_package() {
     assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
-// An autodoc directive names a method by its class, so the method's docstring is documented rather than internal.
 #[test]
 fn autodoc_names_a_method_by_its_class() {
     let root = project(&[
@@ -495,8 +470,8 @@ fn autodoc_names_a_method_by_its_class() {
     assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
-// A nested project's files are test input, so the rules it leaves out do not run there. Its results are cached apart
-// from the outer project's, which judges the same file.
+// The same path can be fixture input in one run and ordinary project code in another. Their cached results must stay
+// separate.
 #[test]
 fn nested_project_results_are_not_reused_by_the_outer_project() {
     let docstring = format!("def run() -> None:\n    \"\"\"{}\"\"\"\n", "word ".repeat(150).trim_end());
@@ -518,7 +493,7 @@ fn nested_project_results_are_not_reused_by_the_outer_project() {
     assert_eq!(outer, common::PASSED);
 }
 
-// coverage loads a plugin module by its dotted name and calls its `coverage_init`, so no import reaches the function.
+// Coverage.py calls `coverage_init` when loading the configured plugin.
 #[test_case("__all__ = [\"coverage_init\"]\n" ; "listed")]
 #[test_case("__all__ = []\n" ; "unlisted")]
 fn coverage_plugin_init_is_used(all: &str) {

@@ -155,8 +155,8 @@ fn add_ignore_merges(select: &str, source: &str, expected: &str) {
     );
 }
 
-// A blanket `# noqa` takes no codes, so `--add-noqa` leaves its line alone, while `--add-ignore` writes its comment
-// there, which silences the reports the blanket `# noqa` leaves. Other lines get their comments either way.
+// Adding a directive must preserve an existing blanket noqa. Adding a simplint ignore can silence findings that
+// the blanket noqa leaves visible.
 #[test_case(
     "--add-noqa=legacy",
     "import os  # noqa\nVALUE = vars(os)  # noqa: SMP604 legacy\n",

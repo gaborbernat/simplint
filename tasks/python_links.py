@@ -1,4 +1,4 @@
-"""Link the standard-library names the rule pages mention to the Python documentation, by its intersphinx inventory."""
+"""Link standard-library names on rule pages using the Python documentation inventory."""
 
 from __future__ import annotations
 
@@ -55,13 +55,12 @@ class Inventory:
         )
         for role in reversed(linked_roles):
             self.names.update({name: (role, item.uri) for name, item in data.get(role, {}).items()})
-        # A page that moved keeps its file name and anchors, as `library/functions.html` did into `builtins/`.
+        # Match moved entries by file name and anchor when both survive the move.
         self.moved = {_file_and_anchor(uri): uri for uri in self.uris}
         self.pages = {uri.partition("#")[0] for uri in self.uris}
 
     def canonical(self, uri: str) -> str | None:
-        # The inventory's address of a link, or None when the link names nothing the inventory holds. A section heading
-        # has no entry, so a link to a known page keeps its anchor.
+        # Section anchors can be absent from the inventory even when their page is listed. Preserve those links.
         if uri in self.uris:
             return uri
         if (moved := self.moved.get(_file_and_anchor(uri))) is not None:
@@ -72,8 +71,7 @@ class Inventory:
         if (found := self.names.get(name)) is None:
             return None
         role, uri = found
-        # An undotted name is often a keyword or a project's own name, such as the `type` statement or a `set`
-        # attribute, so only an exception or a builtin written as a call is surely the builtin.
+        # Bare names like `type` or `set` may refer to local code. Link unqualified exceptions and function calls.
         return uri if "." in name or role == "py:exception" or (role == "py:function" and called) else None
 
 
@@ -83,9 +81,7 @@ def _file_and_anchor(uri: str) -> tuple[str, str]:
 
 
 def relink(text: str, inventory: Inventory) -> tuple[str, list[str]]:
-    # Move each link to its address in the inventory and link the first mention of each name it holds.
-    #
-    # :returns: the new text and the links the inventory does not hold
+    # Link the first eligible mention only if the page does not already link to that target.
     unknown: list[str] = []
 
     def move(match: re.Match[str]) -> str:
@@ -119,7 +115,6 @@ def relink(text: str, inventory: Inventory) -> tuple[str, list[str]]:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    # Check, or with ``--fix`` rewrite, the Python documentation links of the given Markdown files.
     parser = argparse.ArgumentParser(description="Link standard-library names to the Python documentation")
     parser.add_argument("paths", nargs="+", type=Path)
     parser.add_argument("--fix", action="store_true", help="rewrite the files instead of reporting them")

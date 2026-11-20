@@ -50,7 +50,7 @@ impl<'a> Visitor<'a> for Roots<'_, 'a> {
         }
     }
 
-    // Annotations are type expressions, scored by no one.
+    // Type expressions are outside this rule's nesting limit.
     fn visit_annotation(&mut self, _: &'a Expr) {}
 }
 

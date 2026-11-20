@@ -3,11 +3,11 @@ reStructuredText docstrings.
 
 ## Why is this bad?
 
-Users read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips
-shows with its name and type only, leaving its units, defaults and constraints unsaid.
-[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) has a function's docstring document its arguments,
-and the [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for enough
-to write a call without reading the function's code.
+A signature can show that `timeout` takes a float and defaults to `5.0`. The docstring can tell callers whether that
+means seconds per attempt or for the whole request. [PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings)
+recommends documenting arguments, and
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for enough
+information to call the function without reading its implementation.
 
 ## Example
 
@@ -65,8 +65,9 @@ def copy(source: str, target: str) -> None:
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
 `docstring-style = "rst"`, for parameters without a `:param name:` field.
 
-No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
-field until they do.
+Write the description by hand. [rst-empty-field](SMP914.html) also checks that each field has text.
+
+The rule also checks parameters on definitions the project's autodoc directives document.
 
 ### Active on
 
@@ -163,8 +164,9 @@ field until they do.
       """
   ```
 
-- **Parameters named with two leading underscores, such as `__obj`**: the double underscore marks the parameter
-  positional-only rather than internal, so it is checked.
+- **Parameters such as `__obj`.** The rule treats these as public, following the
+  [historical typing convention](https://typing.python.org/en/latest/spec/historical.html#positional-only-parameters)
+  for positional-only parameters.
 
   ```toml config
   [project]
@@ -210,8 +212,8 @@ field until they do.
           return ""
   ```
 
-- **Parameters named with one leading underscore**: they are internal, a knob the documentation leaves out;
-  [rst-private-field](SMP915.html) reports documentation of them in the public API.
+- **Parameters named with one leading underscore**: simplint treats these as internal. [rst-private-field](SMP915.html)
+  reports documentation of them in the public API.
 
   ```toml config
   [project]
@@ -254,8 +256,9 @@ field until they do.
       """
   ```
 
-- **Class variables of a generated class**: a `ClassVar` field is no constructor parameter, whether its annotation is
-  written as `ClassVar[int]` or as the quoted string `"ClassVar[int]"`.
+- **Generated constructors.** For dataclasses, attrs classes and named tuples, the rule can infer parameters from field
+  declarations. It skips `ClassVar`, the `KW_ONLY` marker and fields declared with `init=False`. Quoted annotations such
+  as `"ClassVar[int]"` count too.
 
   ```toml config
   [project]
@@ -286,11 +289,9 @@ field until they do.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)
-  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule
-  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request
-  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as
-  [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
-- [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as
-  [DAR101](https://github.com/terrencepreilly/darglint), with no fix.
+- [Ruff D417](https://docs.astral.sh/ruff/rules/undocumented-param/) checks documented argument sections.
+  [Ruff PR #21076](https://github.com/astral-sh/ruff/pull/21076) proposes a missing-parameter check.
+  [Issue #6606](https://github.com/astral-sh/ruff/issues/6606) tracks Sphinx-style docstrings.
+- [pydoclint DOC101](https://jsh9.github.io/pydoclint/violation_codes.html) checks for fewer parameters in the docstring
+  than in the signature. [darglint DAR101](https://github.com/terrencepreilly/darglint) reports missing parameter
+  descriptions.

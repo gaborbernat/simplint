@@ -3,14 +3,10 @@ reStructuredText class docstrings.
 
 ## Why is this bad?
 
-`:ivar:` and `:cvar:` say where the value lives: the
-[Python tutorial](https://docs.python.org/3/tutorial/classes.html#class-and-instance-variables) separates instance
-variables, unique to each instance, from class variables shared by all instances. The wrong field tells readers the
-opposite of what the code does. Sphinx
-[renders all three fields alike](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists), under
-one Variables heading, but [pydoctor](https://pydoctor.readthedocs.io/en/latest/codedoc.html), which keeps epydoc's
-fields, [files each attribute under its kind](https://github.com/twisted/pydoctor/blob/24.11.2/pydoctor/epydoc2stan.py),
-so pydoctor lists it under the wrong kind.
+An `:ivar:` field tells a reader that the value belongs to an instance. A `:cvar:` field identifies a variable shared by
+the class. [Sphinx](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists) displays both under
+Variables. [pydoctor](https://pydoctor.readthedocs.io/en/latest/codedoc.html) distinguishes them, so using the wrong
+field misclassifies the attribute.
 
 ## Example
 
@@ -182,15 +178,15 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for attribute 
 
 ### Attribute kinds
 
-| Attribute                                                                          | Kind               | Field                |
-| ---------------------------------------------------------------------------------- | ------------------ | -------------------- |
-| a `ClassVar`                                                                       | class variable     | `:cvar:`             |
-| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |
-| a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |
-| the target of a `for` statement in the class body                                  | class variable     | `:cvar:`             |
-| an annotated field                                                                 | instance attribute | `:ivar:`             |
-| a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |
-| a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |
+| Attribute                                                                           | Kind               | Field                |
+| ----------------------------------------------------------------------------------- | ------------------ | -------------------- |
+| a `ClassVar`                                                                        | class variable     | `:cvar:`             |
+| a `Final` with a value in the class body, as `SHOW: Final = 1`                      | class variable     | `:cvar:`             |
+| a name the class body assigns without an annotation, that no method sets on `self`  | class variable     | `:cvar:`             |
+| the target of a `for` statement in the class body                                   | class variable     | `:cvar:`             |
+| any other annotated field, or a field declared with `field()`, `ib()` or `attrib()` | instance attribute | `:ivar:`             |
+| a name a method sets on `self`                                                      | instance attribute | `:ivar:`             |
+| a class default that methods also set on `self`                                     | both               | `:ivar:` or `:cvar:` |
 
 ### Fix
 
@@ -223,8 +219,4 @@ class Engine:
     limit = 3
 ```
 
-No fix is offered when escapes in the docstring make its text differ from the source.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source.

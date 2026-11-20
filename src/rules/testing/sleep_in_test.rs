@@ -15,7 +15,7 @@ pub fn sleep_in_test(checker: &Checker) {
     let mut finder =
         Sleeps { checker, calls: Vec::new(), busy_waits: Vec::new(), patches_sleep: false, in_test: false };
     finder.visit_body(checker.body());
-    // A test that patches `time.sleep` already controls the wait, so its sleeps are not the problem.
+    // A patched sleep can be part of what the test verifies.
     if finder.patches_sleep {
         return;
     }
@@ -34,8 +34,7 @@ struct Sleeps<'a, 'b> {
     // The awaited `asyncio.sleep` calls that are the whole body of a `while`, which Ruff's ASYNC110 reports.
     busy_waits: Vec<TextRange>,
     patches_sleep: bool,
-    // Whether the walk is in the body of a test or fixture itself; a helper it defines, such as a server or a test
-    // double, may wait on purpose.
+    // A helper nested in a test can deliberately simulate a slow peer.
     in_test: bool,
 }
 
@@ -81,7 +80,7 @@ fn is_test_or_fixture(function: &ast::StmtFunctionDef) -> bool {
         || function.decorator_list.iter().any(is_fixture)
 }
 
-// `sleep(0)` only yields to the event loop, so it does not wait.
+// An awaited `asyncio.sleep(0)` lets other tasks run. Both sleep functions accept zero as an intentional delay.
 fn is_sleep(checker: &Checker, call: &ast::ExprCall) -> bool {
     let argument = if checker.semantic().resolves_to(&call.func, &["time", "sleep"]) {
         "secs"

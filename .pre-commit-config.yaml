@@ -2,7 +2,7 @@ default_language_version:
   python: python3.15
 ci:
   autoupdate_schedule: quarterly
-  # builds the linter from this checkout; pre-commit.ci has no Rust toolchain, so CI lints instead
+  # The hook invokes Cargo. The examples CI job checks the repository with the binary built from this checkout.
   skip: [simplint]
 repos:
   - repo: local

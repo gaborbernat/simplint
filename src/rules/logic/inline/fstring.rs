@@ -10,8 +10,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::rules::edits::escape_braces;
 
-// A replacement field before Python 3.12 cannot hold the quote its f-string is written in, so every string in it must
-// take the other one.
+// Before Python 3.12 a quote can terminate the enclosing f-string inside a replacement field.
 pub(in crate::rules::logic) fn requoted_text(checker: &Checker, expr: &Expr, delimiter: Quote) -> Option<String> {
     if any_over_expr(expr, &|sub: &Expr| unquotable(checker, sub)) {
         return None;
@@ -22,9 +21,8 @@ pub(in crate::rules::logic) fn requoted_text(checker: &Checker, expr: &Expr, del
     (!text.contains(delimiter.as_char()) && !text.contains('\\')).then_some(text)
 }
 
-// A triple-quoted, raw or `\N{` string keeps its form only in its own quotes, so it cannot change quote. Neither can an
-// f-string whose replacement field holds a string: every string of the value takes the other quote, so the field would
-// hold the quote its f-string is written in, which Python before 3.12 does not allow.
+// Keep forms the generator cannot safely requote. Giving nested strings a shared delimiter can close an f-string
+// early on Python versions before 3.12.
 fn unquotable(checker: &Checker, expr: &Expr) -> bool {
     match expr {
         Expr::StringLiteral(_) => fstring_body_parts(checker, expr).is_none(),
@@ -43,8 +41,7 @@ fn unquotable(checker: &Checker, expr: &Expr) -> bool {
     }
 }
 
-// The parts of a string or f-string value as an f-string body takes them, each with its quote. `None` when a part
-// cannot move into an f-string body.
+// Preserve each part's quote style when moving adjacent literals into an f-string.
 pub(in crate::rules::logic) fn fstring_body_parts<'a>(
     checker: &Checker<'a>,
     value: &Expr,
@@ -75,7 +72,7 @@ fn literal_part<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Opti
     Some((literal.flags.quote_style(), Cow::Owned(escape_braces(literal_text(checker, literal)?))))
 }
 
-// A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
+// Doubling the braces would break named escapes such as `\N{BULLET}`.
 fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
     let flags = literal.flags;
     let text = checker.text(literal.content_range());

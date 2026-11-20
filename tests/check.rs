@@ -300,7 +300,7 @@ fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
     );
 }
 
-// A path the run cannot read is a warning, not the `E902` of a missing one, whether the walk reaches it or the run names it.
+// The directory walk warns about a permission error whether the command names the directory or a file below it.
 #[cfg(unix)]
 #[test_case(&["--select", "SMP101"] ; "walked")]
 #[test_case(&["--select", "SMP101", "locked/module.py", "module.py"] ; "named")]
@@ -436,7 +436,7 @@ fn missing_file_message() -> String {
     std::io::Error::from_raw_os_error(2).to_string()
 }
 
-// With Ruff's `E902` off, a missing path stays a warning and the run keeps its status, as it always has.
+// A missing path produces a warning when Ruff's io-error rule is disabled.
 #[test]
 fn check_warns_about_a_missing_path_while_io_error_is_off() {
     let root =

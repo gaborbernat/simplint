@@ -207,8 +207,7 @@ struct Placement<'a> {
     comment_lines: String,
 }
 
-// The type a local keeps from the constant's annotation. `Final` belongs to module scope only, so `Final[T]` keeps `T`
-// and a bare `Final` keeps nothing.
+// The fix drops `Final` when moving a constant into a function. Keep the explicit type argument, when present.
 fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {
     match constant.annotation {
         Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {

@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def registry(tmp_path: Path) -> Path:
-    # the one-rule registry the rule list reads, so a test names a rule the list really has
     (tmp_path / "src" / "lint").mkdir(parents=True)
     path = tmp_path / "src" / "lint" / "registry.rs"
     path.write_text(
@@ -53,13 +52,11 @@ def root() -> Path:
 
 @pytest.fixture
 def files_url() -> str:
-    # The address PyPI serves source archives under, the prefix of the pinned URLs a test names.
     return "https://files.pythonhosted.org/packages/ab/cd"
 
 
 @pytest.fixture
 def tar_gz() -> Callable[[dict[str, bytes], dict[str, str] | None], bytes]:
-    # A gzipped tar of regular files, by member name and content, and of symbolic links, by member name and target.
     def build(members: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
         buffer = io.BytesIO()
         with tarfile.open(fileobj=buffer, mode="w:gz") as tar:

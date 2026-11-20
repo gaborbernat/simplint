@@ -167,8 +167,6 @@ def test_train_records_a_profile(
     assert output.endswith(f"profile written to {work / 'simplint.profdata'}, 0.0 MiB\n")
 
 
-# Run the training over one sdist with every tool simulated, and return the commands; simplint exits with the given
-# status.
 def _train(tmp_path: Path, mocker: MockerFixture, tar_gz: _TarGz, files_url: str, status: int) -> list[list[str]]:
     payload = tar_gz(
         dict.fromkeys(

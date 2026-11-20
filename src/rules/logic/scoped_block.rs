@@ -1,5 +1,3 @@
-// Helpers for the rules that turn a `try`/`finally` pair into a `with` block.
-
 use ruff_diagnostics::Edit;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
@@ -27,7 +25,6 @@ pub(super) fn is_exported_module_name(checker: &Checker, target: &ast::ExprName)
             || checker.state().export_strings(checker).iter().any(|element| element.value.to_str() == name))
 }
 
-// Comments in the lines the edits remove would go with them, so they block the edit.
 pub(super) fn wrap_edits(
     checker: &Checker,
     first: TextRange,

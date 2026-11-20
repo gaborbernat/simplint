@@ -42,9 +42,8 @@ jobs:
               - 'codecov.yml'
               - '.github/workflows/test.yaml'
   hooks:
-    # Runs every hook over the tree, so a file a hook would rewrite fails here rather than in the scheduled jobs that
-    # run them before opening a PR. The hooks install as the release installs them, with packages published in the
-    # last seven days held back, so a hook bumped to a fresh release fails here too, not when a release is prepared.
+    # Check that hooks can install under the release cooldown and leave the checkout clean. The examples job
+    # runs the local simplint hook's lint check with the built binary.
     name: 🧹 hooks under the release cooldown
     runs-on: ubuntu-26.04
     steps:
@@ -64,7 +63,6 @@ jobs:
       - name: 🧹 Run the hooks as the release installs them
         uses: tox-dev/github-workflows/cooled-prek@6.8.5
         env:
-          # builds the linter from this checkout, which the examples job lints the repository with
           SKIP: simplint
         with:
           args: run --all-files --show-diff-on-failure
@@ -133,7 +131,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.json
           disable_search: true
-          # A pull request from a fork gets no token, so only its upload may fail.
+          # Fork pull requests do not receive the Codecov secret.
           fail_ci_if_error: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
   # The Linux wheel has its own job, so the jobs that test it start without waiting for the slower platforms.
   wheel-linux:
@@ -281,7 +279,7 @@ jobs:
         env:
           PYTEST_ADDOPTS: "-vv --durations=20"
   ecosystem:
-    # Lints and fixes the pinned top PyPI projects, so a rule or fix that breaks real code fails here and not for users.
+    # Compare the Ruff-only baseline with the pipeline that also applies simplint fixes.
     name: 🌍 ecosystem
     needs: [changes, wheel-linux]
     if: needs.changes.outputs.run == 'true'

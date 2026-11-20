@@ -1,16 +1,14 @@
-Flags direct calls to the builtin `vars()`, which return an untyped `dict`.
+Flags direct calls to the builtin `vars()`.
 
 ## Why is this bad?
 
-`vars()` returns a `dict[str, Any]` in [typeshed](https://github.com/python/typeshed/blob/main/stdlib/builtins.pyi), so
-the attribute types are lost and a misspelled key fails only at runtime. It also
-[raises `TypeError`](https://docs.python.org/3/builtins/functions.html#vars) for an object without a `__dict__`, such as
-one whose class defines `__slots__`. Reading attributes from a typed object keeps these checks in the type checker. For
-[`argparse`](https://docs.python.org/3/library/argparse.html), pass a
+For an instance with a `__dict__`, [typeshed](https://github.com/python/typeshed/blob/main/stdlib/builtins.pyi) types
+`vars(obj)` as `dict[str, Any]`. A misspelled attribute used as a dictionary key can pass type checking. `vars(obj)`
+[raises `TypeError`](https://docs.python.org/3/builtins/functions.html#vars) when the instance lacks `__dict__`.
+
+Read named attributes when their types are known. For `argparse`, pass a
 [`Namespace`](https://docs.python.org/3/library/argparse.html#argparse.Namespace) subclass with annotated attributes to
-[`parse_args(namespace=...)`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args), as in
-the example. The [argparse docs](https://docs.python.org/3/library/argparse.html#the-namespace-object) show `vars(args)`
-for a dict view.
+[`parse_args(namespace=...)`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.parse_args).
 
 ## Example
 
@@ -36,8 +34,8 @@ No fix is offered: the typed replacement depends on how the result is used.
 
 ### Active on
 
-- **Direct calls to the builtin [`vars()`](https://docs.python.org/3/builtins/functions.html#vars)**: each one turns a
-  typed object into an untyped `dict`.
+- **Calls to [`vars`](https://docs.python.org/3/builtins/functions.html#vars)**. `vars(obj)` reads the object's
+  namespace. `vars()` without arguments reads the current locals.
 
   ```python report
   def names(obj: object) -> list[str]:
@@ -68,7 +66,7 @@ No fix is offered: the typed replacement depends on how the result is used.
   ```
 
 - **A class object**: `vars(cls)`, `vars(type(obj))`, `vars(obj.__class__)`, a class the file defines and a parameter
-  annotated `type[...]`. A class's own namespace, without inherited names, has no typed replacement.
+  annotated `type[...]`. `vars(cls)` returns a read-only mapping proxy containing the class's own attributes.
 
   ```python ok
   class Base:
@@ -101,7 +99,3 @@ No fix is offered: the typed replacement depends on how the result is used.
   def copy(obj: object) -> dict[str, object]:
       return {**vars(obj), "prog": "x"}
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3845](https://github.com/astral-sh/ruff/issues/3845).

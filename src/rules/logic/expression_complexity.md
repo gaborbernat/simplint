@@ -1,12 +1,10 @@
-Flags an expression nested deeper than the limit, which is 8 by default. Each operator, comparison, call, subscript,
-conditional expression, lambda and comprehension adds one level to the parts below it.
+Flags an expression whose nesting score exceeds the limit, which defaults to 8. For example, `f(g(x))` scores 2 because
+one call is an argument to another.
 
 ## Why is this bad?
 
-A reader evaluates a nested expression from the inside out and holds every partial result in mind until the outer parts
-consume it, so each level adds one more value to keep track of. A deep expression also hides its intermediate values
-from a debugger and from a stack trace, which point at the line, not at the part that failed. A variable or a helper
-names each part, so the reader follows one step at a time and the debugger shows each value.
+When an expression combines several operations, the reader has to work out what each contributes to the result. Naming
+an intermediate value makes that step easier to read and lets you inspect it in a debugger.
 
 ## Example
 
@@ -24,15 +22,14 @@ Use instead:
 
 ```python ok
 def average(prices: list[float], counts: list[int]) -> float:
-    total = sum(price * count for price, count in zip(prices, counts))
+    total = sum(price * count for price, count in zip(prices, counts) if count > 0)
     return total / len(prices)
 ```
 
 ## Configuration
 
 - [`logic.max-expression-complexity`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)
-  in `[tool.simplint]`: the deepest nesting an expression may have. An expression nested deeper is reported, such as
-  `max-expression-complexity = 4` under `[tool.simplint.logic]`
+  in `[tool.simplint.logic]` sets the highest allowed score. A limit of 4 allows the nested expression below.
 
   ```toml config
   [tool.simplint.logic]
@@ -149,7 +146,7 @@ as `a + b + c` reads as one sum, and so does a chain of calls and subscripts on 
 
 ### Fix
 
-No fix is offered: naming the parts of an expression takes names only the author can choose.
+Choose which intermediate result to name when splitting the expression. The rule offers no automatic fix.
 
 ## Ruff overlap
 
@@ -159,10 +156,10 @@ limit, and scores every other expression.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [flake8-expression-complexity](https://github.com/best-doctor/flake8-expression-complexity) reports an expression over
-  its limit as ECE001, with no fix. It weighs some nodes more than one and counts attributes; this rule adds one per
-  level and flattens chains of one operator.
+  its limit as ECE001, with no fix. Its
+  [scoring function](https://github.com/best-doctor/flake8-expression-complexity/blob/master/flake8_expression_complexity/utils/complexity.py)
+  counts attributes and gives extra weight to f-strings and assignment expressions.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports a line over a
   complexity limit as
   [WPS221](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.LineComplexityViolation),

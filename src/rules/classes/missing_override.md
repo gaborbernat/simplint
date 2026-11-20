@@ -3,11 +3,9 @@ Flags methods that override a method of a base class in the run without
 
 ## Why is this bad?
 
-An override depends on the base keeping the method. When the base renames or removes it, the subclass's method stops
-overriding anything and the base's callers stop reaching it, with no error anywhere. `@override`, which
-[PEP 698](https://peps.python.org/pep-0698/) added in Python 3.12, states the intent, so a type checker reports the
-method once the base no longer has it. It also tells a reader the method is part of the base's contract rather than the
-subclass's own.
+If a base class renames a method, its subclass can keep the old name without raising an error at class definition. A
+type checker can flag that stale override when the author marks it with `@override`. Python 3.12 added the decorator to
+`typing`. [PEP 698](https://peps.python.org/pep-0698/)
 
 ## Example
 
@@ -51,8 +49,8 @@ class Square(Shape):
 
 ## What it does
 
-The rule follows each module-level class's bases through the classes of the run, across files and imports, and reports a
-method whose name a class up the chain defines as a method.
+For each module-level class, simplint follows base classes defined in the checked files. A method overrides an
+ancestor's method when both have the same name.
 
 ### Active on
 
@@ -78,7 +76,7 @@ method whose name a class up the chain defines as a method.
           return 4.0
   ```
 
-- **Properties**: the getter gets the decorator; its setter shares the name and is left alone.
+- **Properties** get one report on the getter. The setter and deleter share its name.
 
   ```toml config
   [project]
@@ -100,8 +98,8 @@ method whose name a class up the chain defines as a method.
 
 ### Exceptions
 
-- **Special methods** such as `__init__` and `__repr__`: every class inherits them from `object`, so defining one is how
-  a class joins a protocol rather than a choice to override a base.
+- **Special methods** such as `__init__`, `__repr__` and `__iter__` implement Python protocols. The rule skips
+  double-underscore method names.
 
   ```toml config
   [project]
@@ -166,14 +164,16 @@ method whose name a class up the chain defines as a method.
 
 ### Fix
 
-The fix adds `@override` right above the `def`, below the other decorators, so `@property`, `@classmethod` and
-`@staticmethod` wrap the marked function, and imports `override` from `typing`. The decorator returns the function
-unchanged, so the fix is safe. When another binding holds the name `override`, the rule reports without a fix.
+The safe fix imports `override` from `typing` if needed and inserts `@override` immediately above the `def`. That
+placement gives `@property`, `@classmethod` and `@staticmethod` the marked function to wrap. A conflicting binding for
+`override` prevents the fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** no rule.
-- [pyright](https://github.com/microsoft/pyright) and [basedpyright](https://github.com/DetachHead/basedpyright) report
-  the same methods as `reportImplicitOverride`, off by default, and include special methods and bases outside the
-  project, which they resolve through type information.
-- [mypy](https://github.com/python/mypy) reports them with the `explicit-override` error code, off by default.
+- Ruff's [rule list](https://docs.astral.sh/ruff/rules/) has no equivalent check for unmarked overrides.
+- Pyright disables `reportImplicitOverride` by default.
+  [Pyright configuration](https://github.com/microsoft/pyright/blob/main/docs/configuration.md#type-check-diagnostics-settings)
+- Basedpyright reports `reportImplicitOverride` as a warning in its default `recommended` mode.
+  [Basedpyright configuration](https://docs.basedpyright.com/latest/configuration/config-files/#diagnostic-settings-defaults)
+- Mypy provides the optional
+  [`explicit-override` error code](https://mypy.readthedocs.io/en/stable/error_code_list2.html#code-explicit-override).

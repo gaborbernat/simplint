@@ -13,15 +13,10 @@ from tasks.assemble_release import ANCHOR, RULE_SOURCE_LINK, TITLE, release_sect
 
 
 def main(root: Path, rules: dict[str, str]) -> None:
-    # Write ``docs/changelog.rst`` from the changelog and the pending fragments.
-    #
-    # :param root: the project root
-    # :param rules: rule names keyed by code, used to link rule mentions
-    # :raises ValueError: if an anchor has no heading to attach to
     history = (root / "CHANGELOG.md").read_text(encoding="utf-8").removeprefix(f"{TITLE}\n").strip()
     pending = sorted((root / "changelog.d").glob("*.md"))
     draft = "\n".join(release_section(pending, "Draft", "release-draft")) if pending else ""
-    # Released history keeps its codes as plain text: a code there meant the rule it had before the renumbering.
+    # Rule codes in older releases can refer to different rules after a renumbering.
     parts = (link_rules(draft, rules, codes=True), link_rules(history, rules, codes=False))
     lines = "\n\n".join(part for part in (TITLE, *parts) if part).splitlines()
     # Each anchor line becomes an attribute of the heading it names, and the anchor lines themselves go.
@@ -70,12 +65,10 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
         return f"`{name}`"
 
     markdown = RULE_SOURCE_LINK.sub(source_link, markdown)
-    # The changelog links a documentation page on GitHub, at the release that added it; the page names the copy in
-    # these docs instead.
+    # Replace links to documentation on GitHub with links to the page in this build.
     markdown = _DOC_PAGE_LINK.sub(lambda match: f"`` :doc:`{match['text']} </{match['page']}>` ``{{=rst}}", markdown)
 
-    # A raw `:doc:` role lets Sphinx resolve the page and fail the build when it is missing; a Markdown link would turn
-    # into an external URL that neither Sphinx nor linkcheck can follow.
+    # A Sphinx document role makes a missing rule page a build error.
     def link(match: re.Match[str]) -> str:
         code = match.groupdict().get("code") or by_name[match["name"]]
         return f"`` :doc:`{rules[code]} <rules/{code}>` ``{{=rst}}"
@@ -101,10 +94,6 @@ _DOC_PAGE_LINK: Final[re.Pattern[str]] = re.compile(
 
 
 def rule_names(root: Path) -> dict[str, str]:
-    # Read the rule names from the sources the binary's rule list is built from.
-    #
-    # :param root: the project root
-    # :returns: rule names keyed by code
     return {rule["code"]: rule["name"] for rule in rule_entries(root)}
 
 

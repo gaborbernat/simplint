@@ -3,13 +3,10 @@ Flags attributes of a library's public classes that the reStructuredText class d
 
 ## Why is this bad?
 
-Users read a class's attributes in the rendered reference, where autodoc by default
-[lists only members with a docstring or `#:` comment](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-autoclass-undoc-members).
-An undocumented attribute is either missing there or, with `:undoc-members:`, shown without saying what it holds. The
-[Google style guide](https://google.github.io/styleguide/pyguide.html#384-classes) and
-[numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) both list a class's public attributes in its
-docstring, and pydoclint [checks that list against the class body](https://jsh9.github.io/pydoclint/config_options.html)
-by default.
+A reader needs to know what an attribute holds and when it is available. Attributes can be documented in place or in the
+class docstring. When asked to list class members,
+[Sphinx autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-autoclass-undoc-members)
+normally includes only documented public members.
 
 ## Example
 
@@ -76,17 +73,16 @@ class Engine:
 ## What it does
 
 Checks the docstrings of a library's public classes (see [undocumented-public-api](SMP903.html)), when
-`docstring-style = "rst"`, for attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The attributes
-are those [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) documents.
+`docstring-style = "rst"`, for undocumented public attributes. A `:vartype name:` field also counts, although
+[rst-type-field](SMP912.html) reports types written in docstrings. Write the description by hand.
 
-No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
-field until they do.
+It also checks classes documented by the project's autodoc directives.
 
 ### Active on
 
-- **Names the class body assigns**: a `ClassVar` or a name assigned without an annotation is a class variable; an
-  annotated name, such as a dataclass field, is an instance attribute; a class variable a method also sets on `self` is
-  an instance attribute with a default.
+- **Names the class body assigns**: simplint treats a `ClassVar`, a `Final` with an assigned value and an ordinary
+  unannotated assignment as class variables. Other annotated names and declarations such as `attrs.field()` count as
+  instance attributes. The rule also recognizes names in literal `__slots__` declarations.
 
   ```toml config
   [project]
@@ -203,8 +199,8 @@ field until they do.
       _cache = {}
   ```
 
-- **Attributes documented in place**: a `#:` comment above the attribute, or a string right after it, documents it in
-  the forms autodoc reads.
+- **Attributes documented in place**: a `#:` comment immediately above the assignment or at the end of its line counts,
+  as does a string as the next statement.
 
   ```toml config
   [project]
@@ -255,6 +251,6 @@ field until they do.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).
-- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists fewer attributes than the class
-  has as [DOC601](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
+- [pydoclint DOC601](https://jsh9.github.io/pydoclint/violation_codes.html) checks whether a class docstring lists fewer
+  attributes than the class defines. [Ruff issue #12434](https://github.com/astral-sh/ruff/issues/12434) tracks
+  pydoclint checks.

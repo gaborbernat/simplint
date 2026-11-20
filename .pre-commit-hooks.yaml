@@ -4,6 +4,6 @@
   entry: simplint check --fix
   language: rust
   types_or: [python, pyi]
-  # the rules index which names every module imports, so the hook lints the whole project rather than the changed files
+  # Cross-file rules need to see imports from unchanged modules.
   pass_filenames: false
   require_serial: true

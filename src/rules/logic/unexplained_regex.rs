@@ -8,8 +8,7 @@ pub fn unexplained_regex(checker: &Checker) {
         let Some(scan) = scan(&literal.decoded(), call.verbose) else {
             continue;
         };
-        // Shorter patterns read at a glance, so a note is needed from four constructs on. A verbose flag alone
-        // explains no part, so only a comment satisfies the rule.
+        // Verbose mode allows comments, but enabling it alone explains nothing about the pattern.
         if scan.constructs < 4 || scan.comments > 0 {
             continue;
         }

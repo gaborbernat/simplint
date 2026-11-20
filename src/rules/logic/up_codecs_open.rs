@@ -7,7 +7,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::syntax::{argument, needs_parentheses};
 
-// `codecs.open(filename, mode, encoding, errors, buffering)`, in the order of its parameters.
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -27,8 +26,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// `codecs.open` splits lines the way `str.splitlines` does, at form feeds and other separators that `open` leaves
-// alone, so the rewrite is unsafe. Reads and writes agree on every text the rewrite was probed with.
+// Iteration over a codecs stream also splits at separators such as form feed.
 fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     let arguments = &call.arguments;
     if arguments.args.iter().any(Expr::is_starred_expr)
@@ -36,13 +34,12 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     {
         return None;
     }
-    // A name the rewrite would call `open` could be something else.
     if !checker.semantic().is_free_at("open", call.range()) || checker.has_comment_in(call.range()) {
         return None;
     }
     let parameter = |index: usize| argument(call, index, PARAMETERS[index]);
     let filename = parameter(0)?;
-    // Without an encoding `codecs.open` returns the builtin text file and ignores `errors`.
+    // Without an encoding `codecs.open` returns the builtin file object and ignores `errors`.
     let encoding = parameter(2).filter(|encoding| !encoding.is_none_literal_expr())?;
     let mode = parameter(1);
     // A binary mode with an encoding is a `codecs` stream, and `open()` rejects the encoding for it.
@@ -63,8 +60,7 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     Some(Fix::unsafe_edit(Edit::range_replacement(format!("open({})", parameters.join(", ")), call.range())))
 }
 
-// A value that needs parentheses keeps the ones it has in the source, and gets them when it has none, since a walrus,
-// a `yield` or a lambda cannot be a keyword value bare where its precedence would end.
+// A positional assignment expression needs parentheses when it becomes a keyword value.
 fn keyword_argument(checker: &Checker, call: &ast::ExprCall, name: &str, value: &Expr) -> String {
     let range = checker.parenthesized_range(value, (&call.arguments).into());
     let text = checker.text(range);

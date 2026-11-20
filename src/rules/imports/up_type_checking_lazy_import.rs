@@ -15,8 +15,7 @@ pub fn up_type_checking_lazy_import(checker: &Checker) {
         let Stmt::If(if_stmt) = stmt else {
             continue;
         };
-        // Only `typing`'s name is false at run time for certain: a same-named flag may be a true constant, which runs
-        // the imports today.
+        // A local flag named `TYPE_CHECKING` can be true at runtime.
         if !if_stmt.elif_else_clauses.is_empty()
             || !checker.semantic().resolves_to(&if_stmt.test, &["typing", "TYPE_CHECKING"])
             || !if_stmt.body.iter().all(is_lazy_importable)
@@ -33,7 +32,6 @@ pub fn up_type_checking_lazy_import(checker: &Checker) {
     }
 }
 
-// `lazy` imports are a statement form, so `from x import *` and `from __future__` have none.
 fn is_lazy_importable(stmt: &Stmt) -> bool {
     match stmt {
         Stmt::Import(_) => true,
@@ -45,8 +43,7 @@ fn is_lazy_importable(stmt: &Stmt) -> bool {
     }
 }
 
-// The lazy import binds the name on first use, so a module the guard hid, such as `_typeshed`, fails there. Comments
-// in the block would be lost, so a block holding one is reported without a fix.
+// `_typeshed` is unavailable at runtime. Making its import lazy would leave an error waiting for the first use.
 fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> Option<Fix> {
     let runtime_missing = imports.iter().any(|import| {
         matches!(import, Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), .. })
@@ -71,7 +68,6 @@ fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> 
         .collect::<Vec<_>>()
         .concat();
     let replacement = Edit::range_replacement(lazy, source.full_lines_range(stmt.range()));
-    // The guard's `TYPE_CHECKING` name is then unused, unless the file spells it out elsewhere.
     let typing_import = (checker.name_token_count("TYPE_CHECKING") == 2)
         .then(|| body.iter().find(|stmt| is_type_checking_import(stmt) && checker.is_alone_on_lines(stmt.range())))
         .flatten()

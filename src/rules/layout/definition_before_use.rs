@@ -90,9 +90,8 @@ fn definition_uses(
         }
         other => other,
     };
-    // The statements that, as they run, read a name something other than an import above the first definition binds,
-    // with the statements binding it. A definition moves past an import below it, so that import counts like any other
-    // binding.
+    // Imports before the first definition keep their place. Track later imports like other bindings so a definition
+    // cannot move above a name it needs at import time.
     let first_definition = body.iter().find(|stmt| definition_name(stmt).is_some()).map(Ranged::start);
     let mut runtime_readers: FxHashMap<usize, FxHashSet<usize>> = FxHashMap::default();
     for reference in semantic.references().filter(|reference| evaluation(reference) == Evaluation::Runtime) {
@@ -414,8 +413,7 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
     });
 }
 
-// A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is
-// unsafe makes the fix unsafe; the statements it moves past run in the order they had.
+// Only definitions whose positions change can affect the order of class creation, decorators and defaults.
 fn shifts_unsafely(stmt: &Stmt) -> bool {
     moves_definition_unsafely(stmt).unwrap_or(false)
 }

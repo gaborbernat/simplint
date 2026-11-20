@@ -39,8 +39,6 @@ fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
         && (is_compared_to_none(outer.last().copied()) || walker.is_boolean_test(1))
 }
 
-// The pattern RUF055 reads: a string or bytes literal, or a name bound once to one, with no regular expression
-// metacharacter in it.
 fn is_plain_text(walker: &Walker, pattern: &Expr) -> bool {
     const METACHARACTERS: [char; 12] = ['.', '^', '$', '*', '+', '?', '{', '[', '\\', '|', '(', ')'];
     let literal = match pattern {
@@ -56,7 +54,6 @@ fn is_plain_text(walker: &Walker, pattern: &Expr) -> bool {
     }
 }
 
-// `call is None` or `call is not None`, which RUF055 rewrites along with the call.
 fn is_compared_to_none(parent: Option<&Expr>) -> bool {
     parent
         .and_then(Expr::as_compare_expr)
@@ -64,8 +61,7 @@ fn is_compared_to_none(parent: Option<&Expr>) -> bool {
         .is_some_and(|(_, op, right)| matches!(op, CmpOp::Is | CmpOp::IsNot) && right.is_none_literal_expr())
 }
 
-// SMP550 turns a call whose pattern is anchored at its end into `re.fullmatch`, a fix that conflicts with the rename,
-// so while it is selected it takes such a call.
+// Prefer SMP550's fullmatch rewrite when both rules apply to the same call.
 fn left_to_anchored_regex_match(walker: &Walker, expr: &Expr) -> bool {
     let checker = walker.checker;
     checker.settings.rules.contains(Rule::AnchoredRegexMatch)

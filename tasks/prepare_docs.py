@@ -9,12 +9,7 @@ from pathlib import Path
 
 
 def main(conf: Path, tox: list[str]) -> None:
-    # Set up the docs environment and, beside it, mermaid-cli with the browser it draws in, so the build waits on
-    # neither. The diagrams need only Chrome's headless shell, not the full Chrome puppeteer would download beside it.
-    #
-    # :param conf: the Sphinx configuration that pins the mermaid-cli command
-    # :param tox: the command that runs tox
-    # :raises SystemExit: with the exit code of the setup that failed
+    # Set up tox and mermaid-cli in parallel. The renderer uses Chrome's headless shell, so skip the full browser.
     browser = {**os.environ, "PUPPETEER_CHROME_SKIP_DOWNLOAD": "true"}
     command = [*shlex.split(mermaid_command(conf)), "--version"]
     with subprocess.Popen(command, env=browser, stdout=subprocess.DEVNULL) as mermaid:
@@ -24,11 +19,6 @@ def main(conf: Path, tox: list[str]) -> None:
 
 
 def mermaid_command(conf: Path) -> str:
-    # Read the mermaid-cli command the Sphinx configuration pins.
-    #
-    # :param conf: the Sphinx configuration
-    # :returns: the command, as one shell string
-    # :raises ValueError: if the configuration sets no ``mermaid_cmd`` string
     for node in ast.parse(conf.read_text(encoding="utf-8")).body:
         if (
             isinstance(node, ast.AnnAssign)

@@ -49,9 +49,7 @@ impl CacheKey for DuplicateRun {
 
 type Place = (FileId, usize);
 
-// Only repeats in another file count, as pylint's duplicate check compares files with each other.
-// Windows match by the hash of their statements' hashes first, and then by the statements' token texts, so a hash
-// collision never reports code that differs.
+// Only matches across files count. Compare token text after the hashes match so a collision cannot produce a report.
 pub(super) fn duplicate_runs(
     files: &[(FileId, &FileFacts)],
     paths: &FileIds,
@@ -109,8 +107,8 @@ pub(super) fn duplicate_runs(
         let heads: Vec<Place> = chunks.iter().map(|copies| copies[0]).collect();
         for copies in chunks {
             let file = copies[0].0;
-            // Pairs each window with a few partners, so the pairs grow with the files rather than with every pair of
-            // them. The blocks still count every file that repeats a window.
+            // Limit the partners per window to avoid comparing every pair of files. The set still counts every file
+            // with a copy.
             let partners: Vec<Place> = heads.iter().filter(|(other, _)| *other != file).take(3).copied().collect();
             for &(place_file, start) in copies {
                 for &(other, other_start) in &partners {
@@ -129,7 +127,7 @@ pub(super) fn duplicate_runs(
         .collect()
 }
 
-// A file that changed since its statements were recorded has none.
+// Discard windows whose saved statement positions no longer match the source.
 fn texts(
     by_hash: &FxHashMap<u64, Vec<Place>>,
     statements: &FxHashMap<FileId, &[Statement]>,
@@ -240,8 +238,7 @@ mod tests {
     use crate::project::facts::Parts;
     use crate::project::index::FileIds;
 
-    // The statements after a block start at the dedent that closes it. A file that no longer holds the statements its
-    // facts record has no texts to compare, so its windows match nothing.
+    // A change to statement offsets invalidates the saved windows, including at a dedent.
     #[test_case(false, 2 ; "both_files_read")]
     #[test_case(true, 0 ; "file_gone")]
     fn windows_match_by_their_texts(removed: bool, files_with_runs: usize) {

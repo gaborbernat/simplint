@@ -16,12 +16,10 @@ pub fn unexported_public_name(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
-    // A module that finds its own functions by a computed name, as `globals()["do_" + name]`, reaches the names it does
-    // not list, so they are not leftovers to hide.
+    // Computed lookups such as `globals()["do_" + name]` can use a function absent from `__all__`.
     if any_over_body(checker.body(), &|expr: &Expr| looks_itself_up(checker, expr)) {
         return;
     }
-    // Scans the module's statements once, not once per definition.
     let ply = uses_ply(checker);
     for definition in definitions(checker.body().iter()).filter(|definition| !definition.decorated) {
         let identifier = definition.name;
@@ -35,8 +33,7 @@ pub fn unexported_public_name(checker: &Checker) {
             continue;
         }
         let private = format!("_{name}");
-        // The names of a public module are the API its users import, so a rename breaks them: the author lists the name
-        // or renames it by hand.
+        // External callers may import the name directly.
         if checker.project().role().public {
             checker.report(Rule::UnexportedPublicName, identifier.range(), kept_message(name, &private, false));
             continue;
@@ -86,7 +83,6 @@ fn looks_itself_up(checker: &Checker, expr: &Expr) -> bool {
     }
 }
 
-// `sys.modules[__name__]`.
 fn is_own_module(checker: &Checker, expr: &Expr) -> bool {
     expr.as_subscript_expr().is_some_and(|subscript| {
         checker.semantic().resolves_to(&subscript.value, &["sys", "modules"])

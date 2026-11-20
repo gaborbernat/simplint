@@ -1,18 +1,12 @@
-Flags a patch that a [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase) method
-starts by hand and stops with
-[`addCleanup`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.addCleanup).
-[`self.enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) starts the patch
-and registers its stop in one call. It exists from Python 3.11.
+Flags a [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase) method that calls
+`patcher.start()` and registers `patcher.stop` with `self.addCleanup`. The rule applies to projects targeting Python
+3.11 or later.
 
 ## Why is this bad?
 
-Starting a patch, then registering its stop, takes three statements that must stay in step, and a patch started this way
-[stays active until `stop` runs](https://docs.python.org/3/library/unittest.mock.html#patch-methods-start-and-stop).
-Forgetting the cleanup leaks the patch into other tests. Python 3.11 added
-[`enterContext`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) to
-[remove this boilerplate](https://mail.python.org/pipermail/new-bugs-announce/2021-August/043809.html): it enters the
-context manager and registers its exit with `addCleanup`, so the statement that starts the patch is the one that stops
-it.
+Forgetting to stop a patch can change what later tests see.
+[`self.enterContext(patcher)`](https://docs.python.org/3/library/unittest.html#unittest.TestCase.enterContext) enters
+the patch, registers its exit as a cleanup and returns the patched value in one call.
 
 ## Example
 
@@ -122,11 +116,6 @@ class ConfigTest(TestCase):
 
 ### Fix
 
-The fix is unsafe because `patch.stopall()` only stops patches registered by `start()`. The patcher name must appear
-only in the three statements. It rewrites them as one assignment of `self.enterContext(...)` to the value's name, and
-keeps the indentation. A patcher name that the method uses elsewhere, a sequence with a comment in it, or statements
-that share a line with other code are reported without a fix.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+The fix replaces the three statements with `value = self.enterContext(...)`. It is unsafe because `patch.stopall()` only
+stops patches started with `start()`. A patcher name that the method uses elsewhere, a sequence with a comment in it, or
+statements that share a line with other code are reported without a fix.

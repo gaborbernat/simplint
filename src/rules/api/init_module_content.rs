@@ -10,14 +10,13 @@ use crate::rules::is_type_checking;
 use crate::semantic::future_import;
 use crate::syntax::{Exports, alias_binding, all_binding, builds_all, import_aliases, is_name};
 
-// `from __future__` imports change no run-time behavior, Python 3.15 reads `__lazy_modules__` from the package's
-// globals, and a build or release tool may read `__version__`, so none of them is reported.
+// Future imports select language features for this file. Python and packaging tools also read some initializer globals.
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
         return;
     }
-    // A package can expose private implementation through a deliberate `__all__`; public library packages can also
-    // use the implicit re-export forms PEP 8 describes.
+    // A literal export list makes re-exports explicit in any package. Public library packages can also use star imports
+    // and redundant aliases.
     let facade = checker.project().role().public;
     let explicit_api = matches!(checker.dunder_all(), Exports::Listed(_))
         && checker.body().iter().any(|stmt| all_binding(stmt).is_some_and(|binding| binding.operator.is_none()));
@@ -90,10 +89,8 @@ fn is_package_hook(stmt: &Stmt, checker: &Checker) -> bool {
     }
 }
 
-// RUF067 reports the statements of an `__init__.py` that this rule would report, so the statements are skipped
-// whether or not the run selects it or preview mode is on. Ruff allows the imports, dunder assignments and
-// `if TYPE_CHECKING` blocks of a package unless the project bans all code, and an attribute docstring, which follows
-// an assignment, is documentation rather than code.
+// Leave statements covered by RUF067 to Ruff even when the rule is disabled. Ruff allows an attribute docstring
+// after an assignment, so simplint can still report the docstring.
 fn left_to_ruff(checker: &Checker, stmt: &Stmt, previous: Option<&Stmt>) -> bool {
     !is_attribute_docstring(stmt, previous)
         && (checker.settings.from_ruff.strictly_empty_init_modules || !is_allowed_by_default(stmt, checker))
@@ -125,8 +122,7 @@ fn is_dunder_name(target: &Expr) -> bool {
     target.as_name_expr().is_some_and(|name| is_dunder(name.id.as_str()))
 }
 
-// F401 reports an import that nothing reads, so the import is skipped whether or not the run selects F401. The
-// statement stays here when one of its names is not one F401 reports, such as a name that a re-export keeps.
+// Skip an import when F401 covers every name that is not a re-export. A mixed import may still need a report.
 fn left_to_unused_import(checker: &Checker, stmt: &Stmt, public: bool, facade: bool) -> bool {
     let mut uncovered = import_aliases(stmt)
         .iter()

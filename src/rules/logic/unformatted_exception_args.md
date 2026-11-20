@@ -3,11 +3,11 @@ them, such as `raise ValueError("bad %s", value)`.
 
 ## Why is this bad?
 
-An exception does not format its message: it keeps every positional argument in
-[`args`](https://docs.python.org/3/builtins/exceptions.html#BaseException.args), and `str()` of an exception with more
-than one shows the tuple. `raise ValueError("bad %s", value)` reports `('bad %s', 42)`. The
-[logging calls](https://docs.python.org/3/library/logging.html#logging.Logger.debug) take arguments this way, which is
-where the habit comes from.
+With `raise ValueError("bad %s", 42)`, Python stores both values in the exception's
+[`args`](https://docs.python.org/3/builtins/exceptions.html#BaseException.args). Its message reads `('bad %s', 42)`.
+[Logging methods](https://docs.python.org/3/library/logging.html#logging.Logger.debug) accept a format string and
+separate values. For a [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError), format the message
+before raising it.
 
 ## Example
 
@@ -54,8 +54,11 @@ def check(value):
 - **[`SyntaxError`](https://docs.python.org/3/builtins/exceptions.html#SyntaxError) and its subclasses, and exception
   groups**: their second argument is the error's location or the grouped exceptions, not part of the message.
 
-- **No fix** for named placeholders such as `%(name)s` or `{name}`, a count that differs from the arguments, or an
-  implicitly concatenated message.
+- **Named placeholders and numbered brace fields.** A message containing only `%(name)s`, `{name}` or `{0}` placeholders
+  is outside the check. The rule also skips calls that unpack positional arguments with `*`.
+
+- **No fix** when the number of placeholders differs from the number of values, the message joins adjacent literals, or
+  the edit would remove a comment.
 
   ```python report
   def check(value, limit):

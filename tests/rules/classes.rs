@@ -52,8 +52,7 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-// Adding `slots` or `frozen` to a public dataclass of a library changes what its users can do with it, so those rules
-// leave it alone; a private module and an application keep reporting.
+// Freezing a public dataclass restricts assignment. Slots can also break callers that add attributes.
 #[test_case("dataclass-slots", "core.py", "library", 0 ; "slots_public_module_of_library")]
 #[test_case("dataclass-slots", "_core.py", "library", 1 ; "slots_private_module_of_library")]
 #[test_case("dataclass-slots", "core.py", "application", 1 ; "slots_public_module_of_application")]
@@ -69,8 +68,6 @@ fn library_public_dataclasses_keep_their_options(rule: &str, module: &str, kind:
     assert_eq!(stdout.matches("Dataclass is missing").count(), reports, "{stdout}");
 }
 
-// A public class a public signature of a library returns is one its users construct or receive, so its options stay
-// as they are, though `__all__` leaves its name out.
 #[test]
 fn library_dataclass_reached_by_a_signature_keeps_its_options() {
     let root = common::project(&[
@@ -85,9 +82,6 @@ fn library_dataclass_reached_by_a_signature_keeps_its_options() {
     assert_eq!(stdout.matches("Dataclass is missing").count(), 1, "{stdout}");
 }
 
-// A package offers the names another file imports from it when its `__all__` is absent or built dynamically, so a
-// dataclass it re-exports and a caller imports from the package is the library's API, while a dataclass nothing imports
-// stays internal.
 #[test_case("" ; "without_all")]
 #[test_case("__all__ = sorted([\"Partition\"])\n" ; "dynamic_all")]
 fn library_dataclass_imported_from_a_package_keeps_its_options(init: &str) {
@@ -105,7 +99,6 @@ fn library_dataclass_imported_from_a_package_keeps_its_options(init: &str) {
     assert_eq!((stdout.matches("Dataclass is missing").count(), stdout.contains("_impl.py:9:")), (1, true), "{stdout}");
 }
 
-// A public dataclass nested in a public class of a library is part of the API its users construct too.
 #[test_case("core.py", "library", 0 ; "public_nested_in_public_module_of_library")]
 #[test_case("_core.py", "library", 1 ; "nested_in_private_module_of_library")]
 fn library_nested_dataclasses_keep_their_options(module: &str, kind: &str, reports: usize) {
@@ -402,8 +395,8 @@ const UNMUTATED: &str = "from dataclasses import dataclass\n\n\n@dataclass\nclas
 const UNMUTATED_WITH_BASE: &str = "from dataclasses import dataclass\n\n\nclass Base:\n    pass\n\n\n@dataclass\nclass \
     Plain(Base):\n    width: int\n";
 
-// A plain class is the only way to satisfy `frozen` for a dataclass written to after construction. Ruff's B903 and
-// PLR0913 reject that plain class only in some shapes, so the dataclass is left unreported only where they do.
+// Converting a mutable dataclass to a plain class can trigger B903 or PLR0913. The exemption depends on the class and
+// constructor that conversion would produce.
 #[test_case("select = [\"B903\"]\n", PUBLIC_METHOD, 1 ; "b903_mutated_with_public_method")]
 #[test_case("select = [\"B903\"]\n", PRIVATE_METHOD, 0 ; "b903_mutated_with_private_method")]
 #[test_case("select = [\"B903\"]\n", NESTED_CLASS, 1 ; "b903_mutated_with_nested_class")]
@@ -434,8 +427,6 @@ fn mutated_dataclass_is_left_to_ruff(ruff: &str, source: &str, reports: usize) {
     assert_eq!(stdout.matches("Dataclass is missing").count(), reports, "{stdout}");
 }
 
-// A stub is not Python source that Ruff's B903 and PLR0913 check, so its dataclass keeps its report, while the same
-// class in a module is left to Ruff.
 #[test_case("mod.py", 0 ; "module")]
 #[test_case("mod.pyi", 1 ; "stub")]
 fn stub_dataclass_is_reported_under_ruff_rules(name: &str, reports: usize) {
@@ -452,8 +443,8 @@ fn stub_dataclass_is_reported_under_ruff_rules(name: &str, reports: usize) {
     assert_eq!(stdout.matches("Dataclass is missing").count(), reports, "{stdout}");
 }
 
-// A store to `__dict__` gets past nothing: a frozen instance raises on it wherever the store is, so the class gets no
-// fix, while a read of `__dict__` breaks nothing and keeps the fix.
+// Freezing prevents assigning a new dictionary to `instance.__dict__`. Updating the existing dictionary bypasses
+// attribute assignment.
 #[test_case(MODULE_DICT_STORE, false ; "module_level_store")]
 #[test_case(METHOD_SETATTR_DICT, false ; "setattr_in_method")]
 #[test_case(UNTYPED_DICT_STORE, true ; "store_on_unknown_object")]
@@ -465,9 +456,8 @@ fn dict_access_decides_the_frozen_fix(source: &str, fixable: bool) {
     assert_eq!((stdout.matches("Dataclass is missing").count(), stdout.contains("[*]")), (1, fixable), "{stdout}");
 }
 
-// Code that writes or reaches the storage of an object of unknown class may be handed any dataclass: a name no class
-// of the run declares makes both fixes unsafe, and an untyped `__dict__` or weak reference makes the slots fix unsafe.
-// Reaching the storage of an instance whose class is known withholds the slots fix.
+// With an untyped receiver, the same attribute access can target several classes. A known receiver lets the rule
+// withhold the fix for that class alone.
 #[test_case("dataclass-slots", "", "safe" ; "slots_without_untyped_access")]
 #[test_case("dataclass-slots", "weakref.ref(Node(\"a\"))\n", "none" ; "slots_weak_reference_to_a_new_instance")]
 #[test_case("dataclass-slots", "vars(Node(\"a\"))\n", "none" ; "slots_vars_of_a_new_instance")]
@@ -502,8 +492,7 @@ fn untyped_access_decides_the_fix(rule: &str, code: &str, fix: &str) {
     assert_eq!((stdout.matches("Dataclass is missing").count(), found), (1, fix), "{stdout}");
 }
 
-// `getattr(module, "Release")` reaches a dataclass by a name no import shows, so its positional calls may come from
-// anywhere, and no file gets the keyword-only fix. Without such a call the fix goes through.
+// Looking up a dataclass by name can pass its constructor to a caller the index cannot see.
 #[test_case("import models\n", true ; "not_reached_by_getattr")]
 #[test_case("import models\n\nRelease = getattr(models, \"Release\")(\"a\", \"1\")\n", false ; "reached_by_getattr")]
 fn getattr_reached_dataclass_keeps_its_positional_calls(caller: &str, fixed: bool) {
@@ -522,8 +511,6 @@ fn getattr_reached_dataclass_keeps_its_positional_calls(caller: &str, fixed: boo
     assert_eq!(source.contains("kw_only=True"), fixed);
 }
 
-// A handler that names a tuple of classes catches each class in it, in whichever module the tuple is defined, and
-// `suppress` catches each class it is given, starred or not. A class no handler names is still reported.
 #[test_case(
     "",
     "from typing import Final\n\nfrom app.errors import AError, BError\n\nRETRY: Final = (AError, BError)\n\ntry:\n    \
@@ -572,8 +559,7 @@ fn indistinct_error_class_counts_the_classes_a_tuple_or_suppress_catches(errors_
     );
 }
 
-// A base imported under another name, or bound to a name at module level, is the class it names, so `frozen` would
-// break its subclass, as it does for the name itself. A base of another class keeps the fix.
+// A class referenced through an alias still has the same subclasses.
 #[test_case("from models import Release\n\n\nclass Tagged(Release):\n    pass\n", false ; "imported_base")]
 #[test_case("from models import Release as Base\n\n\nclass Tagged(Base):\n    pass\n", false ; "aliased_base")]
 #[test_case("from models import Other as Base\n\n\nclass Tagged(Base):\n    pass\n", true ; "aliased_other_class")]
@@ -598,8 +584,6 @@ fn subclass_of_a_class_of_the_run_keeps_frozen_unset(caller: &str, fixed: bool) 
     assert_eq!(source.contains("frozen=True"), fixed);
 }
 
-// An instance reached through the module that defines its class, as `models.Release(...)` or an annotation
-// `models.Release`, is an instance of that class, so a write to it withholds the fix.
 #[test_case("release = models.Release(\"1\")\nrelease.version = \"2\"\n", false ; "dotted_constructor")]
 #[test_case("def bump(release: models.Release) -> None:\n    release.version = \"2\"\n", false ; "dotted_annotation")]
 #[test_case("release = models.Release(\"1\")\nprint(release)\n", true ; "dotted_constructor_without_write")]
@@ -618,9 +602,8 @@ fn module_qualified_instance_keeps_frozen_unset(caller: &str, fixed: bool) {
     );
 }
 
-// An annotation names a class the run defines, or else an object of unknown class: `Any`, a protocol, a type alias and
-// a type variable name no such class, so a write through them keeps `frozen` a candidate. A class of the run, even one
-// that is no dataclass, types the write.
+// The index needs a concrete project class to attribute a write to one type. A protocol or type variable can describe
+// several types.
 #[test_case("from typing import Any", "Any", false ; "any")]
 #[test_case("from models import Versioned", "Versioned", false ; "protocol_of_the_run")]
 #[test_case("from models import Other, Release\n\nItem = Release | Other", "Item", false ; "type_alias")]
@@ -649,8 +632,6 @@ fn annotation_naming_no_class_of_the_run_writes_untyped(header: &str, annotation
     assert_eq!(source.contains("frozen=True"), fixed);
 }
 
-// A field a class body annotates with a class of the run is an instance of that class in the methods, though no method
-// assigns it, so a write through `self.config` keeps the class's options.
 #[test_case("self.config.loaded = True", false ; "written_through_field")]
 #[test_case("print(self.config.name)", true ; "read_through_field")]
 fn annotated_field_is_an_instance_of_its_class(body: &str, fixed: bool) {
@@ -665,8 +646,8 @@ fn annotated_field_is_an_instance_of_its_class(body: &str, fixed: bool) {
     );
 }
 
-// A slotted class replaces a field's default, its class attribute, with a descriptor, so reading or assigning the
-// default through the class name breaks it. A field without a default and a plain instance read keep the option.
+// Slots replace a field's class-level default with a descriptor. Code accessing the field on the class can observe that
+// change.
 #[test_case("print(Config.timeout + 1)\n", false ; "read_through_class")]
 #[test_case("Config.timeout = 60\n", false ; "assigned_through_class")]
 #[test_case("print(Config().timeout)\n", true ; "read_through_instance")]
@@ -698,8 +679,6 @@ fn classmethod_use_of_a_default_keeps_slots_unset(body: &str, fixed: bool) {
     );
 }
 
-// A nested class has instances of its own, so the writes its methods make to `self` leave the dataclass's options
-// alone.
 #[test]
 fn nested_class_writes_keep_the_dataclass_options() {
     let root = common::project(&[(
@@ -711,7 +690,7 @@ fn nested_class_writes_keep_the_dataclass_options() {
     assert!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True, slots=True)\nclass Release:"));
 }
 
-// A class keyword such as `metaclass=` makes the class's slotted copy a second class, so `slots=True` is an unsafe fix.
+// Adding slots creates a replacement class, which can run metaclass code a second time.
 #[test_case("class Release(metaclass=ABCMeta):", "from abc import ABCMeta", false ; "metaclass")]
 #[test_case("class Release:", "", true ; "no_keyword")]
 fn class_keyword_makes_the_slots_fix_unsafe(class: &str, import: &str, fixed: bool) {
@@ -723,7 +702,7 @@ fn class_keyword_makes_the_slots_fix_unsafe(class: &str, import: &str, fixed: bo
     assert!(common::read(root.path(), "main.py").contains("slots=True"));
 }
 
-// `frozen=True` does not build the class again, so a class keyword such as `metaclass=` keeps the frozen fix safe.
+// Freezing the class in place avoids running metaclass code a second time.
 #[test]
 fn class_keyword_keeps_the_frozen_fix_safe() {
     let source = "from abc import ABCMeta\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass \
@@ -733,7 +712,7 @@ fn class_keyword_keeps_the_frozen_fix_safe() {
     assert!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Release"));
 }
 
-// A positional walrus becomes the value of its keyword, which needs its own parentheses to stay valid Python.
+// Python requires parentheses around an assignment expression used as a keyword argument value.
 #[test_case(
     "Release(name := raw.strip(), version=raw)", "Release(name=(name := raw.strip()), version=raw)"
     ; "bare_walrus"
@@ -752,8 +731,6 @@ fn walrus_argument_keeps_valid_keyword_syntax(call: &str, expected: &str) {
     assert!(common::read(root.path(), "main.py").contains(expected));
 }
 
-// A call in an annotation is a call of the class, so its positional arguments are rewritten with the others, and a
-// class named as the type of a parameter is not a use.
 #[test]
 fn positional_call_in_an_annotation_is_rewritten() {
     let source = "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    \
@@ -768,7 +745,7 @@ fn positional_call_in_an_annotation_is_rewritten() {
     );
 }
 
-// A class passed to a call in an annotation is a value the call may take, so the fix is withheld for it.
+// Passing the class as an argument can hide positional calls inside the function that receives it.
 #[test]
 fn class_passed_to_a_call_in_an_annotation_keeps_its_positional_calls() {
     let root = common::project(&[
@@ -783,8 +760,7 @@ fn class_passed_to_a_call_in_an_annotation_keeps_its_positional_calls() {
     assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
 }
 
-// A `__dict__` store through a name an annotation types as a class of the run withholds `frozen`, as a frozen instance
-// rejects it; through a name the run does not define, it is no store on the class.
+// Assigning a new `__dict__` on a frozen instance raises an error.
 #[test_case("Counter", false ; "annotated_dict_store")]
 #[test_case("Any", true ; "unknown_class_dict_store")]
 fn annotated_dict_store_keeps_frozen_unset(annotation: &str, fixed: bool) {
@@ -799,8 +775,7 @@ fn annotated_dict_store_keeps_frozen_unset(annotation: &str, fixed: bool) {
     );
 }
 
-// A nested class writes its own instances through the first parameter of its methods, which leaves the options alone.
-// A write through any other name, the dataclass's instance in a closure or a parameter, still makes the fix unsafe.
+// A nested method's receiver belongs to the nested class. Captured variables can still refer to the outer dataclass.
 #[test_case("    class Meta:\n        def mark(self) -> None:\n            self.flag = True\n", true ; "own_instance")]
 #[test_case(
     "    class Meta:\n        def mark(self, outer) -> None:\n            outer.flag = 1\n", false
@@ -840,10 +815,6 @@ fn subclass_through_a_name_bound_to_a_class_of_the_same_file_keeps_frozen_unset(
     assert!(!common::read(root.path(), "main.py").contains("frozen=True"));
 }
 
-// A slotted class replaces a field's default with a descriptor, so reading or setting the default through the class
-// breaks it, however the class is named: through an import alias, a name bound to it, a subclass, or `type(...)`,
-// `__class__`, `getattr` and `setattr` that simplint cannot tie to it. A read of a field that has no default and an
-// instance's read keep the option.
 #[test_case("from models import Config as C\n\nprint(C.timeout + 1)\n", false ; "import_alias")]
 #[test_case(
     "from models import Config as config_class\n\nprint(config_class.timeout)\n", false
@@ -876,9 +847,7 @@ fn class_level_access_to_a_default_keeps_slots_unset(caller: &str, fixed: bool) 
     assert_eq!(source.contains("slots=True"), fixed);
 }
 
-// A weak container holds the items put into it through `weakref.ref`, so an item of a dataclass withholds `slots`: a
-// `WeakSet` in another module or under an import alias, a key of a weak dictionary, a value of one, and the object of a
-// `WeakMethod`. An item of unknown class and a module with no weak container keep the option.
+// A weak container needs its referent to support weak references. Adding slots alone can remove that support.
 #[test_case(
     "import weakref\n\nfrom models import Release\n\nLIVE = weakref.WeakSet()\nLIVE.add(Release(\"1\"))\n", false
     ; "weak_set_of_another_module"
@@ -930,9 +899,8 @@ fn weak_container_holding_a_dataclass_keeps_slots_unset(caller: &str, fixed: boo
     assert_eq!(source.contains("slots=True"), fixed);
 }
 
-// A class in the metadata of `Annotated` is a value, which a caller may call by position, so the keyword-only fix
-// leaves the class alone. A call in the metadata is rewritten, and so is a call in a string annotation, as an unquoted
-// one is.
+// A class passed as `Annotated` metadata may be called later. An explicit constructor call in the annotation can be
+// rewritten in place.
 #[test_case("def load(path: Annotated[str, Release]) -> None:\n    print(path)\n", false ; "bare_class_in_metadata")]
 #[test_case(
     "def load(path: Annotated[str, Release(\"where\")]) -> None:\n    print(path)\n", true
@@ -1002,7 +970,6 @@ fn string_annotation_call_of_another_module_needs_keyword_arguments_by_hand() {
     assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
 }
 
-// An annotation on another object's attribute in a dataclass body sets that attribute, not a field of the dataclass.
 #[test]
 fn dataclass_counts_fields_annotated_by_name_only() {
     let root = common::project(&[

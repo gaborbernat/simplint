@@ -2,10 +2,9 @@ Flags an `add_note` call on an exception that is then dropped instead of raised.
 
 ## Why is this bad?
 
-[`BaseException.add_note`](https://docs.python.org/3/builtins/exceptions.html#BaseException.add_note) attaches text that
-the traceback prints below the message. A handler that adds a note and then swallows the exception, or a function that
-builds an exception, notes it and never raises it, writes the note to an object no one reads. The code reads as if the
-error carried extra context, but nothing ever shows the note.
+[`BaseException.add_note()`](https://docs.python.org/3/builtins/exceptions.html#BaseException.add_note) attaches text to
+an exception for its traceback. If the handler swallows the exception, or a function constructs it and then discards it,
+the caller never sees the note.
 
 ## Example
 
@@ -37,7 +36,8 @@ def read(path: str) -> str:
 
 - **A caught exception** given a note and then not re-raised, raised, returned or passed anywhere in the handler.
 
-- **A local exception** built into a name of a function, given a note, and not used in any other way.
+- **An exception constructed in a function.** The rule looks for a single assignment such as `error = ValueError(path)`
+  and reports the first `error.add_note(...)` if nothing else reads `error`.
 
   ```python report
   def check(path: str) -> None:
@@ -47,8 +47,8 @@ def read(path: str) -> str:
 
 ### Exceptions
 
-- **Any other use** of the exception keeps the note reachable: raising it, chaining it with `from`, storing it, or
-  passing it to a function.
+- **Another use of the exception.** Raising, chaining, returning or passing the exception can make the note available
+  elsewhere.
 
   ```python ok
   def read(path: str, errors: list[Exception]) -> str | None:
@@ -61,8 +61,5 @@ def read(path: str) -> str:
       return None
   ```
 
-- **A module-level name** may be read from another module, so only names local to a function are followed.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **Exceptions constructed at module scope** can be read from another module. The restriction to local names applies to
+  constructed exceptions. The rule checks `except ... as error` handlers at module scope too.

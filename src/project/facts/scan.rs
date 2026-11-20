@@ -47,8 +47,8 @@ impl<'a> Scan<'a> {
 
 impl<'a> Visitor<'a> for Scan<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        // A docstring is prose, which names no patch target, so its words stay out of the run's words, unless a doctest
-        // reads a name in it.
+        // Ordinary prose can mention identifiers that the program never reads. The doctest scan handles examples
+        // separately.
         if is_prose_statement(stmt) {
             return;
         }
@@ -108,7 +108,7 @@ impl<'a> Visitor<'a> for Scan<'a> {
 }
 
 impl<'a> Scan<'a> {
-    // A word repeats across the strings, so it is copied once, when it first appears.
+    // Allocate a string only for a new word.
     fn add_words(&mut self, text: &str) {
         for word in identifier_words(text).filter(|word| !word.is_empty()) {
             if !self.words.contains(word) {
@@ -117,8 +117,7 @@ impl<'a> Scan<'a> {
         }
     }
 
-    // A conftest that binds a mark to a name, as `C_EXT = pytest.mark.c_extension`, registers it through
-    // `config.addinivalue_line("markers", f"{C_EXT.name}: ...")`, which spells no name in a string.
+    // A conftest may register a mark through an alias such as C_EXT.name without spelling the mark in a string.
     fn add_bound_mark(&mut self, value: &Expr) {
         if self.parts.has(Parts::BOUND_MARKS)
             && let Expr::Attribute(ast::ExprAttribute { value: marks, attr, .. }) = value
@@ -170,8 +169,8 @@ impl<'a> Scan<'a> {
         }
     }
 
-    // After a statement's children, so the returns of a function are all known. A pytest fixture that returns a module
-    // hands it to each test under the fixture's name, which a decorator may give.
+    // Collect returns before checking whether a fixture supplies a module. Its decorator can give the fixture a
+    // different name.
     fn close(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
@@ -203,7 +202,7 @@ fn attribute_load(expr: &Expr) -> Option<&str> {
     }
 }
 
-// The words a file's string literals hold, sorted and one per line, which the cache reads back in one allocation.
+// Sort and join words so the cache can load them in one allocation.
 pub(super) fn string_words(words: FxHashSet<String>) -> String {
     let mut words: Vec<String> = words.into_iter().collect();
     words.sort_unstable();
@@ -216,14 +215,12 @@ mod tests {
 
     use super::{Parts, Scan};
 
-    // A `return` outside any function, which the parser accepts, returns from no fixture.
     #[test]
     fn module_level_return_returns_no_module() {
         let parsed = parse_module("import importlib\n\nreturn importlib.import_module(\"pkg\")\n").expect("parses");
         assert!(Scan::of(&parsed.syntax().body, Parts::default()).modules.is_empty());
     }
 
-    // Only a literal `name=` of a decorator call renames the fixture; a bare decorator or a computed name adds none.
     #[test]
     fn fixture_returning_a_module_is_known_by_its_literal_names() {
         let source = "import importlib\n\n\n@pytest.fixture\n@other(name=computed)\n@pytest.fixture(name=\"mod\")\ndef \

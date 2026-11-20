@@ -26,9 +26,7 @@ pub fn dataclass_frozen(checker: &Checker) {
     });
 }
 
-// The shape B903 reports: no base classes or class keywords, no decorator besides the dataclass's, and a body whose
-// methods are all private. Each field must be a plain parameter: a `field(...)` with a factory or `init` has no such
-// default, and a hand-written `__init__` is not one of the dataclass's own.
+// Approximate the plain class that B903 would see. A public method or custom field initialization can rule it out.
 fn is_data_structure_shape(class: &ast::StmtClassDef) -> bool {
     class.arguments.is_none()
         && class.decorator_list.len() == 1

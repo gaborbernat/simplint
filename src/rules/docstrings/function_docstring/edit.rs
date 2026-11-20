@@ -11,8 +11,7 @@ use crate::rules::docstrings::{docstring_deletion, is_directive_comment};
 use crate::rules::edits::{Blanks, statement_lines};
 
 pub(super) fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> {
-    // `ruff format` puts a body on lines of its own, so the fix must not depend on whether it already is. A pragma or
-    // tool directive after the docstring, such as `# noqa: E501`, covers its line only and goes with it.
+    // An otherwise empty suite needs a statement after the docstring is removed.
     if owner_body.len() == 1 {
         return Some(Edit::range_replacement("...".to_owned(), with_directive(checker, stmt)));
     }
@@ -24,8 +23,7 @@ fn with_directive(checker: &Checker, stmt: &Stmt) -> TextRange {
     stmt.range().cover(directive.unwrap_or(stmt.range()))
 }
 
-// The comment goes where the docstring was, on lines of its own as `ruff format` would leave the body, wrapped to the
-// width its lines get once formatted, so the result does not depend on the layout.
+// Wrap against the indentation after formatting so the fix is independent of whether Ruff has run.
 pub(super) fn comment_replacement(
     checker: &Checker,
     owner: TextRange,
@@ -50,10 +48,8 @@ pub(super) fn comment_replacement(
         .into_iter()
         .map(|line| if line.is_empty() { "#".to_owned() } else { format!("# {line}") })
         .collect();
-    // A line such as `type: ignore ...` or `fmt: off`, or one holding `# noqa` in its text, would turn into a directive
-    // for a tool. Ruff's line length rules let a docstring line of a single word run long, but not a comment line
-    // unless it ends in a URL. Where `ruff format` leaves the code alone, an indentation Ruff's E114 rejects for
-    // comments stays.
+    // A generated comment could become a tool directive or trigger a Ruff line-length warning. When formatting is
+    // disabled, its existing indentation can also violate E114.
     if comments.iter().any(|comment| {
         comment.match_indices('#').any(|(start, _)| is_tool_directive(&comment[start..]))
             || (comment.chars().count() > room + 2
@@ -67,15 +63,14 @@ pub(super) fn comment_replacement(
     let prefix = if on_header { newline.as_str() } else { "" };
     let (end, suffix) = match owner_body.get(1) {
         None => (with_directive(checker, stmt).end(), format!("{newline}...")),
-        // A statement after a `;` moves to a line of its own, unless a comment between them would go with it.
+        // Splitting the line must preserve any intervening comment.
         Some(next) if has_trailing_content(stmt.end(), source) => {
             if checker.has_comment_in(TextRange::new(stmt.end(), next.start())) {
                 return None;
             }
             (next.start(), newline.clone())
         }
-        // Up to the next statement's line, as deleting the docstring would, so a fix removing that statement in the
-        // same pass touches this one and waits, rather than leaving a body of comments only.
+        // Overlap the next statement's deletion range so another fix cannot leave a suite containing only comments.
         Some(_) => {
             let comment = checker
                 .trailing_comment(stmt)
@@ -90,8 +85,6 @@ pub(super) fn comment_replacement(
     Some(Edit::range_replacement(format!("{prefix}{}{suffix}", comments.join(&newline)), TextRange::new(start, end)))
 }
 
-// Whether `ruff format` leaves the statement as it is: its settings exclude the file, the statement ends in
-// `# fmt: skip`, or it follows an own-line `# fmt: off` with no `# fmt: on` between.
 fn is_left_alone(checker: &Checker, stmt: &Stmt) -> bool {
     let suppression = |comment: &TextRange| FormatSuppression::from_comment(checker.text(*comment));
     let mut formatting_off = false;

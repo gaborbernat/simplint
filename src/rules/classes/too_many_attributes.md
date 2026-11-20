@@ -3,10 +3,9 @@ methods set on the instance and a dataclass's fields.
 
 ## Why is this bad?
 
-A class that holds many attributes often holds several concerns, each a group of attributes that change together and
-that a few methods use. Every method can read and change every attribute, so a reader has to check all of them to know
-which ones a change touches. Smaller classes, each holding one group and held by the outer class, name the concerns and
-limit what each method can reach.
+When several attributes describe one thing, giving them a class of their own makes it clear which values belong
+together. In the example, `Order` can take an `Address` and a `Money` value without needing to know how either one
+stores its fields.
 
 ## Example
 
@@ -71,9 +70,9 @@ class Order:
 
 ### Active on
 
-Each class is reported at its name. An attribute counts once, however many methods set it.
+The diagnostic points to the class name. An attribute counts once, however many methods assign it.
 
-- **Attributes set on `self` in any method**: not only in `__init__`.
+- **Instance assignments in any method** count, including assignments outside `__init__`.
 
   ```toml config
   [tool.simplint.classes]
@@ -162,13 +161,11 @@ Each class is reported at its name. An attribute counts once, however many metho
 
 ### Fix
 
-No fix is offered: grouping attributes into classes is a decision about the design.
+Grouping attributes requires choosing which values belong together, so the rule offers no fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not implemented; pylint R0902 is listed in
-  [#970](https://github.com/astral-sh/ruff/issues/970) as waiting on
-  [#1774](https://github.com/astral-sh/ruff/issues/1774).
+- Ruff tracks Pylint's `too-many-instance-attributes` in [#970](https://github.com/astral-sh/ruff/issues/970).
 - [pylint](https://github.com/pylint-dev/pylint) reports a class over `max-attributes`, 7 by default, as
   [R0902](https://pylint.readthedocs.io/en/stable/user_guide/messages/refactor/too-many-instance-attributes.html), with
   no fix.

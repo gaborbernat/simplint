@@ -255,9 +255,8 @@ fn for_each_file<T: Send>(
     Ok((passes, missing))
 }
 
-// The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts
-// of the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
-// documentation names. The documentation walk reads files of its own, so it runs while the caches open.
+// Read documentation while opening the caches. If the run digest matches for every linted file, use their cached
+// results. Otherwise collect the missing facts and build each project's index.
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
     parts: Parts,
@@ -375,7 +374,6 @@ fn retained_parses(indexed: &[RunFile], file_caches: &[Option<(&Cache, FileKey)>
     retain
 }
 
-// Writes the caches the run changed, each package's on its own thread.
 fn persist_views(views: Option<FxHashMap<&Path, Cache>>, ending: Ending) -> Result<()> {
     let Some(views) = views else {
         return Ok(());
@@ -408,7 +406,6 @@ fn outer_names(indexed: &[RunFile], facts: &[Option<FileFacts>]) -> External {
 // do not exist, with the message each reports.
 type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
 
-// The inputs the stages of a run pass on unchanged, so each stage takes them as one argument.
 pub(super) struct Plumbing<'a, T> {
     pub(super) cache_dir: Option<&'a Path>,
     pub(super) rewrote: Option<&'a Rewrite<'a, T>>,

@@ -5,10 +5,9 @@ Flags [`re.match()`](https://docs.python.org/3/library/re.html#re.match) and
 
 ## Why is this bad?
 
-A trailing `$` matches at the end of the string [or just before](https://docs.python.org/3/library/re.html#index-2) a
-newline that ends it, so `re.match(r"\d+$", text)` accepts `"123\n"`. Validation built this way lets a trailing newline
-through to whatever uses the value next. `re.fullmatch()` matches the whole string only, and its name states the intent
-the anchors spell out.
+A trailing [`$`](https://docs.python.org/3/library/re.html#regular-expression-syntax) can match just before a final
+newline. For example, `re.match(r"\d+$", text)` accepts `"123\n"`. Use `re.fullmatch()` when validation must consume
+every character.
 
 ## Example
 
@@ -34,10 +33,10 @@ def is_number(text):
 
 ### Active on
 
-- **`re.match()` and `re.prefixmatch()` with a literal pattern that ends in `$` or `\Z`**, and `re.search()` with one
-  that also starts with `^` or `\A`. **Fix:** the call becomes `re.fullmatch()` and the anchors are deleted. It is safe
-  for `\Z`, which matches only at the end, and unsafe for `$`, since `re.fullmatch()` rejects the trailing newline that
-  `$` accepts.
+- **`re.match()` and `re.prefixmatch()` with a single string literal that ends in `$` or `\Z`**, and `re.search()` with
+  one that also starts with `^` or `\A`. **Fix:** the call becomes `re.fullmatch()` and the anchors are deleted. It is
+  safe for `\Z`, which matches only at the end, and unsafe for `$`, since `re.fullmatch()` rejects the trailing newline
+  that `$` accepts.
 
   ```python report
   import re
@@ -55,8 +54,9 @@ def is_number(text):
       return re.fullmatch(r"\d+", text) is not None
   ```
 
-- **Names imported from `re`**, such as `from re import match`, reported without a fix, since renaming the name would
-  rename its other uses too.
+- **Direct imports**, such as `from re import match`, produce a diagnostic only. The fix needs a module reference such
+  as `re` in `re.match`. It also needs the anchors written directly in the source. A string escape such as `\x24` can
+  stand for `$` in the pattern and prevent the fix.
 
   ```python report
   from re import match

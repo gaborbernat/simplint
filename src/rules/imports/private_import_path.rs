@@ -69,8 +69,6 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     }
 }
 
-// A public name bound under a private alias, as `from ._api import canonical as _canonical`, hides that the module
-// borrows a public name.
 fn private_alias(walker: &Walker<'_, '_>, module: Option<&str>, alias: &ast::Alias) {
     let checker = walker.checker;
     let Some(asname) = alias.asname.as_ref().map(ast::Identifier::as_str) else {
@@ -78,8 +76,7 @@ fn private_alias(walker: &Walker<'_, '_>, module: Option<&str>, alias: &ast::Ali
     };
     let name = alias.name.as_str();
     let qualified = module.map_or_else(|| name.to_owned(), |module| format!("{module}.{name}"));
-    // `_` is gettext's translation function by convention, and Ruff's ICN001 owns the aliases of the modules its
-    // import conventions name, defaults and configured ones alike.
+    // Ruff's ICN001 checks aliases for modules with configured naming conventions.
     if asname == "_"
         || Visibility::of(asname) != Visibility::Private
         || private_count(name) > 0
@@ -103,8 +100,7 @@ fn last_segment_of(name: &str) -> &str {
     name.rsplit('.').next().unwrap_or(name)
 }
 
-// Drops the alias and renames the module's uses of it. A dotted `import a.b as _b` would need a `from` import to bind
-// `b`, and an import inside a function binds a local the module's index does not track, so neither gets a fix.
+// Dropping a dotted import's alias binds its root package. Function-local aliases are outside the module index.
 fn public_name_fix(checker: &Checker, alias: &ast::Alias, asname: &str, public: &str) -> Option<Fix> {
     let project = checker.project();
     let ranges = checker.semantic().name_ranges(asname);
@@ -212,7 +208,6 @@ fn star_hint(level: u32, path: &str) -> String {
     }
 }
 
-// The `__init__.py` of each package on the way to the private module, innermost first: each one re-exports the name.
 fn along(module: &str, segments: &[&str]) -> String {
     let packages: Vec<String> =
         (1..segments.len()).rev().map(|end| format!("`{}/__init__.py`", segments[..end].join("/"))).collect();
@@ -233,7 +228,6 @@ fn enters(caller: Option<&[String]>, package: &str) -> bool {
     matches!(caller, Some([top, _]) if top.as_str() == package)
 }
 
-// Re-exporting a private name still imports it privately, so the name itself has to become public.
 fn alias_hint(level: u32, path: &str, name: &str, file: &Path) -> String {
     if path.is_empty() && level == 1 {
         format!("import the names you use from `.{name}`")

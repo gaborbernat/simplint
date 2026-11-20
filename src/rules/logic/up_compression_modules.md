@@ -1,19 +1,11 @@
-Flags imports of [`gzip`](https://docs.python.org/3/library/gzip.html),
-[`bz2`](https://docs.python.org/3/library/bz2.html), [`lzma`](https://docs.python.org/3/library/lzma.html) and
-[`zlib`](https://docs.python.org/3/library/zlib.html), which the
-[`compression`](https://docs.python.org/3/library/compression.html) package names from Python 3.14
-([PEP 784](https://peps.python.org/pep-0784/)).
+Flags imports of the top-level modules `gzip`, `bz2`, `lzma` and `zlib` when the target supports the
+[`compression` package](https://docs.python.org/3/library/compression.html).
 
 ## Why is this bad?
 
-Python 3.14 adds the [`compression`](https://docs.python.org/3/library/compression.html) package, with
-`compression.gzip`, `compression.bz2`, `compression.lzma` and `compression.zlib` beside
-[`compression.zstd`](https://docs.python.org/3/library/compression.zstd.html).
-[PEP 784](https://peps.python.org/pep-0784/#other-compression-modules) makes these the preferred import names. One
-package puts the modules where readers look for them, and its names avoid clashes with PyPI projects that already hold
-bare names such as `zstd`. The old top-level modules are
-[not deprecated](https://peps.python.org/pep-0784/#backwards-compatibility) and keep working without a warning, so the
-rule is about consistency with the new names.
+Python 3.14 groups the four modules with [`compression.zstd`](https://docs.python.org/3/library/compression.zstd.html).
+[PEP 784](https://peps.python.org/pep-0784/#other-compression-modules) recommends the names under `compression` for new
+code. The top-level imports remain supported.
 
 ## Example
 
@@ -90,16 +82,16 @@ def pack(path, data):
 
 ### Fix
 
-The fix is unsafe, because `compression.gzip` is not an alias of `gzip`. It is a module that runs `from gzip import *`,
-so it lacks the names outside `__all__`, such as `gzip.READ`, and it is a different module object: a patch of
-[`gzip.open`](https://docs.python.org/3/library/gzip.html#gzip.open) does not reach a call through `compression.gzip`. A
-rewritten import also changes the module's `__name__`.
+The fix is unsafe. For example, `compression.gzip` imports the public names from `gzip` into a separate module. It has a
+different `__name__` and lacks names outside `gzip.__all__`, including `gzip.READ`. Reassigning
+[`gzip.open`](https://docs.python.org/3/library/gzip.html#gzip.open) after both modules have loaded leaves
+`compression.gzip.open` pointing to the original function.
 
-No fix is offered for a statement that binds other names as well, such as `import os, gzip`. Nor is one offered when the
-import, or a read through the name it binds, takes a name the new module lacks, such as `gzip.READ` or
+simplint leaves grouped imports such as `import os, gzip` for manual editing. It also withholds the fix for known
+missing attributes, whether imported directly or accessed through the module, such as `gzip.READ` and
 `zlib._ZlibDecompressor`.
 
-A `lazy import` keeps its `lazy` keyword in the rewritten `from` import, so the import stays lazy:
+The fix preserves an explicit `lazy` import on Python 3.15 and later.
 
 ```toml config
 [project]
@@ -124,7 +116,9 @@ def unpack(data):
 
 ### Exceptions
 
-- **Imports in a `try` block**: such a block is a fallback for the Pythons that lack the new names.
+- **Compatibility imports.** The rule skips imports directly in the body or clauses of a `try` statement, where code may
+  fall back to the older names. It also skips files in a package named `compression`, which may itself implement those
+  names.
 
   ```toml config
   [project]
@@ -151,6 +145,5 @@ def unpack(data):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same imports as
   [FTP133](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp133), with no fix.

@@ -1,23 +1,16 @@
 How simplint works
 ##################
 
-Most rules look at one file at a time. This page covers the parts that look further: the rules that read other files,
-and how ``--fix`` keeps going until the code is clean.
+Some rules need information from other files. A module's exports, for example, can depend on what its callers import.
 
 .. _cross-file-rules:
 
 Cross-file rules
 ================
 
-A few rules need to know more than one file. Their pages carry a **🔗 Cross-file** badge and the rules table marks them ✓
-under **Cross-file**: an edit to another file can change what they report or fix in this one, and checking a single file
-on its own gives them less to go on. Before linting, simplint:
-
-#. indexes every Python file in the run, the entry points in ``pyproject.toml`` and the ``.pth`` files of the
-   directories modules resolve from, recording the names each file imports, the attributes it assigns and the base
-   classes it names;
-#. lints each file, asking the index which of its names other files use;
-#. leaves alone, in every fix, a name another module relies on.
+Rules marked **🔗 Cross-file** on their pages and ✓ in the rules table can change their findings or fixes in response
+to edits elsewhere. Before linting, simplint collects the information the selected rules need. This can include imports
+and attribute assignments in Python files, entry points in ``pyproject.toml`` and import lines in ``.pth`` files.
 
 .. mermaid::
 
@@ -26,7 +19,7 @@ on its own gives them less to go on. Before linting, simplint:
         entry["pyproject.toml entry points"] --> index
         pth[".pth import lines"] --> index
         index --> lint["Each file is linted"]
-        lint --> fix["Fixes leave alone names<br/>another module relies on"]
+        lint --> fix["Rules check which names<br/>other files use"]
         classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
         classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
         classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
@@ -61,8 +54,7 @@ A class or alias that the annotations, bases or bounds of an exported name refer
 imports it. Such names count through the same places of every class and alias they reach, so ``__all__`` may list them,
 and :doc:`unused-export </rules/SMP402>` leaves them alone.
 
-Fixes never rename or move a name another module imports or an exported signature reaches, and
-:doc:`missing-from-all </rules/SMP401>` reports such a public name when ``__all__`` leaves it out.
+:doc:`missing-from-all </rules/SMP401>` uses this information to find public names missing from ``__all__``.
 
 .. warning::
 
@@ -99,10 +91,11 @@ Fix rounds
 A fix can change what the index records. Folding ``user.uuid = 7`` into ``MagicMock(uuid=7)`` leaves no assignment to
 a ``uuid`` attribute, which lets the dataclass with that field freeze.
 
-With ``--fix`` or ``--diff``, simplint therefore works in rounds, so **one run is final**:
+With ``--fix`` or ``--diff``, simplint handles these dependencies in rounds.
 
 #. Lint and fix every file.
-#. If a round rewrote a file, collect that file's facts again, then lint and fix the files whose index answers changed.
+#. If a round rewrote a file, collect its facts again. Recheck files whose index entries changed and rewritten files
+   with findings tied to old source ranges, such as an import cycle.
 #. Stop when a round rewrites nothing, or after the eighth round, whose reports then stand.
 
 .. mermaid::
@@ -141,9 +134,12 @@ kind its fix is.
     * - ✓ **safe**
       - Keeps behavior. ``--fix`` applies it.
     * - ✗ **unsafe**
-      - Can change behavior, so simplint applies it only with ``--unsafe-fixes``.
+      - May change behavior. By default, applying it requires ``--fix --unsafe-fixes``.
 
-A rule reports without a fix when the fix cannot be done safely in text:
+These settings control simplint's own fixes. :doc:`/how-to/select-rules` describes how to change a rule's fix
+classification. When cleaning up a new Ruff finding introduced by an edit, simplint can also apply an unsafe Ruff fix.
+
+Depending on the rule, any of the following can prevent a fix.
 
 - the statement shares its line with another
 - a string spans several lines

@@ -39,8 +39,7 @@ pub fn inline_regex(checker: &Checker) {
     checker.report_shared_fix(Rule::InlineRegex, reports, || shared_fix(checker, &sites));
 }
 
-// Ruff's RUF055 rewrites these calls to `str` methods, and this rule would undo that, so Ruff keeps them. Each
-// condition is RUF055's own, so a plain-text call Ruff does not rewrite, such as a value of `re.match`, is reported.
+// Leave plain-text calls covered by RUF055 to Ruff. Hoisting the pattern could hide a string-method simplification.
 fn left_to_ruff(checker: &Checker, literal: &Literal, call: &Call) -> bool {
     let decoded = literal.decoded();
     let plain = !decoded.iter().any(|byte| METACHARACTERS.contains(byte));
@@ -76,8 +75,8 @@ fn literal_value(checker: &Checker, repl: &Expr) -> Option<Vec<u8>> {
     Literal::of(value).map(|literal| literal.decoded())
 }
 
-// A backslash before a letter or digit that is not a character escape makes `re.sub` raise, so RUF055 leaves that
-// call out; the escapes it does report carry no fix there.
+// A backslash before a digit can refer to a capture group. Unknown letter escapes can raise an error.
+// A direct string replacement would change these semantics.
 fn has_unescapable_escape(value: &[u8]) -> bool {
     value.windows(2).any(|pair| pair[0] == b'\\' && pair[1].is_ascii_alphanumeric() && !ESCAPABLE.contains(&pair[1]))
 }
@@ -236,9 +235,8 @@ fn pattern_stem(base: &str) -> String {
 }
 
 // The edits that drop a plain local the call's pattern is assigned to, once the constant replaces every read of it:
-// the assignment and each read, which then reads the constant. Only a `re.compile` result qualifies, since a match
-// result is not the pattern. The local must be bound once in the function, which must not delete it or declare it
-// `global` or `nonlocal`; no other call of the run may read it, and its text may not be kept as written.
+// the assignment and its reads. Only `compile` returns the pattern itself. Keep the local when rebinding, another
+// regex edit or a use of its source text makes renaming ambiguous.
 fn alias_edits(
     checker: &Checker,
     call: &Call,
@@ -273,7 +271,7 @@ fn alias_edits(
     let mut uses = LocalUses { name, reads: Vec::new(), fstrings: Vec::new(), declared: false };
     uses.visit_body(&function.body);
     let source_spans = checker.state().source_text_spans(checker);
-    // An f-string's `=` form prints the expression as written, so a read in one keeps the local.
+    // Debug f-strings and template strings expose expression text. Keep the local for all interpolated strings.
     let kept_as_written = |read: &TextRange| {
         sites.iter().any(|(_, site)| site.node.range().contains_range(*read))
             || source_spans.iter().any(|span| span.contains_range(*read))

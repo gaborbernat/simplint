@@ -80,7 +80,7 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-// `ruff format` keeps blank lines after a module of comments only, and Ruff reports blank lines ending the file.
+// Trailing blank lines can survive formatting when only comments remain in the module.
 #[test]
 fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
     let root = common::project(&[
@@ -91,8 +91,6 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
     assert_eq!(common::read(root.path(), "tests/__init__.py"), "# Licensed under the license.\n#\n");
 }
 
-// A comment after a docstring that other code follows stays on a line of its own, unless it is a pragma, which goes
-// with the docstring's line.
 #[test_case(
     "module.py",
     "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    \
@@ -149,8 +147,8 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
     assert_eq!(common::read(root.path(), file), fixed);
 }
 
-// A class body that reads `__doc__` reads its own docstring, which a method does not: the method's `__doc__` is the
-// module's.
+// In this class body, bare `__doc__` refers to the class docstring. Inside its method, the same name resolves in the
+// module globals.
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    help = __doc__\n",
     common::PASSED ;
@@ -211,8 +209,7 @@ fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
 const CLASS_DOCSTRING_REPORT: &str = "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature \
     and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n";
 
-// The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
-// so a body indented by two spaces wraps the same.
+// Use the indentation after formatting when deciding how many words fit on a line.
 #[test_case("    " ; "formatted")]
 #[test_case("  " ; "two_spaces")]
 fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
@@ -240,7 +237,7 @@ fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
     );
 }
 
-// Code in a docstring reads as commented-out code once it is a comment, which Ruff's ERA001 reports.
+// Turning this docstring into a comment would trigger ERA001.
 #[test]
 fn function_docstring_comment_is_withdrawn_when_ruff_reports_it() {
     let source =
@@ -270,8 +267,7 @@ fn function_docstring_comment_keeps_the_line_endings() {
     );
 }
 
-// Fixes in one pass that touch wait for the next, so removing the statement after the docstring does not leave a body
-// of comments only.
+// Removing two adjacent statements in separate fixes can otherwise leave an empty suite.
 #[test]
 fn function_docstring_comment_waits_for_a_removed_statement() {
     let root = common::project(&[
@@ -289,8 +285,8 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
     );
 }
 
-// attrs names a field's constructor parameter by its `alias`, or by its name without the leading underscores, where a
-// dataclass keeps the name.
+// attrs strips leading underscores from constructor parameters unless a field sets an explicit alias. Dataclasses keep
+// the field name.
 #[test_case(
     "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\
         \n\n    _x: int\n",
@@ -354,8 +350,6 @@ const INIT: &str = "autoclass_content = \"init\"\n";
 const READER: &str = ".. autoclass:: Reader\n";
 const AUTOMODULE: &str = ".. automodule:: model\n    :members:\n";
 
-// The concise report of `model.py` in a project made of `RST`, the model and the given files, which replace the
-// project's own when they share a name.
 fn duplicate_report(files: &[(&str, &str)]) -> String {
     let mut all = vec![("pyproject.toml", RST), ("model.py", DUPLICATED)];
     all.extend_from_slice(files);
@@ -363,8 +357,8 @@ fn duplicate_report(files: &[(&str, &str)]) -> String {
     common::check(root.path(), &["--select", "SMP918"]).1
 }
 
-// Sphinx's `autoclass_content` picks the docstring it renders: under `init` the `__init__` docstring alone, so the class
-// copy is the repeat. A value the rule cannot read leaves both copies alone.
+// With `autoclass_content = "init"`, Sphinx renders the constructor's copy. Deleting it would remove the published
+// text.
 #[test_case("", KEPT_CLASS ; "unset_keeps_the_class_docstring")]
 #[test_case("autoclass_content = \"class\"\n", KEPT_CLASS ; "class_keeps_the_class_docstring")]
 #[test_case("autoclass_content = \"both\"\n", KEPT_CLASS ; "both_keeps_the_class_docstring")]
@@ -378,8 +372,7 @@ fn autoclass_content_selects_the_copy(conf: &str, stdout: &str) {
     assert_eq!(duplicate_report(&[("docs/index.rst", INDEX), ("docs/conf.py", conf)]), stdout);
 }
 
-// `autodoc_default_options` sets `class-doc-from` for the classes an `autoclass` or `autoexception` directive names,
-// ahead of `autoclass_content`; a key it does not set leaves `autoclass_content` in charge.
+// For an explicit class directive, the default `class-doc-from` takes precedence over `autoclass_content`.
 #[test_case("autodoc_default_options = {\"class-doc-from\": \"init\"}\n", KEPT_INIT ; "default_options")]
 #[test_case(
     "autoclass_content = \"both\"\nautodoc_default_options = {\"class-doc-from\": \"init\"}\n",
@@ -401,9 +394,8 @@ fn autodoc_default_options_selects_the_copy_of_a_named_class(conf: &str, stdout:
     assert_eq!(duplicate_report(&files), stdout);
 }
 
-// Sphinx takes the `class-doc-from` default for the directives `autoclass` and `autoexception` alone. A class that an
-// `automodule` documents with `:members:` takes the module's options, which have no such key, so `autoclass_content`
-// decides it.
+// Classes reached through `automodule` use the module directive's options. They can therefore have a different
+// docstring source from a named `autoclass`.
 #[test_case("autodoc_default_options = {\"class-doc-from\": \"init\"}\n", KEPT_CLASS ; "default_options_unset")]
 #[test_case(
     "autodoc_default_options = {\"class-doc-from\": \"class\"}\nautoclass_content = \"init\"\n",
@@ -415,8 +407,6 @@ fn autodoc_default_options_do_not_reach_automodule_members(conf: &str, stdout: &
     assert_eq!(duplicate_report(&files), stdout);
 }
 
-// A `class-doc-from` option on an `autoclass` directive decides the copy of the class it names, ahead of the options
-// of the configuration.
 #[test_case("", ".. autoclass:: Reader\n    :class-doc-from: init\n", KEPT_INIT ; "directive_alone")]
 #[test_case(
     INIT,
@@ -459,7 +449,6 @@ Found 1 error.
 1 unsafe fix available with `--fix --unsafe-fixes`.
 ";
 
-// An `autoexception` directive takes the `class-doc-from` option of an `autoclass` directive, and the default option.
 #[test_case("", ".. autoexception:: ReadError\n    :class-doc-from: init\n", KEPT_INIT ; "directive_option")]
 #[test_case(
     INIT,
@@ -478,8 +467,7 @@ fn autoexception_selects_the_copy(conf: &str, api: &str, stdout: &str) {
     assert_eq!(duplicate_report(&files), stdout);
 }
 
-// A simple name in a page resolves against the page's module, so the `Reader` of `pkg.a` is the one a directive under
-// `pkg.a` documents, and the `Reader` of `pkg.b` keeps the class docstring that Sphinx renders for it.
+// The `currentmodule` directive makes the unqualified `Reader` refer to `pkg.a.Reader`.
 #[test]
 fn current_module_qualifies_a_simple_name() {
     let api = ".. currentmodule:: pkg.a\n\n.. autoclass:: Reader\n    :class-doc-from: init\n";
@@ -504,8 +492,8 @@ fn current_module_qualifies_a_simple_name() {
     assert_eq!(stdout, expected);
 }
 
-// A docs `sys.path` that names the module `a` rather than `pkg.a` leaves the directive's target sharing only the dotted
-// tail with the class, so which copy Sphinx renders is unknown and neither copy is removed.
+// A matching last component can identify two import paths. Removing either docstring would assume which class the
+// directive documents.
 #[test_case(".. autoclass:: a.Reader\n    :class-doc-from: init\n" ; "shorter_target")]
 #[test_case(".. autoclass:: src.pkg.a.Reader\n    :class-doc-from: init\n" ; "longer_target")]
 fn directive_sharing_the_dotted_tail_reports_nothing(api: &str) {
@@ -520,7 +508,6 @@ fn directive_sharing_the_dotted_tail_reports_nothing(api: &str) {
     common::assert_report_count(root.path(), "SMP918", 0);
 }
 
-// A simple name that two classes of the run share does not tell which one a page documents, so neither copy is removed.
 #[test]
 fn simple_name_shared_by_two_classes_reports_nothing() {
     let api = ".. autoclass:: Reader\n    :class-doc-from: init\n";
@@ -536,8 +523,6 @@ fn simple_name_shared_by_two_classes_reports_nothing() {
     common::assert_clean(root.path(), "SMP918");
 }
 
-// A module of a package is named by its dotted path from the package's root, so a directive that names it in full
-// selects its class.
 #[test]
 fn packaged_module_is_named_by_its_dotted_path() {
     let api = ".. autoclass:: pkg.model.Reader\n    :class-doc-from: class\n";
@@ -553,7 +538,6 @@ fn packaged_module_is_named_by_its_dotted_path() {
     assert!(stdout.contains(&format!("{}:10:10: SMP918", common::native("pkg/model.py"))), "{stdout}");
 }
 
-// A `conf.py` is a Sphinx configuration beside an index file, or when it names the extensions or master document.
 #[test_case("docs/index.rst", INDEX, INIT, KEPT_INIT ; "index_rst")]
 #[test_case("docs/index.md", INDEX, INIT, KEPT_INIT ; "index_md")]
 #[test_case("docs/index.txt", INDEX, INIT, KEPT_INIT ; "index_txt")]
@@ -576,7 +560,6 @@ fn sphinx_configuration_is_one_beside_an_index_or_naming_its_master(
     assert_eq!(duplicate_report(&files), stdout);
 }
 
-// A page that is not UTF-8 holds no text to read, so the other pages decide.
 #[test]
 fn page_that_is_not_utf8_is_skipped() {
     let root = common::project(&[
@@ -589,7 +572,7 @@ fn page_that_is_not_utf8_is_skipped() {
     assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_INIT);
 }
 
-// A wildcard binding may bind any name, so it leaves the options unknown, but it does not make a `conf.py` one.
+// A star import could set Sphinx options. On its own it does not identify the file as a Sphinx configuration.
 #[test_case("from shared import *\nautoclass_content = \"init\"\n", KEPT_CLASS ; "star_import")]
 #[test_case("exec(\"x = 1\")\nautoclass_content = \"init\"\n", KEPT_CLASS ; "exec")]
 #[test_case("print(globals())\nautoclass_content = \"init\"\n", KEPT_CLASS ; "globals")]
@@ -600,14 +583,12 @@ fn wildcard_bindings_do_not_make_a_configuration(conf: &str, stdout: &str) {
     assert_eq!(duplicate_report(&[("docs/conf.py", conf)]), stdout);
 }
 
-// A `conf.py` of a package that star-imports is not a configuration, so the project's own configuration decides.
 #[test]
 fn star_importing_conf_py_elsewhere_does_not_disable_the_rule() {
     let files = [("docs/index.rst", INDEX), ("docs/conf.py", INIT), ("pkg/conf.py", "from os.path import *\n")];
     assert_eq!(duplicate_report(&files), KEPT_INIT);
 }
 
-// The forms the scan cannot read leave the docstring unknown, so no copy is removed.
 #[test_case("autoclass_content = \"all\"\n", common::PASSED ; "unknown_value")]
 #[test_case("autoclass_content = os.environ[\"SPHINX\"]\n", common::PASSED ; "computed_value")]
 #[test_case("autoclass_content = default = \"init\"\n", common::PASSED ; "chained_assignment")]
@@ -676,8 +657,6 @@ fn unparsable_conf_py_reports_nothing() {
     assert_eq!((stdout.as_str(), stderr.contains("does not parse")), (common::PASSED, true));
 }
 
-// A `conf.py` that cannot be read may set the option, so nothing is reported until it reads, and then the copy follows
-// the option it sets.
 #[test]
 fn unreadable_conf_py_reports_nothing_until_it_is_readable() {
     let root = common::project(&[("pyproject.toml", RST), ("model.py", DUPLICATED), ("docs/index.rst", INDEX)]);
@@ -688,14 +667,13 @@ fn unreadable_conf_py_reports_nothing_until_it_is_readable() {
     assert_eq!((unreadable.contains("SMP918"), readable.as_str()), (false, KEPT_INIT));
 }
 
-// Past the size limit the file is not read, so its option is unknown.
 #[test]
 fn oversized_conf_py_reports_nothing() {
     let conf = format!("{INIT}{}", "#".repeat((8 << 20) + 1));
     assert_eq!(duplicate_report(&[("docs/index.rst", INDEX), ("docs/conf.py", conf.as_str())]), common::PASSED);
 }
 
-// Sphinx reads a `conf.py` Ruff excludes from linting, so the exclusion does not hide its option.
+// Sphinx can load a configuration that Ruff excludes from linting.
 #[test]
 fn ruff_excluded_conf_py_still_counts() {
     let pyproject = "[tool.simplint]\ndocstring-style = \"rst\"\n\n[tool.ruff]\nextend-exclude = [\"docs/conf.py\"]\n";
@@ -703,7 +681,6 @@ fn ruff_excluded_conf_py_still_counts() {
     assert_eq!(duplicate_report(&files), KEPT_INIT);
 }
 
-// A symlinked `conf.py` counts when its target lies inside the project, and not when it points out of it.
 #[cfg(unix)]
 #[test]
 fn symlinked_conf_py_counts_only_inside_the_project() {
@@ -726,8 +703,6 @@ fn symlinked_conf_py_outside_the_project_is_not_read() {
     assert_eq!(common::check(root.path(), &["--select", "SMP918"]).1, KEPT_CLASS);
 }
 
-// A `conf.py` of vendored code or of another project below the root is not the project's, and a gitignored one is not
-// read at all.
 #[test_case(
     &[("_vendor/lib/docs/index.rst", INDEX), ("_vendor/lib/docs/conf.py", INIT)] ;
     "vendored_directory"
@@ -749,8 +724,7 @@ fn conf_py_of_vendored_or_other_projects_is_not_read(files: &[(&str, &str)]) {
     assert_eq!(duplicate_report(files), KEPT_CLASS);
 }
 
-// Several Sphinx configurations of one project must agree on the option, and one that leaves it unset renders the
-// class docstring, so it disagrees with one that sets `init`.
+// An unset option uses the class docstring. A second configuration using the constructor could publish the other copy.
 #[test_case(INIT, INIT, KEPT_INIT ; "agreeing")]
 #[test_case(INIT, "autoclass_content = \"class\"\n", common::PASSED ; "disagreeing")]
 #[test_case(INIT, "", common::PASSED ; "one_leaves_it_unset")]
@@ -760,7 +734,6 @@ fn sphinx_configurations_of_a_project_must_agree(first: &str, second: &str, stdo
     assert_eq!(duplicate_report(&files), stdout);
 }
 
-// Each project reads its own configuration, so one project's option does not reach another that sets none.
 #[test]
 fn each_project_reads_its_own_configuration() {
     let root = common::project(&[
@@ -775,8 +748,6 @@ fn each_project_reads_its_own_configuration() {
     assert!(stdout.contains("a/model.py:4:6: SMP918") && stdout.contains("b/model.py:10:10: SMP918"), "{stdout}");
 }
 
-// attrs gives the `__init__` parameter of a private field the name without its underscore, so a public class documents
-// that name.
 #[test]
 fn attrs_private_field_is_a_documented_parameter() {
     let root = common::project(&[
@@ -796,8 +767,7 @@ fn attrs_private_field_is_a_documented_parameter() {
     );
 }
 
-// A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not
-// asked for the fields of a value it has not written. A body with code is held to the same rules.
+// A placeholder body gives no evidence of a return value or yielded item to document.
 #[test_case(
     "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: \
         Each row.\n    \"\"\"\n    ...\n",
@@ -832,8 +802,6 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP923"]).1, stdout);
 }
 
-// The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents
-// them.
 #[test_case(
     "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The \
         entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @\
@@ -855,7 +823,6 @@ fn class_members_in_blocks_are_documented(source: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP921"]).1, stdout);
 }
 
-// Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
 fn rst_rules_need_the_docstring_style() {
     let root = common::project(&[
@@ -868,8 +835,6 @@ fn rst_rules_need_the_docstring_style() {
     common::assert_clean(root.path(), "SMP91,SMP92");
 }
 
-// Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
-// their parameter and are not reported as unknown.
 #[test_case(
     "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\
         \"\"\n    print(path, mode)\n",
@@ -903,7 +868,6 @@ fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str)
     assert_eq!(common::check(root.path(), &["--select", "SMP910,SMP916"]).1, stdout);
 }
 
-// Dropping the type of a parameter keeps the stars that mark `*args` and `**kwargs`, which the name is written with.
 #[test_case(
     "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :\
         param str \\*\\*kwargs: The options.\n    \"\"\"\n",
@@ -923,8 +887,7 @@ fn type_field_fix_keeps_the_star_markers(source: &str, fixed: &str) {
     assert_eq!(common::read(root.path(), "demo.py"), fixed);
 }
 
-// Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the
-// rule's others.
+// Changing a field name changes the string available through `__doc__`.
 #[test]
 fn alias_rename_is_an_unsafe_fix() {
     let source = "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :arg path: Where.\n    \"\"\"\n    print(path)\n";
@@ -947,7 +910,6 @@ fn alias_rename_is_an_unsafe_fix() {
     );
 }
 
-// Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.
 #[test_case(
     "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    \
         print(path)\n",
@@ -973,8 +935,6 @@ fn alias_fix_composes(source: &str, fixed: &str) {
     assert_eq!(common::read(root.path(), "demo.py"), fixed);
 }
 
-// Ruff's D101, D102, D103 and D106 report the undocumented public definitions of their kind, which SMP903 leaves to
-// them while the project's Ruff configuration runs that code.
 #[test_case("def f() -> None:\n    pass\n", "D103", "Public function `f`" ; "function")]
 #[test_case("class C:\n    pass\n", "D101", "Public class `C`" ; "class")]
 #[test_case("class C:\n    class N:\n        pass\n", "D106", "Public class `C.N`" ; "nested_class")]
@@ -989,7 +949,6 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
     assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
-// Ruff's pydocstyle skips a function that `ignore-decorators` lists, so it reports no D103 for it, and SMP903 keeps it.
 #[test_case("@route", "app.route", [true, true] ; "listed_decorator")]
 #[test_case("@route(\"/run\")", "app.route", [true, true] ; "listed_call")]
 #[test_case("@route", "app.other", [true, false] ; "unlisted_decorator")]
@@ -1007,8 +966,6 @@ fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, lis
     assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
 }
 
-// Ruff names a decorator in a package by its dotted path, so `ignore-decorators` also matches one imported relatively or
-// defined in the same module.
 #[test_case("from ._decos import skip\n\n\n@skip", "pkg._decos.skip", [true, true] ; "relative_import")]
 #[test_case("def skip(func):\n    return func\n\n\n@skip", "pkg.api.skip", [true, true] ; "same_module")]
 #[test_case("import pkg._decos\n\n\n@pkg._decos.skip", "pkg._decos.skip", [true, true] ; "absolute_import")]
@@ -1035,8 +992,7 @@ fn undocumented_public_api_keeps_package_ignore_decorator_functions(
     assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
 }
 
-// Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
-// the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
+// A file-level suppression can block the removal. Check whether Ruff already reports the docstring in that case.
 #[test_case(
     "D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "empty_function"
 )]
@@ -1091,7 +1047,6 @@ fn function_docstring_is_left_to_ruff_d418_d419(ruff_code: &str, source: &str, r
     assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), reported);
 }
 
-// A decorator that `ignore-decorators` lists makes Ruff skip the function, so SMP901 keeps its docstring.
 #[test]
 fn function_docstring_keeps_ignored_decorator_docstring() {
     let case = common::RuffOverlap {
@@ -1107,7 +1062,6 @@ fn function_docstring_keeps_ignored_decorator_docstring() {
     assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), [true, true]);
 }
 
-// Ruff's D418 does not report a stub, so SMP901 keeps the overload docstring of a stub read from standard input.
 #[test]
 fn function_docstring_keeps_overload_docstring_in_a_stub() {
     let root = common::project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D418\"]\n")]);
@@ -1118,8 +1072,6 @@ fn function_docstring_keeps_overload_docstring_in_a_stub() {
     assert!(stdout.contains("docstring on internal code"), "{stdout}");
 }
 
-// Ruff's D419 reports an empty docstring of a single string, which SMP902 can remove only with its fix. A file-level
-// `noqa` withdraws that fix, and then SMP902 leaves the docstring to Ruff whether or not the project selects D419.
 #[test_case("# ruff: noqa: E501\n\"\"\"\"\"\"\n\nimport os\n", [false, false] ; "empty_with_file_noqa")]
 #[test_case("\"\"\"\"\"\"\n\nimport os\n", [true, true] ; "fixable_empty")]
 #[test_case("# ruff: noqa: E501\n\"\" \"\"\n\nimport os\n", [true, true] ; "implicit_concatenation")]
@@ -1131,9 +1083,8 @@ fn test_module_docstring_is_left_to_ruff_d419(source: &str, reported: [bool; 2])
     assert_eq!(common::reported_without_and_with_ruff(&case, "Test module carries a docstring"), reported);
 }
 
-// A public class of a library inherits the members of its private base without overriding them, so users reach them
-// through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
-// the public class's own, so the base's docstring of it stays internal.
+// A caller can reach an inherited method through the public subclass. If the subclass overrides the method, the base
+// implementation may still be internal.
 #[test]
 fn inherited_members_of_a_private_base_are_public_api() {
     let root = common::project(&[

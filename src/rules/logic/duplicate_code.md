@@ -1,19 +1,15 @@
-Flags six or more statements in a row that another module repeats.
+Flags consecutive statements repeated in another module. The default minimum is six statements.
 
 ## Why is this bad?
 
-Copied code drifts. A fix lands in one copy and not the other, and nothing says that the two were ever the same. Each
-change means finding and testing every copy, and readers skim past the line that differs in near-identical blocks, as
-[pylint's duplicate-code page](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html)
-notes. One definition that both modules call keeps a single place to change.
+When two modules implement the same behavior, fixing one copy can leave the other with the original bug. A shared
+definition lets both callers pick up the fix.
 
-Repeated text is not necessarily repeated knowledge.
-[Dave Thomas](https://www.artima.com/articles/orthogonality-and-the-dry-principle) defines DRY as one authoritative
-representation of each piece of knowledge, and [Sandi Metz](https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction)
-shows a shared function gaining a flag per caller as its callers diverge. Textual matches are all the rule can see, and
-text does not separate shared knowledge from coincidence. Share the code when both copies must change together.
-
-In the example below, `reader.py` and `writer.py` each define the same six statements.
+Share copies that need to change together.
+[Dave Thomas](https://www.artima.com/articles/orthogonality-and-the-dry-principle) describes DRY in terms of shared
+knowledge. Identical text can also be coincidental.
+[Sandi Metz](https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction) shows how a shared routine accumulates
+conditional branches as its callers' requirements diverge.
 
 ## Example
 
@@ -65,8 +61,8 @@ from parsing import parse_lines
 ## Configuration
 
 - [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)
-  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as
-  `min-duplicate-statements = 4` under `[tool.simplint.logic]`
+  sets the minimum length of a matching block. The default is six. Setting it to zero has the same effect as setting it
+  to one.
 
   ```toml config
   [tool.simplint.logic]
@@ -89,26 +85,17 @@ from parsing import parse_lines
       return total, count
   ```
 
-  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five
-  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`
-  and `lzma` go unreported.
-
-## Ruff overlap
-
-Ruff has no rule for repeated code, so the two do not overlap.
-
 ## What it does
 
-simplint compares the statements of every body of every module of the run, and reports a run of
-`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported
-once in each module on its first statement, and a block inside another one, as the body of a function the outer block
-holds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count
-of the rest.
+simplint compares runs of statements from a single body, such as a function or an `if` branch, against runs in other
+modules. It merges overlapping matches and reports the outermost block when one match contains another. Each diagnostic
+lists up to three other files and the starting line in each. If more files share the code, it gives their count.
 
-Statements match when their tokens match, and the blocks they nest in match too, so the same statements under another
-`if` do not. Comments, layout, indentation width, imports and docstrings do not count. Identifiers and literals must
-match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of their tokens first
-and by the tokens themselves before a report, so two different statements whose hashes collide never match.
+The tokens must match exactly, including identifiers, literal spellings and indentation changes *within* a statement.
+The surrounding function or branch can differ. Comments, spacing and indentation width do not affect the comparison. The
+rule skips import statements and standalone string literals when counting consecutive statements. Their tokens still
+matter when comparing a compound statement that contains them. It checks matching hashes against the token text before
+reporting a duplicate.
 
 ### Active on
 
@@ -137,9 +124,8 @@ and by the tokens themselves before a report, so two different statements whose 
       return total
   ```
 
-- **Several modules repeat the block**: the report names the first three other modules in sorted order, one place each,
-  and counts the rest. A module that holds the block several times still names each other module once, so its copies do
-  not use up the places.
+- **Several modules repeat the block.** Each file appears at most once in the diagnostic, even if it contains several
+  copies.
 
   ```python report file=alpha.py
   def run(items):
@@ -268,9 +254,9 @@ and by the tokens themselves before a report, so two different statements whose 
       return total
   ```
 
-- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests
-  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub
-  files are not compared either, since stubs repeat each other's signatures by design.
+- **Tests and stubs.** simplint skips modules named `test_*.py`, `*_test.py` or `conftest.py`, files matched by pytest's
+  `python_files` within any configured `testpaths` directories, and files under `test/` or `tests/`. It also skips
+  `.pyi` files, where unrelated APIs can share signatures.
 
   ```python context file=tests/test_first.py
   def test_run():
@@ -294,10 +280,10 @@ and by the tokens themselves before a report, so two different statements whose 
       assert total
   ```
 
-- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a
-  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A
-  nested project repeats code by design, so its modules are compared with each other only, never with another nested
-  project or the rest of the run. Repeats within one nested project are still reported.
+- **Nested test projects.** A directory at or below `test`, `tests`, `test-*` or `test_*` starts a separate project if
+  it contains `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`. For example, modules in `roots/test-first` can
+  match each other but are compared separately from `roots/test-second`. The usual exclusion for test modules still
+  applies.
 
   ```python context file=roots/test-first/conf.py
   project = "first"
@@ -329,9 +315,8 @@ and by the tokens themselves before a report, so two different statements whose 
       return total
   ```
 
-- **Modules generated by [unasync](https://github.com/python-trio/unasync)**: a module under a `_sync` directory whose
-  twin, at the same path with `_async` in its place, is in the run. unasync writes the `_sync` copy from the `_async`
-  source, so the two repeat each other by design.
+- **Matching `_sync` and `_async` paths.** The rule skips a module under `_sync` if the run includes its counterpart
+  under `_async`. [unasync](https://github.com/python-trio/unasync) uses this layout for generated modules.
 
   ```python context file=pkg/_async/parser.py
   async def run(items):
@@ -355,7 +340,7 @@ and by the tokens themselves before a report, so two different statements whose 
       return total
   ```
 
-- **Runs shorter than `min-duplicate-statements`**, which are too short to report.
+- **Runs shorter than `min-duplicate-statements`.**
 
   ```python context file=short_first.py
   def run(items):
@@ -381,11 +366,12 @@ Code repeated with renamed identifiers, changed literals or reordered statements
 
 ### Fix
 
-simplint offers no fix: the right shared definition depends on the code around the copies.
+Choose whether the copies should change together and where their shared definition belongs. The rule offers no automatic
+fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).
+- [Ruff issue #17724](https://github.com/astral-sh/ruff/issues/17724) requests code duplication detection.
 - [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as
   [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no
   fix.

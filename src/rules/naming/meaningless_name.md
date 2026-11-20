@@ -3,11 +3,9 @@ Flags variables, parameters and attributes named with a placeholder word that sa
 
 ## Why is this bad?
 
-At each place a value is used, its name is the only description the value carries. `foo` leaves the reader to find where
-it is assigned, and then to learn what it is. A name for the contents, such as `counts`, answers that at once. `foo` and
-`baz` are [metasyntactic placeholders](https://www.rfc-editor.org/rfc/rfc3092), not names for real data, and pylint's
-default [`bad-names`](https://pylint.readthedocs.io/en/latest/user_guide/configuration/all-options.html#bad-names) list
-includes both.
+`foo` and `baz` are conventional [placeholders](https://www.rfc-editor.org/rfc/rfc3092). A name such as `counts` tells
+the reader what a variable holds without a lookup. Pylint includes both placeholders in its default
+[`bad-names`](https://pylint.readthedocs.io/en/latest/user_guide/configuration/all-options.html#bad-names).
 
 ## Example
 
@@ -143,7 +141,7 @@ lower case, or in upper case as a constant spells it, with or without leading or
       response.foo = b""
   ```
 
-- **Names outside the list**: a name that merely contains a listed word is a name with a meaning.
+- **Partial matches**. A listed word inside a longer name, such as `foo_count`, does not trigger the rule.
 
   ```python ok
   foo_count = load()
@@ -172,15 +170,12 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),
-  [#3845](https://github.com/astral-sh/ruff/issues/3845) and [#3463](https://github.com/astral-sh/ruff/issues/3463).
-- [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports placeholder names such as
-  `data` as
-  [VNE002](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py). Its
-  strict option adds more words.
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports a fixed list of
-  blacklisted names as
+- [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports `foo` and `baz` as
+  [VNE002](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py) by
+  default. Its `--use-varnames-strict-mode` option adds `data`, `result` and other names.
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) checks prohibited names with
   [WPS110](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.WrongVariableNameViolation).
+  Its `--allowed-domain-names` and `--forbidden-domain-names` options customize the list.
 - [pylint](https://github.com/pylint-dev/pylint) reports the names in its
   [disallowed-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/disallowed-name.html) list.
   That list defaults to placeholders such as `foo` and `bar`, not words such as `data`.

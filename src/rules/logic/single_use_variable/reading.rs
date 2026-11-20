@@ -202,7 +202,7 @@ impl<'a> Visitor<'a> for ReadWalk<'a> {
         self.in_branch(|reading| visitor::walk_except_handler(reading, handler));
     }
 
-    // Annotations are not evaluated in a function body, and are evaluated lazily otherwise.
+    // Annotations can be skipped or deferred, depending on their scope and the Python version.
     fn visit_annotation(&mut self, expr: &'a Expr) {
         self.in_branch(|reading| visitor::walk_annotation(reading, expr));
     }

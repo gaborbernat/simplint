@@ -1,4 +1,4 @@
-"""Download files pinned by address and sha256, and check each against its digest before it is used."""
+"""Download files and verify their pinned SHA-256 digests."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ def download(pinned: Pinned, folder: Path) -> Path:
     if archive.is_file() and _sha256(archive) == pinned.sha256:
         return archive
     folder.mkdir(parents=True, exist_ok=True)
-    # Written aside and moved in place once verified, so an interrupted or tampered download never looks cached.
+    # Publish the cached copy only after its digest matches the pin.
     partial = archive.with_name(f"{archive.name}.part")
     retried(lambda: _save(pinned.url, partial), pinned.url)
     if (digest := _sha256(partial)) != pinned.sha256:
@@ -50,7 +50,7 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-# Retry what the network or a server can fail transiently, backing off, and let the last failure through.
+# Retry transient connection errors. Propagate the last error when the retries are exhausted.
 def retried(action: Callable[[], _T], what: str) -> _T:
     for attempt in range(1, 4):
         try:

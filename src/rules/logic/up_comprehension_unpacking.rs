@@ -6,7 +6,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::syntax::is_name;
 
-// Python 3.15 unpacks inside a comprehension, so a nested `for` that only unpacks its iterable moves into the element.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(Matched { outer, inner, element, source, unpacking }) = matched(expr) else {
         return;
@@ -92,7 +91,7 @@ enum Kind {
 
 struct Unpacking {
     kind: Kind,
-    // A dict needs a real `dict`: `**` reads `keys()` and `__getitem__`, not `items()`.
+    // A custom mapping can return different values from items() and from individual key lookups.
     safe: bool,
 }
 

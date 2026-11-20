@@ -3,9 +3,8 @@ the class does not have.
 
 ## Why is this bad?
 
-A field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.
-Neither Sphinx nor a type checker compares the field with the class, so it stays until a reader relies on it.
-[PEP 8](https://peps.python.org/pep-0008/#comments) says comments that contradict the code are worse than no comments.
+After an attribute is renamed, its old description can still appear in the class reference. Someone following that
+reference may try to read a name the class no longer provides. Update the field or remove it.
 
 ## Example
 
@@ -68,7 +67,7 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
 
 - **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its
   body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,
-  and its methods and properties, which autodoc can render as attributes.
+  and its methods and properties.
 
   ```toml config
   [tool.simplint]
@@ -292,10 +291,11 @@ class Engine:
         self.state = "idle"
 ```
 
-No fix is offered when escapes in the docstring make its text differ from the source.
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source. If the
+field ends the docstring, a comment after the closing quotes also prevents the fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).
-- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has
-  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
+- [pydoclint DOC602](https://jsh9.github.io/pydoclint/violation_codes.html) checks whether a class docstring lists more
+  attributes than the class defines. [Ruff issue #12434](https://github.com/astral-sh/ruff/issues/12434) tracks
+  pydoclint checks.

@@ -1,5 +1,5 @@
-Flags the result of a method that changes a list, dict or set in place, such as `ordered = names.sort()`, and of
-`random.shuffle()`, which are always `None`.
+Flags uses of `random.shuffle()` and built-in list, dict or set methods that return `None`, such as
+`ordered = names.sort()`.
 
 ## Why is this bad?
 
@@ -8,9 +8,9 @@ Flags the result of a method that changes a list, dict or set in place, such as 
 [`dict.update()`](https://docs.python.org/3/builtins/stdtypes.html#dict.update),
 [`set.add()`](https://docs.python.org/3/builtins/stdtypes.html#set.add) and the other in-place methods change their
 object and return `None`, as does [`random.shuffle()`](https://docs.python.org/3/library/random.html#random.shuffle).
-Storing, returning, passing or comparing that result works with `None`; where a new list was wanted,
-[`sorted()`](https://docs.python.org/3/builtins/functions.html#sorted) returns one. A comparison of two such results is
-always true.
+`ordered = names.sort()` assigns `None` to `ordered`. To get a new list, use
+[`sorted(names)`](https://docs.python.org/3/builtins/functions.html#sorted). Comparing two `sort()` results with `==`
+compares `None` to itself.
 
 ## Example
 
@@ -75,6 +75,6 @@ def same_keys(first, second):
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** no rule.
-- **[pylint](https://github.com/pylint-dev/pylint):**
+- **[Pylint](https://github.com/pylint-dev/pylint):**
   [assignment-from-none](https://pylint.readthedocs.io/en/stable/user_guide/messages/error/assignment-from-none.html)
   (E1128) through type inference.

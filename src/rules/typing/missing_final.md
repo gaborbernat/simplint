@@ -3,11 +3,8 @@ scope.
 
 ## Why is this bad?
 
-Without `Final`, a reader has to search the codebase to learn that a module variable never changes, or trust an ALL_CAPS
-name that nothing enforces. With it, the type checker rejects any reassignment, here or in another module, which
-documents the constant [in a checkable way](https://peps.python.org/pep-0591/#the-final-annotation). Compilers can use
-it too: [mypyc](https://mypyc.readthedocs.io/en/latest/performance_tips_and_tricks.html#using-fast-native-features)
-lists reads of final module attributes among its fast operations.
+[`Final`](https://peps.python.org/pep-0591/#the-final-annotation) lets a type checker catch an accidental reassignment
+of a module constant. The value itself can still change, for example when a caller appends to a list.
 
 ## Example
 
@@ -27,8 +24,9 @@ LIMIT: Final[int] = 10
 
 ## Configuration
 
-- The Python version the code targets, taken from the first of these that applies; see
-  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
+- The [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) can be set
+  with `--target-version`. Without that override, the following settings take precedence over Poetry and setuptools
+  metadata. The default is Python 3.11.
 
   1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for
      the files a pattern matches
@@ -76,8 +74,8 @@ LIMIT: Final[int] = 10
 
 - **Module-level variables assigned once and not annotated
   [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**: a plain assignment to one name, or an
-  annotated assignment with a value, among the statements at the top level of the module. With one binding, the value
-  never changes, which `Final` states.
+  annotated assignment with a value, among the statements at the top level of the module. `Final` tells the type checker
+  to reject a later reassignment.
 
   ```python report
   TIMEOUT = 30
@@ -92,10 +90,8 @@ LIMIT: Final[int] = 10
 
 - **Variables annotated with a bare [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**, such as
   `TIMEOUT: Final = 1`, in every scope: the module, a class or function body, and the blocks of an `if`, `for`, `while`,
-  `with`, `try` or `match` statement. The name may look like anything, including class-like names and dunders. The type
-  reads at a glance, and a type checker infers a bare `Final` as a literal type that rejects nothing a wider type would.
-  The fix adds the type inside the brackets and is **unsafe**, since `Final[int]` widens the `Literal[1]` a checker
-  infers.
+  `with`, `try` or `match` statement. This includes class-like names and dunders. Adding a type can widen the inferred
+  literal type, for example from `Literal[1]` to `int`, so the fix is unsafe.
 
   ```python report
   from typing import Final
@@ -205,7 +201,10 @@ LIMIT: Final[int] = 10
   TIMEOUT = 30
   ```
 
-- **Modules with a version gate**: a top-level `if` that tests
+- **Missing `Final` in `conf.py`**. simplint treats this filename as a Sphinx configuration. It still checks assignments
+  already annotated with bare `Final`.
+
+- **Missing `Final` in modules with a version gate**: a top-level `if` that tests
   [`sys.version_info`](https://docs.python.org/3/library/sys.html#sys.version_info) and ends in `raise` or
   [`sys.exit(...)`](https://docs.python.org/3/library/sys.html#sys.exit), which exists to run on older interpreters and
   report them.
@@ -329,7 +328,8 @@ LIMIT: Final[int] = 10
       print(value)
   ```
 
-- **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.
+- **`TYPE_CHECKING`**. simplint exempts this name, including the `TYPE_CHECKING = False` idiom that avoids importing
+  `typing` at runtime.
 
   ```python ok
   TYPE_CHECKING = False
@@ -384,8 +384,8 @@ LIMIT: Final[int] = 10
 
 ### Fix
 
-**Unsafe fix:** the annotation lands in the module's `__annotations__`, which code reads at runtime, such as Sphinx
-autodoc rendering the type or a dataclass-style library. Adding `Final` may also add a `typing` import.
+The fix is unsafe. Adding a module annotation changes `__annotations__`, which tools can inspect at runtime, and may add
+a `typing` import. Adding a type to a bare `Final` can change the inferred type.
 
 The annotation the fix writes:
 
@@ -591,5 +591,5 @@ does not count as bound when annotations are evaluated eagerly, which is before 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#21584](https://github.com/astral-sh/ruff/issues/21584).
-  Also open issue [#10137](https://github.com/astral-sh/ruff/issues/10137) (uppercase names only).
+Ruff tracks [variables assigned once](https://github.com/astral-sh/ruff/issues/21584) and
+[uppercase constants](https://github.com/astral-sh/ruff/issues/10137) in separate rule requests.

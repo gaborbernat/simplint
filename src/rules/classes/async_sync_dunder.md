@@ -2,12 +2,11 @@ Flags `async def` on special methods that Python calls without awaiting the resu
 
 ## Why is this bad?
 
-Python calls `__len__`, `__iter__`, `__enter__`, `__aiter__` and the other special methods of the data model
-synchronously and uses what they return. An `async def` method returns a coroutine instead, so
-[`len(obj)`](https://docs.python.org/3/builtins/functions.html#len) raises
-[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), `__init__` raises `TypeError` for returning
-a value other than `None`, and `async for` gets a coroutine where it needs an async iterator. The coroutine is never
-awaited, and Python warns about it at best.
+[`len(obj)`](https://docs.python.org/3/builtins/functions.html#len) expects an integer from `__len__`, and `async for`
+expects an async iterator from `__aiter__`. An `async def` that contains no `yield` returns a coroutine when called.
+Python raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) when either operation receives
+that coroutine. Other methods can fail silently. For example, a synchronous context manager never awaits an async
+`__exit__`, so its cleanup code does not run.
 
 ## Example
 
@@ -67,4 +66,4 @@ class Stream:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- Ruff's [yield-in-init](https://docs.astral.sh/ruff/rules/yield-in-init/) checks for `yield` in `__init__`.

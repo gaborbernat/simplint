@@ -44,7 +44,6 @@ def test_passes_when_every_block_compiles(tmp_path: Path, capsys: pytest.Capture
 
 
 def _simplint(folder: Path, rules: list[_Rule]) -> str:
-    # A stand-in simplint whose `rules` command prints the given rules, the process boundary the task crosses.
     path = folder / "simplint"
     path.write_text(f"#!{sys.executable}\nimport sys\nsys.stdout.write({json.dumps(rules)!r})\n")
     path.chmod(0o755)

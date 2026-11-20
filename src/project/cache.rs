@@ -62,7 +62,7 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
     u32::from(metadata.permissions().readonly())
 }
 
-// rkyv reads an archive in place, which needs its bytes aligned to 16.
+// The cached archive is read in place from aligned memory.
 pub fn read_aligned(path: &Path) -> io::Result<AlignedVec<16>> {
     let file = fs::File::open(path)?;
     let size = file.metadata().map(|metadata| metadata.len());
@@ -91,9 +91,8 @@ pub(super) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
     stat(path).cache_key(hasher);
 }
 
-// Makes this build's cache directory and drops other builds' directories. The documentation key hashes the times of
-// the directories it walks, and the cache directory sits in a project root by default, so creating it while that walk
-// runs would change a key that is then stored, and the next run would miss it.
+// Create the cache before hashing the documentation tree. Creating it later can change the project directory's
+// timestamp and invalidate the new key.
 pub fn prepare(ruff_cache_dir: &Path) {
     let directory = build_directory(ruff_cache_dir);
     if let Err(error) = init(ruff_cache_dir, &directory) {
@@ -106,8 +105,7 @@ pub fn prepare(ruff_cache_dir: &Path) {
 pub const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
 
 pub fn build_directory(ruff_cache_dir: &Path) -> PathBuf {
-    // The version and a hash of the crate's source, which `build.rs` computes, so a development build that changes it
-    // does not read caches an earlier build of the same version wrote.
+    // Development builds can change the cache format without changing the package version.
     const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
     directory(ruff_cache_dir).join(FORMAT)
 }
@@ -125,10 +123,8 @@ fn init(ruff_cache_dir: &Path, directory: &Path) -> io::Result<()> {
     }
 }
 
-// Removes the directories other simplint builds wrote that no run has written to for `MAX_LAST_SEEN`. A directory
-// another version still writes to stays, as when pre-commit pins one version and the command line runs another. Its
-// newest file tells its age, since Windows does not move a directory's modification time when a file in it changes; an
-// empty one, as another run creates before it writes its cache, goes by its own.
+// Other versions may still be in use, for example by pre-commit. Age each build by its newest file because an in-place
+// write can leave the directory timestamp unchanged. An empty directory may belong to a build that just started.
 fn remove_stale(current: &Path) {
     let Some(Ok(siblings)) = current.parent().map(fs::read_dir) else {
         return;
@@ -138,7 +134,7 @@ fn remove_stale(current: &Path) {
         if sibling == current || !is_build_directory(&entry) {
             continue;
         }
-        // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
+        // Another process may hold the directory open. A later run can retry removal.
         if last_written(&sibling)
             .is_none_or(|modified| SystemTime::now().duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN))
         {
@@ -147,13 +143,11 @@ fn remove_stale(current: &Path) {
     }
 }
 
-// The time of the newest file a directory holds; an empty one, or one whose files cannot be stat'd, goes by its own.
+// Fall back to the directory timestamp when no file timestamp is available.
 fn last_written(directory: &Path) -> Option<SystemTime> {
     newest(fs::read_dir(directory).into_iter().flatten()).or_else(|| directory.metadata().ok()?.modified().ok())
 }
 
-// The newest time of the entries a directory listing gave; an entry the listing failed on, or one that cannot be stat'd,
-// has none.
 fn newest<E: Modified>(entries: impl Iterator<Item = io::Result<E>>) -> Option<SystemTime> {
     entries.filter_map(|entry| entry.ok()?.modified().ok()).max()
 }
@@ -168,8 +162,7 @@ impl Modified for fs::DirEntry {
     }
 }
 
-// Only a real directory named as a build, holding nothing but cache files, is removed, so a directory a user put in the
-// simplint directory stays.
+// Restrict cleanup to recognized build directories containing only cache files.
 fn is_build_directory(entry: &fs::DirEntry) -> bool {
     entry.file_name().to_str().is_some_and(is_build_name)
         && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
@@ -206,8 +199,8 @@ pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf
     build_directory(ruff_cache_dir).join(hasher.finish().to_string())
 }
 
-// Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
-// first, as the run may write before it has opened the package caches.
+// Readers must see a complete archive even if another process is writing. The first write can precede package cache
+// initialization.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     let directory = path.parent().expect("a cache file sits in a directory");
     fs::create_dir_all(directory)?;
@@ -217,7 +210,7 @@ pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-// A temporary file with the permissions of a file created the usual way, as `NamedTempFile` defaults to `0o600`.
+// Honor the process umask for shared caches. NamedTempFile defaults to mode 0600.
 #[cfg(unix)]
 pub fn tempfile_in(path: &Path) -> io::Result<NamedTempFile> {
     use std::os::unix::fs::PermissionsExt;
@@ -298,7 +291,6 @@ mod tests {
         assert!(written.is_err());
     }
 
-    // A file that cannot grow fails the write and leaves no cache file behind.
     #[cfg(unix)]
     #[test]
     fn writing_a_file_that_cannot_grow_fails() {
@@ -317,7 +309,6 @@ mod tests {
         );
     }
 
-    // A directory whose files cannot be stat'd, as one that may be listed but not searched, goes by its own time.
     #[cfg(unix)]
     #[test]
     fn directory_without_search_permission_goes_by_its_own_time() {
@@ -338,7 +329,6 @@ mod tests {
         assert_eq!(written.map(FileTime::from_system_time), Some(FileTime::from_unix_time(2_000, 0)));
     }
 
-    // A directory removed since the cache listed it has no time, which counts as stale.
     #[test]
     fn directory_removed_since_listing_has_no_time() {
         let root = TempDir::new().expect("create a temporary directory");
@@ -353,7 +343,6 @@ mod tests {
         }
     }
 
-    // An entry the listing failed on, as on a disk error, has no time, so the others decide.
     #[test]
     fn entry_the_listing_failed_on_is_skipped() {
         let time = std::time::SystemTime::UNIX_EPOCH;

@@ -1,4 +1,4 @@
-// Names the documentation references, which count as used even when no code of the run reaches them.
+// Documentation can refer to a name that no Python module imports.
 mod conf;
 mod pages;
 mod store;
@@ -18,30 +18,25 @@ use walk::{is_configuration, is_foreign, pages, tree_key};
 
 #[derive(Clone, Default, PartialEq)]
 pub struct DocReferences {
-    // Sphinx resolves a role against the page's module, its class or the whole project, and `conf.py` may put any
-    // directory on `sys.path`, so any definition whose dotted name ends with one may be the target.
+    // A reference may use a shortened name or depend on a change to `sys.path` in conf.py, so match dotted suffixes.
     names: FxHashSet<String>,
     scopes: FxHashSet<String>,
-    // `automodule` with `:members:` alone documents what the module's `__all__` lists, or its public names, which the
-    // index resolves into names.
+    // The project index expands a bare `:members:` option using the target module's exports or definitions.
     modules: FxHashSet<Module>,
-    // Per project root, the class docstrings its Sphinx configuration renders, and the `class-doc-from` options its
-    // pages give to classes. Each project's files read their own root's entry.
+    // Nested projects can have different autodoc settings.
     roots: FxHashMap<PathBuf, RootDocs>,
 }
 
 #[derive(Clone, Default, PartialEq)]
 pub(super) struct RootDocs {
-    // The docstring for every class of the project that no `autoclass` or `autoexception` directive names.
+    // Classes without an explicit autoclass or autoexception directive use this setting.
     pub(super) default: AutoclassContent,
-    // The docstring for a class such a directive names without its own option. Sphinx takes `autodoc_default_options`
-    // for those directives alone, and `autoclass_content` for the rest.
+    // Explicit class directives inherit this setting when they omit `class-doc-from`.
     pub(super) named: AutoclassContent,
     pub(super) directives: Directives,
 }
 
-// The `class-doc-from` option of each `autoclass` and `autoexception` directive, `None` when it sets none. A dotted
-// name is a module path, and a simple name is resolved against the page's module, so it matches any class of that name.
+// Keep unqualified directive targets separate until the index can check for classes with the same name.
 #[derive(Clone, Default, PartialEq)]
 pub(super) struct Directives {
     pub(super) qualified: FxHashMap<String, Option<AutoclassContent>>,
@@ -56,12 +51,10 @@ pub struct Module {
     pub special: bool,
 }
 
-// The index files that make a directory a Sphinx documentation root, which Sphinx requires as its master document.
+// A neighboring index helps identify a Sphinx conf.py that uses the default root document.
 const INDEXES: [&str; 3] = ["index.rst", "index.md", "index.txt"];
 
 impl DocReferences {
-    // With a cache directory, a root's names are kept under `tree_key`, so a run where nothing under the root changed
-    // reads no page.
     pub fn collect<'a>(
         roots: impl IntoIterator<Item = (&'a Path, &'a ruff_workspace::Settings)>,
         main: &Path,
@@ -110,9 +103,8 @@ impl DocReferences {
         self.modules.iter()
     }
 
-    // The docstring a class of `root` renders, when the project's documentation was read. A project that was not read
-    // has no answer, so the caller keeps the class docstring's copy as the only one it knows. A simple name a page
-    // resolves against its module matches a class only when no other class of the run has that name.
+    // An unqualified directive is ambiguous when several classes share its name. A missing root means its docs were
+    // never scanned.
     pub fn class_doc_from(&self, root: &Path, qualified: &str, namesake: bool) -> Option<AutoclassContent> {
         self.roots.get(root).map(|docs| {
             if let Some(option) = docs.directives.qualified.get(qualified) {
@@ -158,9 +150,8 @@ impl DocReferences {
     }
 }
 
-// The docstring a Sphinx configuration of `root` renders for its classes, or `None` when `path` is not one. A vendored
-// or other project's `conf.py` is not the project's. A configuration that cannot be read, or is over the size limit,
-// may set the option, so its docstring is unknown.
+// A configuration from another project cannot inform a fix here. An unreadable or oversized local configuration may
+// still select either docstring.
 fn configuration(root: &Path, path: &Path) -> Option<Rendered> {
     if is_foreign(root, path) {
         return None;

@@ -16,8 +16,7 @@ pub fn dependency_import_guard(checker: &Checker) {
     report_guards(checker, checker.body(), None);
 }
 
-// `function` is the body of the function the statements belong to, whose locals the module's semantic model does not
-// see.
+// The module-level semantic model excludes function locals.
 fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [Stmt]>) {
     for stmt in body {
         if let Stmt::Try(stmt) = stmt
@@ -63,8 +62,7 @@ fn is_import_guard(checker: &Checker, stmt: &ast::StmtTry) -> bool {
     })
 }
 
-// `from` imports can fail on a name the module lacks on some platform or version, such as `os.geteuid` or
-// `yaml.CSafeLoader`, so their guard serves a present module.
+// Even an installed module can lack the requested name, such as `os.geteuid` outside POSIX.
 fn imported_modules(stmt: &Stmt) -> Option<Vec<&str>> {
     Some(stmt.as_import_stmt()?.names.iter().map(|alias| alias.name.as_str()).collect())
 }
@@ -83,7 +81,6 @@ fn shares_line_with_unused_import(checker: &Checker, body: &[Stmt], function: Op
     })
 }
 
-// A function-local import is used when the function loads its name anywhere, nested functions included.
 fn has_unreferenced_import(checker: &Checker, stmt: &Stmt, function: Option<&[Stmt]>) -> bool {
     stmt.as_import_stmt().is_some_and(|import| {
         import.names.iter().any(|alias| {
@@ -103,8 +100,7 @@ fn unwrap_try(checker: &Checker, stmt: &ast::StmtTry, function: Option<&[Stmt]>)
     let source = checker.source;
     let (first, last) = (&stmt.body[0], &stmt.body[stmt.body.len() - 1]);
     let indentation = checker.indentation(stmt);
-    // A body on the `try:` line, as in `try: import tomllib`, starts after the colon, and the lines it is on hold the
-    // `try` too.
+    // An inline `try: import tomllib` shares its first line with the header.
     let body = if has_leading_content(first.start(), source) {
         let range = TextRange::new(first.start(), source.full_line_end(last.end()));
         format!("{indentation}{}", annotated(checker, &stmt.body, range, function))
@@ -122,8 +118,7 @@ fn annotated(checker: &Checker, body: &[Stmt], range: TextRange, function: Optio
     for stmt in body.iter().filter(|stmt| has_unreferenced_import(checker, stmt, function)) {
         let end = source.line_end(stmt.end());
         annotated.push_str(&source[TextRange::new(copied, end)]);
-        // Ruff's unused-import fix would delete an import the unwrapped guard leaves unused, though that import is
-        // there to fail when the module is missing, so its line keeps a suppression.
+        // Keep Ruff from removing the import that exposes a broken installation.
         annotated.push_str("  # noqa: F401  # fails when the module is missing");
         copied = end;
     }

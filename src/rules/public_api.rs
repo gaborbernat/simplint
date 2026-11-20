@@ -23,33 +23,28 @@ pub(super) struct ApiItem<'a> {
     pub(super) name: String,
     pub(super) range: TextRange,
     pub(super) kind: ApiKind,
-    // The statement after a variable's in its block, where its docstring goes.
+    // A variable docstring belongs to the next statement in the same block.
     pub(super) next: Option<&'a Stmt>,
     // The file that re-exports the item to users, when its own module does not offer it.
     pub(super) via: Option<&'a Path>,
-    // Whether the docstring rules require docs for the item: not when only a signature of an exposed name reaches it.
+    // Types used only in an exported signature need no docstring of their own.
     pub(super) docs: bool,
 }
 
-// The public API of a library is `FileIndex::library_exposure`, the names its users can import, with the public members
-// of those classes. An application has none. What the docstring rules add is documentation: autodoc-documented
-// definitions, whose names only the checker's module path makes qualified, and the members that need no docstring.
-// When `__all__` is built dynamically the exports are unknown, so every name without a leading underscore might be
-// public.
+// Combine library exports with definitions that the project documents by name. When exports are dynamic, public
+// functions and classes may still have external callers.
 pub(crate) struct PublicApi<'a> {
     pub(super) items: Vec<ApiItem<'a>>,
     // Each item's statement, and whether any item of it needs docs, so a lookup does not scan the items.
     statements: FxHashMap<TextRange, bool>,
     maybe_public: Vec<TextRange>,
-    // Members of a public class whose docstring is shown when present but need none: dunders such as `__init__`, which
-    // autodoc can render, overrides, which inherit the base docstring, and property setters.
+    // Autodoc can show these members even when their own docstrings are optional.
     optional: FxHashSet<TextRange>,
     // The definitions the documentation names, such as an autodoc directive, which users read as public.
     documented: FxHashSet<TextRange>,
 }
 
 impl<'a> PublicApi<'a> {
-    // Built once per file on first use; rules read it as `checker.state().public_api(checker)`.
     pub(crate) fn of(checker: &Checker<'a>) -> Self {
         let project = checker.project();
         let reach = |name: &str| project.library_exposure(name);
@@ -61,8 +56,7 @@ impl<'a> PublicApi<'a> {
             optional: FxHashSet::default(),
             documented: documented_definitions(checker),
         };
-        // Definitions in top-level `if`, `try` and `match` blocks, as a version switch or an optional accelerator, are
-        // the module's too.
+        // Interpreter-version checks and optional imports can put module definitions inside conditional blocks.
         for (stmt, next) in module_statements_with_next(checker.body()) {
             match stmt {
                 Stmt::FunctionDef(function) => {
@@ -129,7 +123,7 @@ impl<'a> PublicApi<'a> {
         let range = class.name.range;
         let (via, docs) = (exposure.reexporter(), exposure.is_offered());
         self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via, docs });
-        // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
+        // Class members can also appear inside conditional blocks.
         for member in module_statements(&class.body) {
             match member {
                 Stmt::ClassDef(nested) if Visibility::of(&nested.name) == Visibility::Public => {
@@ -155,8 +149,7 @@ impl<'a> PublicApi<'a> {
         }
     }
 
-    // The public methods and properties a class the file defines, such as a private mixin, that a public class of the
-    // library inherits without overriding them: users reach them through that public class.
+    // A public subclass exposes inherited methods and properties even when their defining class is private.
     fn inherited_members(&mut self, class: &'a ast::StmtClassDef, project: &FileIndex) {
         let name = class.name.as_str();
         for member in module_statements(&class.body) {
@@ -170,7 +163,7 @@ impl<'a> PublicApi<'a> {
             if !project.is_inherited_api(name, method_name) {
                 continue;
             }
-            // A method a signature-reached class defines is already an item, which its inheritance makes documented.
+            // Inheritance can make documentation necessary for a method previously reachable only through a signature.
             if let Some(item) = self.items.iter_mut().find(|item| item.range == method.name.range) {
                 item.docs = true;
                 continue;
@@ -193,15 +186,12 @@ impl<'a> PublicApi<'a> {
         self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via, docs });
     }
 
-    // Whether the definition at `range` is part of the public API, as opposed to optional or possibly public: an item
-    // of the API, or one the documentation names. Only the docstring rules need `Need::Docs`, which leaves out the
-    // items only a signature reaches.
+    // A definition that the project documents explicitly counts as public.
     pub(crate) fn is_public(&self, range: TextRange, need: Need) -> bool {
         self.is_item(range, need) || self.documented.contains(&range)
     }
 
-    // Whether the definition at `range` may be part of the public API, which includes optional, documented and possibly
-    // public ones. Only the docstring rules need `Need::Docs`, as for `is_public`.
+    // Include optional members and definitions whose visibility depends on a dynamic export list.
     pub(crate) fn covers(&self, range: TextRange, need: Need) -> bool {
         self.is_item(range, need)
             || self.optional.contains(&range)

@@ -2,10 +2,8 @@ Flags own-line comments used as dividers or section headers.
 
 ## Why is this bad?
 
-A section comment groups code by its position in the file, and nothing keeps the grouping accurate as code moves: a
-function added below a banner joins its section whether or not it belongs there. A named function, class or module
-groups the same code under a name that tools can check. A function named for what its block does
-[states that purpose](https://martinfowler.com/bliki/FunctionLength.html) where a banner only labels it.
+Moving code across a banner can leave it under the wrong heading. If several statements perform one task, a
+[named function](https://martinfowler.com/bliki/FunctionLength.html) keeps the label with the code that performs it.
 
 ## Example
 
@@ -34,8 +32,7 @@ def parse_header(line: str) -> str:
   VALUE = 1
   ```
 
-- **Decorated titles**: comments whose words are framed by divider characters, so the decoration frames them as a
-  heading:
+- **Decorated titles** can use either pattern.
 
   - Three or more of the same divider character at the start or end, such as `# --- helpers`:
 
@@ -53,8 +50,7 @@ def parse_header(line: str) -> str:
         pass
     ```
 
-- **Markdown-style headings**: comments that open with two or more `#`, such as `## Setup`, the way a document heading
-  does.
+- **Markdown-style headings** start with two or more `#`, as in `## Setup`.
 
   ```python report
   ## Setup
@@ -77,7 +73,7 @@ def parse_header(line: str) -> str:
   VALUE = 1  # ---------- parsing ----------
   ```
 
-- **Comments starting with `#!`**: this is a shebang line.
+- **Shebangs** and other comments whose text starts with `!` are exempt.
 
   ```python ok
   #!/usr/bin/env python3
@@ -127,8 +123,7 @@ def parse_header(line: str) -> str:
 
 ### Fix
 
-The fix is safe, since comments do not affect behavior. What it does depends on the text left once the decoration is
-gone:
+The safe fix removes or trims the comment.
 
 - **Decoration only, or a title of up to three words**, as in `# === helpers ===`: the fix deletes the comment.
 
@@ -156,16 +151,7 @@ gone:
 
 ## Ruff overlap
 
-[E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and
-[E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a prose heading such as
-`## Remove this return to update the cron job`, whose fix here would be the same, so this rule leaves it to them whether
-or not the project enables preview. The same goes for a short line inside a `##` paragraph and for a URL or code after
-`##`, which are no headings. Short headings such as `## Setup`, decorated dividers and regions stay with this rule,
-since they report a section divider to replace with a function or remove, not the hash count E266 reports.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules
-  [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/) and
-  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/), which reformat some of the same
-  comments, such as `## Setup` or `#---`; this rule leaves the plain prose ones to them (see Ruff overlap).
+Ruff's preview rules [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/) and
+[E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) check comment formatting. simplint
+leaves plain `##` prose, paragraph continuations, URLs and code to Ruff even when preview is disabled. It still reports
+short headings such as `## Setup`, decorated dividers and editor regions.

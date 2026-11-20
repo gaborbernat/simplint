@@ -1,18 +1,15 @@
-Flags pytest APIs that pytest removed or no longer honors: nose-style `setup` and `teardown` hooks, marks on fixtures,
-the `py.path` fixtures `tmpdir`, `tmpdir_factory` and `testdir`, the `msg` argument of `pytest.fail`, `pytest.skip` and
-`pytest.exit`, `pytest.raises(message=...)`, and `pytest.warns(None)`.
+Flags obsolete pytest hooks and arguments, marks on fixtures, and fixtures that use the legacy `py.path` API.
 
 ## Why is this bad?
 
-Each of these either does nothing on a current pytest or fails there. pytest 8
-[dropped nose support](https://docs.pytest.org/en/stable/deprecations.html#support-for-tests-written-for-nose), so a
-`setup` method silently stops running, and the tests that relied on it fail or, worse, pass against stale state.
-[A mark on a fixture](https://docs.pytest.org/en/stable/deprecations.html#applying-a-mark-to-a-fixture-function) never
-applied to the tests, and pytest 9 rejects it. The
-[removed arguments](https://docs.pytest.org/en/stable/deprecations.html#removed-features-and-breaking-changes) raise a
-[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). The `py.path` fixtures live on only in
-pytest's `legacypath` plugin; the [pathlib fixtures](https://docs.pytest.org/en/stable/how-to/tmp_path.html) replace
-them.
+pytest 8
+[removed nose-style hooks](https://docs.pytest.org/en/stable/deprecations.html#support-for-tests-written-for-nose). A
+test that depended on `setup` may now run without its setup.
+[Marks on fixtures](https://docs.pytest.org/en/stable/deprecations.html#applying-a-mark-to-a-fixture-function) never
+applied to the tests requesting them, and pytest 9 rejects them.
+[Removed arguments](https://docs.pytest.org/en/stable/deprecations.html#removed-features-and-breaking-changes) can raise
+[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). The legacy fixtures still work when their
+plugins are available. Use `tmp_path`, `tmp_path_factory` and `pytester` for their modern interfaces.
 
 ## Example
 
@@ -40,6 +37,8 @@ def test_missing(tmp_path):
 
 ### Active on
 
+The rule checks [test modules](SMP801.html).
+
 - **Nose-style hooks**: a module-level `setup` or `teardown` function, and a `setup` or `teardown` method of a test
   class that does not derive from
   [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase).
@@ -65,15 +64,17 @@ def test_missing(tmp_path):
       return connect()
   ```
 
-- **`py.path` fixtures**: a parameter named `tmpdir`, `tmpdir_factory` or `testdir` of a test or a fixture.
+- **Legacy fixtures.** In tests and fixtures, use `tmp_path` for a temporary directory, `tmp_path_factory` to create
+  directories, and `pytester` to run pytest in a test. These replace `tmpdir`, `tmpdir_factory` and `testdir`,
+  respectively.
 
 - **Removed arguments**: `msg=` to `pytest.fail`, `pytest.skip` or `pytest.exit`, `message=` to `pytest.raises`, and
   `pytest.warns(None)`.
 
 ### Exceptions
 
-- **Hooks the module calls itself or decorates**: a `setup` that the module also calls, a decorated `setup`, such as a
-  fixture of that name, and any `setup` in a `conftest.py` is not a nose hook.
+- **Hooks the module calls itself or decorates**: a `setup` that the module names more than once may be a helper. The
+  rule also skips decorated hooks and hooks in `conftest.py`. The same exceptions apply to `teardown`.
 
   ```python ok file=tests/test_called_setup.py
   def setup():
@@ -86,14 +87,14 @@ def test_missing(tmp_path):
 
 - **Modules that test the `legacypath` plugin**: a module that imports it requests its fixtures on purpose.
 
-- **Calls inside `pytest.raises`**: a test that checks pytest rejects the removed argument.
+- **Calls inside a `with pytest.raises(...)` body.** The test may be checking that pytest rejects an obsolete argument.
 
 - **`yield_fixture`**: Ruff's [pytest-yield-fixture](https://docs.astral.sh/ruff/rules/pytest-deprecated-yield-fixture/)
   (PT020) reports it.
 
 ### Fix
 
-The `msg` argument is renamed to `reason`, which takes the same text.
+When the call passes `msg=` without `reason=`, the safe fix renames the keyword and preserves its value.
 
 ```python report file=tests/test_skip.py
 import pytest
@@ -111,9 +112,8 @@ def test_later():
     pytest.skip(reason="not ready")
 ```
 
-A nose hook is renamed to the pytest hook that runs at the same point: `setup_method` and `teardown_method` in a class,
-`setup_module` and `teardown_module` at module level. **Unsafe fix:** pytest starts running the hook again, which
-changes what the tests see.
+The unsafe fix renames a class hook to `setup_method` or `teardown_method`, and a module hook to `setup_module` or
+`teardown_module`. pytest will start running the hook, which changes what the tests see.
 
 ```python report file=tests/test_nose_fixed.py
 def setup():
@@ -125,7 +125,8 @@ def setup_module():
     print("start")
 ```
 
-The other cases are reported without a fix, since moving from `py.path` to `pathlib` changes every use of the path.
+Update the other cases by hand. For example, a migration from `tmpdir` to `tmp_path` may also require changing `.join()`
+calls to `/`.
 
 ## Other tools
 

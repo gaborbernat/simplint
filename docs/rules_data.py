@@ -1,9 +1,4 @@
-"""
-Derive the rule list `simplint rules --output-format json` prints from the sources the binary is built from.
-
-The rule pages and the Python tasks read this list, so they run without compiling Rust. `tests/docs_data.rs` compares
-the derivation with the binary's output, field by field.
-"""
+"""Derive rule metadata from the Rust sources for the documentation and maintenance tasks."""
 
 from __future__ import annotations
 

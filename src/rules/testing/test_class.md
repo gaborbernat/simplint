@@ -1,16 +1,12 @@
-Flags test classes in test modules: top-level `Test` classes with `test` methods.
+Flags top-level classes whose names start with `Test` and that define a `test*` method in a test module.
 
 ## Why is this bad?
 
-A test class adds a level of nesting and a `self` that most tests never use. It also invites shared state: pytest gives
-each test its own instance, but
-[attributes set in the class body are shared](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class)
-by every test, and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html) move values a test depends
-on out of the test, where [Google's testing guide](https://abseil.io/resources/swe-book/html/ch12.html) asks to keep
-them. pytest's
-[getting-started guide](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class) lists
-grouping and class-scoped fixtures among the benefits of a class. A module-level prefix keeps the grouping visible in
-the test name without the shared state.
+A module-level test function can take its fixtures directly. Moving a test that never uses `self` out of its class also
+removes a level of indentation. pytest creates a separate instance for each test method, but mutable class attributes
+can still carry changes from one test to the next. Classes can be useful for grouping tests or sharing class-scoped
+fixtures. See
+[pytest's guide to test classes](https://docs.pytest.org/en/stable/getting-started.html#group-multiple-tests-in-a-class).
 
 ## Example
 
@@ -36,9 +32,8 @@ def test_parser_handles_empty() -> None:
   [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and
   [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,
   these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with
-  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it
-  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and
-  breaks `-k` selections or deselect lists that name it.
+  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. A file also counts if it matches
+  `python_files` and falls under a configured `testpaths` directory, or matches `python_files` with no `testpaths` set.
 
   ```python report file=tests/test_parser.py
   class TestParser:
@@ -47,6 +42,9 @@ def test_parser_handles_empty() -> None:
   ```
 
 ### Fix
+
+The fix is unsafe because it changes each test's [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids).
+Update any selections or deselect lists that use the class name.
 
 The fix turns each method into a module-level function whose name carries a prefix: the class name with one leading
 `Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.
@@ -111,7 +109,9 @@ def test_box_default[T: int](value: T | None = None) -> None:
 
 No fix is offered when:
 
-- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;
+- the class has bases, class keywords, decorators or a docstring;
+
+- a line in the class suppresses Ruff's E501 line-length warning, which dedenting could make unnecessary;
 
   ```python report file=tests/test_based.py
   class TestParser(BaseParserTests):
@@ -231,7 +231,3 @@ No fix is offered when:
       def testa(self) -> None:
           assert parse("2") == 2
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

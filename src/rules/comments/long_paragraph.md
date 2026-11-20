@@ -2,9 +2,8 @@ Flags comment paragraphs longer than 100 words by default.
 
 ## Why is this bad?
 
-A paragraph that long usually covers more than one topic, and readers skim it. Split it at a change of topic, and each
-part is easier to find and to keep accurate. [PEP 8](https://peps.python.org/pep-0008/#block-comments) structures block
-comments as paragraphs, separated by a line that holds a single `#`.
+Split a comment where the topic changes. [PEP 8](https://peps.python.org/pep-0008/#block-comments) separates paragraphs
+in block comments with a line containing a single `#`.
 
 ## Example
 
@@ -54,12 +53,12 @@ No fix is offered, since where to split a paragraph depends on its meaning.
 - **Own-line comment paragraphs**: a **paragraph** is a run of own-line comments on consecutive lines at the same
   indentation, and it is reported once it passes `max-paragraph-words` words. Any of these ends it:
 
-  - an empty `#` or `#:` line
+  - a blank line, an empty `#` or `#:` comment, or a section underline
   - a line of code
   - a comment at another indentation
 
-  A list item, an RST field or directive, or a line such as `Args:` starts a new paragraph, so each item counts on its
-  own.
+  A list item, an RST field or directive, or a docstring-style heading or parameter entry such as `Args:` or
+  `name (str):` starts a new paragraph, so each item counts on its own.
 
   ```python report
   # The cache keeps one entry per manifest, keyed by path and modification time, because parsing a manifest dominates
@@ -98,6 +97,5 @@ The report spans from the paragraph's first line to the line where it passes `ma
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/), which limits characters per line rather than words per
-  paragraph; merged pull request [#1804](https://github.com/astral-sh/ruff/pull/1804).
+[Ruff W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/) limits characters on individual documentation lines.
+`max-paragraph-words` counts words across lines.

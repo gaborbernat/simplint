@@ -65,8 +65,6 @@ fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
     ));
 }
 
-// A test imports a module under `src` by its dotted path, which lists no export, whether the package has an
-// `__init__.py` or is a namespace package with none at any level.
 #[test_case(
     &[
         ("src/pkg/__init__.py", ""),
@@ -93,8 +91,7 @@ fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
     assert!(check(production.path(), &["--select", "SMP401"]).1.contains("`helper` is imported by other modules"));
 }
 
-// An entry point names a module in the directory its `pyproject.toml` is in, which a flat layout keeps its modules in,
-// so the entry point uses the name whatever `src` lists.
+// Flat-layout entry points can live next to `pyproject.toml` even when Ruff's `src` points elsewhere.
 #[test_case(
     "cli.py",
     "[project]\nscripts = { tool = \"cli:run\" }\n[tool.ruff]\nsrc = [\"src\"]\n"
@@ -134,7 +131,6 @@ fn entry_point_module_resolves_from_its_project(name: &str, pyproject: &str) {
     );
 }
 
-// A bare module entry point loads the whole module, so the names it defines are the entry point's, whatever `src` says.
 #[test]
 fn flat_layout_module_entry_point_uses_its_public_names() {
     let root = project(&[
@@ -154,7 +150,6 @@ fn flat_layout_module_entry_point_uses_its_public_names() {
     assert!(check(unlisted.path(), &["--select", "SMP409"]).1.contains("`activate`"));
 }
 
-// A local module named after a standard-library one is the module the run imports, not the standard-library one.
 #[test]
 fn local_module_shadowing_the_standard_library_resolves_to_the_run() {
     let root = project(&[
@@ -170,8 +165,8 @@ fn local_module_shadowing_the_standard_library_resolves_to_the_run() {
     );
 }
 
-// A module named after a standard-library one imports that module by its own name, which is no import of its names, so
-// the names its `__all__` lists stay reported when no other module of the run imports them.
+// The compatibility shim imports the standard library's `tomllib`. That import alone says nothing about who uses the
+// shim's re-exports.
 #[test]
 fn stdlib_import_of_own_stem_does_not_import_own_names() {
     let tomllib = "import sys\n\nif sys.version_info >= (3, 11):\n    from tomllib import TOMLDecodeError, load, \
@@ -196,8 +191,6 @@ fn stdlib_import_of_own_stem_does_not_import_own_names() {
     );
 }
 
-// A doctest in a module that shares its package's name reads `tz.gettz`, which names the module it is in. That name is
-// no patch of the package's `__init__.py`, so `tz.tzstr` in another module of the run is still an import to offer.
 #[test]
 fn doctest_naming_its_own_module_does_not_patch_the_package() {
     let root = project(&[
@@ -219,7 +212,6 @@ fn doctest_naming_its_own_module_does_not_patch_the_package() {
     );
 }
 
-// A module only a stub declares has no source to read its attributes from, so reaching them through it is left alone.
 #[test]
 fn stub_only_module_attribute_is_not_reported() {
     let root = project(&[
@@ -257,8 +249,7 @@ fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP102,SMP403"]).1, stdout);
 }
 
-// Patching an attribute of the module's own import reaches `os` through `files` without importing it from there, and
-// importing it from there borrows a name `files` uses rather than one it exports.
+// The test patches `os` through the module that imported it. This does not declare `os` part of that module's API.
 #[test_case("mocker.patch(\"pkg.files.os.getcwd\")" ; "patch_of_an_attribute")]
 #[test_case("from pkg.files import os" ; "import_of_the_name")]
 fn module_import_is_not_an_export(reference: &str) {
@@ -298,7 +289,6 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP501"]).1, common::native(stdout));
 }
 
-// `import *` takes the names `__all__` lists, or without one every public name, so those may be in use unnamed.
 #[test_case("", common::PASSED ; "every_public_name")]
 #[test_case(
     "__all__ = [\"run\"]\n",
@@ -317,8 +307,6 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::native(stdout));
 }
 
-// A store to a module attribute from another file uses the name, as `setattr` over a literal does, so no fix localizes
-// the module variable or renames it out from under the store.
 #[test_case("report.TABLE_JSON_DIR = Path(\"out\")\n" ; "assignment")]
 #[test_case("del report.TABLE_JSON_DIR\n" ; "deletion")]
 #[test_case("setattr(report, \"TABLE_JSON_DIR\", Path(\"out\"))\n" ; "setattr")]
@@ -338,8 +326,6 @@ fn stored_module_variable_stays_module_level(store: &str) {
     assert_ne!(common::read(unwritten.path(), "pkg/report.py"), report);
 }
 
-// A name imported from a package counts in the module its `__init__.py` star-imports it from, where an `__all__` would
-// narrow what the package re-exports.
 #[test]
 fn star_reexport_keeps_names_of_the_package() {
     let types = "class ResourceType:\n    pass\n\n\ndef parse() -> None:\n    pass\n";
@@ -363,7 +349,6 @@ fn star_reexport_keeps_names_of_the_package() {
     );
 }
 
-// A star import takes only what the module's `__all__` lists, so a listed name read through the package is in use.
 #[test]
 fn star_reexport_reaches_the_names_all_lists() {
     let root = project(&[
@@ -375,7 +360,6 @@ fn star_reexport_reaches_the_names_all_lists() {
     common::assert_clean(root.path(), "SMP402");
 }
 
-// A module the run excludes has no facts, so a star import of it re-exports whatever the package's importers read.
 #[test]
 fn star_reexport_of_an_excluded_module_keeps_the_package_clean() {
     let root = project(&[
@@ -389,8 +373,8 @@ fn star_reexport_of_an_excluded_module_keeps_the_package_clean() {
     assert_eq!(stdout, common::PASSED, "{stderr}");
 }
 
-// `oci_test_init` resolves only through a `sys.path` entry a `conftest.py` adds, so any module of the run by that name
-// may be the one star-imported and keeps its names, while modules by other names cannot be.
+// The project has no top-level `oci_test_init` module. A runtime change to `sys.path` could make the copy in `support`
+// supply the star import.
 #[test]
 fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     let root = project(&[
@@ -407,8 +391,8 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     );
 }
 
-// Another file's writes count by the class of their receiver: a mock's never, an instance's or an unknown object's
-// always. A name no class declares written on an unknown object, as `upper` on `result.log`, makes the fix unsafe.
+// A write to `result.log` can prevent freezing `Result`. A write to `result.log.upper` changes an attribute on the
+// field's value.
 #[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True)" ; "mock")]
 #[test_case("result = Result(log=\"\")\n    result.log = log\n", "", "@dataclass" ; "instance")]
 #[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass" ; "unknown")]
@@ -516,9 +500,8 @@ fn dataclass_frozen_reads_writes_in_other_files(body: &str, marker: &str, decora
     );
 }
 
-// A test imports `changelog` by its bare name from a directory pytest's `pythonpath` adds, which the index does not
-// search, so the module is the namesake of the run's file. The test's call drops its value, but its arguments still
-// count: it leaves `full` at its default.
+// The test imports `changelog` by its bare name, although the project file is under `scripts/`. Its call omits `full`
+// even though it discards the result.
 #[test]
 fn namesake_call_that_drops_its_value_counts_its_arguments() {
     let root = project(&[
@@ -543,8 +526,6 @@ fn namesake_call_that_drops_its_value_counts_its_arguments() {
     );
 }
 
-// A module that defines a function on both branches of a test gives its importers one signature only when both
-// definitions agree on it.
 #[test_case("first, second, third", 1 ; "same_parameters")]
 #[test_case("second, first, third", 0 ; "other_parameters")]
 fn imported_function_defined_twice_has_a_signature_when_both_agree(other: &str, reported: usize) {
@@ -558,9 +539,7 @@ fn imported_function_defined_twice_has_a_signature_when_both_agree(other: &str, 
     assert_eq!(common::reports(&stdout, "SMP556").len(), reported, "{stdout}");
 }
 
-// A write through a member of the enclosing class, reached from the instance or from a parameter annotated with the
-// class, lands on the member's class only: that class keeps its report without a fix, while a namesake field of another
-// dataclass can still be frozen.
+// A write through a typed member can identify which of two dataclasses with the same field is modified.
 #[test_case("self" ; "own_instance")]
 #[test_case("other" ; "declared_parameter")]
 fn write_through_a_class_member_reaches_the_member_class(receiver: &str) {
@@ -589,8 +568,6 @@ fn write_through_a_class_member_reaches_the_member_class(receiver: &str) {
     );
 }
 
-// A module that imports one of the run's modules still knows the text a library call returns, while the run's module
-// answers for its own function by its signature.
 #[test]
 fn slice_of_a_library_call_beside_a_run_module_is_text() {
     let root = project(&[
@@ -612,8 +589,8 @@ fn slice_of_a_library_call_beside_a_run_module_is_text() {
     );
 }
 
-// `json` resolves to the standard library's stub, which has no file of the run, so a module of the run named `json`
-// may still be the one imported, and the names read from it are in use.
+// The resolver can find a standard-library stub without finding a project file. The index also considers project
+// modules with the same final name for this import.
 #[test]
 fn standard_library_import_reaches_a_module_of_its_name() {
     let root = project(&[

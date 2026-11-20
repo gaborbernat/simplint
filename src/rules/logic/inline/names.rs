@@ -18,14 +18,13 @@ pub(in crate::rules::logic) struct Names<'a> {
     // a pattern capture.
     pub(in crate::rules::logic) rebound: FxHashSet<&'a str>,
     pub(in crate::rules::logic) declared_outer: FxHashSet<&'a str>,
-    // Names a string annotation or a `ForwardRef` reads. The walk does not see them, and they are read whenever the
-    // annotation is evaluated, so no name they read is inlined.
+    // String annotations and `ForwardRef` can refer to locals when evaluated later. Preserve those bindings.
     pub(in crate::rules::logic) string_reads: FxHashSet<String>,
     in_annotation: bool,
     // Whether the function reads its locals by name, which keeps every name alive.
     pub(in crate::rules::logic) reads_locals: bool,
     pub(in crate::rules::logic) reads_by_text: bool,
-    // A nested scope's own variable is not the function's, though spelled the same, so its mentions are left out.
+    // Ignore references to a shadowing variable in a nested scope.
     inner: InnerScopes<'a>,
 }
 

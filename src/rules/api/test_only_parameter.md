@@ -2,9 +2,9 @@ Flags a parameter with a default that only test calls pass, while production cal
 
 ## Why is this bad?
 
-A parameter that only tests set is a seam for the test suite in production code. Callers see an option the program never
-uses, and the variation it offers lives where no reader expects it. Keeping the variation in the tests, through a helper
-or a fixture, leaves the production signature to what the program does.
+If production callers always use the default, an option such as `urgent` below can make the function appear to support a
+second mode that only its tests exercise. A test helper or fixture can supply test-specific behavior without adding a
+parameter to every caller's interface.
 
 ## Example
 
@@ -100,6 +100,9 @@ unpacks `**kwargs`, which may pass any keyword.
   ```
 
 ### Exceptions
+
+The rule skips test modules and modules that another file star-imports. It also skips a module-level function if its
+name is rebound.
 
 - **Parameters production code passes**: a single production call that passes the parameter keeps it.
 
@@ -233,12 +236,12 @@ unpacks `**kwargs`, which may pass any keyword.
       send("a@b.c", urgent=True)
   ```
 
-- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
-  decorator that passes each call on unchanged keeps the function judged:
-  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
+- **Decorated functions** can have callers that never appear in the source. The rule still checks functions decorated
+  with [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache`, `wraps`,
   [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
-  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
-  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
+  `asynccontextmanager`, [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod),
+  `classmethod`, or `final` and `override` from [`typing`](https://docs.python.org/3/library/typing.html#typing.final)
+  or `typing_extensions`.
 
   ```python ok
   from atexit import register
@@ -252,7 +255,8 @@ unpacks `**kwargs`, which may pass any keyword.
   send("a@b.c")
   ```
 
-- **Public functions of a library**: code outside the project may call them without the argument.
+- **Public library functions and functions listed in `__all__`** may have callers outside the project that pass the
+  argument.
 
   ```toml config
   [build-system]
@@ -334,22 +338,16 @@ unpacks `**kwargs`, which may pass any keyword.
       assert make_config(rev="v1") != default_config()
   ```
 
-- **Parameters that inject a collaborator**: a defaulted parameter is a seam where a test swaps in a stand-in, which is
-  a design choice rather than test-only plumbing. A collaborator is a function, a class, a module, or an instance built
-  by calling a class. It is exempt in these cases:
+- **Parameters used for dependency injection** let tests substitute a function, class, module or instance. When the
+  default is `None`, calling the parameter directly qualifies. Reading an attribute such as `mailer.send` also qualifies
+  if the annotation looks like a dependency. The rule unwraps `Optional[...]` and unions with `None`, and recognizes
+  data annotations such as `str`, `dict`,
+  [`Mapping` and `Sequence`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc).
 
-  - a `None` default, when the body calls the parameter, such as `hook(address)`, or when the annotation, unwrapped from
-    `Optional[...]` and `... | None`, names a class, Protocol, module or callable that is not a data type, and the body
-    calls the parameter or reads an attribute of it. A `None` default alone does not exempt a parameter;
-  - any other default that is a name, an attribute or a call resolving to a collaborator, when the body calls the
-    parameter or reads an attribute of it, such as `mailer.send(address)`. A name bound to a literal, such as a `dict`,
-    or to a call of a data constructor, such as `dict()`, is data, and so is a name that cannot be resolved.
-
-  The data types are the builtins, such as `dict`, `list` and `str`, and the collection types of
-  [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc) and `typing`, such
-  as `Mapping` and `Sequence`. A parameter annotated `bool`, `int`, `float`, `str`, `bytes`, `complex` or `Literal[...]`
-  stays reported, and so does one annotated with an enum, which the project defines or imports, as `Mode`,
-  `Mode | None`, `Optional[Mode]` or `module.Mode`. So does one whose default is an enum member, such as `Mode.FAST`.
+  For other defaults, the rule checks whether the parameter is called or used to access an attribute, and whether its
+  default resolves to a dependency. Examples include a lambda, a function name and an instance of a project class. A
+  literal, a call to a data constructor such as `dict()`, or an unresolved name does not qualify. A recognized enum
+  annotation or enum default keeps the parameter eligible for a report.
 
   ```python context file=app/service.py
   from app.mail import send
@@ -427,9 +425,4 @@ unpacks `**kwargs`, which may pass any keyword.
 
 ### Fix
 
-The rule has no fix. Removing the parameter changes the signature every caller sees, and the tests that pass it would
-need the variation moved elsewhere first. The author decides where the variation belongs.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+Removing the parameter changes the function signature and breaks the tests that pass it. The rule offers no fix.

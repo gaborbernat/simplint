@@ -165,24 +165,26 @@ def dump() -> str:
   __lazy_modules__ = [name for name in ("json",)]
   ```
 
-- **A relative entry in a module outside a package**: there is no package to resolve it against, so it cannot be
-  compared with the imports.
+- **An entry based on `__spec__.parent` outside a package**. simplint cannot resolve it to an absolute name. A plain
+  string such as `".helper"` still triggers a report.
 
 ### Fix
 
 A fix that edits the list rewrites it, keeping a comment at the end of an entry's line with its entry. Any other comment
-inside the list withholds the fix, since the rewrite would lose it. A `lazy` import that names more than one module
-keeps its `lazy`, since removing it would make the other modules eager too.
+inside the list prevents that rewrite. The rule also leaves unparenthesized tuples alone and keeps the last item in a
+set because `{}` would create a dictionary. A `lazy` import that names more than one module keeps its `lazy`, since
+removing it would make the other modules eager too.
 
 ## Other tools
 
 - **[flake8-lazy](https://github.com/henryiii/flake8-lazy):** `LZY202` (never imported), `LZY203` (duplicate), `LZY204`
   (assigned after the import), `LZY205` (relative name), `LZY302` (listed and `lazy`), `LZY303` (imported eagerly and
-  lazily) and `LZY402` (enclosing package), without fixes. Its `--apply` mode rewrites the whole list.
+  lazily) and `LZY402` (enclosing package), as diagnostics. The standalone runner can regenerate the list with
+  `--apply=list`.
 - **[Ruff](https://github.com/astral-sh/ruff):**
   [`lazy-import-immediately-resolved`](https://docs.astral.sh/ruff/rules/lazy-import-immediately-resolved/) (`TID255`)
-  reports a lazy import that module-level code uses at once, which this rule leaves to it. Nothing reports an entry that
-  matches no import.
+  reports a lazy import that module-level code uses at once, including imports deferred by a literal `__lazy_modules__`
+  declaration.
 - **[Lifeguard](https://github.com/meta/Lifeguard):** finds module-level side effects that break when a module loads
   lazily, across a whole project. This rule checks only that each declaration in a file matches an import the file
   defers.

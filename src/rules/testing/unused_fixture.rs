@@ -32,9 +32,7 @@ pub fn unused_fixture(checker: &Checker) {
     }
 }
 
-// Fixtures that a widely used plugin requests by name, so a project defines them to configure the plugin: anyio's
-// plugin reads `anyio_backend`, pytest-asyncio's runs `event_loop_policy` for every test, and pytest-django's
-// `django_db_setup` requests the others.
+// Plugins can request these fixture overrides even when no project test mentions them.
 const PLUGIN_REQUESTED: &[&str] = &[
     "anyio_backend",
     "event_loop_policy",
@@ -45,13 +43,12 @@ const PLUGIN_REQUESTED: &[&str] = &[
     "django_db_createdb",
 ];
 
-// The name pytest requests the fixture by, or `None` when the function is no fixture or runs for every test.
 fn fixture_name(function: &ast::StmtFunctionDef) -> Option<&str> {
     function.decorator_list.iter().filter(|decorator| is_fixture(decorator)).find_map(|decorator| {
         let Some(arguments) = decorator.expression.as_call_expr().map(|call| &call.arguments) else {
             return Some(function.name.as_str());
         };
-        // Autouse fixtures run for every test, whether or not a test names them, unless `autouse=False`.
+        // An expression for `autouse` may evaluate to true.
         let autouse = arguments.find_keyword("autouse");
         if autouse.is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_none_or(|literal| literal.value)) {
             return None;

@@ -1,5 +1,3 @@
-// AST and source helpers that rules, the linter and the project index all read: walking statement bodies, what a
-// name's underscores say, what a module's `__all__` and strings hold, and where the line above a statement starts.
 use std::borrow::Cow;
 
 use ruff_python_ast::AnyParameterRef;
@@ -45,10 +43,8 @@ impl Nesting {
         self.ranges[index]
     }
 
-    // The indices of the ranges that hold `range`, the innermost first. A range that holds `range` starts no later
-    // than it, and each such range encloses the last one that starts before it, so the holders are that one and the
-    // ranges it is nested in. Exact for a non-empty `range`, and for an empty one that no two ranges touch at; there it
-    // returns one of the two holders a linear scan finds.
+    // Start with the last range that begins at or before the query and walk its parents. An empty query at the
+    // shared boundary of two disjoint ranges returns only one of them.
     pub fn holders(&self, range: TextRange) -> impl Iterator<Item = usize> + '_ {
         let last = self.order.partition_point(|&(index, _)| self.ranges[index].start() <= range.start()).checked_sub(1);
         std::iter::successors(last, |&position| self.order[position].1)
@@ -63,9 +59,8 @@ pub fn previous_line_start(source: &str, line_start: TextSize) -> TextSize {
     source.line_start(line_start - TextSize::from(terminator))
 }
 
-// What a name's leading underscores say about who may use it. The two readings of "public" differ on dunders:
-// `from module import *` without `__all__` skips every name with a leading underscore, dunders included, while the
-// typing spec and PEP 8 treat only a non-dunder underscore name as internal, so `__version__` is public.
+// Star imports without `__all__` skip any leading underscore. API checks distinguish dunder names such as
+// `__version__` from private names such as `_version`.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Visibility {
     Public,
@@ -882,8 +877,7 @@ pub(crate) fn is_prose_statement(stmt: &Stmt) -> bool {
         if value.as_string_literal_expr().is_some_and(|literal| !literal.value.to_str().contains(">>>")))
 }
 
-// Ruff's own return visitor stopped reporting generators, so a function's `return` statements and whether it yields
-// are collected here, skipping nested scopes.
+// The fix needs both return statements and generator status from the same function scope.
 #[derive(Default)]
 pub struct ReturnVisitor<'a> {
     pub returns: Vec<&'a ast::StmtReturn>,

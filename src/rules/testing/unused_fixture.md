@@ -1,10 +1,9 @@
-Flags a pytest fixture that no test or other fixture requests, so pytest never runs it.
+Flags a pytest fixture when the lint run finds no request for its name.
 
 ## Why is this bad?
 
-A fixture that nothing requests is setup code that never runs, and it reads as if a test depends on it. When a test is
-later rewritten to use the fixture, the author finds it already written but broken or stale. Removing it keeps the
-fixtures a reader sees to the ones tests use.
+A fixture left behind after a test changes still looks like part of its setup. Request it in the test that needs it, or
+remove it if no test uses it.
 
 ## Example
 
@@ -38,12 +37,10 @@ def test_order_id(order: str) -> None:
 
 ## What it does
 
-A fixture is requested when a test or another fixture takes its name as a parameter, when a string in a test module
-spells its name, as a `usefixtures` marker, a `getfixturevalue` call or a list of `params` does, when a test module
-imports it or reads its `__name__`, or when the fixture is set with `name=` and requested by that name. Requests are
-collected from every test module of the run, including `conftest.py` files, so a fixture in a `conftest.py` is used by
-any test below it, and from the `test*` functions and fixtures of any other module, which pytest collects when its
-`python_files` setting names the module.
+The rule looks for the fixture's registered name across all files in the lint run. In test modules, it counts function
+parameters, imports, reads of `fixture.__name__` and string literals equal to the name. These include strings passed to
+`usefixtures` or `getfixturevalue`. In other modules, it counts parameters of `test*` functions and fixtures. A matching
+name anywhere in the run is enough, even if pytest would resolve it to a different fixture.
 
 ### Active on
 
@@ -134,8 +131,8 @@ any test below it, and from the `test*` functions and fixtures of any other modu
       assert url
   ```
 
-- **Requested through the function**: a test module that imports the fixture, or passes `fixture.__name__` to
-  `usefixtures`, requests it.
+- **References to the function.** A test module that imports the fixture or reads `fixture.__name__` can use it
+  indirectly.
 
   ```python ok file=tests/fixtures.py
   import pytest
@@ -157,8 +154,8 @@ any test below it, and from the `test*` functions and fixtures of any other modu
       assert True
   ```
 
-- **Requested from a module pytest collects by its settings**: a `test*` function or a fixture outside the test modules,
-  in a module that `python_files` names, requests the fixtures it takes.
+- **Parameters outside test modules.** A `test*` function or fixture can request a fixture even in a file with a
+  nonstandard name.
 
   ```python ok file=tests/conftest.py
   import pytest
@@ -175,8 +172,8 @@ any test below it, and from the `test*` functions and fixtures of any other modu
   ```
 
 - **Fixtures of a `conftest.py` when the tests load plugins**: a test module that sets `pytest_plugins` loads fixtures
-  that may request one the `conftest.py` overrides, by a name no file of the run spells. pytest's own plugins, such as
-  `pytester`, request none, so loading only them keeps nothing.
+  that may request one the `conftest.py` overrides, by a name no file of the run spells. The rule still checks
+  `conftest.py` if the only plugins listed are `pytester` or names starting with `_pytest`.
 
   ```python ok file=tests/conftest.py
   import pytest
@@ -189,7 +186,8 @@ any test below it, and from the `test*` functions and fixtures of any other modu
       return "/tmp"
   ```
 
-- **Autouse fixtures**: pytest runs an `autouse` fixture for every test without a request, so it is never unused.
+- **Autouse fixtures**: pytest applies autouse fixtures to tests that can see them. The rule skips a fixture with an
+  `autouse` argument unless it is the literal `False`.
 
   ```python ok file=tests/test_orders.py
   import pytest
@@ -204,8 +202,8 @@ any test below it, and from the `test*` functions and fixtures of any other modu
       assert True
   ```
 
-- **Fixtures outside test modules**: a fixture in a module that is not a test module is not checked, since pytest only
-  finds fixtures in test modules and `conftest.py` files.
+- **Fixtures outside test modules**: shared fixture libraries and plugins may have users outside the lint run. The rule
+  checks definitions only in [test modules](SMP801.html).
 
   ```python ok file=app/fixtures.py
   import pytest
@@ -218,15 +216,12 @@ any test below it, and from the `test*` functions and fixtures of any other modu
 
 ### Fix
 
-The rule has no fix. A fixture may be requested by a pytest plugin or by a name the run builds at run time, which the
-rule cannot see, so the author decides whether to remove it. A plugin installed as a dependency, rather than named in
-`pytest_plugins`, may request a `conftest.py` fixture that overrides one of its own; suppress the report on such an
-override. The fixtures that widely used plugins request are never reported: anyio's `anyio_backend`, pytest-asyncio's
-`event_loop_policy`, and pytest-django's `django_db_setup`, `django_db_modify_db_settings`, `django_db_use_migrations`,
-`django_db_keepdb` and `django_db_createdb`.
+Check for plugin requests and names built at runtime before removing a fixture. If an installed plugin requests a
+`conftest.py` override that simplint cannot see, suppress the report on that fixture. The rule accepts `anyio_backend`,
+`event_loop_policy`, `django_db_setup`, `django_db_modify_db_settings`, `django_db_use_migrations`, `django_db_keepdb`
+and `django_db_createdb` by name.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [pytest-deadfixtures](https://github.com/jllorencetti/pytest-deadfixtures) lists the unused fixtures of a pytest run,
   with no fix.

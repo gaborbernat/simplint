@@ -2,8 +2,6 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// A test that names the attribute it sets, deletes or patches with a loop over string literals uses each of them, as a
-// literal name does.
 #[test_case(
     concat!(
         "for name in (\"client\", \"engine\"):\n",
@@ -48,7 +46,6 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
     assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`engine` is in `__all__`"));
 }
 
-// A loop at module level unpacks its string rows into each name of its target, a list target as a tuple one.
 #[test_case("for name, value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "tuple_target")]
 #[test_case("for [name, value] in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "list_target")]
 #[test_case("for name, holder.value in ((\"client\", \"a\"), (\"engine\", \"b\")):\n" ; "attribute_in_the_target")]
@@ -62,8 +59,7 @@ fn names_read_in_module_level_loops_are_used(header: &str) {
     common::assert_clean(root.path(), "SMP402");
 }
 
-// A loop over anything but string rows of the same width, whose items the run cannot know, names no attribute, and
-// neither does a name rebound to something else after it held string literals, or a computed name.
+// A computed name, inconsistent row widths or a rebinding prevents the index from resolving a specific attribute.
 #[test_case("for name in names():\n        monkeypatch.setattr(tutorial, name, None)\n" ; "call")]
 #[test_case("for name in dir(tutorial):\n        monkeypatch.setattr(tutorial, name, None)\n" ; "dir")]
 #[test_case("for name in (\"client\", 1):\n        monkeypatch.setattr(tutorial, name, None)\n" ; "mixed_items")]
@@ -103,8 +99,6 @@ fn loops_over_unknown_iterables_name_no_attribute(body: &str) {
     );
 }
 
-// A `setattr` in a loop over a literal of modules writes the name on each module the items import or name, as a literal
-// module does, while an item that names no module is ignored and a module outside the loop still keeps its attribute.
 #[test_case("(tutorial, importlib.import_module(\"docs.other\"))" ; "imported_and_import_module")]
 #[test_case("(tutorial, importlib.import_module(\"docs.other\"), 1)" ; "item_naming_no_module_ignored")]
 fn setattr_loop_over_modules_writes_each_module(items: &str) {
@@ -134,8 +128,6 @@ fn setattr_loop_over_modules_writes_each_module(items: &str) {
     );
 }
 
-// A loop that rebinds its module's name, or a function or lambda whose parameter shadows it, patches neither module it
-// loops over.
 #[test_case(
     concat!(
         "    for module in (tutorial, other):\n",
@@ -185,7 +177,6 @@ fn loops_that_rebind_or_shadow_their_module_patch_neither(body: &str) {
     );
 }
 
-// An `importlib.import_module` item without a literal module names no module, so the loop writes on the others only.
 #[test_case("importlib.import_module()" ; "without_argument")]
 #[test_case("importlib.import_module(MODULE)" ; "non_literal_argument")]
 fn import_module_without_a_literal_name_writes_no_module(item: &str) {
@@ -220,7 +211,6 @@ fn import_module_without_a_literal_name_writes_no_module(item: &str) {
     );
 }
 
-// A loop nested in another that binds the same name hands the outer loop's strings back once it ends.
 #[test]
 fn nested_loops_restore_the_outer_name() {
     let root = project(&[
@@ -242,8 +232,7 @@ fn nested_loops_restore_the_outer_name() {
     );
 }
 
-// A constant a string in the run spells, as a dotted path a test patches or a parametrized name, keeps its module-level
-// definition, which inlining it into the one function that reads it would bypass.
+// Inlining the constant would break a string-based lookup, such as a patch by dotted name.
 #[test_case(
     concat!(
         "import unittest.mock\n",
@@ -300,8 +289,6 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
     assert!(check(unread.path(), &["--select", "SMP202"]).1.contains("`LIMIT` is used by one function only"));
 }
 
-// A test that sets a module variable through a `MonkeyPatch` writes it, whatever the object is named and however it is
-// reached, so the variable is not `Final`.
 #[test_case(
     concat!(
         "def test_app(monkeypatch) -> None:\n",
@@ -341,7 +328,6 @@ fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     assert!(check(unpatched.path(), &["--select", "SMP601"]).1.contains("`LIMIT` is never reassigned"));
 }
 
-// A `setattr` on an object that is not a module of the run writes no module variable, so the variable stays `Final`.
 #[test_case(
     concat!(
         "from docs.tutorial import Settings\n",
@@ -384,7 +370,6 @@ fn setattr_on_a_non_module_writes_no_module_variable(test: &str) {
     );
 }
 
-// A write sets the name of the module it is made on, so another module's variable of the same name stays `Final`.
 #[test_case(
     concat!(
         "def test_app(monkeypatch) -> None:\n",
@@ -457,8 +442,6 @@ fn module_write_quiets_only_the_module_it_writes(test: &str) {
     );
 }
 
-// A computed write may set any name of the module it reaches, so that module's variables are not `Final`, while another
-// module's variable of the same name still is.
 #[test_case(
     concat!(
         "def test_app(monkeypatch, name: str) -> None:\n",
@@ -503,8 +486,6 @@ fn computed_module_write_quiets_only_the_module_it_reaches(test: &str) {
     );
 }
 
-// A docstring that mentions a constant is prose, which neither patches nor looks it up, so the constant still moves
-// into the one function that reads it.
 #[test]
 fn docstring_mention_does_not_keep_a_constant() {
     let root = project(&[(
@@ -521,8 +502,7 @@ fn docstring_mention_does_not_keep_a_constant() {
     );
 }
 
-// A computed write reaches the module its target names, so the module's variables keep their names. An f-string names a
-// module only through the literal dotted text before its first interpolation.
+// The literal prefix before the first f-string interpolation can identify the patched module.
 #[test_case(
     concat!(
         "import unittest.mock\n",
@@ -577,7 +557,6 @@ fn computed_patch_targets_name_the_module_they_write(test: &str, renamable: bool
     assert_eq!(stdout.contains("SMP102 [*]"), renamable);
 }
 
-// The package's `import *` of `backends` would bind the dict named `backends` over the attribute that holds the module.
 #[test]
 fn name_of_a_module_its_package_star_imports_stays_unlisted() {
     let root = project(&[
@@ -597,7 +576,6 @@ fn name_of_a_module_its_package_star_imports_stays_unlisted() {
     );
 }
 
-// A package `__init__.py` that Ruff's `lint.exclude` leaves unlinted still star-imports the module.
 #[test]
 fn package_init_excluded_from_linting_still_star_imports() {
     let root = project(&[
@@ -618,9 +596,8 @@ fn package_init_excluded_from_linting_still_star_imports() {
     );
 }
 
-// `pkg.views` is no module, yet reaches `pkg/sub/views.py` through the submodule the package re-exports, so its
-// `ViewBase` is used. `pkg.missing` names no module of the package, so an unresolved read may name any module's
-// `ViewBase`: `pkg/sub/other.py` still reports its `ViewBase` but offers no rename, and `Unread` is reported with one.
+// `pkg.views` reaches `pkg/sub/views.py` through a re-export. An unresolved `pkg.missing.ViewBase` can refer to another
+// `ViewBase`, so its unused-name report has no rename fix.
 #[test]
 fn attribute_path_through_a_reexported_submodule_counts_as_referenced() {
     let module = "__all__ = [\"View\"]\n\n\nclass View:\n    pass\n\n\nclass ViewBase:\n    pass\n";

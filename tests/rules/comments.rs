@@ -17,9 +17,8 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-// Ruff's E266 and E265 report a plain comment of prose after its hashes, with the text SMP001's fix keeps, so SMP001
-// leaves such a comment to them whether or not the project selects them. A decorated comment or a short heading is not
-// the same text as Ruff's fix, so SMP001 keeps it.
+// E265 and E266 can produce the same comment text as SMP001. Removing a decoration or deleting a short heading requires
+// a different edit.
 #[test_case("E266", "## Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "spaced_hashes")]
 #[test_case("E265", "##Remove this return to update the cron job\nVALUE = 1\n", [false, false] ; "unspaced_hashes")]
 #[test_case("E265", "##\tRemove this return to update the cron job\nVALUE = 1\n", [false, false] ; "tab_after_hashes")]
@@ -65,8 +64,8 @@ fn ignore_without_numeric_selectors_needs_no_migration(source: &str) {
     common::assert_clean(root.path(), "SMP008");
 }
 
-// Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them whether or not the project
-// selects them. A `type: ignore` followed by a reason is no blanket for PGH003, so SMP004 keeps it.
+// A reason after `type: ignore` changes whether PGH003 reports the line. SMP004 still checks the unqualified
+// suppression.
 #[test_case("import os  # noqa\n", "PGH004", "`# noqa` suppresses every error", [false, false] ; "noqa")]
 #[test_case(
     "import os  # type: ignore\n", "PGH003", "`# type: ignore` suppresses every error", [false, false] ; "type_ignore"
@@ -176,8 +175,8 @@ fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, expected: (i32, 
     );
 }
 
-// Each selector below suppresses nothing, but the first one's comment is all that keeps SMP531 from reporting the
-// statements it stands between, so removing every selector at once exposes a report and the fix keeps that one.
+// Neither selector matches a diagnostic. Removing the first comment would join the statements into a block that SMP531
+// reports.
 #[test]
 fn unused_ignore_keeps_the_selector_whose_comment_silences_a_report() {
     let needed = "def headers() -> dict[str, str]:\n    headers = {}\n    headers[\"Accept\"] = \"json\"  # simplint: \
@@ -200,7 +199,6 @@ fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
     assert_eq!(common::read(root.path(), "module.py"), format!("{needed}\n\nvalue = 2\nother = 3\n"));
 }
 
-// An indentation as wide as the comment limit leaves no room for the text, so the string is reported without a fix.
 #[test]
 fn string_statement_comment_without_room_has_no_fix() {
     let source = "def run() -> None:\n    start()\n    \"\"\"Wait.\"\"\"\n    wait()\n";
@@ -313,7 +311,7 @@ fn unused_ignore_fixes_every_stale_selector(select: &str, source: &str, expected
     );
 }
 
-// The numeric selector the removal shifts is reported where it was, so the report is no new one.
+// Moving an existing numeric selector can shift its diagnostic without creating another violation.
 #[test]
 fn unused_ignore_keeps_the_numeric_report_of_a_selector_it_shifts() {
     let root = common::project(&[("module.py", "x = 1  # simplint: ignore[SMP602, SMP101]\n")]);
@@ -326,7 +324,6 @@ fn unused_ignore_keeps_the_numeric_report_of_a_selector_it_shifts() {
     );
 }
 
-// Removing the selectors on both sides rewrites the whole list, so the numeric report starts inside the rewrite.
 #[test]
 fn unused_ignore_keeps_the_numeric_report_inside_the_rewritten_list() {
     let root = common::project(&[(
@@ -389,7 +386,6 @@ fn unused_ignore_fixes_many_comments_in_one_pass() {
     );
 }
 
-// SMP008 reports on the codes each removal edits, which leaves the stale numeric selectors no less unused.
 #[test]
 fn unused_ignore_reports_numeric_selectors_next_to_numeric_ignore() {
     let root = common::project(&[("module.py", "x = 1  # simplint: ignore[SMP602,SMP101]\n")]);

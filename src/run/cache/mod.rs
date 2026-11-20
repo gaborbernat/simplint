@@ -1,11 +1,6 @@
-// Ruff's cache, adapted from the `ruff` crate's `cache.rs`: one file per package, keyed by the package root, remembers
-// which files had nothing to report, so a later run can skip unchanged files.
-// Without fixes, a file with reports keeps them too.
-//
-// simplint also keeps each file's import facts, so the project index does not parse unchanged files, and a clean result
-// counts only while the file's settings and its slice of the project index are what they were. With fixes on, a file
-// the fix loop left as it was keeps the rules whose fixes the loop withdrew, so a later run reproduces its reports from
-// one lint.
+// Each package cache stores import facts and lint results. Matching files can reuse their facts while changes to
+// settings or the project index can invalidate their diagnostics. Fix runs also record individual fixes and rules
+// withdrawn from an unchanged file, so the next run can reproduce the diagnostics without repeating the fix loop.
 mod fingerprint;
 mod rendered;
 mod report;
@@ -188,8 +183,7 @@ impl<'a> Cache<'a> {
         if !cacheable {
             return diagnostics;
         }
-        // Text is kept only for a file the cache already held reports for, so a first run that has nothing to reuse
-        // renders the output as it did before, and the next run reuses the text.
+        // Wait until a file already has cached reports before saving rendered output, so a first run skips that work.
         let rendered = full
             .filter(|_| file.is_some_and(|file| file.findings.is_some()) && !diagnostics.inner.is_empty())
             .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.hash, fingerprint.clean));
@@ -371,7 +365,7 @@ impl<'a> Cache<'a> {
             buffer.flush().context("Failed to write serialized cache to temporary file.")?;
         }
         let persisted = temp_file.persist(&self.path).map(drop);
-        // On Windows another simplint process may hold the cache file open; its run writes the cache instead.
+        // On Windows an open handle can prevent replacement. Warn and let a later run refresh the cache.
         #[cfg(windows)]
         let persisted = persisted.or_else(|error| {
             if error.error.kind() != io::ErrorKind::PermissionDenied {

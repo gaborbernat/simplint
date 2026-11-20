@@ -68,9 +68,8 @@ pub(crate) fn field_list<'a>(lines: &[Line<'a>], base: usize) -> Vec<ListedField
     fields
 }
 
-// The text between the colons of a field, as `param count` in `:param count: How many.` Like docutils, a colon that
-// follows more text stays in the name, an escaped one included, and the closing colon needs a space or the end after
-// it and no space before it.
+// Docutils accepts interior colons in field names. The closing colon must follow a non-space character and precede
+// whitespace or the end of the line.
 pub(crate) fn field_marker(line: &str) -> Option<&str> {
     let rest = line.strip_prefix(':')?;
     if rest.starts_with(|char: char| char == ':' || char.is_ascii_whitespace()) {

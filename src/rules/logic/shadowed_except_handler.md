@@ -3,11 +3,10 @@ catches through a base class.
 
 ## Why is this bad?
 
-Python tries the handlers of a `try` in order and runs the first whose class matches. A handler for
+Python tries the handlers of a `try` in order and runs the first whose class matches. For example, a handler for
 [`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError) after one for
-[`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError) never runs, so the code in it is dead and the
-reader is misled about which handler deals with the error. Inside one clause, `(OSError, FileNotFoundError)` catches the
-same as `OSError` alone, and the extra entry suggests a distinction the code does not make.
+[`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError) never runs. Within a single clause,
+`(OSError, FileNotFoundError)` catches the same exceptions as `OSError` alone, in either order.
 
 ## Example
 
@@ -112,9 +111,9 @@ Python version, and the classes defined in the same file.
 
 ### Fix
 
-The fix removes a shadowed entry from a tuple and is safe: the base that shadows it stays in front of it, so the clause
-catches the same exceptions. A lone class, a handler whose every entry is shadowed and a tuple with a comment in it get
-no fix, since removing the handler drops its body.
+The fix safely removes a redundant tuple entry. Its base class remains in the same tuple or an earlier handler. Simplint
+leaves a fully shadowed handler for you to review because deleting it would also delete its body. It also preserves
+tuples that contain comments.
 
 ```python report
 def parse(text: bytes) -> int:
@@ -134,8 +133,7 @@ def parse(text: bytes) -> int:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Its duplicate handler rules cover a class named
-  twice, not a subclass after its base.
+- **[Ruff](https://github.com/astral-sh/ruff):** its duplicate-handler rules report a repeated exception class.
 - [pylint](https://github.com/pylint-dev/pylint) reports both forms as
   [bad-except-order](https://pylint.readthedocs.io/en/latest/user_guide/messages/error/bad-except-order.html) and
   [overlapping-except](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/overlapping-except.html).

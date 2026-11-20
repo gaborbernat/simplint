@@ -8,7 +8,7 @@ use crate::lint::registry::Rule;
 use crate::rules::logic::name_uses::LocalScope;
 
 pub fn wall_clock_duration(checker: &Checker) {
-    // `time.time` is spelled `time` wherever it is imported or called.
+    // Even aliased imports mention the original name.
     if !checker.has_unqualified_name("time") {
         return;
     }

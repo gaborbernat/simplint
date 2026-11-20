@@ -18,13 +18,12 @@ pub fn rst_missing_raises(checker: &Checker) {
         raises.visit_body(&def.body);
         let documented: FxHashSet<&str> = target.docstring.subjects(&[FieldKind::Raises]).map(canonical_name).collect();
         let mut missing: Vec<&str> = Vec::new();
-        // A field for a base documents its subclasses too, as `:raises OSError:` does `FileNotFoundError`.
+        // Callers can catch a base class such as OSError for a raised FileNotFoundError.
         for (name, lineage) in raises.raised {
             if !lineage.iter().any(|class| documented.contains(class)) && !missing.contains(&name) {
                 missing.push(name);
             }
         }
-        // The description of a raised exception is for a person to write, so the report carries no fix.
         for name in missing {
             checker.report(
                 Rule::RstMissingRaises,
@@ -35,9 +34,6 @@ pub fn rst_missing_raises(checker: &Checker) {
     }
 }
 
-// The exceptions a function body raises by name and lets escape, each with the classes it derives from: not re-raised
-// caught ones, not those a surrounding `try` of the same function catches, and not `NotImplementedError`, which marks a
-// method to override.
 struct Raises<'c, 'a> {
     checker: &'c Checker<'a>,
     raised: Vec<(&'a str, Vec<&'a str>)>,
@@ -67,7 +63,7 @@ impl<'a> Visitor<'a> for Raises<'_, 'a> {
                 let (Some(name), Some(lineage)) = (last_segment(class), lineage_names(self.checker, class)) else {
                     return;
                 };
-                // A class whose bases are not known is taken to derive from `Exception`, as a project's own do.
+                // Assume an unresolved base is covered by an Exception handler.
                 let unknown = !lineage.contains(&"BaseException");
                 let caught = self.caught.iter().flatten().any(|caught| {
                     lineage.contains(caught) || unknown && matches!(*caught, "Exception" | "BaseException")
@@ -85,7 +81,6 @@ impl<'a> Visitor<'a> for Raises<'_, 'a> {
     }
 }
 
-// The classes a handler catches, by the name a docstring gives them; a bare `except` catches `BaseException`.
 fn caught_names<'a>(checker: &Checker<'a>, handler: &'a ast::ExceptHandler) -> Vec<&'a str> {
     let ast::ExceptHandler::ExceptHandler(handler) = handler;
     handled_types(handler).map_or_else(

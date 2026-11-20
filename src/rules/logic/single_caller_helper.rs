@@ -109,8 +109,6 @@ fn is_type_guard(checker: &Checker, returns: &Expr) -> bool {
         .is_some_and(|name| matches!(name.segments(), ["typing" | "typing_extensions", "TypeGuard" | "TypeIs"]))
 }
 
-// Whether the call sits in a loop, comprehension or lambda of its caller, where inlining would run the helper's body
-// once per pass.
 fn in_repeat(body: &[Stmt], reference: TextRange) -> bool {
     let mut finder = Repeats { reference, depth: 0, repeated: false };
     finder.visit_body(body);

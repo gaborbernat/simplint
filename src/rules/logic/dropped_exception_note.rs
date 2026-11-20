@@ -28,7 +28,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     };
     let checker = walker.checker;
     let name = target.id.as_str();
-    // Most assignments build no exception, and a name the file never calls `add_note` on needs no class lookup.
+    // Skip class resolution when the module has no matching add_note access.
     let noted = checker.state().attribute_reads(checker).get(name).is_some_and(|reads| reads.contains(&"add_note"));
     if !noted || !lineage(checker, &call.func).is_some_and(|lineage| derives_from_base_exception(&lineage)) {
         return;
@@ -58,8 +58,6 @@ fn report(checker: &Checker, notes: &[TextRange], name: &str) {
     );
 }
 
-// How a block uses one name: the `add_note` calls on it, the other reads of it, a bare `raise` that re-raises the
-// exception being handled, and a `global` or `nonlocal` declaration that hands it to another scope.
 #[derive(Default)]
 struct Uses<'n> {
     name: &'n str,

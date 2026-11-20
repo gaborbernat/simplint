@@ -73,10 +73,8 @@ fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {
     }
 }
 
-// Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from
-// ISC003, so this rule keeps it. ISC003 is left the pair only while Ruff runs it: `ruff format` joins the lines once
-// simplint is done, and the pair would come back to this rule on the next run.
+// Leave logging messages to G003. Defer multiline literal pairs only when ISC003 can fix them in this run.
+// Otherwise the formatter can join the lines and leave the same concatenation for the next run.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
     let from_ruff = &walker.checker.settings.from_ruff;
     is_logging_message(walker, expr)
@@ -85,8 +83,7 @@ fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
             && ruff_fixes_literal_pair_at_start(walker.checker, expr))
 }
 
-// As G003 finds the message: the `msg` keyword, or the argument at the message's position, which `log` moves after
-// the level.
+// G003 accepts a keyword message and accounts for the level argument to log().
 fn is_logging_message(walker: &Walker, expr: &Expr) -> bool {
     let Some(Expr::Call(call)) = walker.expression_parent() else {
         return false;
@@ -273,7 +270,6 @@ fn expression_text(checker: &Checker, expr: &Expr, text: &str, delimiter: Quote,
     if requote && as_written {
         return None;
     }
-    // An expression the layout spreads over lines goes on one, as it would in a line long enough.
     if !requote && !text.contains('\n') {
         // A replacement field takes only a yield or star expression unparenthesized, so a generator the call took bare
         // gets the parentheses its own syntax would give it.

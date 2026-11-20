@@ -11,10 +11,8 @@ use rustc_hash::FxHashSet;
 
 use super::Resolved;
 
-// The files simplint checks, from Ruff's resolver, so the walk, `.gitignore`, the default and configured excludes and
-// the per-file target version match `ruff check`. Stubs are not linted, but the names they declare are the API of
-// their module. Files Ruff's `lint.exclude` leaves out are not linted either, yet the run still indexes them: a package
-// `__init__.py` excluded there still imports and re-exports the names of the modules it covers.
+// Ruff handles file discovery and exclusions. Keep stubs and `lint.exclude` matches for the index alone so their
+// declarations and re-exports still count.
 pub(crate) struct Discovered<'a> {
     pub(crate) python: Vec<PathBuf>,
     pub(super) unlinted: Vec<PathBuf>,
@@ -49,8 +47,7 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
             unlinted.push(path.to_path_buf());
             continue;
         }
-        // A file named on the command line is Python whatever its extension, as Ruff treats it, unless it is a
-        // notebook, TOML or Markdown file, which simplint does not lint.
+        // Treat explicitly named files with unrecognized extensions as Python, including extensionless scripts.
         let named = file.is_root() && !is_other_language(extension);
         if extension != Some("py") && !named {
             continue;
@@ -101,9 +98,8 @@ fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
         && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
 }
 
-// The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
-// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice. Hard
-// links share a file's device and inode, which their canonical paths do not show.
+// Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
+// twice. File IDs also identify hard links on filesystems that provide them.
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
@@ -156,10 +152,8 @@ fn identity(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok()
 }
 
-// Whether standard input, named by `--stdin-filename`, is linted as a file of that name on disk would be, except for a
-// stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file
-// is not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the
-// walk reports it as missing rather than as a file.
+// A stdin filename can name a stub or a file that does not yet exist. Ruff returns a missing-path entry for the
+// latter. Both qualify unless the file filters exclude them.
 pub(super) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
     if is_other_language(path.extension().and_then(|extension| extension.to_str())) {
         return Ok(false);

@@ -55,7 +55,7 @@ pub(crate) fn default_argument_value(checker: &Checker) {
         let name = function.name.as_str();
         let all = sites.entry(name).or_insert_with(|| module_sites(checker, function, &uses));
         for (param, argument, range) in passed_defaults(checker, function, call) {
-            // When every call passes the parameter, `unused-default` reports its default instead.
+            // Leave unused defaults to the rule that reports the definition.
             if all.as_ref().is_some_and(|all| always_passes(all, &function.parameters, param, 0)) {
                 continue;
             }
@@ -71,8 +71,7 @@ pub(crate) fn default_argument_value(checker: &Checker) {
     }
 }
 
-// A literal evaluates to an equal value at each call, so passing it again matches the default. A name or a call may
-// not, as its value can change between the definition and the call.
+// Names and calls can change value between the definition and the call.
 fn is_literal(expr: &Expr) -> bool {
     match expr {
         Expr::NoneLiteral(_)
@@ -88,8 +87,7 @@ fn is_literal(expr: &Expr) -> bool {
     }
 }
 
-// The arguments of `call` that pass a parameter its literal default: each keyword one, and the last positional one, as
-// leaving out an earlier one would shift the rest onto other parameters.
+// Dropping an earlier positional argument would shift the remaining arguments onto different parameters.
 fn passed_defaults<'a>(
     checker: &Checker,
     function: &'a ast::StmtFunctionDef,

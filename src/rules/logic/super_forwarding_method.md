@@ -1,14 +1,9 @@
-Flags a method whose only statement returns the same method of `super()`, called with the method's own arguments. The
-parent's method already does that job, so the override adds only a name to read.
+Flags a method that only returns a call to its parent's method of the same name with its own arguments.
 
 ## Why is this bad?
 
-A method that passes every argument on to the parent and returns the result changes nothing. A reader still has to check
-that it does nothing else, and the class carries a second copy of the parent's signature that can drift from it. Every
-call also pays for an extra frame and a `super()` lookup before it reaches the same code. Deleting the method lets the
-subclass inherit the parent's method, as pylint's
-[useless-parent-delegation](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/useless-parent-delegation.html)
-check also asks.
+When the subclass inherits a method unchanged, callers can use the parent implementation directly. Repeating its
+signature in the subclass gives you two signatures to maintain when the method changes.
 
 ## Example
 
@@ -45,8 +40,10 @@ given: positional parameters in order, `*args` as `*args`, keyword-only paramete
 `**kwargs`.
 
 The rule reads the method `super()` reaches, so the class must have a single base class that the module defines at its
-top level. When that class does not define the method, its own single base is read the same way. The method found must
-be a plain `def` taking the same parameters under the same names, without defaults.
+top level. When that class does not define the method, its own single base is read the same way. The inherited method
+must be an undecorated, synchronous `def` without defaults. The rule compares positional parameters after the receiver
+by name, order and kind, and keyword-only parameters by name. Both methods must agree on whether they take `*args` and
+`**kwargs`. The variadic parameter names can differ.
 
 - **A method that forwards its whole signature**: positional, variadic and keyword-only parameters all pass on.
 
@@ -333,8 +330,8 @@ be a plain `def` taking the same parameters under the same names, without defaul
 The fix deletes the method, along with the blank lines after it. A class left with no statement gets a `pass`. The fix
 is offered only for methods without annotations.
 
-The fix is safe: the parent's method takes the same arguments under the same names and is not abstract, and Python looks
-up the deleted method's name in the same class order that `super()` follows, so every call reaches the same code.
+Simplint marks the fix safe after checking the inherited signature and the subclass body. Deleting the override also
+deletes its docstring if it has one.
 
 ## Other tools
 

@@ -1,12 +1,12 @@
-Flags a `for` loop whose only job is to add to a string, bytes or number that the line before it set to `""`, `b""` or
-`0`. [`str.join()`](https://docs.python.org/3/builtins/stdtypes.html#str.join) or
-[`sum()`](https://docs.python.org/3/builtins/functions.html#sum) builds the same value in one call.
+Flags a `for` loop that starts immediately after `name = ""`, `name = b""` or `name = 0` and only adds values to that
+name.
 
 ## Why is this bad?
 
-The loop takes three lines and a mutable name to say what `"".join(parts)` or `sum(sizes)` says in one. For strings it
-can also be slow: each `+=` may copy the text built so far, so the loop is quadratic whenever CPython cannot extend the
-string in place, such as for an attribute or under another interpreter.
+[`str.join()`](https://docs.python.org/3/builtins/stdtypes.html#str.join),
+[`bytes.join()`](https://docs.python.org/3/builtins/stdtypes.html#bytes.join) and
+[`sum()`](https://docs.python.org/3/builtins/functions.html#sum) express the operation in one call. Repeated string
+concatenation can take quadratic time when each addition copies the text built so far.
 
 ## Example
 
@@ -30,12 +30,11 @@ def render(parts):
 
 ### Active on
 
-- **An empty `""` or `b""` start followed by a loop whose body is `name += value`**, directly or under one `if` with no
-  `else`. **Unsafe fix:** both statements become `name = "".join(...)` with a generator expression, or with the iterable
-  alone when the loop adds its own variable. The fix is offered when the loop has no comments, nothing reads its
-  variables after it, and the value and condition neither `yield` nor `await`: a generator expression rejects the first
-  and turns asynchronous with the second. It is unsafe because a `str` subclass with its own `__radd__`, such as
-  `markupsafe.Markup`, gets to escape or reject each value in the loop, and `join()` skips it.
+- **Strings and bytes.** The loop body can add a value directly or under a single `if` with no `else`. The unsafe fix
+  uses `"".join(...)` or `b"".join(...)`. It passes the iterable directly when the loop adds each item unchanged and
+  uses a generator expression for a filter or transformation. A string subclass such as
+  [`markupsafe.Markup`](https://markupsafe.palletsprojects.com/en/stable/escaping/) can customize addition to escape
+  text. Joining with `""` bypasses that behavior.
 
   ```python report
   def render(parts):
@@ -51,8 +50,8 @@ def render(parts):
       return text
   ```
 
-- **A `0` start**, rewritten to `sum(...)`. The fix is unsafe because a value's `__radd__` may differ from what `sum()`
-  does with it.
+- **Numbers.** The unsafe fix replaces the loop with `sum(...)`. Floating-point sums can round differently, and
+  user-defined types can implement in-place addition differently from addition.
 
   ```python report
   def count(parts):
@@ -69,9 +68,18 @@ def render(parts):
       return total
   ```
 
+The rule offers these fixes only when the loop variables are bound once and read only inside the loop. A comment in the
+replaced span or a `yield` or `await` in the value or filter also prevents the fix.
+
 ### Exceptions
 
-- **Loops that do anything else**: a second statement, an `else` clause, or a value that reads the accumulator.
+- **Async loops, class bodies and annotated initial assignments.** The rule checks ordinary `for` loops following a
+  plain assignment at module scope or inside a function.
+
+- **An accumulator mentioned elsewhere in the loop.** The iterable, target, filter and added value must all be
+  independent of the accumulator. A `global` or `nonlocal` declaration for the name also excludes it.
+
+- **Loops with a second statement or an `else` clause.**
 
   ```python ok
   def render(parts):

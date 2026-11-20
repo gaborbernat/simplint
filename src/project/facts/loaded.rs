@@ -157,7 +157,7 @@ fn is_dunder_import_chain(expr: &Expr) -> bool {
     }
 }
 
-// Without a `fromlist`, `__import__` returns the top package of the name, not the module it names.
+// With an empty fromlist, __import__("pkg.mod") returns pkg.
 fn loaded_module(expr: &Expr) -> Option<&str> {
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
         return None;
@@ -191,7 +191,7 @@ fn module_from_spec_arg(expr: &Expr) -> Option<&Expr> {
     arguments.args.first()
 }
 
-// Resolves without touching the file system, so a path under the root keeps the root as its prefix.
+// Normalize paths from source expressions without requiring the targets to exist.
 pub(super) fn lexically_normalized(path: &Path) -> PathBuf {
     let mut normal = PathBuf::new();
     for component in path.components().filter(|component| *component != Component::CurDir) {
@@ -220,8 +220,7 @@ mod tests {
     use super::super::{FileFacts, Parts};
     use super::module_of;
 
-    // Without a package around the file there is no root to name the module a path holds, so the key reads as one of
-    // any module.
+    // Without a package root, a key in the globals returned by run_path could belong to any module.
     #[test_case(None, &["value"] ; "outside_any_package")]
     #[test_case(Some(&["pkg", "main"]), &[] ; "inside_a_package")]
     fn run_path_names_its_module_under_the_package_root(module_path: Option<&[&str]>, reads: &[&str]) {

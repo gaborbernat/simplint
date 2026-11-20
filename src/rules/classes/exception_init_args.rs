@@ -7,9 +7,7 @@ use crate::lint::walker::Walker;
 use crate::rules::exception_classes::{ClassKey, derives_from_base_exception, lineage};
 use crate::syntax::REBUILD_HOOKS;
 
-// `pickle` and `copy` rebuild an exception by calling its class with its `args`, which `BaseException.__init__` sets to
-// the arguments it receives. A subclass whose `__init__` passes its parent fewer or more positional values than it
-// takes itself cannot be rebuilt from them.
+// BaseException normally rebuilds from `type(exc)(*exc.args)`, so the constructor must accept that argument count.
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::ClassDef(class) = stmt else {
         return;
@@ -24,7 +22,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     if !is_exception {
         return;
     }
-    // A base of this file that defines a rebuilding method passes it on.
+    // A local base can supply a custom reduction for its subclasses.
     let rebuilt = std::iter::once(class)
         .chain(lineages.iter().flatten().filter_map(|key| match key {
             ClassKey::Local(range) => checker.class_defs().iter().copied().find(|class| class.range() == *range),
@@ -90,8 +88,6 @@ fn takes(required: usize, total: usize) -> String {
     if required == total { count(total) } else { format!("{required} to {}", count(total)) }
 }
 
-// `super().__init__(...)` or `super(Class, self).__init__(...)`, whose arguments start after `self`, or
-// `Base.__init__(self, ...)`.
 fn is_super_call(func: &Expr) -> bool {
     func.as_attribute_expr().is_some_and(|attribute| {
         attribute
@@ -101,7 +97,7 @@ fn is_super_call(func: &Expr) -> bool {
     })
 }
 
-// The calls in `__init__` to the parent's `__init__`, outside nested functions and classes.
+// Calls inside nested definitions may initialize unrelated classes.
 struct ParentInits<'a> {
     bases: &'a [Expr],
     found: Vec<&'a ast::ExprCall>,

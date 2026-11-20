@@ -200,10 +200,7 @@ pub(crate) fn may_provide<'a>(modules: impl IntoIterator<Item = &'a String> + Cl
     modules.into_iter().any(|name| name.contains(root))
 }
 
-// A value under `[tool]`, by the keys leading to it.
-// The oldest Python a project declares outside `requires-python`, which is all Ruff reads: Poetry's `python`
-// dependency, or the `python_requires` setuptools takes from `setup.cfg` or a literal in `setup.py`. A missing file
-// declares nothing.
+// Use a Poetry or setuptools declaration when Ruff falls back to its default Python target.
 pub(super) fn declared_python(dir: &Path, pyproject: Option<&toml::Table>) -> Option<PythonVersion> {
     pyproject
         .and_then(|table| tool_value(table, &["poetry", "dependencies", "python"]))
@@ -235,7 +232,8 @@ fn setup_py_requires(text: &str) -> Option<String> {
     Some(value[1..].split_once(quote)?.0.to_owned())
 }
 
-// The lowest version a PEP 440 or Poetry specifier admits, raised to the oldest version Ruff knows.
+// Approximate the minimum target from major and minor versions on lower bounds or version pins. This does not
+// solve compound constraints or inspect patch releases.
 fn oldest_python(specifier: &str) -> Option<PythonVersion> {
     let oldest = specifier
         .split([',', '|'])

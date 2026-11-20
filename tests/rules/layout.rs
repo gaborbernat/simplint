@@ -155,7 +155,7 @@ fn single_user_constant_respects_ruff_local_limit(config: &str, reports: usize) 
     assert_eq!(stdout.matches("`_MESSAGE` is used by one function").count(), reports, "{stdout}");
 }
 
-// One fix reorders the whole body, so it rides on the first report a comment does not suppress.
+// Attach the shared reorder fix to an unsuppressed diagnostic so it remains available.
 #[test]
 fn definition_before_use_fixes_after_first_report_is_suppressed() {
     let root = common::project(&[(
@@ -184,8 +184,8 @@ fn single_user_constant_still_reports_inlineable_value_at_local_limit() {
     assert!(stdout.contains("`_OFFSET` is used by one function"), "{stdout}");
 }
 
-// The values CPython 3.11 folds at compile time, which the rule reports, and the ones it leaves to run per call. The
-// cases match what 3.11.18 and 3.15.2 compile to LOAD_CONST or not.
+// Moving a constant into a function can repeat work on each call. The cases cover the rule's model of constant folding,
+// including expressions outside its numeric limits.
 #[test_case("(1, 2)", true ; "tuple_of_constants")]
 #[test_case("((1, 2), (3, ('a', b'x')))", true ; "nested_tuples")]
 #[test_case("()", true ; "empty_tuple")]
@@ -299,8 +299,6 @@ fn single_user_constant_reports_only_what_the_compiler_folds(value: &str, report
     assert_eq!(stdout.contains("`_VALUE` is used by one function"), reported, "{stdout}");
 }
 
-// SMP201 and SMP203 read one expected order, so one `--fix` run over every fixture settles them: a second run changes
-// no file.
 #[test]
 fn class_layout_rules_settle_every_fixture_in_one_fix_run() {
     let root = common::fixture_project();
@@ -323,9 +321,8 @@ fn python_sources(root: &Path) -> BTreeMap<PathBuf, String> {
         .collect()
 }
 
-// DJ012 reports the statement of a Django model that the Django Style Guide places earlier, when the file imports
-// Django. The run leaves that statement to Ruff and keeps the members DJ012 does not check, and the report that carries
-// the class's fix, which DJ012 lacks. No Ruff rule is selected here, so the skip does not depend on the selection.
+// DJ012 has no reorder fix. Keep the simplint diagnostic that carries the shared fix even when Ruff covers some
+// statements.
 #[test_case(DJANGO_MODEL_SAVE_BEFORE_META, 1 ; "meta_after_save_carries_fix")]
 #[test_case(DJANGO_MODEL_PROPERTY_AFTER_METHOD, 1 ; "property_after_method")]
 #[test_case(DJANGO_MODEL_WITHOUT_IMPORT, 1 ; "no_django_import")]

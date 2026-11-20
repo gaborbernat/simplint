@@ -2,14 +2,11 @@ Flags attribute names that are mock assertion methods written without their `ass
 
 ## Why is this bad?
 
-[`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock) raises
-[`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) for an unknown name that starts
-with `assert`, `assret`, `asert`, `aseert` or `assrt`, so a misspelled assertion with one of those prefixes fails the
-test. Other names are ordinary attributes: the call returns a child mock and checks nothing. Python 3.12
-[added](https://github.com/python/cpython/issues/100690) the `Mock` assertion names without their prefix, such as
-`called_once_with`, to the names a mock rejects, but not the `AsyncMock` ones, such as `awaited_once_with`. So
-`called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or `asssert_called_once` passes
-silently on every version. The lint reports these before the test runs.
+By default, an unrestricted [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock) creates a
+child mock for an unknown attribute. Calling the child can let a test pass without checking anything. Mock rejects
+unknown names beginning with `assert`, `assret`, `asert`, `aseert` or `assrt`. Python 3.12
+[added names such as `called_once_with`](https://github.com/python/cpython/issues/100690) to that list. Misspellings
+such as `asssert_called_once` and async names such as `awaited_once_with` can still pass silently.
 
 ## Example
 
@@ -33,9 +30,9 @@ Reports an attribute, read or called, whose name is one of these:
 
 - an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not
   `called`, which every mock has as an attribute;
-- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two
-  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps
-  those two letters, and not those that start with a prefix the mock rejects.
+- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, when one assertion
+  method is the closest match and takes at most two edits. Only names that start with `as` are compared, since a
+  misspelled prefix keeps those two letters, and not those that start with a prefix the mock rejects.
 
 ### Active on
 
@@ -73,8 +70,9 @@ Reports an attribute, read or called, whose name is one of these:
   numbers.assert_equal(1)
   ```
 
-- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test
-  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.
+- **Names with a prefix the mock rejects**: a mock raises
+  [`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError) for `assert_called_ones_with`,
+  so the test already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.
 
   ```python ok
   outcome.assert_failed()
@@ -169,9 +167,8 @@ def test_save(save: MagicMock) -> None:
     assert not save.called_once
 ```
 
-A comment in the text the fix drops, such as one inside the parentheses of the test, keeps the call unfixed, so the
-comment is not lost. PGH005 reports such a name without a fix, so this rule leaves it to Ruff. A comment inside the call
-does not block the fix.
+The fix skips calls where removing the surrounding `assert` would also remove a comment. PGH005 reports such a name
+without a fix, so this rule leaves it to Ruff. A comment inside the call does not block the fix.
 
 ```python ok
 def test_save(save: MagicMock) -> None:
@@ -192,8 +189,8 @@ comparisons, names in call arguments, and every misspelling, which Ruff does not
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its
-  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.
+  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which also checks assertion names missing the
+  `assert_` prefix. This rule can fix standalone calls and also recognizes misspellings.
 - [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as
   [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand
   for.

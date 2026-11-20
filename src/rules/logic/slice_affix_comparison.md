@@ -1,4 +1,4 @@
-Flags `s[:n] == literal` and `s[-n:] == literal` when the literal is `n` characters or bytes long.
+Flags `==` and `!=` comparisons between a prefix or suffix slice and a nonempty literal of the same length.
 [`str.startswith()`](https://docs.python.org/3/builtins/stdtypes.html#str.startswith) and
 [`str.endswith()`](https://docs.python.org/3/builtins/stdtypes.html#str.endswith) test the same without a length to keep
 in step.
@@ -6,8 +6,8 @@ in step.
 ## Why is this bad?
 
 [PEP 8](https://peps.python.org/pep-0008/#programming-recommendations) asks for `startswith()` and `endswith()` instead
-of slicing. The slice repeats the literal's length as a number, and when the literal changes and the number does not,
-the comparison is always false, with no error.
+of slicing. The slice repeats the literal's length as a number. If you change `"://"` to `":/"` but leave `[:3]` in
+place, the slice can include a character past the prefix. `startswith()` measures the prefix itself.
 
 ## Example
 
@@ -45,7 +45,8 @@ def is_comment(line):
 
 ### Exceptions
 
-- **A length that does not match the literal**: the comparison is always false, a different mistake.
+- **A length that differs from the literal's length**, or an empty literal. Changing the comparison to `startswith()` or
+  `endswith()` could change its result.
 
   ```python ok
   def is_comment(line):

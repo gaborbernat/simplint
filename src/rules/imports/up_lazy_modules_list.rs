@@ -44,8 +44,7 @@ pub fn up_lazy_modules_list(checker: &Checker) {
     if converted.is_empty() && !mixed {
         return;
     }
-    // An import the list defers in a block keeps no `lazy` from the fix, so it would load eagerly once the list goes,
-    // while one above the list loads eagerly already and must not gain one.
+    // Deleting the list makes untouched imports in blocks eager. Adding `lazy` above the list changes an eager import.
     let stays_eager = imports
         .iter()
         .filter(|import| {

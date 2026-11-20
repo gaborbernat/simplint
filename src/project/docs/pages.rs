@@ -17,7 +17,7 @@ impl DocReferences {
         self.names.extend(markup.references.iter().filter_map(|target| reference_name(target)).map(str::to_owned));
     }
 
-    // A name relative to the page's `currentmodule` needs no resolving, since names match by their dotted suffix.
+    // Role targets can match by dotted suffix. Class directives also use the page's current module.
     fn record(&mut self, directive: &Directive, module: &mut Option<String>, directives: &mut Directives) {
         const OBJECTS: [&str; 10] = [
             "function",
@@ -47,7 +47,7 @@ impl DocReferences {
             _ => {}
         }
         if matches!(object, "module" | "class" | "exception") && name.starts_with("auto") {
-            // Sphinx documents every member for `:members:` alone, and only the listed ones when it has a list.
+            // A bare `:members:` needs the project index to resolve the member names.
             for target in targets {
                 match value("members") {
                     Some("") if object == "module" => {
@@ -89,8 +89,7 @@ impl DocReferences {
 }
 
 impl Directives {
-    // Sphinx imports a dotted target as the module path it names, and resolves a simple name against the page's module.
-    // Without a module, a simple name stands for any class of that name.
+    // An unqualified target without a current module stays ambiguous until the project index checks for namesakes.
     fn record(&mut self, target: &str, module: Option<&str>, option: Option<AutoclassContent>) {
         let (names, name) = match module {
             Some(module) if !target.contains('.') => (&mut self.qualified, format!("{module}.{target}")),
@@ -106,7 +105,7 @@ fn listed(value: &str) -> impl Iterator<Item = &str> {
     value.split(',').map(str::trim).filter(|member| !member.is_empty())
 }
 
-// A leading `.` searches every module, which the relative match already does.
+// Suffix matching already covers relative role targets.
 fn reference_name(target: &str) -> Option<&str> {
     let target = target.trim_start_matches(['~', '!', '.']).trim_end_matches("()");
     (!target.is_empty()).then_some(target)

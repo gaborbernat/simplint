@@ -1,4 +1,4 @@
-"""Check simplint against the most downloaded PyPI projects, so a rule or fix that breaks real code shows up."""
+"""Check for parsing errors, new Ruff diagnostics and unstable fixes on pinned PyPI projects."""
 
 from __future__ import annotations
 
@@ -408,8 +408,7 @@ def main(arguments: list[str]) -> int:
     selected = [package for package in PACKAGES if not names or package.name in names]
     archives = [download(Pinned(url=package.url, sha256=package.sha256), options.cache) for package in selected]
     failed = False
-    # Each project unpacks into a folder of its own, so they run side by side; `map` hands the results back in the
-    # pinned order, which keeps the report the same from run to run.
+    # ProcessPoolExecutor.map returns results in manifest order even when projects finish out of order.
     with ProcessPoolExecutor() as pool:
         checked = pool.map(check, selected, archives, repeat(options.simplint), repeat(target))
         for package, problems in zip(selected, checked, strict=True):
@@ -433,13 +432,6 @@ def check(package: Package, archive: Path, simplint: str, target: Interpreter | 
     #
     # The pipeline is ``ruff check --fix --unsafe-fixes``, ``simplint check --fix --unsafe-fixes`` and ``ruff format``.
     # The baseline runs the same commands without simplint.
-    #
-    # :param package: the project, for its name in messages
-    # :param archive: its source distribution
-    # :param simplint: the simplint executable
-    # :param target: the CPython the fixed files must compile under, and the release simplint checks for; None checks
-    #     with the running interpreter's parser and the release the project's requires-python gives
-    # :returns: one message per problem found, empty when the project passes
     with TemporaryDirectory(prefix=f"{package.name}-") as folder:
         work = _workspace(Path(folder), archive)
         report = ["--output-format", "concise", "."]
@@ -454,13 +446,11 @@ def check(package: Package, archive: Path, simplint: str, target: Interpreter | 
         problems = [f"check: {line}" for line in _failures(checked, unreadable)]
         fixing = work.run([*simplint_check, "--fix-only", "--unsafe-fixes", *report], work.fixed)
         problems += [f"fix: {line}" for line in _failures(fixing, unreadable)]
-        # Rules Ruff warns conflict with its formatter for this project cannot hold after `ruff format`, with or without
-        # simplint, as Ruff documents; their findings say nothing about simplint.
+        # Ruff reports which rules conflict with its formatter. Ignore those rules when comparing formatted trees.
         conflicting = _CONFLICTING_PATTERN.findall(work.run(["ruff", "format", "--check", "."], work.original).stderr)
         unaffected = ["--ignore", ",".join(conflicting)] if conflicting else []
-        # Formatting splits a line and can leave its pragma comment after the closing bracket, where it no longer
-        # covers the line it was written for; that happens to the project with or without simplint, as Ruff matches
-        # suppressions the same way.
+        # The formatter can move a suppression to a closing bracket. Use the Ruff-only tree to identify files where
+        # that happens independently of simplint.
         stranded_before = _stranded_pragmas(work.original)
         for tree in (work.original, work.fixed):
             work.run(["ruff", "format", "--quiet", "."], tree)
@@ -487,9 +477,8 @@ def _workspace(folder: Path, archive: Path) -> _Workspace:
     fixed = folder / "fixed" / original.name
     shutil.copytree(original, fixed)
     (folder / "config").mkdir()
-    # Ruff and simplint read the user's configuration from `XDG_CONFIG_HOME`, and an environment override of `RUFF_*`
-    # settings, which would make a local run judge the projects differently from CI. A project's own `cache-dir` can
-    # point outside the workspace, so `RUFF_CACHE_DIR` pins Ruff's cache there, and simplint keeps its own in it.
+    # Use an empty user configuration and put Ruff's cache inside the workspace so local Ruff settings do not
+    # affect the baseline.
     inherited = {key: value for key, value in os.environ.items() if not key.startswith("RUFF_")}
     environment = inherited | {"XDG_CONFIG_HOME": str(folder / "config"), "RUFF_CACHE_DIR": str(folder / "cache")}
     return _Workspace(original=original, fixed=fixed, environment=environment)
@@ -517,8 +506,7 @@ def _io_errors(completed: subprocess.CompletedProcess[str]) -> list[str]:
 _REFUSED_RULE_PATTERN: Final[re.Pattern[str]] = re.compile(r"ignore (\S+) in `\[tool\.simplint\]`")
 
 
-# simplint refuses to run when the project's Ruff settings work against one of its rules; a user of the project would
-# turn that rule off, as the error says, so the check runs once more with that rule ignored.
+# On a rule conflict, retry with the ignores simplint recommends for this project.
 def _checked(
     simplint_check: list[str], report: list[str], work: _Workspace
 ) -> tuple[list[str], subprocess.CompletedProcess[str]]:
@@ -621,8 +609,7 @@ def _findings(work: _Workspace, root: Path, options: list[str]) -> Counter[tuple
 # What a second round of the pipeline changes in the fixed tree, which it must not.
 def _second_round(simplint_check: list[str], work: _Workspace, unaffected: list[str], stranding: set[str]) -> list[str]:
     problems = []
-    # Ruff alone does not always settle in one round, so a second round counts only in the files where Ruff settles the
-    # baseline: in the others Ruff hands simplint a tree the pipeline never settles either.
+    # Ignore second-pass changes in files where Ruff alone still proposes edits.
     ruff_again = ["ruff", "check", "--fix-only", "--unsafe-fixes", "--diff", "--quiet", *unaffected, "."]
     unsettled = _changed(work.run(ruff_again, work.original).stdout)
     if _changed(work.run(ruff_again, work.fixed).stdout) - unsettled:

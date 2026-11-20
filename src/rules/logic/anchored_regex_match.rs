@@ -38,16 +38,12 @@ pub(crate) struct Anchored<'a> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Anchor {
-    // `^`, `$`: `$` also matches before a newline that ends the string.
     Caret,
     Dollar,
-    // `\A`, `\Z`: only at the very start and end.
     Absolute,
 }
 
-// A `re.match`, `re.prefixmatch` or `re.search` call with a literal pattern that only matches the whole string:
-// anchored at its end, and for `re.search` at its start too, without flags, an inline flag or a top-level alternation,
-// which would make an anchor apply to one branch only or to each line.
+// An alternation can leave a branch unanchored, and multiline mode changes where ^ and $ match.
 pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> Option<Anchored<'a>> {
     if call.arguments.len() != 2 || call.arguments.find_argument_value("string", 1).is_none() {
         return None;
@@ -67,7 +63,6 @@ pub(crate) fn anchored_call<'a>(checker: &Checker, call: &'a ast::ExprCall) -> O
     Some(Anchored { function, pattern, start, end })
 }
 
-// The anchor at the end of a pattern with no flag group and no `|` outside a group or class.
 fn trailing_anchor(value: &str) -> Option<Anchor> {
     let mut depth = 0_u32;
     let mut in_class = false;
@@ -119,8 +114,7 @@ fn leading_anchor(value: &str) -> Option<Anchor> {
     }
 }
 
-// Renaming the function and dropping the anchors keeps the match, except for a string that ends in a newline, which `$`
-// lets through and `re.fullmatch` does not.
+// A trailing $ also matches before a final newline, so switching to fullmatch can reject a previous match.
 fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<Fix> {
     let Expr::Attribute(attribute) = call.func.as_ref() else {
         return None;
@@ -137,8 +131,7 @@ fn fix(checker: &Checker, call: &ast::ExprCall, anchored: &Anchored) -> Option<F
     fix_of(edits, if anchored.end == Anchor::Dollar { Applicability::Unsafe } else { Applicability::Safe })
 }
 
-// The source characters of an anchor: one for `^` and `$`, two for `\A` and `\Z`, three when a plain string writes
-// the backslash as `\\`.
+// Source escapes may spell an anchor differently from the decoded regex. Delete only spellings we recognize.
 fn anchor_width(source: &str, anchor: Anchor, raw: bool, leading: bool) -> Option<TextSize> {
     let candidates: &[&str] = match (anchor, leading) {
         (Anchor::Caret, _) => &["^"],

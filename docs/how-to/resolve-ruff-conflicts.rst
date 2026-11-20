@@ -3,9 +3,8 @@
 Resolve conflicts with Ruff
 ###########################
 
-Some simplint rules undo what a `Ruff <https://docs.astral.sh/ruff/>`__ rule asks for, under some Ruff settings. With
-both on for a file, one side's fix undoes the other's, or leaves code the other reports. No run of ``ruff check --fix``
-and ``simplint check --fix`` then leaves that file clean.
+Some settings make simplint and `Ruff <https://docs.astral.sh/ruff/>`__ ask for opposite changes. For example,
+one rule may remove an import that the other requires.
 
 simplint checks every file's settings before it lints any, and **exits with status 2** when it finds such a pair. The
 error names:
@@ -77,8 +76,8 @@ The pairs are:
 Things to know when resolving a conflict:
 
 - Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there.
-- In preview, as in Ruff's reports, the message names rules instead of codes.
-- No setting accepts a conflicting pair; turn one side off.
+- In preview, the message shows the rule name first unless Ruff's ``output-prefer-rule-codes`` setting requests codes.
+- Change the setting that causes the conflict or disable one of the rules for the affected files.
 - ``--show-settings`` and ``--show-files`` do not check for conflicts, so they help find where a rule comes from.
 
 .. note::

@@ -1,8 +1,6 @@
-// Ruff's F401 over the module scope, ported from `pyflakes/rules/unused_import.rs` (MIT) under its preview behavior. A
-// name bound more than once is matched against its imports by the qualified names its loads read, so a shadowed import
-// may be unused too. The model's references are the loads and `del`s, but it does not copy them to a rebinding as Ruff
-// does, so a name's reads are the references of its chain of bindings up to the first `del`, builtin or unbound
-// exception. `__all__` and string annotations read names the model does not resolve, so they stand in for loads.
+// Ported from the preview version of Ruff's F401 (pyflakes/rules/unused_import.rs, MIT). Imports that bind the same
+// name can have different uses, as in `import a` and `import a.b`. Match their qualified names against the reads in
+// this module. Exports and string type expressions can also use a name.
 use ruff_python_ast::name::{QualifiedName, QualifiedNameBuilder};
 use ruff_python_ast::{Expr, Stmt};
 use ruff_python_semantic::{
@@ -20,8 +18,7 @@ pub(super) fn unused_imports(model: &SemanticModel, body: &[Stmt], extend_generi
     }
     let exports = export_names(body);
     let annotated = annotated_names(body);
-    // Ruff reads the names a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
-    // model does not resolve them, so a word of such a string counts as a read.
+    // String type expressions such as `cast("X", value)` can use an import without leaving a resolved reference.
     let words = type_string_words(body, extend_generics);
     let mut unused = FxHashSet::default();
     for (name, live) in scope.bindings() {
@@ -63,7 +60,7 @@ fn has_simple_shadowed_bindings(model: &SemanticModel, scope: &Scope, live: Bind
     })
 }
 
-// The references a name's live binding has, which a rebinding copies from the bindings it shadows.
+// Ruff copies earlier references onto a rebinding. This model recovers them from the chain of shadowed bindings.
 fn copied_references<'m>(
     model: &'m SemanticModel,
     scope: &'m Scope,
@@ -75,8 +72,7 @@ fn copied_references<'m>(
         .flat_map(move |prior| model.binding(prior).references())
 }
 
-// The bindings a `del` or builtin ends the copying of references at, as a rebinding does not copy from them. Ruff
-// records no `del` in a branch, so a `del` that is not at the top level does not end it.
+// A deletion ends the chain only at module level. A conditional deletion may leave earlier references in scope.
 fn ends_copies(model: &SemanticModel, binding: &Binding) -> bool {
     match binding.kind {
         BindingKind::Builtin | BindingKind::UnboundException(_) => true,
@@ -85,7 +81,7 @@ fn ends_copies(model: &SemanticModel, binding: &Binding) -> bool {
     }
 }
 
-// The model records no branches, so only a statement of the module body surely runs before the import that shadows it.
+// The model does not track branches, so use the module body to identify unconditional statements.
 fn is_top_level(model: &SemanticModel, node: NodeId) -> bool {
     model.parent_statement(node).is_none()
 }
@@ -155,7 +151,7 @@ fn rank_matches(
     (left, std::cmp::Reverse(qualified.segments().len()))
 }
 
-// The attribute chain an expression starts is maximal, so `a` in `a.b.foo()` reads `a.b.foo`.
+// Use the full attribute chain to distinguish `import a` from `import a.b`.
 fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, mut expr_id: NodeId) -> QualifiedName<'b> {
     let mut builder = QualifiedNameBuilder::with_capacity(16);
     let name = model.expression(expr_id).and_then(Expr::as_name_expr).expect("a read is a name");

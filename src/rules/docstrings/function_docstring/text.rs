@@ -3,8 +3,7 @@ use ruff_python_trivia::textwrap::dedent;
 use crate::rst::{field_marker, indent_width, leading_whitespace};
 use crate::rules::docstrings::rst::SIGNATURE_SECTIONS;
 
-// The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of rst
-// and numpydoc headings, which as comments would read as section dividers.
+// Heading underlines would become section dividers in the generated comment.
 pub(super) fn cleaned_lines(text: &str) -> Vec<String> {
     let text = text.replace('\t', "        ");
     let (first, rest) = text.split_once('\n').unwrap_or((&text, ""));
@@ -62,8 +61,7 @@ fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
     if colon {
         return Some(indented_end(lines, start, lead));
     }
-    // A numpydoc section lists its names at the header's own indentation, so its body runs up to a blank line or the
-    // next section.
+    // numpydoc entries can have the same indentation as the section heading.
     let body = lines[start + 1..]
         .iter()
         .position(|line| line.trim().is_empty() || SIGNATURE_SECTIONS.contains(&line.trim()))
@@ -85,8 +83,7 @@ fn indented_end(lines: &[String], start: usize, lead: usize) -> usize {
     end
 }
 
-// Lines that fit are kept as written, so lists and indented blocks keep their shape. What a long line wraps over joins
-// the next line when that line goes on with the same sentence, rather than leaving a word on a line of its own.
+// Preserving short lines keeps list items and indented blocks intact.
 pub(super) fn comment_lines(lines: &[String], room: usize) -> Vec<String> {
     let mut comments = Vec::new();
     let mut carry = String::new();
@@ -104,7 +101,6 @@ pub(super) fn comment_lines(lines: &[String], room: usize) -> Vec<String> {
     comments
 }
 
-// A word longer than `room`, such as a URL, keeps a line of its own.
 fn wrapped(line: &str, room: usize) -> Vec<String> {
     if line.chars().count() <= room {
         return vec![line.to_owned()];
@@ -128,8 +124,7 @@ fn wrapped(line: &str, room: usize) -> Vec<String> {
     parts
 }
 
-// A line at the same indentation starting in lowercase goes on with a sentence; one opening with a field name such as
-// `name:` or `name (int):` starts an item of its own.
+// A lowercase continuation can join the previous line unless it starts a field such as `name (int):`.
 fn continues(line: &str, lead: &str) -> bool {
     line.strip_prefix(lead).is_some_and(|text| {
         text.starts_with(char::is_lowercase) && !text.split_whitespace().take(2).any(|word| word.ends_with(':'))

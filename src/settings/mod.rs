@@ -36,8 +36,7 @@ pub(crate) use crate::settings::metadata::{canonical_name, may_provide};
 use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
 pub(crate) use crate::settings::pytest::PytestConfig;
 
-// Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
-// a `pyproject.toml`, and otherwise the `pyproject.toml`s closest to each file.
+// Discovered settings and project metadata can come from different `pyproject.toml` files in a workspace.
 pub(crate) struct SettingsResolver {
     pub(crate) root: Arc<Settings>,
     overrides: Overrides,
@@ -64,7 +63,6 @@ impl SettingsResolver {
             }
         };
         let pyproject = pyproject.map(|path| read_table(path).map(|table| (path, table))).transpose()?;
-        // The one file is both: a `--config` run takes its metadata from the same file, as it takes its settings.
         let table = pyproject.as_ref().map(|(path, table)| (*path, table));
         let fixed = Arc::new(Settings::resolve(root, None, table, table, &overrides, isolated)?);
         let mut projects = Projects { main: Some(fixed.root.clone()), ..Projects::default() };
@@ -88,24 +86,21 @@ fn read_table(path: &Path) -> Result<toml::Table> {
 // Ruff's `PyprojectDiscoveryStrategy`: one configuration for every file, or the one each file's location points at,
 // read once per project. A file under a nested project resolves to that project's directory as its root.
 enum Discovery {
-    // With `--config`, the settings of the run's project, which a file of a nested project overrides. With
-    // `--isolated`, no `pyproject.toml` is read, nested projects' included.
+    // An explicit config fixes settings for the run. Nested projects can supply their own metadata unless `--isolated`
+    // is set.
     Fixed { settings: Arc<Settings>, projects: Mutex<Projects>, isolated: bool },
     // `run_root` is the directory the run starts from, which roots a project without a `pyproject.toml`.
     Hierarchical { run_root: PathBuf, projects: Mutex<Projects> },
 }
 
 impl Discovery {
-    // The closest `pyproject.toml` with a `[tool.simplint]` table holds the settings, and the closest with `[project]`
-    // or `[build-system]` holds the project's metadata. Each falls back to the closest `pyproject.toml` when nothing
-    // matches, so a nested package without its own table inherits its parent's settings. Without any
-    // `pyproject.toml`, the defaults apply, rooted at the run's directory or the nearest ancestor of it holding the
-    // file, as Ruff roots a project without configuration at the working directory.
+    // Search separately for the nearest `[tool.simplint]` table and the nearest `[project]` or `[build-system]`.
+    // If no file defines simplint settings, use the nearest `pyproject.toml`. If none declares project metadata,
+    // read metadata from the settings file. With no file at all, use the defaults at the nearest common ancestor of
+    // the working directory and the checked path.
     //
-    // A nested project is rooted at its directory, with the settings of the project around it, and the metadata of a
-    // `pyproject.toml` at or below it that describes a project, or else the metadata of the project around it. Settings
-    // are cached by the directory a lookup starts from, and by the root and metadata file they resolve to, since files
-    // of one root can have different metadata.
+    // A nested test project has its own root. Use its metadata when available and otherwise keep the surrounding
+    // project's metadata. Cache by both root and metadata file because one root can contain several distributions.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
         let absolute = std::path::absolute(path).expect("a checked path is not empty");
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
@@ -487,8 +482,6 @@ impl CacheKey for Settings {
     }
 }
 
-// Ruff's `as_rule_table`: each layer applies its selectors from the least to the most specific, an ignore beating a
-// select of the same specificity, and a layer that sets `select` (or `fixable`) starts from nothing.
 #[derive(Deserialize, Default)]
 #[serde(default)]
 struct ProjectFile {
@@ -509,7 +502,8 @@ struct Tool {
     simplint: SimplintOptions,
 }
 
-// `broad` holds the rules `ALL` and a code prefix can turn on; a selector naming a rule turns it on either way.
+// Apply each layer from the least to the most specific selector, with ignores winning ties. A replacement starts
+// with an empty set. An exact code or name can enable an opt-in rule even when broad selectors exclude it.
 fn resolve_rules<'a>(
     layers: impl IntoIterator<Item = &'a SelectorLayer>,
     default: RuleSet,
@@ -557,7 +551,6 @@ fn hook_runs_flake8_lazy(project: Option<&Path>, main: Option<&Path>) -> bool {
     false
 }
 
-// The hook configuration files pre-commit and prek read from a project, which the nearest one upwards decides.
 pub(crate) const HOOK_CONFIGS: [&str; 3] = [".pre-commit-config.yaml", ".pre-commit-config.yml", "prek.toml"];
 
 fn config_has_flake8_lazy(path: &Path) -> Result<bool> {

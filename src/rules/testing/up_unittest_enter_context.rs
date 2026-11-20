@@ -25,8 +25,6 @@ pub fn up_unittest_enter_context(checker: &Checker) {
     }
 }
 
-// The three statements a manual start and stop take: `patcher = patch(...)`, `value = patcher.start()` and
-// `self.addCleanup(patcher.stop)`.
 fn check_sequence<'a>(
     checker: &Checker<'a>,
     spellings: &mut FxHashMap<TextRange, FxHashMap<&'a str, usize>>,
@@ -70,7 +68,6 @@ fn check_sequence<'a>(
     );
 }
 
-// How often each name is spelled as an identifier within a method.
 fn identifier_counts<'a>(checker: &Checker<'a>, method: TextRange) -> FxHashMap<&'a str, usize> {
     let mut counts = FxHashMap::default();
     for token in checker.parsed.tokens().in_range(method).iter().filter(|token| token.kind() == TokenKind::Identifier) {
@@ -87,7 +84,6 @@ fn patcher_assignment<'a>(semantic: &Semantic, stmt: &'a Stmt) -> Option<(&'a st
     is_patcher(semantic, &call.func).then_some((target, call))
 }
 
-// The name the started patch's value is bound to, when the statement is `value = patcher.start()`.
 fn started_value<'a>(stmt: &'a Stmt, patcher: &str) -> Option<&'a str> {
     let (target, value) = single_name_assignment(stmt)?;
     let Expr::Call(call) = value else {
@@ -96,7 +92,6 @@ fn started_value<'a>(stmt: &'a Stmt, patcher: &str) -> Option<&'a str> {
     (call.arguments.is_empty() && is_method_on(&call.func, patcher, "start")).then_some(target)
 }
 
-// `self.addCleanup(patcher.stop)`, with no other argument.
 fn is_cleanup_of(stmt: &Stmt, patcher: &str) -> bool {
     let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
         return false;
@@ -120,7 +115,6 @@ fn single_name_assignment(stmt: &Stmt) -> Option<(&str, &Expr)> {
     Some((target.id.as_str(), value))
 }
 
-// Whether `expr` is `receiver.member`, with `receiver` a plain name.
 fn is_method_on(expr: &Expr, receiver: &str, member: &str) -> bool {
     expr.as_attribute_expr().is_some_and(|attribute| {
         attribute.attr.as_str() == member && attribute.value.as_name_expr().is_some_and(|name| name.id == receiver)

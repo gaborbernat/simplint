@@ -9,7 +9,7 @@ simplint's own settings live in ``[tool.simplint]``:
 .. code-block:: toml
 
     [tool.simplint]
-    select = ["ALL"]                              # the default
+    select = ["ALL"]
     extend-select = []
     ignore = ["SMP901"]
     per-file-ignores = { "tests/*" = ["SMP601"] }
@@ -22,7 +22,8 @@ simplint's own settings live in ``[tool.simplint]``:
     * - Key
       - Effect
     * - ``select``
-      - Enables rules. The default, ``ALL``, enables every rule that is not opt-in.
+      - Replaces the default selection. An explicit ``ALL`` includes :doc:`unused-ignore </rules/SMP009>`, which
+        the default selection skips. Both leave out :ref:`opt-in-rules`.
     * - ``extend-select``
       - Adds rules to ``select``.
     * - ``ignore``
@@ -58,7 +59,7 @@ Opt-in rules
 
 An opt-in rule runs only when an entry names it by code or name, as in ``extend-select = ["init-module-content"]``.
 ``ALL`` and code prefixes such as ``SMP4`` leave it out, so a broad selection does not pick up a rule that fits few
-projects. The :doc:`rules list </rules>` marks these rules with ✗ in its *Default* column, and each one's page carries
+projects. The :doc:`rules list </rules>` marks these rules with ✗ in its *ALL* column, and each one's page carries
 an *Opt-in* badge.
 
 Fixes

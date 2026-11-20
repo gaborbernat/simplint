@@ -73,7 +73,7 @@ fn check_loop(checker: &Checker, loop_stmt: &ast::StmtFor, scope: &LocalScope, n
     );
 }
 
-// The `seq` of `range(len(seq))`, when it is a name or an attribute of one, which the loop can read again unchanged.
+// Restrict the sequence to a dotted name so the fix cannot drop a call from the loop header.
 fn range_of_len<'a>(checker: &Checker, iter: &'a Expr) -> Option<(&'a Expr, UnqualifiedName<'a>)> {
     let semantic = checker.semantic();
     let range_call = iter.as_call_expr()?;
@@ -95,8 +95,8 @@ fn is_index(slice: &Expr, index: &ast::ExprName) -> bool {
     slice.as_name_expr().is_some_and(|name| name.id == index.id)
 }
 
-// The index is read only to subscript the sequence, the loop binds it alone, and nothing in the body rebinds or
-// changes the sequence, so iterating the sequence gives the same items.
+// Replacing the index would lose any other use of it. Other subscripts and attribute accesses can also depend on
+// changes to the sequence during iteration.
 fn fixable(
     index: &ast::ExprName,
     sequence: &Expr,

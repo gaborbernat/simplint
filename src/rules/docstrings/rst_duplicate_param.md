@@ -3,9 +3,9 @@ docstring.
 
 ## Why is this bad?
 
-[autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content) shows the class
-docstring by default, so the copy in `__init__` is read only by those who open the source, and the two copies drift
-apart as each is edited on its own.
+[Sphinx autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content) shows the
+class docstring by default. If the constructor repeats a parameter description, an edit to one copy can leave the other
+out of date. When autodoc shows both docstrings, readers see the parameter twice.
 
 ## Example
 
@@ -71,8 +71,8 @@ Checks classes, when `docstring-style = "rst"`, for constructor parameters docum
 
 ### Active on
 
-- **`:param name:` fields in the `__init__` docstring**: reported when the class docstring also has a `:param name:`
-  field for the same constructor parameter.
+- **Matching parameter fields.** The rule compares the names in the class and `__init__` docstrings. By default it
+  reports the duplicate in `__init__`.
 
   ```toml config
   [tool.simplint]
@@ -131,26 +131,28 @@ when no other class of the run has that name, and otherwise the rule reports not
 only its tail with the class, such as `a.Reader` for `pkg/a.py` when the docs put `pkg` on
 [`sys.path`](https://docs.python.org/3/library/sys.html#sys.path), leaves the class unreported too.
 
-A Sphinx configuration is a `conf.py` beside an index page (`index.rst`, `index.md` or `index.txt`), or one that assigns
-`extensions`, `master_doc` or `root_doc`. A wildcard binding, such as a star import, `exec` or `globals()`, does not
-count as an assignment. The rule reads it whether or not Ruff excludes it, and follows a symlink whose target lies in
-the project. It skips vendored directories (`_vendor`, `vendor`, `third_party`, `subprojects`), other projects below the
-root, and gitignored files. The Sphinx configurations of one project must agree on the option; when they do not, the
-rule reports nothing for that project.
+simplint recognizes a `conf.py` beside an index page (`index.rst`, `index.md` or `index.txt`), or one that binds
+`extensions`, `master_doc` or `root_doc` by name. A star import or a call to `exec` or
+[`globals()`](https://docs.python.org/3/builtins/functions.html#globals) alone does not identify a Sphinx configuration.
+In directories it visits, simplint reads `conf.py` even when Ruff excludes that file. A symlink must point inside the
+project.
 
-The rule reads each option from a top-level assignment, plain, annotated, or as one target of a tuple assignment, and a
-`class-doc-from` key from a dict literal. The docstring is unknown, and the rule reports nothing for the class, when the
-option holds a value other than `class`, `init` or `both`, or a value that is not a literal, when the name is bound
-another way (in a block, a chained assignment, an import, a star import, `exec`, or through
-[`globals()`](https://docs.python.org/3/builtins/functions.html#globals)), and when the `conf.py` cannot be read, does
-not parse, or is over 8 MiB.
+The scan skips hidden directories, excluded directories, vendored configurations (`_vendor`, `vendor`, `third_party`,
+`subprojects`) and configurations in nested projects. It respects ignore files when Ruff's `respect-gitignore` is
+enabled. If Sphinx configurations disagree on a default, simplint skips classes that depend on that default. An explicit
+directive can still determine which copy to keep.
 
-The examples below show each case:
+The rule reads plain, annotated and tuple assignments at module level. The three accepted literal values are `class`,
+`init` and `both`. For `autodoc_default_options`, it reads the `class-doc-from` key from a dictionary literal.
+
+A computed value, conditional binding, chained assignment, import or dynamic change through `exec` or `globals()` can
+leave the setting unknown. The rule also treats settings as unknown if it cannot read or parse `conf.py`, or if the file
+exceeds 8 MiB.
 
 - **`class`, or no option**: Sphinx shows the class docstring alone, so the `__init__` copy is the repeat, as above.
 
-- **`both`**: Sphinx shows both docstrings, so the parameter appears twice whichever copy goes. The rule still reports
-  the `__init__` copy and removes it, and the class copy stays.
+- **`both`**: Sphinx shows both docstrings. The rule reports the duplicate in `__init__` and preserves the class
+  description.
 
   ```toml config
   [tool.simplint]
@@ -363,12 +365,12 @@ class Reader:
         """Set up."""
 ```
 
-No fix is offered when escapes in the docstring make its text differ from the source.
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source. If the
+field ends the docstring, a comment after the closing quotes also prevents the fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open pull request
-  [#23081](https://github.com/astral-sh/ruff/pull/23081) (DOC304) reports any parameters section in a Google or NumPy
-  class docstring; this rule reports reST `:param:` fields documented in both the class and `__init__`.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports any `__init__` docstring as
-  [DOC301](https://jsh9.github.io/pydoclint/violation_codes.html), not only the parameters documented in both places.
+- [Ruff PR #23081](https://github.com/astral-sh/ruff/pull/23081) proposes DOC304 for a parameters section in a Google or
+  NumPy class docstring.
+- By default [pydoclint DOC301](https://jsh9.github.io/pydoclint/violation_codes.html) reports an `__init__` docstring
+  even if the class docstring has no duplicate fields.

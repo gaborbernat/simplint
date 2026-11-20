@@ -11,9 +11,7 @@ use crate::rules::classes::Decorated;
 use crate::rules::testing::recognize::is_raises_or_assert_raises;
 use crate::syntax::{Declares, dataclass_fields, is_classmethod, is_name, is_true_literal, last_segment, receiver};
 
-// `None` when no option of the dataclass rules gets a fix: a class without fields, such as a fixture standing for a
-// dataclass with the default options, has no state the options would protect, and a test expecting the class to fail
-// keeps it as is.
+// Tests can rely on the original dataclass options, for instance when checking that an instance is unhashable.
 pub(super) fn analyze(checker: &Checker<'_>, decorated: &Decorated) -> Option<Analysis> {
     let class = decorated.class;
     if !class.body.iter().any(Stmt::is_ann_assign_stmt)
@@ -48,19 +46,16 @@ pub(super) fn analyze(checker: &Checker<'_>, decorated: &Decorated) -> Option<An
     })
 }
 
-// What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
-// unsafe.
 #[expect(clippy::struct_excessive_bools, reason = "each flag is one finding of the walk")]
 pub(super) struct Analysis {
     pub(super) frozen_breaks: bool,
     pub(super) slots_breaks: bool,
-    // Whether the walk found an instance written after construction, which `frozen` breaks for certain.
+    // Known writes, including those in __post_init__, can conflict with freezing.
     pub(super) mutated: bool,
     // The fields the plain class's `__init__` would take, `InitVar`s included.
     pub(super) parameters: usize,
     suspected: bool,
-    // Whether code reaches the `__dict__` or a weak reference of an object of unknown class, which may be an instance
-    // of this class: slots take both away, though freezing keeps them.
+    // Slots can remove dictionary or weak-reference support from an object whose class we cannot identify.
     storage_suspected: bool,
     // Whether the class has a keyword such as `metaclass=`, which `slots=True` runs again when it builds the class.
     keyworded: bool,
@@ -118,7 +113,6 @@ impl<'a> Fields<'a> {
     }
 }
 
-// The value of `arg` in the `field(...)` call a field's default is, the call `dataclasses.field` makes for its options.
 pub(super) fn field_keyword<'a>(value: Option<&'a Expr>, arg: &str) -> Option<&'a Expr> {
     let call = value?.as_call_expr()?;
     if last_segment(&call.func) != Some("field") {
@@ -127,8 +121,7 @@ pub(super) fn field_keyword<'a>(value: Option<&'a Expr>, arg: &str) -> Option<&'
     call.arguments.find_keyword(arg).map(|keyword| &keyword.value)
 }
 
-// Whether a field's value leaves it a class attribute: `dataclasses` deletes the class attribute of a `field(...)` that
-// has no default.
+// dataclasses removes the class attribute for field() without an explicit default.
 fn has_default(value: Option<&Expr>) -> bool {
     let Some(value) = value else {
         return false;
@@ -137,8 +130,6 @@ fn has_default(value: Option<&Expr>) -> bool {
         || field_keyword(Some(value), "default").is_some()
 }
 
-// What breaks once the class is frozen or slotted. A hazard the class shows for certain withholds the option it breaks;
-// one that only might break it, such as a class body writing to something other than `self`, makes the fix unsafe.
 #[expect(clippy::struct_excessive_bools, reason = "each flag is one finding of the walk")]
 struct Hazards<'f, 'a> {
     fields: &'f FxHashSet<&'f str>,
@@ -182,8 +173,7 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
                 (self.receiver, self.classmethod, self.own) = outer;
                 return;
             }
-            // A class nested in the dataclass has instances of its own, so the writes its methods make through their
-            // first parameter are not the dataclass's; any other write is still checked.
+            // A nested class's methods write to their own receiver.
             Stmt::ClassDef(_) => {
                 let outer = self.nested;
                 self.nested = Some(self.depth);
@@ -255,8 +245,6 @@ impl Hazards<'_, '_> {
     }
 }
 
-// What the project index knows about the class, which the walk of its body cannot see: writes from other files, and the
-// subclasses that a frozen or slotted class would break.
 fn index_hazards(checker: &Checker, decorated: &Decorated, fields: &Fields, hazards: &mut Hazards) {
     let class = decorated.class;
     let name = class.name.as_str();
@@ -288,9 +276,8 @@ fn index_hazards(checker: &Checker, decorated: &Decorated, fields: &Fields, haza
     hazards.slots |= project.has_unslottable_subclass(&qualified);
     hazards.slots |= decorated.wrapped;
     hazards.slots |= fields.defaults.iter().any(|field| project.is_class_attribute_accessed(&qualified, field));
-    // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
-    // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
-    // together, so the state is the one after freezing, whichever fix goes first.
+    // The frozen slots fix can run before or after the frozen fix. A frozen slotted dataclass serializes only its
+    // fields. Without a custom state method, older pickle protocols can reject a mutable slotted instance.
     hazards.slots |= if decorated.option("frozen").is_some_and(is_true_literal) || !hazards.frozen {
         project.has_stateful_subclass(&qualified)
     } else {
@@ -305,8 +292,7 @@ fn is_generic(base: &Expr) -> bool {
     last_segment(map_subscript(base)) == Some("Generic")
 }
 
-// Whether the class body reads a `__class__` cell, which `slots=True` leaves pointing at the class it replaces: a bare
-// `__class__` or a zero-argument `super()`, in a method or in a function or lambda nested in one.
+// Before the CPython fix, methods on the replacement class could still refer to the original class.
 pub(super) fn uses_class_cell(class: &ast::StmtClassDef) -> bool {
     let mut cells = ClassCells { found: false };
     cells.visit_body(&class.body);
@@ -328,8 +314,7 @@ impl<'a> Visitor<'a> for ClassCells {
     }
 }
 
-// The names the module calls inside `pytest.raises(...)` or `self.assertRaises(...)`: a test creating an instance there
-// expects it to fail somewhere, as an unhashable dict key, and either option can change that.
+// A test may expect the original class to raise, for example when hashing a mutable dataclass.
 pub(crate) fn expected_to_raise_classes(body: &[Stmt]) -> FxHashSet<&str> {
     let mut blocks = Raises { depth: 0, called: FxHashSet::default() };
     blocks.visit_body(body);

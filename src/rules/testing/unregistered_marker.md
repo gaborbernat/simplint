@@ -3,12 +3,11 @@ Flags a `pytest.mark.NAME` whose name the project's pytest configuration does no
 
 ## Why is this bad?
 
-pytest accepts any attribute of `pytest.mark`, so a misspelled mark is a new mark rather than an error. A test marked
-`@pytest.mark.slwo` runs under `-m "not slow"`, and a `skipif` spelled wrong never skips. pytest only emits a
-`PytestUnknownMarkWarning`, unless the
-[`strict_markers`](https://docs.pytest.org/en/stable/how-to/mark.html#raising-errors-on-unknown-marks) option turns it
-into an error at collection. Registering the marks documents them in `pytest --markers` and lets this rule check every
-use without running the tests.
+By default, pytest warns about an unknown mark and lets collection continue. A test marked `@pytest.mark.slwo` runs
+under `-m "not slow"`, and a `skipif` spelled wrong never skips. The
+[`strict_markers`](https://docs.pytest.org/en/stable/how-to/mark.html#raising-errors-on-unknown-marks) option makes an
+unknown mark a collection error. Registering the marks documents them in `pytest --markers` and lets this rule check
+names without running tests.
 
 ## Example
 
@@ -30,10 +29,18 @@ def test_full_import():
 
 ### Active on
 
-- **Every `pytest.mark` attribute** in the module, as a decorator, in `pytest.param(..., marks=...)`, or bound to a
-  name, when the project configures pytest. The configuration is read from the first of `pytest.ini`, `.pytest.ini`,
-  `pyproject.toml` (`[tool.pytest]` or `[tool.pytest.ini_options]`), `tox.ini` (`[pytest]`) and `setup.cfg`
-  (`[tool:pytest]`) that configures pytest, as pytest reads it.
+The rule checks attributes such as `pytest.mark.slow`, including decorators, expressions in
+`pytest.param(..., marks=...)` and assignments. It checks each supported configuration file in order until it finds one
+that configures pytest.
+
+1. `pytest.ini` or `.pytest.ini`, even when empty
+1. `pyproject.toml` with `[tool.pytest]` or `[tool.pytest.ini_options]`
+1. `tox.ini` with `[pytest]`
+1. `setup.cfg` with `[tool:pytest]`
+
+pytest 9 also reads
+[`pytest.toml` and `.pytest.toml`](https://docs.pytest.org/en/stable/reference/customize.html#pytest-toml). simplint
+skips those two formats.
 
 ### Exceptions
 
@@ -42,13 +49,13 @@ def test_full_import():
 - **pytest's own marks**: `skip`, `skipif`, `xfail`, `parametrize`, `usefixtures`, `filterwarnings`, `tryfirst` and
   `trylast`.
 
-- **Marks common plugins register**, such as `asyncio`, `anyio`, `trio`, `django_db`, `timeout`, `flaky`, `benchmark`,
-  `order`, `dependency`, `xdist_group`, `httpx_mock`, `vcr`, `freeze_time`, `repeat`, `forked`, `subtests` and
-  pytest-run-parallel's `thread_unsafe`.
+- **Known plugin names.** The rule accepts these names even if the corresponding plugin is absent. Examples include
+  `asyncio`, `anyio`, `trio`, `django_db`, `timeout`, `flaky`, `benchmark`, `order`, `dependency`, `xdist_group`,
+  `httpx_mock`, `vcr`, `freeze_time`, `repeat`, `forked`, `subtests` and pytest-run-parallel's `thread_unsafe`.
 
-- **Marks registered in code**: a mark whose name appears in any string of the project, as
-  `config.addinivalue_line("markers", "slow: ...")` in a `pytest_configure` hook spells it, and a mark bound to a name,
-  as `C_EXT = pytest.mark.c_extension`, which the hook registers through `C_EXT.name`.
+- **Possible registrations in code.** The rule accepts a name that appears as a word in a project string, as in
+  `config.addinivalue_line("markers", "network: needs internet access")`. It also accepts a mark assigned to a name,
+  such as `C_EXT = pytest.mark.c_extension`, because a hook may register `C_EXT.name`.
 
   ```toml config
   [tool.pytest.ini_options]
@@ -72,7 +79,3 @@ def test_full_import():
 ### Fix
 
 No fix is offered, as the mark may be a typo of a registered one or a new mark to register.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
