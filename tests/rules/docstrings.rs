@@ -745,7 +745,11 @@ fn each_project_reads_its_own_configuration() {
         ("b/model.py", DUPLICATED),
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP918"]).1;
-    assert!(stdout.contains("a/model.py:4:6: SMP918") && stdout.contains("b/model.py:10:10: SMP918"), "{stdout}");
+    assert!(
+        stdout.contains(&common::native("a/model.py:4:6: SMP918"))
+            && stdout.contains(&common::native("b/model.py:10:10: SMP918")),
+        "{stdout}"
+    );
 }
 
 #[test]

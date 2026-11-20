@@ -976,11 +976,16 @@ const CLIENT: &str = "from helpers import helper\n";
 #[test]
 fn warm_run_skips_the_index_again_after_an_edit() {
     let root = project(&[("helpers.py", HELPER), ("client.py", CLIENT), ("other.py", CLEAN_MODULE)]);
-    let indexed = |root: &Path| check(root, &["--select", "SMP401", "-v"]).2.contains("Indexed ");
-    let before = [indexed(root.path()), indexed(root.path())];
+    let index_runs = || {
+        // Recent writes use a content key until the filesystem change time is two seconds old.
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        std::thread::sleep(Duration::from_secs(2));
+        let indexed = || check(root.path(), &["--select", "SMP401", "-v"]).2.contains("Indexed ");
+        [indexed(), indexed()]
+    };
+    let before = index_runs();
     write_file(root.path(), "other.py", "VALUE = 2\n");
-    let after = [indexed(root.path()), indexed(root.path())];
-    assert_eq!((before, after), ([true, false], [true, false]));
+    assert_eq!((before, index_runs()), ([true, false], [true, false]));
 }
 
 #[test]

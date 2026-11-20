@@ -1,4 +1,4 @@
-name: Check package lookups on Windows ARM64
+name: Run Windows ARM64 regressions together
 on:
   workflow_dispatch:
 permissions:
@@ -13,6 +13,13 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      - name: Set up Python for rule documentation
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: latest-known
+          enable-cache: false
+          activate-environment: true
+          python-version: "3.15"
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
@@ -24,6 +31,5 @@ jobs:
         uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-nextest
-      - name: 🧪 Run the platform-dependent tests
-        run: >-
-          cargo nextest run --locked -E "test(siblings_share_package_status) | test(absolute_sibling_import) | binary(input) | binary(cache) | binary(fix) | binary(check) | binary(watch) | binary(suppressions)"
+      - name: Run the full regression suite
+        run: cargo nextest run --locked --no-fail-fast --test-threads 4

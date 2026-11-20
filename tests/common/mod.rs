@@ -245,6 +245,10 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
             !fix.is_empty() || !ALWAYS_FIXABLE.contains(code),
             "{fixture}: {code} advertises an always-available fix but offered none for {message}"
         );
+        let message = match code {
+            "SMP308" | "SMP903" => message.replace(std::path::MAIN_SEPARATOR, "/"),
+            _ => message.to_owned(),
+        };
         writeln!(output, "{}:{} {code} {message}{fix}", location["row"], location["column"]).expect("write");
     }
     if diagnostics.iter().any(|diagnostic| !diagnostic["fix"].is_null()) {
