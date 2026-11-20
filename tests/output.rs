@@ -92,12 +92,15 @@ fn check_output_file_receives_the_report() {
     );
 }
 // The report cannot go into a directory, nor below a file.
-#[test_case("out", "Is a directory" ; "directory")]
-#[test_case("module.py/report.txt", "File exists" ; "below_a_file")]
-fn check_fails_when_the_output_file_cannot_be_created(output_file: &str, cause: &str) {
+#[test_case("out", |path| std::fs::File::create(path).unwrap_err() ; "directory")]
+#[test_case("module.py/report.txt", |path| std::fs::create_dir(path.parent().expect("parent")).unwrap_err() ; "below_a_file")]
+fn check_fails_when_the_output_file_cannot_be_created(
+    output_file: &str,
+    cause: fn(&std::path::Path) -> std::io::Error,
+) {
     let root = project(&[("module.py", "x = 1\n"), ("out/keep.txt", "")]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101", "--output-file", output_file]);
-    assert_eq!((code, stderr.contains(cause)), (2, true), "{stderr}");
+    assert_eq!((code, stderr.contains(&cause(&root.path().join(output_file)).to_string())), (2, true), "{stderr}");
 }
 
 #[test]
