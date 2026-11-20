@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.14.4 (2026-11-20)
+
+<a name="release-0-14-4"></a>
+
+<a name="release-0-14-4-fixed"></a>
+
+### Fixed
+
+- Correct the fix availability shown by the CLI and rule reference for thirteen rules
+  ([#176](https://github.com/gaborbernat/simplint/pull/176)) by [@gaborbernat](https://github.com/gaborbernat).
+- Report a hard-linked file once on Windows, under the first path in sort order
+  ([#174](https://github.com/gaborbernat/simplint/pull/174)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-14-4-documentation"></a>
+
+### Documentation
+
+- Clarify rule selection, the conditions for automatic fixes, and cases where applying a fix can change Python behavior
+  ([#176](https://github.com/gaborbernat/simplint/pull/176)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.3 (2026-11-20)
 
 <a name="release-0-14-3"></a>
