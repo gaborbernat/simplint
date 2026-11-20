@@ -1,5 +1,5 @@
 use super::*;
-use crate::common::{check, empty_project, project};
+use crate::common::{check, project};
 use test_case::test_case;
 
 #[test_case("tests/roots/test-c", true, false ; "nested_project_is_not_a_test_module")]
@@ -100,7 +100,7 @@ fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
 #[test_case(true ; "standard_input")]
 fn working_directory_that_is_not_utf8_is_an_error(stdin: bool) {
     use std::os::unix::ffi::OsStrExt;
-    let root = empty_project();
+    let root = crate::common::empty_project();
     let directory = root.path().join(std::ffi::OsStr::from_bytes(b"bad\xff"));
     std::fs::create_dir(&directory).expect("create directory");
     let (code, _, stderr) = if stdin {

@@ -229,7 +229,7 @@ mod tests {
     use tempfile::TempDir;
     use test_case::test_case;
 
-    use super::{Modified, init, is_build_name, last_written, newest, read_aligned, read_archive, write_atomically};
+    use super::{Modified, is_build_name, last_written, newest, read_aligned, read_archive, write_atomically};
 
     #[test_case("0.11.1-0123456789abcdef", true ; "release")]
     #[test_case("0.11.1+local.dev-0123456789abcdef", true ; "local_version")]
@@ -263,7 +263,7 @@ mod tests {
         let ruff_cache = root.path().join("ruff");
         fs::create_dir(&ruff_cache).expect("create the directory");
         fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o555)).expect("make the directory read-only");
-        let initialized = init(&ruff_cache, &root.path().join("build"));
+        let initialized = super::init(&ruff_cache, &root.path().join("build"));
         fs::set_permissions(&ruff_cache, fs::Permissions::from_mode(0o755)).expect("make the directory writable");
 
         assert!(initialized.is_err());

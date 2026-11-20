@@ -82,7 +82,7 @@ pub(super) fn test_directory_modules(
     modules
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use std::path::Path;
     use std::sync::Arc;
@@ -91,7 +91,6 @@ mod tests {
 
     use super::{FileIds, prefix_siblings};
 
-    #[cfg(unix)]
     #[test]
     fn file_name_that_is_not_utf8_joins_no_group() {
         use std::ffi::OsStr;

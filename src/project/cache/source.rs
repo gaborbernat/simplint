@@ -54,9 +54,9 @@ pub(super) fn change_key(file: &File, metadata: &Metadata, _: FileTime, hasher: 
             file.as_raw_handle(),
             FSCTL_READ_FILE_USN_DATA,
             (&raw const version).cast(),
-            size_of::<READ_FILE_USN_DATA>() as u32,
+            u32::try_from(size_of_val(&version)).expect("USN version request fits in a DWORD"),
             buffer.as_mut_ptr().cast(),
-            size_of_val(&buffer) as u32,
+            u32::try_from(size_of_val(&buffer)).expect("USN record buffer fits in a DWORD"),
             &raw mut returned,
             std::ptr::null_mut(),
         ) != 0
