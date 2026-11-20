@@ -63,3 +63,7 @@ def order() -> str:
   def order() -> str:
       return "order-1"
   ```
+
+### Related rules
+
+[missing-from-all](SMP401.html) leaves fixtures out of the names it asks `__all__` to list.
