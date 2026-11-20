@@ -1,7 +1,5 @@
 mod common;
 
-use std::fs;
-
 use test_case::test_case;
 
 use common::{empty_project, json, project, simplint};
@@ -240,6 +238,8 @@ fn clean_removes_caches(flags: &[&str], stderr: &str) {
 #[test_case(true ; "ruff_cache_is_a_link")]
 #[test_case(false ; "simplint_is_a_link")]
 fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
+    use std::fs;
+
     let outside = tempfile::TempDir::new().expect("temporary directory");
     fs::create_dir_all(outside.path().join("simplint/0.1.0")).expect("create");
     fs::write(outside.path().join("simplint/0.1.0/1234"), "").expect("write");

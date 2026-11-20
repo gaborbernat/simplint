@@ -236,7 +236,10 @@ jobs:
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
+          components: clippy
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: 🧹 Run Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: 🦀 Install cargo-nextest
         uses: taiki-e/install-action@v2.90.3
         with:

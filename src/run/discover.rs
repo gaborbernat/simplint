@@ -137,7 +137,7 @@ fn identity(path: &Path) -> Option<WindowsIdentity> {
                 file.as_raw_handle(),
                 FileIdInfo,
                 (&raw mut info).cast(),
-                size_of::<FILE_ID_INFO>() as u32,
+                u32::try_from(size_of::<FILE_ID_INFO>()).expect("file ID information fits in a DWORD"),
             )
         };
         if ok != 0 && info.FileId.Identifier != [0; 16] {

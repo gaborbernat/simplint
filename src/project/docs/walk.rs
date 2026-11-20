@@ -191,7 +191,7 @@ mod tests {
     use ruff_linter::settings::types::FilePatternSet;
     use tempfile::TempDir;
 
-    use super::{Exclusions, Listed, list, listed, tree_key};
+    use super::{Exclusions, Listed, listed, tree_key};
 
     #[test]
     fn global_excludes_file_is_part_of_the_key() {
@@ -221,7 +221,7 @@ mod tests {
         let _listener = std::os::unix::net::UnixListener::bind(socket.join("conf.py")).expect("bind a socket conf.py");
         let exclusions = Exclusions { exclude: FilePatternSet::default(), extend_exclude: FilePatternSet::default() };
         let stated = |directory: &Path| -> Vec<_> {
-            list(directory, &exclusions, folder.path()).stats.into_iter().map(|(path, _)| path).collect()
+            super::list(directory, &exclusions, folder.path()).stats.into_iter().map(|(path, _)| path).collect()
         };
         assert_eq!(
             (stated(&linked), stated(&socket)),
