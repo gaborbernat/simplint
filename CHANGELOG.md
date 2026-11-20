@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.14.3 (2026-11-20)
+
+<a name="release-0-14-3"></a>
+
+<a name="release-0-14-3-fixed"></a>
+
+### Fixed
+
+- Release builds now stop if a signal interrupts profile training, before a partial profile can be merged
+  ([#161](https://github.com/gaborbernat/simplint/pull/161)) by [@gaborbernat](https://github.com/gaborbernat).
+- Count Unicode spellings of the same Python name together when checking regex imports and names a fix would introduce
+  ([#160](https://github.com/gaborbernat/simplint/pull/160)) by [@gaborbernat](https://github.com/gaborbernat).
+- Recognize Unicode spellings of `range` and `time` in loop and duration checks. Withhold the `strptime` fix when its
+  import would shadow an equivalent Python name ([#164](https://github.com/gaborbernat/simplint/pull/164)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-14-3-performance"></a>
+
+### Performance
+
+- Cold project checks skip import lookups for module names absent from the source roots
+  ([#159](https://github.com/gaborbernat/simplint/pull/159)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks run faster on Intel Macs and ARM64 Windows. Both release wheels now use profile-guided optimization
+  ([#168](https://github.com/gaborbernat/simplint/pull/168)) by [@gaborbernat](https://github.com/gaborbernat).
+- Speed up checks of classes that repeatedly call inherited methods
+  ([#163](https://github.com/gaborbernat/simplint/pull/163)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks on ARM64 Linux with glibc take less time after BOLT reorders functions in the release wheel
+  ([#167](https://github.com/gaborbernat/simplint/pull/167)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks run faster on 64-bit ARM Linux with glibc or musl. Both wheels now use profile-guided optimization
+  ([#165](https://github.com/gaborbernat/simplint/pull/165)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks run faster on Linux x86-64 glibc wheels. Release builds use LLVM BOLT to group frequently executed code
+  ([#162](https://github.com/gaborbernat/simplint/pull/162)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks run faster on x86-64 Linux with musl. The release wheel places frequently executed blocks of code next to
+  each other ([#166](https://github.com/gaborbernat/simplint/pull/166)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Cold project checks reuse syntax trees for large Python files that the project index has already parsed
+  ([#172](https://github.com/gaborbernat/simplint/pull/172)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks write package caches in 64 KiB chunks, reducing peak memory use on large packages
+  ([#173](https://github.com/gaborbernat/simplint/pull/173)) by [@gaborbernat](https://github.com/gaborbernat).
+- Cold checks skip hashing statements in test modules, which the duplicate-code rule excludes
+  ([#170](https://github.com/gaborbernat/simplint/pull/170)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.2 (2026-11-19)
 
 <a name="release-0-14-2"></a>
