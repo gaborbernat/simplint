@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.5 (2026-11-20)
+
+<a name="release-0-14-5"></a>
+
+<a name="release-0-14-5-performance"></a>
+
+### Performance
+
+- On Windows ARM64, parallel file identity lookups cut cold-check time by 2.68% across 100 PyPI packages. Reusing
+  symlink checks saved another 2.01%, and checking for `__init__.py` once per directory saved a further 2.16%
+  ([#180](https://github.com/gaborbernat/simplint/pull/180)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.4 (2026-11-20)
 
 <a name="release-0-14-4"></a>
