@@ -362,9 +362,14 @@ impl<'a> Cache<'a> {
         let directory = self.path.parent().expect("a cache file lies in the build directory");
         // Another simplint build may have removed the directory as stale since this run opened it.
         fs::create_dir_all(directory).context("Failed to create cache directory")?;
-        let serialized = rkyv::to_bytes::<rkyv::rancor::Error>(&package).expect("the cache archives into memory");
         let mut temp_file = tempfile_in(directory).context("Failed to create temporary file")?;
-        temp_file.write_all(&serialized).context("Failed to write serialized cache to temporary file.")?;
+        {
+            let mut buffer = io::BufWriter::with_capacity(64 * 1024, &mut temp_file);
+            let writer = rkyv::ser::writer::IoWriter::new(&mut buffer);
+            rkyv::api::high::to_bytes_in::<_, rkyv::rancor::Error>(&package, writer)
+                .context("Failed to write serialized cache to temporary file.")?;
+            buffer.flush().context("Failed to write serialized cache to temporary file.")?;
+        }
         let persisted = temp_file.persist(&self.path).map(drop);
         // On Windows another simplint process may hold the cache file open; its run writes the cache instead.
         #[cfg(windows)]
@@ -540,15 +545,17 @@ mod tests {
             |directory| {
                 let root = directory.path();
                 let stored = Stored { path: root.join("cache"), bytes: None, rendered: root.join("rendered") };
-                let mut cache = Cache::new(root, &stored, 0);
-                let facts = FileFacts::collect(&root.join("module.py"), "VALUE = 1\n", None, None, Parts::default())
-                    .expect("the source parses");
-                cache.set_facts(&root.join("module.py"), FileKey { hash: 7, length: 10 }, &facts);
-                let error = cache.write().expect_err("the cache cannot grow");
-                assert_eq!(
-                    (error.to_string(), stored.path.exists()),
-                    ("Failed to write serialized cache to temporary file.".to_owned(), false)
-                );
+                let path = root.join("module.py");
+                // The small archive fails on flush. The large one fills the buffer during serialization.
+                for size in [1, 128 * 1024] {
+                    let mut cache = Cache::new(root, &stored, 0);
+                    let source = format!("{} = 1\n", "V".repeat(size));
+                    let facts = FileFacts::collect(&path, &source, None, None, Parts::default()).expect("valid source");
+                    cache.set_facts(&path, FileKey { hash: 7, length: source.len() as u64 }, &facts);
+                    let error = cache.write().expect_err("the cache cannot grow");
+                    assert_eq!(error.to_string(), "Failed to write serialized cache to temporary file.");
+                    assert!(!stored.path.exists());
+                }
             },
         );
     }
