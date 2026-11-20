@@ -29,7 +29,7 @@ impl FactVisitor<'_> {
         }
     }
 
-    // The receiver's name does not matter, so any object counts.
+    // Accept an attribute named setattr regardless of how the monkeypatch object was bound.
     pub(super) fn module_writes(
         func: &Expr,
         arguments: &ast::Arguments,
@@ -37,7 +37,7 @@ impl FactVisitor<'_> {
     ) -> Vec<(String, Vec<String>)> {
         let setattr = matches!(func, Expr::Attribute(ast::ExprAttribute { attr, .. }) if attr.as_str() == "setattr");
         match &*arguments.args {
-            // `mock.patch` splits a dotted string at its last dot, as pytest and `unittest.mock` do.
+            // Both mock.patch and monkeypatch.setattr accept a dotted path to the target attribute.
             [Expr::StringLiteral(path), ..] if setattr || last_segment(func) == Some("patch") => {
                 let Some((module, name)) = path.value.to_str().rsplit_once('.') else {
                     return Vec::new();
@@ -71,7 +71,7 @@ impl FactVisitor<'_> {
         self.computed_writes.extend(module);
     }
 
-    // A target that starts with the interpolation names no module the run can find.
+    // The literal prefix must identify a module before the interpolation.
     fn computed_patch_module(target: &Expr) -> Option<&str> {
         let Expr::FString(fstring) = target else {
             return None;

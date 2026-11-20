@@ -3,12 +3,11 @@ Flags exceptions a public API function raises itself that its reStructuredText d
 
 ## Why is this bad?
 
-Callers handle the exceptions they know about, and no signature names them, so the docstring is where they learn them.
-[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) lists the exceptions raised among what a function's
-docstring documents, and the
-[Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for those relevant
-to the interface. Google says not to document exceptions raised when a caller misuses the API. An undocumented exception
-still reaches the caller, often first in production.
+A caller may need to handle a missing file differently from an invalid file. Documenting the exception and its cause
+tells the caller which handler to write. [PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) recommends
+documenting applicable exceptions.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) limits this to
+exceptions relevant to the interface.
 
 ## Example
 
@@ -84,8 +83,9 @@ an error when both apply to the same file, so turn the Ruff rule off, or this on
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
 `docstring-style = "rst"`, for exceptions the function raises itself without a `:raises Error:` field.
 
-No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
-field until they do.
+Write when the exception can occur. An empty field also triggers [rst-empty-field](SMP914.html).
+
+It also checks functions documented by the project's autodoc directives.
 
 ### Active on
 
@@ -278,8 +278,8 @@ field until they do.
       raise NotImplementedError
   ```
 
-- **A `raise` inside a nested function or class**: it runs when the nested function or class does, not as part of this
-  function's body.
+- **A `raise` inside a nested function or class**: the rule skips nested definitions, including class bodies that Python
+  executes when it defines the class.
 
   ```toml config
   [project]
@@ -305,7 +305,8 @@ field until they do.
       return callback
   ```
 
-- **A name starting in lowercase**: it is a variable rather than an exception class.
+- **A name starting in lowercase**: the rule only recognizes a raised name as a class if its first character is
+  uppercase.
 
   ```toml config
   [project]
@@ -346,18 +347,14 @@ field until they do.
       load()
   ```
 
-The bases of built-in exceptions, of common standard library exceptions and of the classes the file defines are known;
-those of exceptions the file imports from the rest of the project are not.
+The rule follows base classes for built-in exceptions, selected standard library exceptions and classes defined in the
+file. For other imported exceptions it recognizes matching names and treats `except Exception` as catching them.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
-  [DOC501](https://docs.astral.sh/ruff/rules/docstring-missing-exception/), which cannot read `:raises:` fields, so
-  simplint refuses to run with it on reST docstrings; open pull request
-  [#13286](https://github.com/astral-sh/ruff/pull/13286) adds Sphinx support.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports raised exceptions missing from or extra in the docstring as
-  [DOC501](https://jsh9.github.io/pydoclint/violation_codes.html) and
-  [DOC502](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
-- [darglint](https://github.com/terrencepreilly/darglint) reports the same exceptions as
-  [DAR401](https://github.com/terrencepreilly/darglint) and [DAR402](https://github.com/terrencepreilly/darglint), with
-  no fix.
+- [Ruff DOC501](https://docs.astral.sh/ruff/rules/docstring-missing-exception/) checks explicitly raised exceptions in
+  Google and NumPy docstrings. [Ruff PR #13286](https://github.com/astral-sh/ruff/pull/13286) proposes support for
+  Sphinx fields.
+- [pydoclint DOC501 and DOC503](https://jsh9.github.io/pydoclint/violation_codes.html) cover a missing Raises section
+  and mismatched exception names respectively. [darglint DAR401](https://github.com/terrencepreilly/darglint) reports
+  missing exception documentation.

@@ -3,7 +3,7 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, is_internal};
 
 pub fn rst_private_field(checker: &Checker) {
-    // A public class's `__init__` docstring documents its constructor as the class docstring may.
+    // The constructor can carry a public class's parameter documentation.
     for target in checker
         .state()
         .rst_targets(checker)

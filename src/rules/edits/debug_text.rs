@@ -8,11 +8,8 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::syntax::Nesting;
 
-// Rewrites the edits that change a name read in an f-string field with a `=` debug specifier, so the field prints
-// what it printed before. The field prints its source text, `x=`, then the value of the expression, so the rewrite
-// keeps that text as written and moves the edits into a plain field: `{x=}` becomes `x={x!r}`, and a conversion or
-// format spec carries over. `None` when an edit lands where that cannot hold, such as in a t-string field, which keeps
-// its source text in the template, or in a field nested in another one.
+// A debug f-string prints the expression's spelling. When a fix renames `x` to `value`, rewrite `{x=}` as `x={value!r}`
+// to keep its output. Preserve any explicit conversion and format specifier.
 pub(crate) fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec<Edit>> {
     let finder = checker.state().debug_fields(checker);
     let mut groups: BTreeMap<usize, Vec<Edit>> = BTreeMap::new();
@@ -41,13 +38,13 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
         return None;
     }
     let quote = field.flags.quote_style().as_char();
-    // A raw f-string keeps the backslash that an escaped quote would need, so the quote cannot go in its literal text.
+    // Escaping this quote would print a backslash in a raw f-string.
     if field.flags.prefix().is_raw() && debug.contains(quote) {
         return None;
     }
     let start = usize::from(field.range.start()) + 1;
-    // `debug` is the text before the expression, its source and the text after it through the `=`. An edit changes a name
-    // or a call either in the expression or in the conversion and format spec after `debug`.
+    // The debug label includes spacing on both sides of the expression. Keep that spelling even when a fix also edits
+    // the format specifier.
     let expression_end = start + debug.len() - field.debug.trailing().len();
     let (mut expression_edits, mut remainder_edits): (Vec<&Edit>, Vec<&Edit>) =
         edits.iter().partition(|edit| usize::from(edit.end()) <= expression_end);
@@ -55,12 +52,11 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
     let remainder = splice(source, start + debug.len(), usize::from(field.range.end()) - 1, &mut remainder_edits);
     let conversion = if remainder.is_empty() { "!r" } else { &remainder };
     let literal = escape_braces(debug).replace(quote, &format!("\\{quote}"));
-    // An inlined set or dict would start the field with `{{`, which Python reads as a literal brace.
+    // A leading set or dict literal would otherwise produce `{{`, an escaped brace.
     let gap = if expression.starts_with('{') { " " } else { "" };
     Some(format!("{literal}{{{gap}{expression}{conversion}}}"))
 }
 
-// The source between `from` and `to` with the edits inside it applied.
 fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> String {
     edits.sort_by_key(|edit| usize::from(edit.start()));
     let mut text = String::new();
@@ -74,7 +70,6 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> String {
     text
 }
 
-// The text with each brace doubled, as an f-string spells a literal brace.
 pub(crate) fn escape_braces(text: &str) -> String {
     text.replace('{', "{{").replace('}', "}}")
 }
@@ -82,9 +77,8 @@ pub(crate) fn escape_braces(text: &str) -> String {
 #[derive(Default)]
 pub(in crate::rules) struct DebugFields<'a> {
     fields: Vec<DebugField<'a>>,
-    // Where the fields lie, so that the edits of a field are found by a search.
     field_ranges: Nesting,
-    // The debug fields inside a t-string, which the rewrite cannot change.
+    // A t-string exposes the spelling of each interpolation to its consumer.
     blocked_ranges: Vec<TextRange>,
     blocked: Nesting,
 }

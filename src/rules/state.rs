@@ -20,7 +20,7 @@ use crate::rules::public_api::PublicApi;
 use crate::rules::{classes, rename, typing};
 use crate::syntax::{Nesting, all_literal, code_string_values, identifier_words};
 
-// What the rules memoize for a file, each part built by the first rule that reads it.
+// Rules share per-file results to avoid walking the same syntax tree for each check.
 #[derive(Default)]
 pub(crate) struct FileState<'a> {
     public_api: OnceCell<PublicApi<'a>>,
@@ -29,63 +29,51 @@ pub(crate) struct FileState<'a> {
     kinds: KindsCache<'a>,
     local_scopes: OnceCell<LocalScopes<'a>>,
     reported_names: ReportedNames<'a>,
-    // The string literals of the `__all__` assignments, which renames of a name also rewrite.
     export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
     string_words: OnceCell<rename::StringWords>,
     doctest_words: OnceCell<FxHashSet<String>>,
     class_orders: OnceCell<FxHashMap<TextRange, ClassOrder<'a>>>,
-    // Every comment of the file with the directives it holds, which the comment rules read.
     comments: OnceCell<Vec<(TextRange, Comment)>>,
     source_spans: OnceCell<Vec<TextRange>>,
     file_noqa: OnceCell<bool>,
     debug_fields: OnceCell<DebugFields<'a>>,
-    // The `def`s that implement an `@overload` set, which Ruff's ANN401 leaves unchecked.
     overload_implementations: OnceCell<FxHashSet<TextSize>>,
-    // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
     call_ends: OnceCell<FxHashSet<TextSize>>,
     attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
     scope_nesting: OnceCell<Nesting>,
     top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
-    // The comments that stand on a line of their own, which the comment rules read in runs.
     own_line_comments: OnceCell<Vec<TextRange>>,
     expected_to_raise: OnceCell<FxHashSet<&'a str>>,
     regex_facts: OnceCell<RegexFacts<'a>>,
 }
 
 impl<'a> FileState<'a> {
-    // Whether the file has a file-level `noqa` directive, which a rewrite of its docstrings must leave alone.
     pub(crate) fn has_file_noqa(&self, checker: &Checker<'a>) -> bool {
         *self.file_noqa.get_or_init(|| noqa::has_file_noqa(checker.source, checker.comment_ranges()))
     }
 
-    // The definitions of this file that belong to the library's public API, which the docstring rules share.
     pub(crate) fn public_api(&self, checker: &Checker<'a>) -> &PublicApi<'a> {
         checker.assert_flagged_cross_file();
         self.public_api.get_or_init(|| PublicApi::of(checker))
     }
 
-    // The module-scope variables the case and prefix rules check, which the two of them share.
     pub(crate) fn module_variables(&self, checker: &Checker<'a>) -> &[ModuleVariable<'a>] {
         checker.assert_flagged_cross_file();
         self.module_variables.get_or_init(|| module_variables(checker))
     }
 
-    // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rst"`.
     pub(crate) fn rst_targets(&self, checker: &Checker<'a>) -> &[Target<'a>] {
         self.rst_targets.get_or_init(|| collect_targets(checker))
     }
 
-    // What `string-concatenation` reads off the module to tell the types of its operands.
     pub(crate) fn kinds(&self) -> &KindsCache<'a> {
         &self.kinds
     }
 
-    // What the local-variable rules read off the module and each function, built per scope as the rules ask.
     pub(crate) fn local_scopes(&self, checker: &Checker<'a>) -> &LocalScopes<'a> {
         self.local_scopes.get_or_init(|| LocalScopes::of(checker.body(), checker.function_defs()))
     }
 
-    // The names the single-letter and meaningless name rules reported so far.
     pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
         &self.reported_names
     }
@@ -107,7 +95,7 @@ impl<'a> FileState<'a> {
             .get_or_init(|| rename::StringWords::of(&code_string_values(checker.body()), self.export_strings(checker)))
     }
 
-    // Every word of the `>>>` example lines of the file's docstrings, which a doctest names definitions by.
+    // A `>>>` line in any string literal can refer to a module global without importing it.
     pub(crate) fn doctest_words(&self, checker: &Checker<'a>) -> &FxHashSet<String> {
         self.doctest_words.get_or_init(|| {
             checker
@@ -121,14 +109,13 @@ impl<'a> FileState<'a> {
         })
     }
 
-    // The order each class body must keep, which SMP201 and SMP203 both check against, so it is built once per class.
+    // SMP201 and SMP203 need the same order for their fixes to agree.
     pub(crate) fn class_orders(&self, checker: &Checker<'a>) -> &FxHashMap<TextRange, ClassOrder<'a>> {
         self.class_orders.get_or_init(|| {
             checker.class_defs().iter().map(|class| (class.range, class_order(checker, class))).collect()
         })
     }
 
-    // The ranges of the t-strings, which keep their source text, so an edit inside one changes what they hold.
     pub(crate) fn source_text_spans(&self, checker: &Checker<'a>) -> &[TextRange] {
         self.source_spans.get_or_init(|| {
             let mut finder = SourceTextSpans::default();
@@ -147,7 +134,6 @@ impl<'a> FileState<'a> {
         })
     }
 
-    // The `re` calls with literal patterns, and the names their results flow to, which the regex rules share.
     pub(crate) fn regex_facts(&self, checker: &Checker<'a>) -> &RegexFacts<'a> {
         self.regex_facts.get_or_init(|| RegexFacts::collect(checker))
     }
@@ -164,7 +150,7 @@ impl<'a> FileState<'a> {
         })
     }
 
-    // The attributes the file reads off each name, whatever the name is bound to there.
+    // Attribute reads are grouped by spelling across scopes and bindings.
     pub(crate) fn attribute_reads(&self, checker: &Checker<'a>) -> &FxHashMap<&'a str, Vec<&'a str>> {
         self.attribute_reads.get_or_init(|| {
             let mut reads = AttributeReads::default();
@@ -228,8 +214,7 @@ impl<'a> FileState<'a> {
     }
 }
 
-// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
-// the output.
+// A t-string exposes the source text of its expressions to code that reads the template.
 #[derive(Default)]
 struct SourceTextSpans {
     spans: Vec<TextRange>,
@@ -244,8 +229,7 @@ impl<'a> Visitor<'a> for SourceTextSpans {
     }
 }
 
-// The ends of the callees of the calls in a file. A name or an attribute ends where its reference does, so a reference
-// is the callee of a call when its end is one of these, wherever the call's `(` sits.
+// Matching the end of a reference to the end of a callee also recognizes calls with whitespace before the `(`.
 #[derive(Default)]
 struct CallEnds {
     ends: FxHashSet<TextSize>,

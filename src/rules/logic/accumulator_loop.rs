@@ -97,7 +97,6 @@ fn empty_start(start: &Expr) -> Option<Kind> {
     }
 }
 
-// The loop's only statement adds to the accumulator, directly or under an `if` with no other branch.
 fn accumulation<'a>(body: &'a [Stmt], name: &str) -> Option<Accumulation<'a>> {
     match body {
         [Stmt::AugAssign(augmented)] => added(augmented, name).map(|value| Accumulation { test: None, value }),
@@ -111,7 +110,7 @@ fn accumulation<'a>(body: &'a [Stmt], name: &str) -> Option<Accumulation<'a>> {
     }
 }
 
-// A tuple added to `""` or `0` raises, so a loop that adds one accumulates nothing.
+// A tuple literal cannot be added to a string, bytes or an integer.
 fn added<'a>(augmented: &'a ast::StmtAugAssign, name: &str) -> Option<&'a Expr> {
     (augmented.op == Operator::Add
         && augmented.target.as_name_expr().is_some_and(|target| target.id == name)
@@ -119,8 +118,7 @@ fn added<'a>(augmented: &'a ast::StmtAugAssign, name: &str) -> Option<&'a Expr> 
     .then_some(augmented.value.as_ref())
 }
 
-// A generator keeps its loop variables to itself, so the fix may only drop them when nothing outside the loop reads
-// them.
+// A generator expression leaves its loop variables unbound in the enclosing scope.
 fn loop_variables_stay_inside(loop_stmt: &ast::StmtFor, uses: &NameUses) -> bool {
     target_names(&loop_stmt.target).into_iter().all(|variable| {
         !uses.is_opaque(variable)
@@ -143,7 +141,7 @@ fn generator(checker: &Checker, loop_stmt: &ast::StmtFor, accumulation: &Accumul
     let iterable_alone = loop_stmt.target.as_name_expr().is_some_and(|target| {
         accumulation.test.is_none() && accumulation.value.as_name_expr().is_some_and(|value| value.id == target.id)
     });
-    // A call argument takes any expression but a bare tuple, which would split into arguments, or a `yield`.
+    // Parentheses keep a tuple or yield expression together as a single argument.
     if iterable_alone {
         let text = checker.text(loop_stmt.iter.as_ref());
         return match loop_stmt.iter.as_ref() {
@@ -161,8 +159,7 @@ fn generator(checker: &Checker, loop_stmt: &ast::StmtFor, accumulation: &Accumul
     }
 }
 
-// The iterable and the condition of a comprehension clause take neither a conditional expression, a lambda, an
-// assignment expression nor a bare tuple.
+// These expressions need parentheses in the iterable or filter of a comprehension.
 fn operand(checker: &Checker, expr: &Expr) -> String {
     let text = checker.text(expr);
     match expr {

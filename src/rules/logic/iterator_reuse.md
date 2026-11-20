@@ -1,13 +1,14 @@
-Flags a one-pass iterator read a second time, or read inside a loop, where every read after the first sees it empty.
+Flags repeated uses of a one-pass iterator, including uses inside a loop. A later read may see fewer items or none at
+all.
 
 ## Why is this bad?
 
 [`map()`](https://docs.python.org/3/builtins/functions.html#map),
 [`filter()`](https://docs.python.org/3/builtins/functions.html#filter),
 [`zip()`](https://docs.python.org/3/builtins/functions.html#zip), a generator expression and the other
-[iterators](https://docs.python.org/3/glossary.html#term-iterator) hand out each item once. The first `list()`, `for`
-loop or [`sum()`](https://docs.python.org/3/builtins/functions.html#sum) takes every item, and the next read gets
-nothing, without an error. Code that worked while the value was a list breaks quietly when it becomes a `map()`.
+[iterators](https://docs.python.org/3/glossary.html#term-iterator) hand out each item once. After `list(items)` or
+[`sum(items)`](https://docs.python.org/3/builtins/functions.html#sum) finishes, the iterator is empty. Iterating over it
+again produces no items.
 
 ## Example
 
@@ -31,17 +32,18 @@ def summary(numbers):
 
 ### Active on
 
-- **A second read of a local bound once to an iterator**: `map()`, `filter()`, `zip()`,
-  [`reversed()`](https://docs.python.org/3/builtins/functions.html#reversed),
-  [`enumerate()`](https://docs.python.org/3/builtins/functions.html#enumerate) or a generator expression, read to its
-  end by a `for` loop, a comprehension, `list()`, `tuple()`, `set()`, `frozenset()`,
+- **A second read of a name bound once to an iterator** in a function or at module level. The rule recognizes `map()`,
+  `filter()`, `zip()`, [`reversed()`](https://docs.python.org/3/builtins/functions.html#reversed),
+  [`enumerate()`](https://docs.python.org/3/builtins/functions.html#enumerate) or a generator expression. It counts
+  reads by a `for` loop, a comprehension, `list()`, `tuple()`, `set()`, `frozenset()`,
   [`sorted()`](https://docs.python.org/3/builtins/functions.html#sorted), `sum()`,
   [`min()`](https://docs.python.org/3/builtins/functions.html#min),
-  [`max()`](https://docs.python.org/3/builtins/functions.html#max),
-  [`any()`](https://docs.python.org/3/builtins/functions.html#any),
-  [`all()`](https://docs.python.org/3/builtins/functions.html#all), `dict()`,
-  [`str.join()`](https://docs.python.org/3/builtins/stdtypes.html#str.join) or `*` unpacking. The read that finds the
-  iterator empty is reported. No fix: keeping a list and building the iterator again are both valid.
+  [`max()`](https://docs.python.org/3/builtins/functions.html#max), `dict()`, `.join()` on a string or bytes literal, or
+  `*` unpacking. The rule also counts [`any()`](https://docs.python.org/3/builtins/functions.html#any) and
+  [`all()`](https://docs.python.org/3/builtins/functions.html#all), which can stop partway through the iterator. It
+  treats [`len()`](https://docs.python.org/3/builtins/functions.html#len) as a read too, although `len()` raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) for ordinary generators and `map` objects.
+  Choose whether to keep the items in a list or build a fresh iterator for each use.
 
   ```python report
   def summary(numbers):
@@ -50,7 +52,7 @@ def summary(numbers):
       return first, sorted(texts)
   ```
 
-- **A read inside a loop** that does not bind the iterator itself: the first pass empties it.
+- **A read inside a loop** that does not bind the iterator itself: each pass starts where the previous one stopped.
 
   ```python report
   def pairs(rows, names):
@@ -72,8 +74,10 @@ def summary(numbers):
 
 ### Exceptions
 
-- **Reads that never both run**, in different arms of an `if`, `match` or `try`, or after an arm that returns, raises,
-  breaks or continues.
+- **Separate branches.** The rule skips reads in different `if` or `match` branches or on opposite sides of a
+  conditional expression. It also skips pairs in different `try` and `except` bodies, even though an exception can occur
+  after a partial read. An earlier branch that ends with `return`, `raise`, `break` or `continue` can also exclude a
+  later read.
 
   ```python ok
   def texts(numbers, ordered):

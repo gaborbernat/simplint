@@ -102,8 +102,7 @@ fn is_deletable(checker: &Checker, stmt: &Stmt, test: &Expr) -> bool {
     checker.is_alone_on_lines(stmt.range()) && !has_effect(checker, test)
 }
 
-// A computed value and a format or `%` template read only literals, so only the arguments of such a template can
-// have an effect.
+// Formatting can evaluate user code through the template arguments.
 fn has_effect(checker: &Checker, test: &Expr) -> bool {
     let is_builtin = |name: &str| !checker.semantic().is_bound(name);
     match test {
@@ -262,8 +261,7 @@ fn evaluate(expr: &Expr) -> Option<Value> {
 }
 
 fn binary(left: Value, op: Operator, right: Value) -> Option<Value> {
-    // Longest string a repetition or concatenation builds; a longer one is not evaluated, so the rule never allocates a
-    // large string.
+    // Bound memory use when evaluating string repetition or concatenation.
     const MAX_STR_LEN: usize = 4096;
     match (op, left, right) {
         (Operator::Add, Value::Str(left), Value::Str(right)) => {
@@ -286,8 +284,8 @@ fn binary(left: Value, op: Operator, right: Value) -> Option<Value> {
     }
 }
 
-// Python orders only operands of one type, while `==` and `!=` accept any two values, which are equal only when
-// they are the same value.
+// For these literal types, strings compare with strings and integers with integers or booleans. Equality also accepts
+// mixed types.
 fn compare(left: &Value, op: CmpOp, right: &Value) -> Option<bool> {
     let ordering = match (left, right) {
         (Value::Str(left), Value::Str(right)) => left.cmp(right),

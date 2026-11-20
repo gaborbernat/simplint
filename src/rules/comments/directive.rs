@@ -4,7 +4,7 @@ use ruff_text_size::TextRange;
 
 use crate::lint::noqa::{after_tool, noqa_codes};
 
-// A rule must not reflow a directive, so its words are not prose.
+// Reflowing directives can change which lines a tool checks.
 pub(crate) fn is_tool_directive(comment: &str) -> bool {
     // Tools read these comment prefixes as directives, such as `# fmt: off`, beyond the pragmas Ruff knows.
     const TOOL_PREFIXES: [&str; 3] = ["fmt:", "mypy:", "simplint:"];
@@ -21,7 +21,6 @@ pub(crate) struct Comment {
 
 #[derive(Clone, Copy)]
 pub(super) struct Directive {
-    // The directive as the table spells it, such as `ty: ignore`.
     pub(super) name: &'static str,
     pub(super) codes: Codes,
     pub(super) scope: Scope,
@@ -112,15 +111,12 @@ fn is_file_noqa(text: &str) -> bool {
     ["ruff", "flake8"].into_iter().any(|tool| after_tool(text, tool).is_some_and(starts_with_noqa))
 }
 
-// Every directive names a tool followed by a colon, or is `noqa`, so a segment with neither cannot be one. Checking
-// that first keeps the lowercasing of `parse_directive` off the segments most comments are made of.
+// Most comments contain neither a colon nor `noqa`. Avoid lowercasing those comments.
 fn may_be_directive(text: &str) -> bool {
     text.contains(':') || text.as_bytes().windows(4).any(|window| window.eq_ignore_ascii_case(b"noqa"))
 }
 
-// The directive at the start of `text`, and the text after its codes.
 fn parse_directive(text: &str) -> Option<(Directive, &str)> {
-    // The directives SMP003 and SMP004 read, with how each names its codes and what it covers.
     const DIRECTIVES: [(&str, Codes, Scope); 12] = [
         ("noqa", Codes::Colon, Scope::Line),
         ("ruff: noqa", Codes::Colon, Scope::File),
@@ -138,8 +134,7 @@ fn parse_directive(text: &str) -> Option<(Directive, &str)> {
     let lower = text.to_ascii_lowercase();
     DIRECTIVES.into_iter().find_map(|(name, codes, scope)| {
         let (tool, action) = name.split_once(": ").map_or((None, name), |(tool, action)| (Some(tool), action));
-        // Ruff reads a tool name in lowercase only, so `# RUFF: noqa` and `# TY : IGNORE` are no directives, while
-        // coverage.py's default exclusion also takes `PRAGMA` in capitals.
+        // Match lowercase tool prefixes. coverage.py also recognizes uppercase `PRAGMA`.
         if let Some(tool) = tool
             && !text.starts_with(tool)
             && !(tool == "pragma" && text.starts_with("PRAGMA"))

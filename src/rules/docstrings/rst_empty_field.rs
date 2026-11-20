@@ -11,7 +11,7 @@ pub fn rst_empty_field(checker: &Checker) {
             FieldKind::Yields,
             FieldKind::Var,
         ]);
-        // A malformed field is for rst-field-syntax to fix first, and it reports the field once.
+        // Leave malformed fields to rst-field-syntax.
         for field in fields.filter(|field| !field.described && field.problem().is_none()) {
             checker.report(
                 Rule::RstEmptyField,

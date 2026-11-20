@@ -1,35 +1,30 @@
 # Contributing to simplint
 
-simplint is one [Rust](https://www.rust-lang.org/) crate that builds the `simplint` binary.
-[maturin](https://www.maturin.rs/) packages that binary into a Python wheel, the way
-[Ruff](https://docs.astral.sh/ruff/) ships, so the Python side holds only packaging, documentation and maintenance
-scripts.
+simplint is a [Rust](https://www.rust-lang.org/) binary packaged in a Python wheel with
+[maturin](https://www.maturin.rs/). Its rules run on the parser and linter crates from
+[Ruff](https://docs.astral.sh/ruff/).
 
 ## Repository layout
 
 - `src/` holds the linter, one directory per layer. Each rule family has a directory of its own, with one source file
   per rule and a Markdown page of the same name next to it, compiled into the binary.
-- `tests/` drives the binary end to end:
-  - rule tests, one module per rule family;
-  - fixtures that mirror the rule sources: each rule has a folder of the Python files its tests lint, named after the
-    rule, next to the rule's snapshots;
-  - command-line tests, one file per concern, with shared helpers beside them;
-  - tests of the installed wheel under each Python, and of the maintenance scripts in `tasks/`.
+- `tests/` covers the CLI, rule families, installed wheels and maintenance tasks. Each rule's fixtures and expected
+  diagnostics live together under `tests/fixtures/`.
 - `docs/` is the [Sphinx](https://www.sphinx-doc.org/) site published on [Read the Docs](https://readthedocs.org/).
 
 ## How a run works
 
-A run lints every file it discovers against one shared view of the whole project. These are the pieces:
+A run resolves settings for each file. Rules that need information about other files share a project index.
 
-| Concept           | What it is                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------ |
-| **Settings**      | Each file's simplint and `Ruff` configuration, found from its location, as `Ruff` finds it.      |
-| **Project index** | What each file imports from the others, built for the whole run before any file is linted.       |
-| **Checker**       | One file's parse, semantic view and diagnostics. Every rule of the file shares the one parse.    |
-| **Rule**          | A function that reads the checker, or reacts to nodes during the walk, and may report a fix.     |
-| **Fix loop**      | Applies a file's fixes until none apply, then checks the result against `Ruff`.                  |
-| **Fix round**     | Re-indexes the files a fix rewrote, and lints again the files whose index answers changed.       |
-| **Cache**         | `Ruff`'s cache, adapted, one per package: keeps import facts per file and remembers clean files. |
+| Concept           | What it is                                                                                        |
+| ----------------- | ------------------------------------------------------------------------------------------------- |
+| **Settings**      | Each file's simplint and `Ruff` configuration, found from its location, as `Ruff` finds it.       |
+| **Project index** | What each file imports from the others, built for the whole run before any file is linted.        |
+| **Checker**       | One file's parse, semantic view and diagnostics. Every rule of the file shares the one parse.     |
+| **Rule**          | A function that reads the checker, or reacts to nodes during the walk, and may report a fix.      |
+| **Fix loop**      | Applies a file's fixes until none apply, then checks the result against `Ruff`.                   |
+| **Fix round**     | Re-indexes the files a fix rewrote, and lints again the files whose index answers changed.        |
+| **Cache**         | Stores import facts and lint results per package, including diagnostics for checks without fixes. |
 
 ```mermaid
 flowchart LR
@@ -54,8 +49,7 @@ flowchart LR
 
 ### Example
 
-Take a project with two files, where `cli.py` imports `LIMIT` but `config.py` leaves it out of `__all__`. The steps
-follow one rule through the run:
+Consider two files where `cli.py` imports `LIMIT` but `config.py` leaves it out of `__all__`.
 
 ```python
 # config.py
@@ -66,7 +60,7 @@ __all__ = []
 from config import LIMIT
 ```
 
-1. **Paths**: `simplint check --fix .` starts from the current directory.
+1. **Paths**: `simplint check --select SMP401 --fix .` checks the current directory for missing exports.
 1. **Files and settings**: discovery finds `config.py` and `cli.py` and resolves the settings of each. simplint stops
    with an error here when a simplint rule and a `Ruff` rule that contradict each other both apply to a file.
 1. **Project index**: the index records that `cli.py` imports `LIMIT` from `config.py`.
@@ -76,8 +70,7 @@ from config import LIMIT
    it stands.
 1. **Fix round**: `config.py` was rewritten, so its facts are collected again, and any file whose answers from the index
    changed is linted again. A round that rewrites nothing ends the loop.
-1. **Cache and report**: the cache stores each file's import facts and remembers the files with nothing to report, so a
-   later run skips them. The run prints what it fixed.
+1. The cache stores import facts and clean results for reuse. The run prints how many reports it fixed.
 
 ### Project index
 
@@ -110,16 +103,13 @@ through the `noqa` filter before the fix loop.
 
 ### Fix loop
 
-The fix loop applies non-overlapping fixes, reparses, and repeats until no fix applies. It then compares `Ruff`'s
-findings before and after:
+The fix loop applies non-overlapping edits, reparses the file and repeats until no more fixes apply. It compares the
+result with the original file using the project's enabled Ruff rules. Cleanup can apply either a safe or an unsafe Ruff
+fix for a newly introduced finding. If a new finding remains, simplint can withdraw individual fixes or all fixes from
+the responsible rule. The original reports remain available.
 
-- `Ruff` fixes what the fixes gave it to do.
-- A fix whose result leaves `Ruff` work it cannot fix is withdrawn, keeping its report. The other fixes of its rule
-  stay.
-
-simplint gets `Ruff`'s findings by running `Ruff`'s linter, and line lengths from a token model, since `ruff format`
-runs after simplint. A fix that does not parse, or a loop that does not settle, leaves the file unchanged and reports an
-error; the other files are still checked.
+simplint estimates formatted line lengths before `ruff format` runs. A fix that breaks syntax, or a fix loop that
+exceeds its iteration limit, leaves that file unchanged and reports an error. Checks continue on the other files.
 
 ```mermaid
 flowchart TD
@@ -172,14 +162,12 @@ Choose an installed Python version if 3.15 is unavailable. `tox` skips missing i
    - A `module` rule is a function of that name, re-exported from the family's module.
    - A node rule's module is public in the family and holds a function for each hook. Prefer a node rule to walking the
      module again.
-   - Report through the checker, with a fix marked safe only when no program can observe the change.
-1. Add the rule's Markdown page next to its file, with these sections:
-   - What it does, Why is this bad?, Example and Fix safety
-   - Options, listing the settings the rule reads
-   - Ruff overlap, when a `Ruff` rule reports some of the rule's cases
-   - Conflicts with Ruff, when a `Ruff` rule contradicts it
-1. Add a fixture named after the rule in the rule's family folder of the fixtures, and a `test_case` row in the family's
-   rule tests, then accept the snapshot with [insta](https://insta.rs/)'s `cargo insta test --accept` and review it.
+   - Report through the checker. Mark the fix unsafe if it can change program behavior.
+1. Put the Markdown page beside the rule. Start with a summary, explain why the pattern matters and show a reported
+   example alongside the preferred code. Under What it does, document cases the rule reports or skips and when it can
+   fix them. Use Configuration for settings and document any overlap or conflict with Ruff.
+1. Add a fixture under the rule's family directory and a `test_case` row to the family's rule tests. Generate a pending
+   snapshot with [insta](https://insta.rs/)'s `cargo insta test`, then inspect and accept it with `cargo insta review`.
 1. Add a `feature` fragment to `changelog.d/`.
 
 ## Tests
@@ -193,10 +181,10 @@ snapshot in the rule's fixture folder. The copy merges every rule folder into on
 - a `test_case` names its fixture by its path below the rule folder
 - a fixture can import, or be tested by, another rule
 
-Populate and review the snapshots with:
+Use `cargo insta test` to generate pending snapshots and `cargo insta review` to inspect and accept them.
 
 ```bash
-cargo insta test --accept
+cargo insta test
 cargo insta review
 ```
 
@@ -208,28 +196,22 @@ cargo llvm-cov --ignore-filename-regex 'fix/errors\.rs' --fail-uncovered-lines 0
 
 ### Real-world projects
 
-Snapshots cover the cases a rule's author thought of; real code finds the rest. The `ecosystem` environment downloads
-pinned source distributions of the 100 most downloaded [PyPI](https://pypi.org) projects and the maintainer's own
-projects into a cache under `.tox`, then lints and fixes each one. It fails when:
-
-- simplint reports an error
-- a fix leaves a file that no longer parses
-- a second fix pass still changes code
-- `Ruff` finds a new undefined or redefined name
+The `ecosystem` environment downloads pinned [PyPI](https://pypi.org) source distributions into a cache under `.tox`.
+For each project it compares a Ruff-only copy with one also fixed by simplint, with unsafe fixes enabled. It checks for
+tool errors, newly invalid Python files, increases in enabled Ruff findings and new undefined or redefined names. A
+second pass checks whether more fixes or formatting changes appear, allowing for changes that Ruff makes on its own.
 
 ```bash
 tox run -e ecosystem
 tox run -e ecosystem -- requests click
 ```
 
-CI runs it on every pull request that changes code, from a cache of the pinned archives; run it locally after changing a
-rule or a fix. It does not check that the projects' own test suites still pass; for a fix that can change behavior, run
-the suite of an affected project by hand.
+CI runs this check for changes to the linter, tests, docs, tasks and build configuration. Run an affected project's own
+tests when you need to check runtime behavior.
 
-Pass `--target-version 3.10` to check a release other than the running one. simplint then follows that release's rules,
-and each fixed file must compile under a [CPython](https://www.python.org/) of that version, which
-[uv](https://docs.astral.sh/uv/) (`uv python find`) locates. The running interpreter's parser accepts syntax from newer
-releases, so it misses a fix that breaks an older target.
+Pass `--target-version 3.10` to run simplint's checks for Python 3.10 and verify that files that compiled before fixing
+still compile with that interpreter. The task locates the interpreter with [uv](https://docs.astral.sh/uv/). Without the
+flag, it uses the project's declared target for simplint and the running Python to parse files.
 
 ```bash
 tox run -e ecosystem -- --target-version 3.10 requests
@@ -242,15 +224,15 @@ list drifts.
 
 Edit the files under `docs/`. `PyPI` shows `README.md`, so keep its links absolute.
 
-The rule pages come from the rule sources: the documentation build reads the rule registry and each rule's Markdown
-page, so `Read the Docs` builds them without compiling `Rust`. `cargo test` checks that the derived list equals
-`simplint rules --output-format json`. That check runs a Python script with `python3`, or with `python` when `python3`
-cannot run it, so Python 3.10 or later must be on `PATH`. The command line reference comes from a schema file committed
-to the docs data for the same reason: when a flag changes, `cargo test` fails once and rewrites that file; commit it.
+The documentation build reads the rule registry and its Markdown pages, so `Read the Docs` can build the site without
+compiling Rust. `cargo test` compares the resulting rule list against `simplint rules --output-format json`. This check
+needs Python 3.10 or later on `PATH` as `python3` or `python`.
 
-Build the documentation with `tox run -e docs`, and check its external links with `tox run -e docs_links`. The link
-check reaches other sites, which go down and move pages on their own, so it runs daily instead of on pull requests; run
-it yourself when you add links.
+The CLI reference uses a checked-in schema. When a flag changes, `cargo test` rewrites the stale file and fails so you
+can review and commit the update.
+
+Build the documentation with `tox run -e docs`. Run `tox run -e docs_links` after adding external links. The scheduled
+link check runs daily.
 
 ## Configuration schema
 
@@ -260,22 +242,16 @@ their doc comments become its descriptions, and rule selectors take their values
 or a rule changes, `cargo test` fails once and rewrites the file; commit it. The tasks tests check the documented
 examples against it, so run `tox run -e tasks`.
 
-On a release tag, the release workflow copies the file to [SchemaStore](https://www.schemastore.org/) as a partial
-schema. While `SchemaStore` has no such file, the first tag stages the registration: a task writes the partial, adds its
-`tool.simplint` reference to `SchemaStore`'s `pyproject.json` and lists it in `schema-validation.jsonc`, and the
-schemastore options file becomes the partial's positive test. Each later tag pushes the updated partial to the same
-branch, which updates the open PR.
+[SchemaStore's pyproject schema](https://www.schemastore.org/pyproject.json) references the simplint partial. A release
+tag starts the update workflow. Pull requests that change the schema or its registration files also stage and validate
+the changes against SchemaStore.
 
-`SchemaStore`'s install, formatter and checks run in a job without secrets, which hands its changes on as a patch; only
-the job that applies and pushes it sees the token, so code from `SchemaStore`'s dependencies cannot read it. That job
-runs in the `schemastore` environment and needs a `SCHEMASTORE_TOKEN` secret there: a fine-grained token limited to the
-maintainer's existing `SchemaStore` fork, with read and write access to its contents and workflows (syncing the fork
-copies `SchemaStore`'s workflow changes).
+The staging job runs SchemaStore's formatter and checks, then passes a patch to a separate job. Only the push job
+receives `SCHEMASTORE_TOKEN` from the `schemastore` environment. The token needs read and write access to contents and
+workflows on the maintainer's fork so it can sync the fork and update the submission branch.
 
-Such a token cannot open pull requests on `SchemaStore`, so when none is open for the branch, the run's summary links
-one with its title and body filled in, for the maintainer to open. To submit a release whose tag ran before the token
-existed, run the workflow by hand with that tag. Pull requests run the same staging against a fresh `SchemaStore` clone,
-so a schema change that would break the submission fails there.
+The workflow updates an open SchemaStore pull request by pushing to its branch. If none is open, the run summary
+contains a link to open one. To retry a release, start the workflow manually with its tag.
 
 ## Changelog
 
@@ -320,7 +296,7 @@ git clone --filter=blob:none https://github.com/python/cpython ~/cpython
 uv run tasks/stdlib_submodules.py ~/cpython
 ```
 
-The blobless clone keeps every tag and branch, which the script reads through `git ls-tree`, without the sources.
+The task reads Git trees with `git ls-tree`. The filtered clone can fetch file contents on demand.
 
 The rules that compare exception classes read a generated table of the standard exception classes and their bases.
 Regenerate it when a supported Python version is added or dropped, passing the oldest and the newest interpreter; a
@@ -337,7 +313,7 @@ Run the checks for each changed layer:
 | Change        | Checks                                                      |
 | ------------- | ----------------------------------------------------------- |
 | rule          | its snapshots reviewed, coverage, and the rule page updated |
-| documentation | README generation and the docs build                        |
+| documentation | docs build, plus link checking for new external links       |
 | `tasks/`      | `tox run -e tasks`                                          |
 
 Keep commits limited to one concern.

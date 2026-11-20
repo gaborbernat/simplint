@@ -143,9 +143,7 @@ struct Candidate<'a> {
     single_use: bool,
 }
 
-// Where each name is mentioned in the module, so checking for a name inside a range is a lookup rather than a walk of
-// every statement before it.
-// Each mention with the region of the nested scope that binds the name for itself, if one does.
+// Index mentions once so each candidate can check a range without walking the module again.
 #[derive(Default)]
 struct Mentions<'a> {
     names: FxHashMap<&'a str, Vec<(TextRange, Option<TextRange>)>>,
@@ -231,10 +229,7 @@ fn report(checker: &Checker, candidate: &Candidate, depth: usize, fixable: bool)
     checker.report_fix(Rule::WalrusCandidate, assign.range, message, fixable.then_some(fix), title);
 }
 
-// The formatter splits an `if` header wider than its line width over several lines, which reads worse than the
-// assignment and the `if` the fix joins. The width is judged on `if <test>:` joined on one line at its block's
-// indentation, without parentheses around the test, which the formatter drops from a header that fits, so the answer
-// does not depend on how the code is laid out now.
+// Measure the header after joining lines and dropping redundant parentheses, as the formatter does.
 fn header_fits(
     checker: &Checker,
     candidate: &Candidate,

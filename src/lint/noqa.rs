@@ -19,8 +19,7 @@ use crate::lint::Parse;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
 
-// The `noqa` and `simplint: ignore` comments of one file, by the line they sit on, and the file-level `ruff: noqa`
-// and `ruff: file-ignore` comments that cover the whole file.
+// Line suppressions and the file-wide `ruff: noqa`, `flake8: noqa` and `ruff: file-ignore` directives.
 pub struct Suppressions<'a> {
     source: &'a str,
     path: &'a Path,
@@ -327,7 +326,6 @@ impl Line {
     }
 }
 
-// A `noqa` directive; one without codes suppresses every rule.
 struct Directive {
     codes: Vec<String>,
 }

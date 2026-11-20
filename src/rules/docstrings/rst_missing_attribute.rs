@@ -12,8 +12,7 @@ pub fn rst_missing_attribute(checker: &Checker) {
         };
         let parameters = target.parameters().unwrap_or_default();
         let documented: FxHashSet<&str> = target.docstring.subjects(&[FieldKind::Var, FieldKind::VarType]).collect();
-        // An attribute the constructor takes is documented by its `:param:` field, which `rst-missing-param` asks for.
-        // The description of an attribute is for a person to write, so the report carries no fix.
+        // rst-missing-param already checks names accepted by the constructor.
         for attribute in target.attributes(checker).iter().filter(|attribute| {
             Visibility::of(attribute.name) == Visibility::Public
                 && !attribute.documented

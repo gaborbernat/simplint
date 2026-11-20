@@ -3,9 +3,8 @@ statement every branch of which leaves the block, and the body of an `if` or `wh
 
 ## Why is this bad?
 
-Code that never runs still has to be read, and it looks like it does something. It is often a leftover of a change that
-moved the `return` up, or a debugging switch turned off and forgotten, and a reader cannot tell which without working
-out that the line is dead. Tests and type checkers skip it too, so it rots unnoticed.
+A statement after an unconditional return can make a function appear to perform work it always skips. Removing the
+statement or moving it before the return makes the intended behavior clear.
 
 ## Example
 
@@ -25,8 +24,9 @@ def parse(text: str) -> int:
 ### Active on
 
 - **Statements after one that always leaves the block**: a `return`, `raise`, `break` or `continue`, an `if` whose
-  branches, `else` included, all leave, a `try` whose body or `else` and every handler leave, and a `while True` loop
-  with no `break`.
+  branches, `else` included, all leave, a `try` whose `finally` always leaves, or one whose body or `else` and every
+  handler leave. A `while True` loop without a `break` also counts, as does an integer literal from 1 to 255 in place of
+  `True`.
 
   ```python report
   def sign(value: int) -> int:
@@ -90,8 +90,8 @@ def parse(text: str) -> int:
       raise AssertionError("not reached")
   ```
 
-- **A switched-off body of only imports and annotations**: `if False:` was the way to show names to type checkers alone
-  before `TYPE_CHECKING`.
+- **A switched-off body containing only imports, annotations without values or `pass`**: `if False:` was the way to show
+  names to type checkers alone before `TYPE_CHECKING`.
 
   ```python ok
   if False:
@@ -106,7 +106,8 @@ switch to turn back on.
 
 ## Ruff overlap
 
-Ruff dropped its preview rule `PLW0101` (unreachable). No other Ruff rule reports code after a `return`.
+The [Ruff rule list](https://docs.astral.sh/ruff/rules/) has no general rule for unreachable statements after a
+`return`.
 
 ## Other tools
 

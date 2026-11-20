@@ -11,8 +11,8 @@ pub(crate) use facts::doctest_code;
 pub use facts::{FileFacts, Parts, Signature};
 pub use index::{Exposure, External, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots};
 
-// What a run does with the structures it built once its output is out. A one-shot CLI process exits next, so freeing
-// them only delays the exit; watch mode and library callers go on, and drop them.
+// A one-shot CLI process exits immediately after writing its output. Watch mode and library callers need the memory
+// back.
 #[derive(Clone, Copy)]
 pub(crate) enum Ending {
     Exit,

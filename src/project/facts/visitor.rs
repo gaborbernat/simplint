@@ -34,7 +34,7 @@ pub(crate) struct ImportBinding {
 pub(super) fn top_level_bindings(from_imports: &[FromImport]) -> Vec<ImportBinding> {
     from_imports
         .iter()
-        // A `__future__` import binds a compiler flag, which no importer reads as a name of the module.
+        // Treat future imports as compiler directives when collecting re-exports.
         .filter(|import| import.top_level && import.module != "__future__")
         .flat_map(|import| {
             import.names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| ImportBinding {
@@ -101,7 +101,7 @@ pub(super) struct FactVisitor<'a> {
     pub(super) plain_modules: Vec<String>,
     // Every module an absolute import names, in any scope, and each name a `from` import takes from one.
     pub(super) imported_modules: BTreeSet<String>,
-    // A bare class name no import binds is a class of this module.
+    // Resolve an unqualified class name against this module when no import supplies it.
     own_module: String,
     pub(super) caught: Vec<(String, String)>,
     pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
@@ -110,9 +110,8 @@ pub(super) struct FactVisitor<'a> {
     fixture_names: FxHashSet<TextRange>,
     pub(super) doctest_names: BTreeSet<String>,
     handler_depth: usize,
-    // It does not run inside a function, a lazy import, a branch whose test is false at run time, such as
-    // `if TYPE_CHECKING:` or a `__main__` guard, or an `except ImportError:` fallback, which runs only when the import
-    // it stands in for fails.
+    // Only imports that may execute while the module loads belong in the runtime import graph. Skip deferred imports,
+    // function bodies, unreachable branches and ImportError fallbacks.
     runtime: Runs,
     pub(super) specs: FxHashMap<&'a str, Option<String>>,
     pub(super) unknown_modules: FxHashSet<String>,
@@ -322,15 +321,14 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
-                // A store on a module reaches its name as `setattr` does, so the name stays a module attribute and is
-                // not localized or renamed. `cast(Any, module)` only quiets the type checker, so it reaches the module
-                // too.
+                // Changing a module attribute can break a fix that localizes or renames it. A typing.cast around the
+                // module leaves the object unchanged.
                 if let Some(module) = self.qualified(uncast(value)) {
                     self.record_references(module, [attr.as_str().to_owned()]);
                 }
             }
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
-                // A read off a loaded module is an import of the name, as `module.name` after `import module` is.
+                // A module attribute read can use an exported name without a from-import.
                 for module in self.loaded_modules_of(value) {
                     self.names[Channel::Import].entry(module).or_default().insert(attr.as_str().to_owned());
                 }
@@ -352,8 +350,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     self.doctest_names.extend(doctest_names(text));
                     self.doctests(text);
                 }
-                // A string that spells a name may request a fixture: `usefixtures("db")`, `getfixturevalue("db")`, or
-                // `getfixturevalue(request.param)` over `params=["sqlite", "postgres"]`.
+                // A string may request a fixture directly or supply a parametrized name to getfixturevalue.
                 if self.parts.has(Parts::FIXTURES)
                     && is_identifier(text)
                     && !self.fixture_names.contains(&literal.range)
@@ -384,7 +381,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 {
                     self.assigned_attributes.push(attribute.value.to_str().to_owned());
                 }
-                // A call that names an attribute by a string reads that attribute of the module, as `setattr` does.
+                // Attribute helpers can use a module member by name without an attribute expression.
                 if named_attribute_call(func) || matches!(arguments.args.get(1), Some(Expr::StringLiteral(_))) {
                     for (module, names) in &named {
                         self.record_references(module.clone(), names.iter().cloned());
@@ -396,7 +393,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 if self.parts.has(Parts::COMPUTED_WRITES) {
                     self.computed_write(func, arguments);
                 }
-                // `runpy.run_path(path)["name"]` and `.get("name")` read a name of the module the globals run.
+                // A lookup in the globals returned by runpy.run_path can read a module-level name.
                 if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref()
                     && attr.as_str() == "get"
                     && let Some(Expr::StringLiteral(key)) = arguments.args.first()

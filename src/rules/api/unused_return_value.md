@@ -1,14 +1,12 @@
-Flags a function whose return value no production call reads: its callers drop the value, or only tests read it.
+Flags functions that production code calls but whose return value every production caller discards.
 
 ## Why is this bad?
 
-A `return` that no caller reads still tells readers the value matters. They look for the caller that consumes it and
-find none. Returning nothing says the function acts through its side effects.
-[`list.sort()`](https://docs.python.org/3/faq/design.html#why-doesn-t-list-sort-return-the-sorted-list) follows that
-convention to remind callers it changed the list in place, and
-[command-query separation](https://martinfowler.com/bliki/CommandQuerySeparation.html) draws the same split between
-methods that change state and methods that answer questions. The function also stops building a value that is thrown
-away.
+A return value suggests that callers need it. If callers rely only on a side effect, returning `None` makes that clear.
+Python's [`list.sort()`](https://docs.python.org/3/faq/design.html#why-doesn-t-list-sort-return-the-sorted-list) follows
+this convention for an in-place change.
+[Command-query separation](https://martinfowler.com/bliki/CommandQuerySeparation.html) describes the distinction between
+changing state and querying it.
 
 ## Example
 
@@ -35,9 +33,9 @@ def save_order(order: str) -> None:
 
 ## What it does
 
-For each function that returns a value, the rule checks every call the run makes. A call on a line of its own drops the
-value, as `save_order(order)` does, and a call inside an expression reads it. The function is reported when production
-code calls it and no production call reads the value, whether or not tests read it.
+For each function that returns a value, the rule checks every call the run makes. A standalone call such as
+`save_order(order)` discards the result. The rule counts a call inside another expression as a read. The function is
+reported when production code calls it and no production call reads the value, whether or not tests read it.
 
 ### Active on
 
@@ -94,6 +92,9 @@ code calls it and no production call reads the value, whether or not tests read 
 
 ### Exceptions
 
+The rule skips test modules and modules that another file star-imports. It also skips a module-level function if its
+name is rebound.
+
 - **Functions whose value a production call reads**: one reading call keeps the function.
 
   ```python context file=app/service.py
@@ -134,7 +135,8 @@ code calls it and no production call reads the value, whether or not tests read 
   save_order("a")
   ```
 
-- **Functions only tests call**: a function production code never calls is test support, which `test-only-code` reports.
+- **Functions only tests call**: a function production code never calls is test support, which
+  [test-only-code](SMP408.html) can report.
 
   ```python ok file=app/store.py
   def load_total(order: str) -> int:
@@ -149,7 +151,7 @@ code calls it and no production call reads the value, whether or not tests read 
       assert load_total("abc") == 3
   ```
 
-- **Functions with no call**: nothing calls them, so the rule has no call to judge. `unused-definition` reports them.
+- **Functions with no call**: [unused-definition](SMP409.html) checks for definitions with no known use.
 
   ```python ok
   def save_order(order: str) -> str:
@@ -175,8 +177,9 @@ code calls it and no production call reads the value, whether or not tests read 
       save_order(order)
   ```
 
-- **A program's entry**: a call from an `if __name__ == "__main__":` block or a `__main__.py` hands the value to the
-  command line, which may use it as the exit status.
+- **Program entry points** may use a return value as the exit status, for example with
+  [`sys.exit(main())`](https://docs.python.org/3/library/sys.html#sys.exit). The rule skips a function called from a
+  main guard or anywhere in `__main__.py`.
 
   ```python ok
   def main() -> int:
@@ -208,12 +211,12 @@ code calls it and no production call reads the value, whether or not tests read 
       assert git_commit("a") == "a"
   ```
 
-- **Decorated functions**: a decorator may wrap the function or use its value, so its calls may not be the ones written.
-  A decorator that passes each call on unchanged keeps the function judged:
-  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
+- **Decorated functions** can have callers that never appear in the source. The rule still checks functions decorated
+  with [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache`, `wraps`,
   [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
-  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
-  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
+  `asynccontextmanager`, [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod),
+  `classmethod`, or `final` and `override` from [`typing`](https://docs.python.org/3/library/typing.html#typing.final)
+  or `typing_extensions`.
 
   ```python ok
   from atexit import register
@@ -262,8 +265,9 @@ code calls it and no production call reads the value, whether or not tests read 
       save_order(order)
   ```
 
-- **Methods of classes with bases, or whose name is read elsewhere**: a subclass may override the method, and a read of
-  the name through another object hides which method it reaches.
+- **Methods with uncertain callers** include methods of classes with bases, class keywords such as `metaclass=`, or
+  known subclasses. The rule also skips a method if the project assigns an attribute of the same name or reads it
+  through another object.
 
   ```python ok
   class Base:
@@ -283,9 +287,5 @@ code calls it and no production call reads the value, whether or not tests read 
 
 ### Fix
 
-The rule has no fix. Dropping the `return` changes the signature that tests and outside callers of a library may read,
-and the value may be the only thing a caller keeps. The author decides whether the caller or the function should change.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+A caller may need to use the result, or the function may need to stop returning it. Removing the return expression could
+also remove a side effect. The rule offers no fix.

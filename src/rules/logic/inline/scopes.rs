@@ -14,15 +14,14 @@ pub(in crate::rules::logic) struct InnerScopes<'a> {
 }
 
 struct InnerScope<'a> {
-    // The source the scope's names cover: a function's body, a lambda's body, or a comprehension without the iterable
-    // of its first `for`, which runs in the enclosing scope.
+    // A comprehension covers the full expression except its first iterable, which runs in the enclosing scope.
     region: TextRange,
     outside: Option<TextRange>,
     locals: FxHashSet<&'a str>,
 }
 
 impl<'a> InnerScopes<'a> {
-    // Call before walking the statement; when it returns `true`, call `leave` after.
+    // A successful entry needs a matching `leave` after visiting the statement.
     pub(in crate::rules::logic) fn enter_stmt(&mut self, stmt: &'a Stmt) -> bool {
         let Stmt::FunctionDef(function) = stmt else {
             return false;
@@ -95,8 +94,8 @@ pub(in crate::rules::logic) fn body_region(body: &[Stmt]) -> TextRange {
     TextRange::new(body[0].start(), body[body.len() - 1].end())
 }
 
-// The names a function body binds, outside its nested scopes, and those it declares `global` or `nonlocal`. Bindings
-// the walk does not follow, such as an `except` target, leave the name to the enclosing scope, which only keeps more.
+// Untracked bindings, such as exception targets, count as possible references to the enclosing scope.
+// This can prevent inlining a local when ownership is uncertain.
 #[derive(Default)]
 struct Locals<'a> {
     bound: Vec<&'a str>,

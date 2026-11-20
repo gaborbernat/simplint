@@ -198,8 +198,8 @@ fn preview_help_says_simplint_has_no_preview_rules() {
     let preview = help.lines().skip_while(|line| !line.contains("--preview")).skip(1);
     assert_eq!(
         preview.take_while(|line| !line.is_empty()).map(str::trim).collect::<Vec<_>>().join(" "),
-        "Enable Ruff's preview mode: reports name rules instead of codes, and simplint's fixes are checked against \
-         Ruff's preview rules too. simplint has no preview rules of its own. Use `--no-preview` to disable"
+        "Enable Ruff's preview rules when checking fixes. Preview output uses rule names unless Ruff's \
+         `output-prefer-rule-codes` is set. simplint has no preview rules of its own. Use `--no-preview` to disable"
     );
 }
 

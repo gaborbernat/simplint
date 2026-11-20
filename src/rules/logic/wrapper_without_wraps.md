@@ -3,12 +3,10 @@ Flags a decorator whose wrapper forwards its `*args` or `**kwargs` to the decora
 
 ## Why is this bad?
 
-A decorator returns the wrapper in place of the function, so the decorated name now holds a function called `wrapper`
-with no docstring and a `(*args, **kwargs)` signature. Tracebacks, logs,
-[`help()`](https://docs.python.org/3/builtins/functions.html#help), Sphinx autodoc and anything that reads
-[`inspect.signature`](https://docs.python.org/3/library/inspect.html#inspect.signature) see the wrapper instead of the
-function. `functools.wraps` copies the name, docstring and module across and sets `__wrapped__`, through which
-`inspect.signature` finds the original signature.
+Without `functools.wraps`, [`help()`](https://docs.python.org/3/builtins/functions.html#help) displays the wrapper's
+name and docstring, and [`inspect.signature()`](https://docs.python.org/3/library/inspect.html#inspect.signature) sees
+the wrapper's parameters. `wraps` copies metadata from the decorated function and sets `__wrapped__`, which lets
+introspection follow the wrapper to the original signature.
 
 ## Example
 
@@ -40,13 +38,13 @@ def logged(func):
 
 ### Active on
 
-- **A function defined in another function**, with `*args` or `**kwargs`, that calls one of the outer function's
-  parameters passing its own `*args` or `**kwargs` and nothing but its own parameters, and that the outer function
-  returns. Decorator factories count too: the check runs on each level.
+- **A nested function that the outer function returns.** The nested function calls one of the outer function's
+  parameters, forwarding its own `*args` or `**kwargs`. All arguments to that call must come from the wrapper's
+  parameters. Simplint checks each level of a decorator factory.
 
   **Unsafe fix:** adds `@functools.wraps(func)` above the wrapper, or `@wraps(func)` when the file already imports
-  `wraps` from `functools`, and imports `functools` when the file lacks it. The wrapper then reports the wrapped
-  function's name and signature, which changes what code that reads them sees.
+  `wraps` from `functools`, and imports `functools` when the file lacks it. Tools inspecting the wrapper then see the
+  original function's metadata.
 
   ```python report
   def logged(func):
@@ -70,9 +68,9 @@ def logged(func):
 
 ### Exceptions
 
-- **A wrapper that already copies the metadata**, through a decorator of its own,
-  [`functools.update_wrapper`](https://docs.python.org/3/library/functools.html#functools.update_wrapper) or an
-  assignment to one of its dunders, such as `wrapper.__name__ = func.__name__`.
+- **A decorated wrapper.** Simplint also skips the wrapper if the enclosing decorator calls a function named
+  `update_wrapper` or assigns to an attribute of the wrapper starting with `__`, such as `wrapper.__name__`. These are
+  signs that the decorator may already manage the metadata.
 
 - **An adapter**, which calls the function with arguments of another shape, as `func(len(args), *args)` or
   `func(**options)` from a local `options`. `functools.wraps` would then report a signature the wrapper does not have.
@@ -87,10 +85,7 @@ def logged(func):
 
 - **A closure with a fixed signature**, as a callback factory makes, which keeps a name of its own.
 
-## Ruff overlap
-
-Ruff has no rule for a wrapper that lacks `functools.wraps`.
-
 ## Other tools
 
-No Ruff, Pylint or flake8 rule reports it.
+The [Ruff rule list](https://docs.astral.sh/ruff/rules/) has no equivalent check for a decorator that omits
+`functools.wraps`.

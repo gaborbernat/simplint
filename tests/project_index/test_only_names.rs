@@ -2,9 +2,6 @@ use super::*;
 use crate::common::{check, native, project};
 use test_case::test_case;
 
-// A production module reaches another as a value through a dotted name, or through an import in a function or class
-// body, so a call through the value reaches the module's functions with no import of them. Only the import alone is not
-// a value.
 #[test_case("import pkg.fast\n\nCODEC = pkg.fast\n", common::PASSED ; "dotted_name_loaded")]
 #[test_case(
     "def codec():\n    from pkg import fast\n\n    return fast\n",
@@ -70,8 +67,6 @@ fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service:
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A function that imports a module and only calls one of its functions loads no name as a value, so the module's other
-// functions that only tests use are still reported.
 #[test]
 fn import_only_called_through_keeps_other_test_only_names() {
     let root = project(&[
@@ -103,8 +98,6 @@ const SERVICE: &str =
 const PROGRAM_SERVICE: &str = "from app.mail import send\n\n\ndef escalate(address: str) -> str:\n    return \
     send(address, urgent=True)\n\n\nif __name__ == \"__main__\":\n    print(escalate(\"x\"))\n";
 
-// A module a star import or a `__main__` guard runs is production code, so its calls to `send` are production calls,
-// not the calls of a test that imports it.
 #[test_case(
     "from app.plain import notify\nfrom app.service import *\n\nprint(notify(\"x\"), escalate(\"x\"))\n",
     SERVICE,
@@ -149,8 +142,7 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
     assert_eq!(check(root.path(), &["--select", "SMP410"]).1, stdout.replace("app/", &native("app/")));
 }
 
-// The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production
-// imports.
+// Treating a module value as a possible caller only affects SMP408. Explicit production imports still count for SMP401.
 #[test_case("from pkg import fast\n\nCODEC = fast\n", common::PASSED ; "module_loaded_as_value")]
 #[test_case(
     concat!(
@@ -174,8 +166,6 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
     assert_eq!(check(root.path(), &["--select", "SMP401"]).1, stdout.replace("pkg/", &native("pkg/")));
 }
 
-// A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant
-// guards nothing, and a star import rebinds a flag bound false.
 #[test_case(
     concat!(
         "import sys\n",
@@ -278,8 +268,7 @@ fn runtime_guards_follow_versions_and_constants(module: &str, reported: bool) {
     assert_eq!(report.contains("SMP308"), reported, "{report}");
 }
 
-// A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in
-// the module's blocks, or a `global` declaration of it, may make it true. A binding inside a function is local to it.
+// A module-level binding or a `global` declaration can invalidate a constant guard. A function-local assignment cannot.
 #[test_case("", false ; "unrebound")]
 #[test_case("def enable() -> None:\n    HAS_JSON = True\n\n", false ; "local_in_function")]
 #[test_case("try:\n    import json\n    HAS_JSON = True\nexcept ImportError:\n    pass\n", true ; "try_body")]
@@ -312,8 +301,6 @@ fn module_flag_rebound_in_a_block_keeps_its_imports(rebinding: &str, reported: b
     assert_eq!(report.contains("SMP308"), reported, "{report}");
 }
 
-// The names a `.pth` file reads are used like an entry point's, so no rule that asks whether a name is used, listed or
-// unlisted reports them.
 #[test_case("__all__ = [\"_run\"]\n\n\n", "_run", "SMP402" ; "unused_export")]
 #[test_case("", "_run", "SMP409" ; "unused_definition")]
 #[test_case("__all__ = []\n\n\n", "run", "SMP403" ; "unexported_public_name")]
@@ -331,7 +318,6 @@ fn startup_pth_reads_are_not_unused(prefix: &str, name: &str, rule: &str) {
     assert!(check(without_pth.path(), &["--select", rule]).1.contains(&format!("`{name}`")));
 }
 
-// A test class another test module imports, as a suite that reruns it under another backend does, stays a class.
 #[test]
 fn test_class_imported_elsewhere_keeps_its_class() {
     let base = "def helper() -> int:\n    return 1\n\n\nclass TestSSL:\n    def test_one(self) -> None:\n        assert helper()\n";

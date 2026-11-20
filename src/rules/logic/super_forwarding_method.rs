@@ -184,10 +184,9 @@ fn check_method<'a>(
     {
         return;
     }
-    // The annotations are the override's declared types, which the parent's method does not declare.
+    // Removing the override also removes its declared types.
     let annotated =
         function.returns.is_some() || function.parameters.iter().any(|parameter| parameter.annotation().is_some());
-    // `body.len()` lets the removal leave a `pass` when the method is the class's only statement.
     let fix = (!annotated)
         .then(|| statement_removal(checker, stmt.range(), body.len(), None, Blanks::Trailing))
         .flatten()

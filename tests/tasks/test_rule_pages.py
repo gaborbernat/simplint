@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 def rule_pages(monkeypatch: pytest.MonkeyPatch, root: Path) -> ModuleType:
-    # the page renderer is a build module that imports the rule list beside it, the way Sphinx runs it
+    # Sphinx adds the docs directory to sys.path so the renderer can import its sibling module.
     monkeypatch.syspath_prepend(str(root / "docs"))
     return importlib.import_module("_ext.rule_pages")
 

@@ -2,11 +2,11 @@ Flags `__init__.py` files that hold code beyond a module docstring and deliberat
 
 ## Why is this bad?
 
-Python runs a package's `__init__.py` before any of its submodules:
-[importing `pkg.sub` runs `pkg/__init__.py` first](https://docs.python.org/3/reference/import.html#regular-packages). A
-slow or failing import there slows down or breaks every module of the package, the import cost that
-[Scientific Python's SPEC 1](https://scientific-python.org/specs/spec-0001/) cites for lazy loading. Code in a file that
-is usually empty is also [easy to overlook when debugging](https://docs.astral.sh/ruff/rules/non-empty-init-module/).
+The first import of `pkg.sub`
+[runs `pkg/__init__.py` first](https://docs.python.org/3/reference/import.html#regular-packages). An expensive import
+there adds to the startup cost even for callers that only need one submodule.
+[Scientific Python's SPEC 1](https://scientific-python.org/specs/spec-0001/) describes this cost and how lazy loading
+reduces it.
 
 Unplanned re-exports give one object two import paths and invite circular imports.
 [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) treats imported names as internal unless a
@@ -57,15 +57,12 @@ __all__ = ["Client"]
 
 ## What it does
 
-No fix is offered: removing the code breaks every importer that relies on it, and moving it needs a decision about where
-it belongs.
+Moving code out of `__init__.py` can change its import path or when it runs. The rule offers no fix.
 
 ### Active on
 
-- **Statements after the docstring of an
-  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)** that do not form an explicit API:
-  imports absent from [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) and direct
-  definitions are reported.
+- **Imports used in the initializer** can expose names unintentionally. In the example below, `Client` is imported to
+  construct `DEFAULT`. simplint reports the import and leaves the assignment to Ruff's RUF067.
 
   ```python report file=pkg/__init__.py
   """HTTP client."""
@@ -75,8 +72,7 @@ it belongs.
   DEFAULT = Client()
   ```
 
-- **Other statements in a public package of a library**: an import beyond the re-exports listed under Exceptions, and a
-  dunder assignment, are reported there too. The other statements are left to RUF067, see Exceptions.
+- **Unexported imports and dunder assignments** can also trigger this rule in a public library package.
 
   - an import of a name it does not export:
 
@@ -151,15 +147,14 @@ it belongs.
       return getattr(import_module("pkg._client"), name)
   ```
 
-- **The module docstring**: it documents the package and runs no code.
+- **The module docstring** documents the package.
 
   ```python ok file=pkg/__init__.py
   """HTTP client."""
   ```
 
-- **Names listed in `__all__`**: any package can expose selected names from a private module. The list must be readable
-  statically; an unlisted import is still reported. This works in applications and private subpackages as well as public
-  library packages.
+- **Names re-exported with `from ... import ...`** are allowed in any package when its own, statically readable
+  `__all__` lists them.
 
   ```python context file=pkg/_api.py
   class API:
@@ -210,7 +205,8 @@ it belongs.
     from ._core import *
     ```
 
-- **`from __future__` imports**, in any package, which change no behavior at run time:
+- **[`from __future__` imports](https://docs.python.org/3/reference/simple_stmts.html#future-statements)** select
+  language features for the current module.
 
   ```toml config
   [build-system]
@@ -227,7 +223,8 @@ it belongs.
   from __future__ import annotations
   ```
 
-- **`__lazy_modules__`**, in any package, the modules Python 3.15 loads lazily when the package's imports run:
+- **[`__lazy_modules__`](https://peps.python.org/pep-0810/#what-about-forwards-compatibility-with-older-python-versions)**
+  marks imports in the initializer as eligible for lazy loading on Python 3.15 and later.
 
   ```toml config
   [build-system]
@@ -282,10 +279,10 @@ it belongs.
   from .client import Client
   ```
 
-- **Statements Ruff reports**: [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) reports the statements
-  of an `__init__.py` that it does not allow, so this rule does not report them, whether or not the run selects RUF067
-  or Ruff's preview mode is on. Ruff allows imports, dunder assignments and `if TYPE_CHECKING` blocks, unless
-  `strictly-empty-init-modules` is set.
+- **Statements covered by [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/)** include class and
+  function definitions and ordinary assignments. simplint leaves them to Ruff even when RUF067 is disabled. Ruff's
+  `strictly-empty-init-modules` setting extends that check to imports and dunder assignments. simplint can still report
+  an attribute docstring that follows a simple assignment.
 
   ```python ok file=pkg/__init__.py
   """HTTP client."""
@@ -300,10 +297,8 @@ see [undocumented-public-api](SMP903.html).
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of rule
-  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports
-  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also
-  reports the imports a library's public package does not re-export.
+- Ruff's [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) checks for code in initializers. Its default
+  settings allow re-exports. simplint also checks which names a package re-exports.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`
   module as
   [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),

@@ -1,7 +1,5 @@
-// Names the cache directory after the source the cached data depends on, so changing it starts a fresh cache rather
-// than failing to read the old one, or reading facts and findings an older build produced, as happens between
-// development builds of one version. The findings depend on every rule and on the code that runs them, so the name
-// hashes every Rust file of the crate: any change starts a fresh cache, and a new module cannot be left out.
+// Development builds can share a version while producing different findings. Include the names and contents of all
+// Rust files under src/ in the cache key so a new build cannot reuse stale results.
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};

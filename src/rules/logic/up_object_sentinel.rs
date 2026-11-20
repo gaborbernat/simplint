@@ -6,7 +6,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::syntax::for_each_child_body;
 
-// Python 3.15 adds the `sentinel` builtin, whose repr and pickle carry the name the placeholder is bound to.
 pub fn up_object_sentinel(checker: &Checker) {
     if checker.identifier_count_in(checker.file_range(), "sentinel") > 0 {
         return;
@@ -14,8 +13,7 @@ pub fn up_object_sentinel(checker: &Checker) {
     placeholders(checker, checker.body(), &Enclosing::default(), true);
 }
 
-// Only module and class bodies hold the placeholders the rule means, so `direct` marks those; a function's local is not
-// reachable by name.
+// A function-local placeholder has no importable name for pickle.
 fn placeholders(checker: &Checker, body: &[Stmt], enclosing: &Enclosing, direct: bool) {
     for stmt in body {
         match stmt {
@@ -53,7 +51,7 @@ fn report(checker: &Checker, name: &str, value: &Expr, enclosing: &Enclosing) {
     let qualified = enclosing.qualified(name);
     // A class inside a function is not reached by its qualified name, which pickle cannot find, so it gets no fix.
     let fix = (!enclosing.function).then(|| {
-        // `sentinel` changes what the name reprs as and how it pickles, which a program can observe.
+        // Callers can observe the new representation and pickling behavior.
         Fix::unsafe_edit(Edit::range_replacement(format!("sentinel(\"{qualified}\")"), value.range()))
     });
     checker.report_fix(

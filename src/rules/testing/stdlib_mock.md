@@ -3,12 +3,9 @@ test module of a project that depends on pytest-mock.
 
 ## Why is this bad?
 
-pytest-mock provides the `mocker` fixture, which undoes each patch when its test ends. A test that imports
-`unittest.mock` must manage the patch itself, with a `with` block or a decorator, and the project then has two ways to
-patch. The pytest-mock docs
-[list what those forms cost](https://pytest-mock.readthedocs.io/en/latest/remarks.html#why-bother-with-a-plugin): each
-`with` adds a level of nesting, and a decorator passes its mock as a parameter in decorator order, which mixes poorly
-with fixtures and `parametrize`. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.
+The `mocker` fixture exposes mock constructors and automatically stops patches it starts. For a test that already uses
+pytest-mock, `mocker.patch` avoids a nested `with` block or an extra test parameter for each patch decorator. See
+[pytest-mock's comparison](https://pytest-mock.readthedocs.io/en/latest/remarks.html#why-bother-with-a-plugin).
 
 ## Example
 
@@ -41,10 +38,9 @@ def test_client(mocker: MockerFixture) -> None:
 ### Active on
 
 - **Imports of `unittest.mock` in a test module of a project that depends on pytest-mock**: `import unittest.mock`,
-  `from unittest import mock` and `from unittest.mock import ...`, which bring the module in whatever the name. A file
-  is a test module when its name starts with `test_`, ends with `_test.py` or is `conftest.py`, or when it sits under a
-  `tests` or `test` directory. The project depends on pytest-mock when any of these lists `pytest-mock`, with or without
-  an environment marker:
+  `from unittest import mock` and `from unittest.mock import ...`, which bring the module in whatever the name. See
+  [test-class](SMP801.html) for which files count as test modules. The project depends on pytest-mock when any of these
+  lists `pytest-mock`, with or without an environment marker:
 
   - [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies)
 
@@ -127,8 +123,7 @@ def test_client(mocker: MockerFixture) -> None:
 
 ### Fix
 
-No fix is offered: a test that moves to `mocker` changes its fixtures and its calls to the patched objects, which is a
-rewrite of the test.
+Add the `mocker` fixture to the test and update its calls by hand.
 
 ## Ruff overlap
 
@@ -139,6 +134,5 @@ covers that member only, so an import that also brings in a mock member no ban n
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) moves `mock` imports to `unittest.mock`, which this
-  rule then reports.
+- Ruff's [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) moves `mock` imports to `unittest.mock`,
+  which this rule then reports.

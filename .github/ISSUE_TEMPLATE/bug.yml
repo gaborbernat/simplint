@@ -1,12 +1,12 @@
 name: "Bug"
-description: Report a wrong diagnostic, a broken fix or a crash
+description: Report a wrong diagnostic, a broken fix or another correctness bug
 labels: ["bug"]
 body:
   - type: textarea
     id: description
     attributes:
       label: Description
-      description: Describe the failure and how to reproduce it.
+      description: Describe the failure and how to reproduce it. Report crashes on malformed input privately through the [security policy](https://github.com/gaborbernat/simplint/security/policy).
       placeholder: What command did you run, and what happened?
     validations:
       required: true

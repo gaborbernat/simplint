@@ -392,8 +392,8 @@ fn fix_withholds_only_the_identical_report_ruff_would_report() {
     );
 }
 
-// Each valid fix settles with the rest, and a bad one is found by halving the fixes it is withheld from, so the time
-// stays near-linear in the file, where one settle per fix took tens of seconds at 800 fixes.
+// The fixer should handle a large batch of valid fixes with one conflicting fix. Trying each fix separately
+// previously made this case slow.
 #[test]
 fn fix_finds_a_bad_fix_among_many_valid_ones_quickly() {
     let mut source = String::new();
@@ -646,8 +646,8 @@ def run() -> str:
     );
 }
 
-// Ruff's findings runs leave out the layout rules, yet a suppression comment that may name one counts as used only
-// while it runs: moving `main` up removes its blank line finding, so Ruff's cleanup drops the comment.
+// Unused-noqa cleanup needs the layout rules enabled. Moving `main` removes the blank-line finding that kept
+// the suppression in use.
 #[test_case("# noqa" ; "blanket_noqa")]
 #[test_case("# noqa: E302" ; "noqa_code")]
 #[test_case("# ruff: ignore[blank-lines-top-level]" ; "ignore_rule_name")]

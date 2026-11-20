@@ -19,7 +19,7 @@ pub fn module_variable_prefix(checker: &Checker) {
         if !is_identifier(&expected) {
             continue;
         }
-        // A public module's variables are the API its users import, so the author lists or renames them by hand.
+        // External callers may use the current spelling.
         if public {
             checker.report(
                 Rule::ModuleVariablePrefix,

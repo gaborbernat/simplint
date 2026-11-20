@@ -35,7 +35,7 @@ impl<'a> Visitor<'a> for Loops<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
-            // The loop's nested loops check the same cases, so the outermost one is the report.
+            // Report only the outermost qualifying loop.
             Stmt::For(for_stmt) if self.is_case_loop(for_stmt) => self.found.push(stmt.range()),
             _ => visitor::walk_stmt(self, stmt),
         }
@@ -110,8 +110,7 @@ impl Exercises<'_> {
 struct Cases<'c, 'a> {
     checker: &'c Checker<'a>,
     function: &'a ast::StmtFunctionDef,
-    // Whether a local name is known, by its binding, whether a table is asked and the depth it is asked at, so each
-    // chain of names is followed once rather than once per path to it.
+    // Cache each lookup by binding, lookup kind and remaining search depth.
     known: RefCell<FxHashMap<(TextRange, bool, usize), bool>>,
 }
 
@@ -184,10 +183,10 @@ impl<'a> Cases<'_, 'a> {
         }
     }
 
-    // A name the test function does not bind is a module constant or a builtin. A local name is known when its only
-    // binding is an assignment of a known value; a parameter, a loop target or a result the test computes is not.
+    // Treat names outside the function as available at collection. A local name needs a single assignment the rule can
+    // follow.
     fn is_known_name(&self, name: &ast::ExprName, depth: usize, table: bool) -> bool {
-        // Name lookups a value may follow, which stops an assignment that reads its own name from recursing forever.
+        // Bound the search through assignments, including cycles.
         const MAX_NAME_DEPTH: usize = 8;
         let function = self.function.range();
         let mut bindings = self
@@ -246,9 +245,8 @@ fn asserts_in(stmt: &Stmt) -> bool {
     finder.found
 }
 
-// Assertions that run once per item, or in a helper's body, are the loop's checks. Those inside a `try` of the loop
-// are not: a retry around an assertion waits for a condition, which is polling rather than a set of cases. Nor are
-// those inside a subtest, which runs each case to the end and names it in the report, as a parameterized test does.
+// Skip the body of a try because it may retry a failing assertion. Subtests already report failures per case. Nested
+// definitions have their own checks.
 struct Asserts {
     found: bool,
 }

@@ -52,10 +52,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     );
 }
 
-// The decorator runs where the function is defined, so it takes a string literal on one line, which reads no name of
-// the function's scope, and the module name the call reads `warn` through. It goes below other decorators, since
-// `@warnings.deprecated` rejects the `property` or `classmethod` object they make. A warning with a comment keeps it,
-// so it is reported only.
+// Decorators run before the function has arguments. A literal preserves the message at definition time.
+// Apply the decorator to the function before property or classmethod wraps it.
 fn fix(checker: &Checker, name: &ast::Identifier, body: &[Stmt], warning: &Warning) -> Option<Fix> {
     let Warning { statement, call, message } = warning;
     let Expr::Attribute(func) = call.func.as_ref() else {

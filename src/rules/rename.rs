@@ -1,5 +1,3 @@
-// The rename fix module-level naming rules share.
-
 use std::borrow::Cow;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
@@ -22,12 +20,11 @@ pub(crate) fn kept_message(name: &str, new: &str, listed: bool) -> String {
 
 pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
-    // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
+    // In `zip = zip`, renaming both occurrences would also rename the reference to the builtin.
     if is_offered(checker, old)
         || checker.name_token_count(new) > 0
         || is_python_builtin(old, checker.target_version().minor, false)
         || checker.project().is_used_elsewhere(old)
-        // Code the index cannot follow may read the name, so only the fix is withheld, never the report.
         || checker.project().is_read_opaquely(old)
         // A computed write may set any name of the module, as `setattr(module, name, value)` does.
         || checker.project().is_computed_written()
@@ -44,7 +41,7 @@ pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix>
     let exports = checker.state().export_strings(checker);
     let mut renamed_exports = Vec::new();
     for element in exports.iter().filter(|element| element.value.to_str() == old) {
-        // An entry split over concatenated strings, as `"lim" "it"`, has no one part to respell.
+        // A concatenated export such as `"lim" "it"` spans multiple string tokens.
         let [part] = element.value.as_slice() else {
             return None;
         };
@@ -59,14 +56,10 @@ fn is_offered(checker: &Checker, name: &str) -> bool {
     project.is_library_api(name) || project.role().public && Visibility::of(name) == Visibility::Public
 }
 
-// The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into
-// `\N{LATIN SMALL LETTER X}`, so a word in the source can come or go while the value stays.
-// The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
-// file's own export list names the name without reaching it, so only its other strings and the strings of other files
-// block the rename.
+// Compare decoded strings because formatting can change the spelling of an escape without changing its value.
+// A string in another file may look up the old name. This file's `__all__` entries can be edited with the rename.
 pub(crate) fn appears_in_strings(checker: &Checker, name: &str) -> bool {
     let words = checker.state().string_words(checker);
-    // A word is a run of letters, digits and underscores, so a name with any other character is never one.
     name.chars().all(is_word_char)
         && (words.outside_exports.contains(name)
             || checker.project().string_word_count(name) > u32::from(words.all.contains(name)))
@@ -76,8 +69,6 @@ fn is_word_char(char: char) -> bool {
     char.is_alphanumeric() || char == '_'
 }
 
-// The words of a file's strings, as runs of letters, digits and underscores, which is how a name appears in a string
-// that spells it. `outside_exports` holds those of the strings outside the export lists, which block a rename alone.
 #[derive(Default)]
 pub(super) struct StringWords {
     all: FxHashSet<String>,

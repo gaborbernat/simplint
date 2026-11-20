@@ -1,19 +1,14 @@
-Flags dataclasses declared without `frozen=True`.
-
-The public dataclasses of a library are not reported: users construct and subclass them, so `frozen=True` is their
-choice to make.
+Flags dataclasses whose decorator does not set `frozen=True`. Simplint skips public dataclasses in libraries because
+callers may rely on assigning to their fields.
 
 ## Why is this bad?
 
-Any code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at
-construction time. A [frozen](https://docs.python.org/3/library/dataclasses.html#frozen-instances) instance raises on
-attribute assignment, and
-[`dataclasses.replace()`](https://docs.python.org/3/library/dataclasses.html#dataclasses.replace) builds a changed copy
-instead. With the default `eq=True`, a frozen instance gets a `__hash__`, so it can go in a set or serve as a dict key
-when its fields are hashable. A mutable dataclass with `eq=True` gets
-[`__hash__` set to `None`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass), since a key whose
-hash changes
-[can no longer be found in a dict](https://docs.python.org/3/faq/design.html#why-must-dictionary-keys-be-immutable).
+A [frozen dataclass](https://docs.python.org/3/library/dataclasses.html#frozen-instances) rejects assignments to
+instance attributes. Its fields can still refer to mutable objects. Use
+[`dataclasses.replace()`](https://docs.python.org/3/library/dataclasses.html#dataclasses.replace) to construct a copy
+with different field values. With the default `eq=True` and no explicit `__hash__`, freezing also generates a hash
+method. Such an instance can serve as a dictionary key when the fields used in the hash are hashable and their hashes
+stay stable.
 
 ## Example
 
@@ -41,9 +36,9 @@ class Release:
 
 ### Active on
 
-- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator
-  spelled `@dataclass` or `@dataclasses.dataclass` without `frozen=True`. Any value other than a literal `True`, such as
-  `frozen=False`, is reported too, since only a literal `True` shows that the option is on.
+- **Dataclass decorators** include aliases that resolve to
+  [`dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass). Simplint checks
+  whether the decorator sets `frozen` to the literal `True`.
 
   - `@dataclass`: `frozen` is not set.
 
@@ -89,8 +84,8 @@ class Release:
         version: str
     ```
 
-  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
-    counts the options its keys set. Here `frozen` is set, so the class is accepted.
+  - Simplint reads the options in `**` arguments from a dictionary literal or a `dict(...)` call with named arguments,
+    directly or through a name bound to that dictionary. Here `DC_KW` supplies `frozen=True`.
 
     ```python ok
     from dataclasses import dataclass
@@ -111,15 +106,14 @@ class Release:
 
 ### Exceptions
 
-A class whose instances are written after construction, as the Instances of the class section describes, is not reported
-when Ruff rejects its plain form, the class without the dataclass decorator, since that is the only other form the code
-can take. Writes through an object of unknown class do not count. Stubs are always reported, since Ruff's rules skip
-them:
+If simplint finds a write to a known instance, it checks whether replacing the dataclass with an ordinary class would
+trigger an enabled Ruff rule. Either condition below suppresses the report. Writes through an unknown object and classes
+in `.pyi` files do not qualify for this exemption.
 
-- **Ruff's B903 runs**: `class-as-data-structure` flags a plain class with no base classes or class keywords, no
-  decorator besides the dataclass's, and no method but private ones, such as `_bump`. A public method, such as `bump`,
-  keeps the class reported. Its fields must be plain parameters: a factory default or `field(init=False)` does not
-  qualify, and neither does a hand-written `__init__`. B903 is a preview rule, so the config turns preview on.
+- **Ruff's preview rule [B903](https://docs.astral.sh/ruff/rules/class-as-data-structure/) is enabled.** Simplint checks
+  for a class without bases, class keywords or additional decorators. Its methods must be private, its body must contain
+  only methods, assignments or expressions, and its fields must omit `default_factory` and explicit `init` arguments to
+  `field()`. A public method or a hand-written `__init__` rules out this exemption.
 
   ```toml config
   [tool.ruff]
@@ -141,11 +135,10 @@ them:
           self.count += 1
   ```
 
-- **Ruff's PLR0913 runs**: `too-many-arguments` flags a plain class whose `__init__` takes more parameters than
-  `max-args`, 5 by default. The count leaves out `field(init=False)` fields and the `KW_ONLY` marker, takes in `InitVar`
-  fields, and leaves out `ClassVar`s. A class with at most `max-args` fields stays reported. Ruff does not count a
-  parameter named like a dummy, such as `_a`, and this rule does, so a class with one can be left unreported where Ruff
-  would not flag it.
+- **Ruff's [PLR0913](https://docs.astral.sh/ruff/rules/too-many-arguments/) is enabled.** Simplint counts the class's
+  own constructor fields, including `InitVar`, and compares the count with Ruff's `max-args` (default 5). It excludes
+  `ClassVar`, `KW_ONLY` and `field(init=False)`. Unlike Ruff's parameter count, it includes names that match Ruff's
+  dummy-variable pattern, so it can exempt extra classes.
 
   ```toml config
   [tool.ruff.lint]
@@ -171,9 +164,10 @@ them:
 
 ### Fix
 
-The fix sets `frozen=True` on the decorator. No fix is offered for:
+The fix sets `frozen=True` unless it would remove a comment inside the decorator. Simplint also withholds the fix in the
+following cases.
 
-- a class without fields, such as a test fixture standing for a dataclass with the default options
+- The class body has no annotated assignments.
 
   ```python report
   from dataclasses import dataclass
@@ -184,8 +178,7 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
       pass
   ```
 
-- a decorator whose `**` splat sets `frozen` to a value other than `True`, such as `FROZEN_OFF = {"frozen": False}`: the
-  fix cannot take the key out of the dict, and adding `frozen=True` would repeat it
+- A `**` argument supplies `frozen` with a value other than `True`. Adding `frozen=True` would repeat the keyword.
 
   ```python report
   from dataclasses import dataclass
@@ -198,9 +191,8 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
       version: str
   ```
 
-- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code
-  using the instance to fail, such as `{Key("a"): True}` raising because the class is unhashable, and freezing can
-  change that
+- The module calls the class by name inside `with pytest.raises(...)` or `with self.assertRaises(...)`. Freezing can
+  change the behavior under test. Here it would make `Key` hashable.
 
   ```python report
   from dataclasses import dataclass
@@ -208,16 +200,18 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
   import pytest
 
 
+  @dataclass
+  class Key:
+      name: str
+
+
   def test_key() -> None:
       with pytest.raises(TypeError):
-
-          @dataclass
-          class Key:
-              name: str
+          hash(Key("a"))
   ```
 
-A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
-sets the class, not an instance, so neither keeps the fix off:
+`Meta.mark` writes to a `Meta` instance. `Release.reset` writes a class attribute. Neither assignment changes a
+`Release` instance.
 
 ```python report
 from dataclasses import dataclass
@@ -253,15 +247,15 @@ class Release:
         cls.total = 0
 ```
 
-Otherwise the fix leaves out `frozen` when checked code shows that a frozen instance breaks it.
+Once the decorator can be edited, simplint checks the class and its uses before offering the fix.
 
 ```mermaid
 flowchart TD
-    fields{"Has fields?"}
+    fields{"Has annotated assignments?"}
     fields -->|no| none["No fix"]
-    fields -->|yes| raises{"Created inside pytest.raises<br/>or assertRaises?"}
+    fields -->|yes| raises{"Constructor called inside pytest.raises<br/>or assertRaises?"}
     raises -->|yes| none
-    raises -->|no| breaks{"Does checked code<br/>break a frozen instance?"}
+    raises -->|no| breaks{"Could freezing break a known use?"}
     breaks -->|yes| none
     breaks -->|no| add["Add frozen=True"]
     classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
@@ -272,7 +266,7 @@ flowchart TD
     class add green
 ```
 
-A fix that adds `frozen`:
+With no conflicting use, the fix adds the decorator option.
 
 ```python report
 from dataclasses import dataclass
@@ -294,8 +288,8 @@ class Release:
 
 ### When `frozen=True` is left out
 
-- the class has a base class other than `Generic[...]`: its methods may set attributes, and a frozen dataclass cannot
-  inherit from it unless it is frozen too
+- The class has a base other than `Generic` or `Generic[...]`. An inherited method might assign attributes. When a base
+  is itself a dataclass, Python also requires the two dataclasses to agree on `frozen`.
 
   ```python report
   from dataclasses import dataclass
@@ -310,7 +304,7 @@ class Release:
       version: str
   ```
 
-- any class in the checked files inherits from a class with its name
+- A class in the checked files uses this class name as a base.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -329,9 +323,8 @@ class Release:
       pass
   ```
 
-- any class in the checked files inherits from a class under its name in another module, whatever the import calls it,
-  such as `from app.models import Release as Base`, or through a module-level name bound to the class, such as
-  `Base = Release`
+- A subclass uses an import alias such as `from app.models import Release as Base` or a module-level assignment such as
+  `Base = Release`.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -389,8 +382,8 @@ class Release:
           self.count += 1
   ```
 
-- other code sets or deletes an attribute on an instance known to be of the class, such as `result.status = "done"`
-  after `result = Result(...)`, in this file or another checked file
+- A checked file assigns or deletes an attribute on a known instance, for example `result.status = "done"` after
+  `result = Result(...)`.
 
   ```python report
   from dataclasses import dataclass
@@ -424,9 +417,8 @@ class Release:
       result.status = "done"
   ```
 
-- other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time,
-  such as the [`setattr(self, key, value)`](https://docs.python.org/3/builtins/functions.html#setattr) of a method that
-  updates its fields from a dict, or `setattr(release, key, value)` on an annotated parameter
+- Code calls `setattr` or `delattr` on a known instance with a name computed at runtime, for example
+  [`setattr(release, key, value)`](https://docs.python.org/3/builtins/functions.html#setattr) on an annotated parameter.
 
   ```python report
   from dataclasses import dataclass
@@ -467,8 +459,8 @@ class Release:
       setattr(release, key, value)
   ```
 
-- other code sets or deletes an attribute of an instance known to be of the class through `monkeypatch.setattr`,
-  `mock.patch.object`, `obj.__setattr__(...)` or `obj.__delattr__(...)`
+- Code writes to a known instance through `monkeypatch.setattr`, `mock.patch.object`, `obj.__setattr__` or
+  `obj.__delattr__`.
 
   ```python report
   from dataclasses import dataclass
@@ -506,10 +498,9 @@ class Release:
           release.__delattr__("version")
   ```
 
-- other code sets or deletes an attribute named like one of the fields or `ClassVar` attributes on an object of unknown
-  class, such as `envs[name].active = True`, directly or through `setattr`. `mock.patch.object(Env, "active")` and the
-  dotted string `monkeypatch.setattr("app.models.Env.active", True)` name the field on a class, an object of unknown
-  class to the rule, so they count too
+- An assignment or deletion on an object of unknown type names a field, `ClassVar` or `InitVar` declared by the class.
+  In the example, `envs[name].active = True` could change an `Env`. Simplint also counts
+  `mock.patch.object(Env, "active")` and `monkeypatch.setattr("app.models.Env.active", True)` as writes to `active`.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -548,19 +539,19 @@ class Release:
 
 ### Instances of the class
 
-An object is **known to be of the class** when it is:
+Simplint recognizes instances through these expressions.
 
-- `self` in a method of the class
-- a name bound to a call of the class, through its module as `models.Release(...)` too
-- a name annotated with a class the run defines, `Optional[...]` and `... | None` included
-- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`
+- The first parameter of an instance method.
+- A name assigned a constructor call, including a qualified call such as `models.Release(...)`.
+- A name annotated with a recognized project class, including `Optional[Release]` and `Release | None`.
+- An attribute of `self` annotated in the class body, such as `self.config` after `config: Config`.
 
 An object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,
 `MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.
 
-Any other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An
-unannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `frozen=True` is
-still offered, and that write fails at runtime once the fix is applied.
+For an object of unknown type, simplint withholds the fix when the assigned name matches a field or `ClassVar`. In the
+example below, `Result` has no `log` field and `result` has no annotation. The fix is still offered, though
+`record(Result("ok"))` will fail after freezing.
 
 ```python report file=app/models.py
 from dataclasses import dataclass
@@ -591,9 +582,8 @@ def record(result) -> None:
 record(Result("ok"))
 ```
 
-An annotation that names no class the run defines, such as `Any`, `object`, a protocol, a type alias or a type variable,
-leaves the name unknown. A write through it to a field withholds `frozen=True`, as the object may be an instance of the
-class with that field:
+Annotations such as `Any`, `object`, a protocol, a type alias or a type variable can leave the receiver unknown. The
+assignment to `item.version` below prevents the fix because `Release` declares `version`.
 
 ```python report
 from dataclasses import dataclass
@@ -623,9 +613,8 @@ def bump(item: Any) -> None:
     item.version = "2"
 ```
 
-A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such
-as `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it
-is more likely a type variable:
+Simplint recognizes constructor calls such as `_Result(...)` and `URL(...)`. It ignores leading underscores when
+checking capitalization and treats short all-capital names such as `T` and `KT` as possible type variables.
 
 ```python report
 from dataclasses import dataclass
@@ -681,9 +670,9 @@ url.cached = True
 
 ### Unsafe fix
 
-The fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:
+The fix is marked unsafe in the following cases.
 
-- the decorator already sets `frozen` or `slots` to something other than `True`;
+- The decorator sets `frozen` or `slots` to a value other than the literal `True`.
 
   ```python report
   from dataclasses import dataclass
@@ -703,7 +692,7 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
-- the class has a `Generic[...]` base class;
+- The class inherits from `Generic` or `Generic[...]`.
 
   ```python report
   from dataclasses import dataclass
@@ -729,9 +718,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
       value: T
   ```
 
-- another class with the same name, defined in another module, gets attributes written on its instances or has a
-  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this
-  class;
+- A different module defines a class with the same name, and that class has a recorded instance write or a subclass
+  incompatible with slots. An unresolved import could refer to either class.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -760,8 +748,7 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- code sets an attribute no class of the checked files declares on an object simplint cannot tie to a class, as the
-  object may be an instance of this class;
+- Code assigns an attribute on an object of unknown type, and no checked class declares that attribute.
 
   ```python report
   from dataclasses import dataclass
@@ -789,9 +776,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
       item.label = "x"
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
-  anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
-  `__setattr__` or `__delattr__`.
+- The class assigns or deletes an attribute on an object other than its method receiver, or refers to `super`,
+  `__dict__`, `__weakref__`, `__setattr__` or `__delattr__`. Writes through a nested class's own method receiver are
+  exempt.
 
   ```python report
   from dataclasses import dataclass
@@ -817,8 +804,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
       settings.flag = True
   ```
 
-  A class nested in the dataclass writes its own instances through the first parameter of its methods, which keeps the
-  fix offered; a closure writing the dataclass's instance does not:
+  The nested `Marker` method below writes through `outer`, a captured reference to the `Release` instance. Simplint
+  marks the fix unsafe. Calling `helper` after the change can fail at `outer.flag = True`.
 
   ```python report
   from dataclasses import dataclass
@@ -856,9 +843,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
           Marker().mark()
   ```
 
+  Simplint marks calls to
   [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
-  `super().__setattr__(...)` are how a frozen class writes its own fields, so they do not count as writes and keep the
-  fix offered, but naming `__setattr__` or `super` still makes it unsafe:
+  `super().__setattr__(...)` as unsafe. The presence of these calls alone does not prevent the fix.
 
   ```python report
   from dataclasses import dataclass
@@ -890,18 +877,18 @@ The fix is safe only when nothing else in the checked files might notice the cha
           super().__setattr__("version", version)
   ```
 
-Code outside the checked files, and code that sets an attribute another class declares on an object simplint cannot tie
-to this class, is not detected, and breaks once the fix is applied.
+A write can escape detection if it happens outside the checked files, or if it uses an unknown receiver and an attribute
+declared by another class. Freezing an instance can make such writes fail.
 
 ### Related rules
 
 [dataclass-slots](SMP702.html) asks for `slots=True` on the same decorator. [dataclass-kw-only](SMP703.html) asks for
 `kw_only=True`.
 
-A class that writes an attribute other than its fields gets no `slots=True` fix from [dataclass-slots](SMP702.html), so
-the plain class is then the only way to satisfy it. The exceptions above only cover `frozen`, so `dataclass-slots` still
-reports such a class.
+`dataclass-slots` checks the class independently. A write to an undeclared instance attribute can prevent its fix even
+when simplint exempts the class from `dataclass-frozen`.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).
+- Ruff's open [#8981](https://github.com/astral-sh/ruff/issues/8981) proposes requiring dataclasses to set `frozen` and
+  `slots` explicitly.

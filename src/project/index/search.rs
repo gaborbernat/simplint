@@ -29,8 +29,8 @@ impl CacheKey for SearchRoots {
 }
 
 impl SearchRoots {
-    // A cached run that skips the resolver must not miss what it sees beyond the run's files. A directory's time moves
-    // when an entry is added, removed or renamed, so the directories stand in for their entries.
+    // An import can change when a file outside the run appears, disappears or moves. Include directory timestamps in
+    // the resolver cache key.
     pub fn layout_key<'a>(&self, files: impl Iterator<Item = &'a Path>, hasher: &mut CacheKeyHasher) {
         Self::hash_directories(&Self::walk(&self.roots, files), hasher);
     }
@@ -53,8 +53,7 @@ impl SearchRoots {
                 .map(Path::to_path_buf)
         }));
         let mut walked: FxHashSet<PathBuf> = FxHashSet::default();
-        // Only a link can lead back to a directory already walked, so only a link's target is resolved to stop a loop.
-        // Each level is listed on all threads and its links are taken in order, so the same tree gives the same key.
+        // Track link targets to break cycles. Keep traversal order stable when listing a level in parallel.
         let mut linked: FxHashSet<PathBuf> = FxHashSet::default();
         while !level.is_empty() {
             level.retain(|directory| walked.insert(directory.clone()));
@@ -70,7 +69,7 @@ impl SearchRoots {
         walked
     }
 
-    // The sources `private-import-path` looks for may sit outside the search roots, so the cache keys those trees too.
+    // The sources `private-import-path` looks for may sit outside the search roots, so include those trees in the cache key.
     pub fn probed_layout(root: &Path, hasher: &mut CacheKeyHasher) {
         let directories = Self::walk(&[root.to_path_buf(), root.join("src")], std::iter::empty());
         Self::hash_directories(&directories, hasher);
@@ -133,14 +132,13 @@ impl SearchRoots {
         startup::names(&self.roots)
     }
 
-    // Ruff does not count a namespace package, one without an `__init__.py`, as a package, but Python still names its
-    // modules from the root above them.
+    // Modules in namespace packages can have importable names even without an __init__.py.
     pub fn module_path(&self, path: &Path) -> Option<Vec<String>> {
         self.module_paths(path).into_iter().next()
     }
 
-    // The module a file imports as from each search root above it, the innermost first: a namespace package under `src`
-    // is `namespace.package` from `src`, though the directory above the package is a search root too.
+    // Try the closest search root first. A module in a namespace package can have different names relative to different
+    // roots.
     pub fn module_paths(&self, path: &Path) -> Vec<Vec<String>> {
         let path = normalized(path);
         let mut roots: Vec<&PathBuf> = self.roots.iter().filter(|root| path.starts_with(root)).collect();
@@ -211,7 +209,6 @@ fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
         .collect()
 }
 
-// A directory, or a link to one with its target. An entry whose type cannot be read was removed after the listing.
 fn importable(path: PathBuf, kind: io::Result<fs::FileType>) -> Option<(PathBuf, Option<PathBuf>)> {
     let kind = kind.ok()?;
     if kind.is_dir() {
@@ -282,7 +279,6 @@ mod tests {
         assert_eq!(importable(folder.path().join("gone"), Err(io::Error::other("removed"))), None);
     }
 
-    // A link counts by its target: a directory is importable under the link's name, a file or a dangling link is not.
     #[cfg(unix)]
     #[test]
     fn link_is_importable_when_it_reaches_a_directory() {

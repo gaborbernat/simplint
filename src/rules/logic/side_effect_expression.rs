@@ -97,8 +97,7 @@ fn rewritable(checker: &Checker, stmt: &Stmt) -> bool {
     checker.is_alone_on_lines(stmt.range()) && !checker.has_comment_in(stmt.range())
 }
 
-// `a and f()` runs `f()` when `a` is true, and `a or f()` when it is false. The `if` tests the same operands the same
-// number of times, except for an `or` of three or more, whose `not (a or b)` tests the last of them twice.
+// Keep the multi-operand disjunction fix unsafe because it groups the earlier operands under one negation.
 fn if_fix(checker: &Checker, stmt: &Stmt, operation: &ast::ExprBoolOp) -> Option<Fix> {
     let (Some((last, tests)), true) = (operation.values.split_last(), rewritable(checker, stmt)) else {
         return None;

@@ -1,12 +1,11 @@
-Flags a comprehension with more than two `for` clauses or more than one `if` clause.
+Flags a comprehension with more than two `for` clauses or more than one `if` attached to the first `for`.
 
 ## Why is this bad?
 
-A comprehension reads as a loop and a filter, and two `for` clauses still read as one pairing of two sequences. The
-[language reference](https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries)
-orders the clauses outermost first while the element comes before all of them, so with a third loop the reader holds the
-element in mind across every level and loses track of which loop binds each name. A second `if` clause is an `and`
-written as two filters, which a named predicate states once. A `for` statement or a helper names each step.
+In a [comprehension](https://docs.python.org/3/reference/expressions.html#displays-for-lists-sets-and-dictionaries), the
+result expression appears before the clauses that bind its names. With three loops, explicit `for` statements can make
+it easier to see where each value comes from. Multiple filters on the same loop can often be combined with `and` or
+named in a helper.
 
 ## Example
 
@@ -39,7 +38,8 @@ List, set and dict comprehensions and generator expressions.
       return [(name, size, flag) for name in names for size in sizes for flag in flags]
   ```
 
-- **A second `if` clause**: reported at that clause.
+- **A second filter on the first loop.** The diagnostic points to its condition. Filters attached to a second loop do
+  not count toward this limit.
 
   ```python report
   def small_evens(values: list[int]) -> set[int]:
@@ -68,7 +68,6 @@ No fix is offered: the replacement, a `for` statement, `itertools` or a helper, 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports more than two `for`
   clauses as
   [WPS224](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooManyForsInComprehensionViolation)

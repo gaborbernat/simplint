@@ -1,12 +1,11 @@
-Flags dataclasses declared without `slots=True`.
-
-The public dataclasses of a library are not reported: users construct and subclass them, so `slots=True` is their choice
-to make.
+Flags dataclasses whose decorator does not set `slots=True`. Simplint skips public dataclasses in libraries because
+callers may depend on their storage layout or subclass them.
 
 ## Why is this bad?
 
-[Slots](https://docs.python.org/3/reference/datamodel.html#slots) reject writes to misspelled attributes, as an instance
-has no `__dict__` to take a new name, and make each instance smaller.
+[Slots](https://docs.python.org/3/reference/datamodel.html#slots) reserve storage for the declared attributes. When no
+base supplies an instance `__dict__`, this can reduce memory use and makes an assignment to a misspelled field raise
+[`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError).
 
 ## Example
 
@@ -34,9 +33,9 @@ class Release:
 
 ### Active on
 
-- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator
-  spelled `@dataclass` or `@dataclasses.dataclass` without `slots=True`. Any value other than a literal `True`, such as
-  `slots=False`, is reported too, since only a literal `True` shows that the option is on.
+- **Dataclass decorators** include aliases that resolve to
+  [`dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass). Simplint checks
+  whether the decorator sets `slots` to the literal `True`.
 
   - `@dataclass`: `slots` is not set.
 
@@ -71,8 +70,8 @@ class Release:
         version: str
     ```
 
-  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
-    counts the options its keys set. Here `slots` is set, so the class is accepted.
+  - Simplint reads the options in `**` arguments from a dictionary literal or a `dict(...)` call with named arguments,
+    directly or through a name bound to that dictionary. Here `DC_KW` supplies `slots=True`.
 
     ```python ok
     from dataclasses import dataclass
@@ -117,11 +116,11 @@ class Release:
       version: str
   ```
 
-- **Target versions before 3.14, for a class whose body uses zero-argument `super()` or `__class__`**: nothing is
-  reported. `slots=True` builds a new class, and the methods keep their `__class__` cell on the old one, so `super()`
-  raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) until CPython 3.14 fixes it
-  ([gh-90562](https://github.com/python/cpython/issues/90562)). The fix reached 3.13 only in 3.13.14, which
-  `requires-python = ">=3.13"` also admits, so 3.13 counts as unfixed.
+- **Targets before Python 3.14 when the class body uses `super()` or `__class__`.** `slots=True` creates a replacement
+  class. On affected versions, methods retain a reference to the original class, and zero-argument `super()` can raise
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). CPython fixed this in 3.14 and backported
+  the fix to 3.13.14. A `py313` target still includes earlier 3.13 releases.
+  [CPython issue 90562](https://github.com/python/cpython/issues/90562)
 
   ```toml config
   [tool.ruff]
@@ -142,12 +141,12 @@ class Release:
 
 ### Fix
 
-The fix sets `slots=True` on the decorator. No fix is offered for:
+The fix sets `slots=True` unless it would remove a comment inside the decorator. Simplint also withholds the fix in the
+following cases.
 
-- a decorator whose `**` splat sets `slots` to a value other than `True`: the fix cannot take the key out of the dict,
-  and adding `slots=True` would repeat it
+- A `**` argument supplies `slots` with a value other than `True`. Adding `slots=True` would repeat the keyword.
 
-- a class without fields, such as a test fixture standing for a dataclass with the default options
+- The class body has no annotated assignments.
 
   ```python report
   from dataclasses import dataclass
@@ -158,27 +157,27 @@ The fix sets `slots=True` on the decorator. No fix is offered for:
       pass
   ```
 
-- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code
-  using the instance to fail, such as `{Key("a"): True}` raising because the class is unhashable, and slotting can
-  change that
+- The module calls the class by name inside `with pytest.raises(...)` or `with self.assertRaises(...)`. Slots can change
+  which operations raise. Here `vars(Key("a"))` depends on the instance having a dictionary.
 
   ```python report
   from dataclasses import dataclass
 
-
   import pytest
 
 
-  def test_key() -> None:
-      with pytest.raises(TypeError):
+  @dataclass
+  class Key:
+      name: str
 
-          @dataclass
-          class Key:
-              name: str
+
+  def test_key() -> None:
+      with pytest.raises(KeyError):
+          vars(Key("a"))["missing"]
   ```
 
-A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
-sets the class, not an instance, so neither keeps the fix off:
+`Meta.mark` writes to a `Meta` instance. `Release.reset` writes a class attribute. Neither assignment changes a
+`Release` instance.
 
 ```python report
 from dataclasses import dataclass
@@ -214,15 +213,15 @@ class Release:
         cls.total = 0
 ```
 
-Otherwise the fix leaves out `slots` when checked code shows that a slotted instance breaks the class.
+Once the decorator can be edited, simplint checks the class and its uses before offering the fix.
 
 ```mermaid
 flowchart TD
-    fields{"Has fields?"}
+    fields{"Has annotated assignments?"}
     fields -->|no| none["No fix"]
-    fields -->|yes| raises{"Created inside pytest.raises<br/>or assertRaises?"}
+    fields -->|yes| raises{"Constructor called inside pytest.raises<br/>or assertRaises?"}
     raises -->|yes| none
-    raises -->|no| breaks{"Does checked code<br/>break a slotted instance?"}
+    raises -->|no| breaks{"Could slots break a known use?"}
     breaks -->|yes| none
     breaks -->|no| add["Add slots=True"]
     classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
@@ -233,7 +232,7 @@ flowchart TD
     class add green
 ```
 
-A fix that adds `slots`:
+With no conflicting use, the fix adds the decorator option.
 
 ```python report
 from dataclasses import dataclass
@@ -286,8 +285,7 @@ class Release:
           return self.version.upper()
   ```
 
-- the class has a subclass with several bases, such as `class Context(FileContext, threading.local)`, whose layouts
-  conflict with a slotted one
+- The class has a subclass with multiple bases. Giving one of those bases slots can cause an instance layout conflict.
 
   ```python report
   from dataclasses import dataclass
@@ -305,8 +303,8 @@ class Release:
       pass
   ```
 
-- code sets an attribute that is not a field on `self` or on an instance known to be of the class, a `ClassVar` or
-  `InitVar` attribute included, as a slotted instance has no `__dict__` to shadow it in
+- Code assigns an undeclared instance attribute. A `ClassVar` or `InitVar` also lacks an instance slot, so a slotted
+  instance may reject assignments to it.
 
   ```python report
   from dataclasses import dataclass
@@ -320,8 +318,8 @@ class Release:
           self.marked = True
   ```
 
-- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object`,
-  `obj.__setattr__(...)` or `obj.__delattr__(...)`, which may name any attribute
+- A patch helper or a call to `obj.__setattr__` or `obj.__delattr__` writes an attribute without an instance slot, or
+  uses a computed attribute name.
 
   ```python report
   from dataclasses import dataclass
@@ -412,12 +410,10 @@ class Release:
       setattr(release, key, value)
   ```
 
-- a weak reference to an instance, from [`weakref.ref`](https://docs.python.org/3/library/weakref.html#weakref.ref),
-  [`weakref.proxy`](https://docs.python.org/3/library/weakref.html#weakref.proxy) or
-  [`weakref.finalize`](https://docs.python.org/3/library/weakref.html#weakref.finalize), or an instance a weak container
-  holds, the item added to a [`weakref.WeakSet`](https://docs.python.org/3/library/weakref.html#weakref.WeakSet), a key
-  of a `WeakKeyDictionary`, a value of a `WeakValueDictionary` or the object of a `WeakMethod`, in any checked file;
-  each needs a `__weakref__` slot the class does not have
+- Checked code creates a weak reference to an instance with
+  [`weakref.ref`, `proxy` or `finalize`](https://docs.python.org/3/library/weakref.html), stores it in a `WeakSet`, uses
+  it as a `WeakKeyDictionary` key or `WeakValueDictionary` value, or creates a `WeakMethod` for one of its methods.
+  Adding slots can remove support for weak references.
 
   ```python report
   import weakref
@@ -498,13 +494,11 @@ class Release:
   LIVE.add(Release("1"))
   ```
 
-- the class has a field with a default that code reads or assigns through the class name, such as `Config.timeout`, or
-  through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor. The class name may be
-  an import alias, a name bound to the class, or a subclass of it; an access simplint cannot tie to one class, such as
-  `type(obj).timeout`, `obj.__class__.timeout`,
-  [`getattr(obj, "timeout")`](https://docs.python.org/3/builtins/functions.html#getattr) or
-  `setattr(obj, "timeout", value)` on an object of unknown class, counts against every dataclass of the run with a
-  default of that name
+- Code reads or assigns a field default through the class, for example `Config.timeout` or `cls.timeout` in a
+  classmethod. Adding slots replaces the default with a descriptor. Simplint follows class aliases and subclasses. If it
+  cannot identify the class, as in `type(obj).timeout`, `obj.__class__.timeout` or
+  [`getattr(obj, "timeout")`](https://docs.python.org/3/builtins/functions.html#getattr), it withholds the fix for every
+  checked dataclass with a `timeout` default.
 
   ```python report
   from dataclasses import dataclass
@@ -598,10 +592,9 @@ class Release:
           self.__dict__.update(values)
   ```
 
-- the class stays mutable and any checked file pickles with a protocol that may be 0 or 1, such as
-  [`pickle.dumps(obj, protocol)`](https://docs.python.org/3/library/pickle.html#pickle.dumps) in a loop over every
-  protocol: those protocols refuse a slotted class without `__getstate__`, which a dataclass gets only when frozen. Here
-  a method writes `self`, so `frozen` is left out too, and no fix is offered.
+- Simplint has ruled out freezing the class and a checked file uses pickle protocol 0, 1 or a protocol whose value is
+  unknown. Those protocols can reject slotted objects without a custom `__getstate__`. In the example, `bump` assigns to
+  a field, so simplint treats `Release` as mutable.
 
   ```python report
   import pickle
@@ -622,8 +615,9 @@ class Release:
           pickle.dumps(release, protocol)
   ```
 
-- the class is frozen and has a subclass whose methods store attributes on `self`: the `__getstate__` a frozen slotted
-  dataclass gets pickles only the fields and drops them
+- The class is frozen or eligible for freezing, and a subclass stores additional instance attributes. The `__getstate__`
+  generated for a frozen slotted dataclass serializes only dataclass fields, so pickling can lose the subclass's extra
+  attributes.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -645,11 +639,9 @@ class Release:
 
 ### Instances of the class
 
-[dataclass-frozen](SMP701.html) lists, under Instances of the class, which objects are known to be of the class and
-which mocks never count; this rule uses the same list. Any other object is unknown, so a write through it counts only
-when it names a field or a `ClassVar` attribute. An unannotated parameter such as `result` below is unknown: its write
-to `log` is not tied to `Result`, so `slots=True` is still offered, and that write fails at runtime once the fix is
-applied.
+Simplint uses the same [instance and mock checks as dataclass-frozen](SMP701.html). In the example below, `result` has
+no annotation and `Result` has no `log` field. Simplint still offers `slots=True`, though `record(Result("ok"))` will
+fail after the fix.
 
 ```python report file=app/models.py
 from dataclasses import dataclass
@@ -680,9 +672,8 @@ def record(result) -> None:
 record(Result("ok"))
 ```
 
-A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such
-as `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it
-is more likely a type variable:
+Simplint recognizes constructor calls such as `_Result(...)` and `URL(...)`. It ignores leading underscores when
+checking capitalization and treats short all-capital names such as `T` and `KT` as possible type variables.
 
 ```python report
 from dataclasses import dataclass
@@ -738,9 +729,9 @@ url.cached = True
 
 ### Unsafe fix
 
-The fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:
+The fix is marked unsafe in the following cases.
 
-- the decorator already sets `frozen` or `slots` to something other than `True`;
+- The decorator sets `frozen` or `slots` to a value other than the literal `True`.
 
   ```python report
   from dataclasses import dataclass
@@ -760,7 +751,7 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
-- the class has a keyword, such as `metaclass=`, which runs again when `slots` builds the class a second time
+- The class declaration passes a keyword such as `metaclass=`, since `slots=True` constructs a replacement class.
 
   ```python report
   from abc import ABCMeta
@@ -782,7 +773,7 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
-- the class has base classes;
+- The class has a base class.
 
   ```python report
   from dataclasses import dataclass
@@ -810,9 +801,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
-- another class with the same name, defined in another module, gets attributes written on its instances or has a
-  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this
-  class;
+- A different module defines a class with the same name, and that class has a recorded instance write or a subclass
+  incompatible with slots. An unresolved import could refer to either class.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -841,8 +831,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- code sets an attribute no class of the checked files declares on an object simplint cannot tie to a class, or reaches
-  the `__dict__` or a weak reference of such an object, as the object may be an instance of this class;
+- Code writes an attribute no checked class declares on an object of unknown type, or accesses that object's `__dict__`
+  or weak-reference storage.
 
   ```python report
   from dataclasses import dataclass
@@ -870,9 +860,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
       return vars(item)
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or a class nested in it does so on
-  anything other than the first parameter of its own methods, or the class mentions `super`, `__dict__`, `__weakref__`,
-  `__setattr__` or `__delattr__`.
+- The class assigns or deletes an attribute on an object other than its method receiver, or refers to `super`,
+  `__dict__`, `__weakref__`, `__setattr__` or `__delattr__`. Writes through a nested class's own method receiver are
+  exempt.
 
   ```python report
   from dataclasses import dataclass
@@ -900,8 +890,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
       settings.flag = True
   ```
 
-  A class nested in the dataclass writes its own instances through the first parameter of its methods, which keeps the
-  fix offered; a closure writing the dataclass's instance does not:
+  The nested `Marker` method below writes through `outer`, a captured reference to the `Release` instance. Simplint
+  marks the fix unsafe. Calling `helper` after the change can fail at `outer.flag = True`.
 
   ```python report
   from dataclasses import dataclass
@@ -939,9 +929,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
           Marker().mark()
   ```
 
-  [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
-  `super().__setattr__(...)` are how a class writes its own fields, so they do not count as writes and keep the fix
-  offered, but naming `__setattr__` or `super` still makes it unsafe:
+  Calls to [`object.__setattr__(self, ...)`](https://docs.python.org/3/reference/datamodel.html#object.__setattr__) and
+  `super().__setattr__(...)` make the fix unsafe. The example uses a target on which a slotted class can call
+  zero-argument `super()`.
 
   ```toml config
   [tool.ruff]
@@ -978,8 +968,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
           super().__setattr__("version", version)
   ```
 
-Code outside the checked files, and code that sets an attribute another class declares on an object simplint cannot tie
-to this class, is not detected, and breaks once the fix is applied.
+Simplint can miss writes outside the checked files or through an object of unknown type. Adding slots can make those
+writes fail when they set an attribute outside the class's slots.
 
 ### Related rules
 
@@ -988,4 +978,5 @@ the same decorator.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).
+- Ruff's open [#8981](https://github.com/astral-sh/ruff/issues/8981) proposes requiring dataclasses to set `frozen` and
+  `slots` explicitly.

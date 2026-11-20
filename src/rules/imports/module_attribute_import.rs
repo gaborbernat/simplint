@@ -22,14 +22,13 @@ pub fn module_attribute_import(checker: &Checker) {
         if !(scope.project || scope.names(&module.module)) || knobs.module_attributes.contains(&module.module) {
             continue;
         }
-        // Bound twice: its attributes cannot move into the importer.
+        // Multiple bindings can refer to different objects.
         let [binding] = semantic.bindings(&module.bound) else {
             continue;
         };
         let (statement, alias) =
             binding_import(checker.body(), binding.range).expect("a module binding is created by an import statement");
-        // A package read through its own alias, as `pd.NaT` for `import pandas as pd`, is how the package is meant to
-        // be used, so only the reads of its submodules are reported.
+        // Keep the package alias in public API calls such as `pd.NaT`.
         if module.top_level_package && alias.asname.as_ref().is_some_and(|asname| asname.as_str() != module.module) {
             continue;
         }
@@ -46,10 +45,7 @@ pub fn module_attribute_import(checker: &Checker) {
             continue;
         }
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
-        // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
-        // import without a comment, no stores, no computed write the import would miss, each name importable from the
-        // module, no other module that imports or reads the bound name, which the replaced import would no longer
-        // bind, and no import cycle the module and the importer share, where the names may not be defined yet.
+        // Replacing the import drops the module binding. Check every use before offering one shared fix.
         let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
@@ -60,16 +56,13 @@ pub fn module_attribute_import(checker: &Checker) {
         let mut reports = Vec::new();
         for attribute in attributes {
             let reportable = attribute.load && !is_dunder(attribute.name) && !semantic.is_bound(attribute.name);
-            // Only a name another file patches or stores stays on the module; its other attributes still move.
             if !reportable || module.patched.contains(attribute.name) {
                 convertible = false;
                 continue;
             }
-            // A function that rebinds the name through `global`, or a store to it anywhere in the run, changes the
-            // attribute after the import would have bound it.
+            // A direct import would keep the original value after a later write.
             let rebound =
                 module.rebound.contains(attribute.name) || checker.project().is_attribute_assigned(attribute.name);
-            // A builtin's name would shadow the builtin the module may still call once the name is imported.
             convertible &= !private_path
                 && Visibility::of(attribute.name) != Visibility::Private
                 && module.defined.contains(attribute.name)
@@ -104,8 +97,7 @@ pub fn module_attribute_import(checker: &Checker) {
     }
 }
 
-// A module outside the run reports its attributes without a fix: the run does not show which names it defines, so an
-// import of one might fail or bind a submodule.
+// The index cannot confirm that a module outside the run defines the attribute or that importing it would succeed.
 fn outside_modules<'a>(checker: &'a Checker, scope: &Scope, uses: &OnceCell<Uses<'a>>) {
     let semantic = checker.semantic();
     let knobs = &checker.settings.project.knobs;
@@ -164,7 +156,6 @@ fn outside_modules<'a>(checker: &'a Checker, scope: &Scope, uses: &OnceCell<Uses
     }
 }
 
-// The modules `module-attribute-scope` lets the rule check.
 struct Scope<'a> {
     project: bool,
     stdlib: bool,
@@ -190,7 +181,6 @@ impl<'a> Scope<'a> {
         self.stdlib || self.third_party || !self.modules.is_empty()
     }
 
-    // A listed module covers its submodules too.
     fn names(&self, module: &str) -> bool {
         self.modules
             .iter()
@@ -198,7 +188,6 @@ impl<'a> Scope<'a> {
     }
 }
 
-// The import that creates the module-level binding at `binding`, so a same-named import in a function stays out of it.
 fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Alias)> {
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
@@ -211,8 +200,7 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
     found
 }
 
-// One walk serves every imported module: the semantic model resolves each reference, so a parameter or local of the
-// same name is not a use of it.
+// Use the semantic reference ranges to distinguish module reads from locals with the same name.
 struct Uses<'a>(FxHashMap<TextRange, Use<'a>>);
 
 impl<'a> Uses<'a> {
@@ -271,7 +259,6 @@ fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
     })
 }
 
-// The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
 fn lazy_prefix(stmt: &Stmt) -> &'static str {
     if is_lazy(stmt) { "lazy " } else { "" }
 }

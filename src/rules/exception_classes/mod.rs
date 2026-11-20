@@ -8,15 +8,14 @@ use crate::syntax::{last_dotted_segment, last_segment};
 
 use self::hierarchy::{ALIASES, BASES};
 
-// An exception class by identity: a class of the standard hierarchy table, or a class this file defines.
+// Local classes use their source ranges to distinguish definitions with the same name.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ClassKey {
     Known(&'static str),
     Local(TextRange),
 }
 
-// Every class `expr` derives from, itself first; `None` when `expr` names no class the table or this file knows. A
-// local class with a base that cannot be resolved keeps the bases that can, so a class found in it is a real ancestor.
+// An unresolved base does not invalidate the ancestors we can identify. The first entry is the class itself.
 pub(crate) fn lineage(checker: &Checker, expr: &Expr) -> Option<Vec<ClassKey>> {
     let mut found = Vec::new();
     collect(checker, expr, &mut found).then_some(found)
@@ -76,8 +75,7 @@ pub(crate) fn derives_from_base_exception(lineage: &[ClassKey]) -> bool {
     lineage.contains(&ClassKey::Known("BaseException"))
 }
 
-// The class names `expr` derives from, itself first, as a docstring names them: by their last segment. A class the
-// table and this file do not know is only its own name.
+// Docstrings name classes by their last segment. For an unknown class we can match only its own name.
 pub(crate) fn lineage_names<'a>(checker: &Checker<'a>, expr: &'a Expr) -> Option<Vec<&'a str>> {
     let Some(lineage) = lineage(checker, expr) else {
         return last_segment(expr).map(|name| vec![name]);
@@ -103,7 +101,7 @@ pub(crate) fn canonical_name(name: &str) -> &str {
     last_dotted_segment(lookup(ALIASES, name).map_or(name, |(_, target)| *target))
 }
 
-// The classes an `except` clause names; `None` for a bare `except`, which catches every exception.
+// A bare `except` catches every exception and has no type expression.
 pub(crate) fn handled_types(handler: &ast::ExceptHandlerExceptHandler) -> Option<Vec<&Expr>> {
     Some(match handler.type_.as_deref()? {
         Expr::Tuple(tuple) => tuple.elts.iter().collect(),

@@ -2,10 +2,10 @@ Flags a module docstring in a test module.
 
 ## Why is this bad?
 
-The module path and the test function names already say what is under test. The docstring repeats them and goes stale as
-tests move between modules. The [Google style guide](https://google.github.io/styleguide/pyguide.html#3821-test-modules)
-does not require docstrings on test modules, and a [Ruff issue](https://github.com/astral-sh/ruff/issues/10645) asks for
-D100 to skip test modules.
+A summary such as “Tests for the config loader” repeats the module name `test_loader.py`. Put any setup requirement or
+other detail near the tests that depend on it.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#3821-test-modules) makes module docstrings
+optional for tests.
 
 ## Example
 
@@ -40,8 +40,8 @@ simplint stops with an error before linting while either applies to a test modul
 ## Ruff overlap
 
 Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) reports an empty docstring of a
-single string. This rule removes such a docstring with a fix, unless a file-level `# ruff: noqa` withdraws the fix; then
-it leaves the docstring to D419, whether or not the project selects that rule.
+single string. When simplint can delete the docstring, it offers a fix. If it cannot, for example because of a
+file-level `# ruff: noqa`, it leaves the report to D419 even when D419 is disabled.
 
 ## What it does
 
@@ -49,9 +49,9 @@ Checks for a module docstring in a test module.
 
 ### Active on
 
-- **Files named `test_*.py` or `*_test.py`**: pytest's default
-  [test discovery](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery)
-  names.
+- **Test filenames.** simplint recognizes any checked file whose name starts with `test_` or ends in `_test.py`. This
+  includes pytest's default
+  [test discovery patterns](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery).
 
   ```python report file=test_loader.py
   """Tests for the config loader."""
@@ -70,8 +70,9 @@ Checks for a module docstring in a test module.
   """Fixtures shared by the tests."""
   ```
 
-- **Any file in a directory named `tests` or `test` below the project root**: the project root is the directory holding
-  `pyproject.toml`.
+- **Test directories.** simplint checks files under `tests` or `test` in the project, including nested projects rooted
+  in a directory with one of these names. It also recognizes additional pytest `python_files` patterns within configured
+  `testpaths`.
 
   ```python report file=tests/helpers.py
   """Helpers for the tests."""
@@ -83,8 +84,8 @@ Checks for a module docstring in a test module.
 
 ### Exceptions
 
-- **Docstrings with a copyright or license notice**: code copied from another project must keep the notice its license
-  asks for, such as a `Copyright` line, an `SPDX-License-Identifier` or the MIT permission text.
+- **Copyright and license notices.** The rule preserves docstrings containing `copyright`, `©`,
+  `SPDX-License-Identifier`, `licensed under` or `permission is hereby granted`, regardless of case.
 
   ```python ok file=tests/test_set.py
   """Adapted from the pyrsistent test suite.
@@ -146,7 +147,5 @@ but a semicolon.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** conflicts with released rule
-  [D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/), which asks for the docstring this rule removes;
-  open issue [#10645](https://github.com/astral-sh/ruff/issues/10645) asks
-  [D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/) to skip test modules.
+- [Ruff D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/) asks for a docstring on public modules.
+  [Ruff issue #10645](https://github.com/astral-sh/ruff/issues/10645) proposes an exception for tests.

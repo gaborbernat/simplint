@@ -11,7 +11,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     };
     let checker = walker.checker;
     let semantic = checker.semantic();
-    // Few functions are cached, so the decorators are read before the body is walked for a `yield`.
+    // Check decorators first to avoid walking uncached function bodies.
     let caches: Vec<(&ast::Decorator, &str)> = function
         .decorator_list
         .iter()

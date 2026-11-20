@@ -1,13 +1,10 @@
-Flags functions, classes, methods, nested functions and attributes that nothing in the run uses, so the program never
-reaches them.
+Flags functions, classes, methods and attributes for which simplint finds no use in the files it checks.
 
 ## Why is this bad?
 
-Code nothing calls still has to be read, kept working and updated when its neighbors change. Readers spend time working
-out whether it matters. In a [controlled experiment](https://doi.org/10.1109/ICPC.2016.7503723) with students,
-comprehension improved once the unreachable methods were removed. The test suite rarely covers such code, so it drifts.
-An unused definition can also point at a bug, and [vulture](https://github.com/jendrikseipp/vulture) lists finding
-errors among the reasons to look for unused code. Removing it keeps the module to what the program does.
+Unused definitions make it harder to follow the code that does run. In a
+[controlled experiment with 47 students](https://www.iris.unisa.it/handle/11386/4779797), the group that read code
+without unreachable methods understood it better. An unused definition may also reveal a missing call.
 
 ## Example
 
@@ -151,8 +148,7 @@ definition a Sphinx page names is used.
       return f"{first} {last}"
   ```
 
-- **Names doctests use**: a `>>>` example in a docstring reads each name it uses, whether it imports the name or not,
-  since a doctest runs in the globals of the module that defines the name, so the example may sit in that module.
+- **Names in doctests** may be used without an import because examples can access the defining module's globals.
 
   ```python ok file=app/markup.py
   class _Escaped:
@@ -315,8 +311,9 @@ definition a Sphinx page names is used.
   `hatch.toml` next to `pyproject.toml`, which overrides the keys it sets. The file is the `path` the table gives,
   `hatch_build.py` in the project's directory by default, after `..` is collapsed.
 
-  The class may subclass a class of the run that subclasses the interface, and the other classes of the file are still
-  judged. A hook given as a `get_build_hook()` function instead of a class is out of scope and is not read.
+  A hook class can inherit the interface through another class in the project. Other classes in the same file are still
+  checked. Hatch supports a [`get_build_hook()` function](https://hatch.pypa.io/latest/plugins/build-hook/custom/) to
+  select among several subclasses. simplint recognizes the subclasses and does not follow that selector.
 
   ```toml config
   [tool.hatch]
@@ -410,7 +407,8 @@ definition a Sphinx page names is used.
   print(Connection("example.com"))
   ```
 
-- **Test modules**: a test module's helpers belong to the tests, and pytest may call them by name.
+- **Test modules and sources of star imports** may have callers that simplint cannot trace. The rule skips their
+  module-level definitions and class members. It still checks functions nested inside functions.
 
   ```python ok file=tests/test_helpers.py
   def make_user() -> str:
@@ -507,19 +505,16 @@ definition a Sphinx page names is used.
 
 ### Fix
 
-The rule has no fix. Deleting a definition can strand the imports it used, and it changes the program when something
-outside the run reads the name in a way simplint cannot see, such as a plugin loaded by name. The author decides what to
-remove.
+Deleting a definition can leave unused imports or break callers that simplint cannot find, such as a plugin host that
+looks up a name at runtime. The rule offers no fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) and
-  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), which report a private `Protocol` or
-  `TypedDict` unused in its own file and which this rule leaves to them; unused definitions across the project are open
-  issue [#872](https://github.com/astral-sh/ruff/issues/872).
+- Ruff's [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) and
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/) check for unused private protocols and typed
+  dictionaries in one file. simplint leaves those cases to Ruff. Ruff issue
+  [#872](https://github.com/astral-sh/ruff/issues/872) requests project-wide detection.
 - [vulture](https://github.com/jendrikseipp/vulture) reports unused functions, classes, methods and attributes across
   the files it is given, with a confidence score and no fix.
-- [deadcode](https://github.com/albertas/deadcode) reports the same definitions as
-  [DC02](https://github.com/albertas/deadcode) to DC04, and its `--fix` option deletes them. This rule offers no fix,
-  since a deletion can strand the imports the definition used.
+- [deadcode](https://github.com/albertas/deadcode) checks functions (DC02), classes (DC03), methods (DC04) and
+  attributes (DC05). Its `--fix` option removes unused code.

@@ -2,9 +2,8 @@ Flags a value assigned to a local name that a later assignment in the same block
 
 ## Why is this bad?
 
-The first value is never used, so the line that computes it does nothing for the function. A reader takes it for a
-starting value that matters, and has to scan down to the second assignment to learn that it does not. When an edit
-dropped the read the value was written for, the dead store is the only trace of that bug.
+The first assignment looks like an initial value that the function relies on. If a later assignment overwrites it, check
+whether the first value was unnecessary or a read is missing. Computing that value can still have side effects.
 
 ## Example
 
@@ -38,6 +37,8 @@ block that mentions the name assigns it again without reading it.
   ```
 
 ### Exceptions
+
+- **The placeholder `_` and names such as `__all__`.** The rule skips dunder names and the conventional throwaway name.
 
 - **A block inside a `try` or a `with`**: an exception between the two assignments may go on to a handler, a `finally`
   or past the `with`, where the first value is read.
@@ -113,5 +114,6 @@ a `return` of the name. Neither reports a value that a later assignment replaces
 
 ## Other tools
 
-- [refurb](https://github.com/dosisod/refurb) and [semgrep](https://github.com/semgrep/semgrep-rules)'s
-  `useless-assignment` report some of these, and PyCharm reports them as a redundant assignment.
+- Sonar's
+  [Python rule S1854](https://github.com/SonarSource/sonar-python/blob/master/python-checks/src/main/java/org/sonar/python/checks/DeadStoreCheck.java)
+  also reports values assigned to local variables that are never read.

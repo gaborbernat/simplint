@@ -85,9 +85,7 @@ pub fn missing_from_all(checker: &Checker) {
             (missing.range, format!("`{}` {reason}; list it in `__all__`", missing.name), title.clone())
         })
         .collect();
-    // Listing a name in a public module of a library widens its API and what `import *` binds, and a loader that walks
-    // the `__all__` of modules it imports by a computed name would load the new name too, so the report stays and the
-    // author decides.
+    // Adding an export changes what library users and code that discovers plugins through `__all__` can import.
     checker.report_shared_fix(Rule::MissingFromAll, reports, || {
         if checker.project().role().public || checker.project().reads_unknown_all() {
             None
@@ -132,7 +130,7 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     )))
 }
 
-// The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
+// Place the new export list where SMP406 expects it.
 fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
     // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
     if checker.project().is_star_imported() {
@@ -156,7 +154,7 @@ fn quoted(checker: &Checker, name: &str) -> String {
     format!("{quote}{name}{quote}")
 }
 
-// Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
+// Preserve the existing layout and keep trailing comments with the names they describe.
 fn lines_insertion(checker: &Checker, all_list: &AllList, names: &[&str]) -> Option<Fix> {
     let source = checker.source;
     let elts = all_list.elements();
@@ -180,7 +178,7 @@ fn lines_insertion(checker: &Checker, all_list: &AllList, names: &[&str]) -> Opt
         Some("") if checker.next_significant_token(tail_range.end()) == Some(TokenKind::Rsqb) => Some(true),
         Some(_) => return None,
     };
-    // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
+    // Insert names that share a position in one edit to preserve their order.
     let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
     for name in names {
         let at = if one_per_line { position(elts, name) } else { elts.len() };
@@ -223,8 +221,7 @@ fn position(elts: &[Expr], name: &str) -> usize {
         .unwrap_or(elts.len())
 }
 
-// Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff
-// reports as RUF100. The fix drops those comments with the listing.
+// After listing an import, a suppression for F401 alone can trigger RUF100. Remove it in the same fix.
 fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -> Option<Fix> {
     let applicability = fix.applicability();
     let listed: FxHashSet<&str> = missing.iter().map(|missing| missing.name).collect();

@@ -37,7 +37,7 @@ impl<'b> Reexports<'b> {
         Self { bound, starred, acyclic }
     }
 
-    // The memo is kept per closure, since two predicates can answer the same name differently.
+    // Cache results per predicate. Different lookups can accept different definitions of the same name.
     pub(super) fn home<'s>(
         &'s self,
         is_class: impl Fn(&ClassKey) -> bool + 's,
@@ -98,8 +98,8 @@ impl<'b> Reexports<'b> {
     }
 }
 
-// Only these files may be memoized: a walk through a cycle skips the files on its own path, so from a file above a
-// cycle it can reach a different class than a walk started at that file would.
+// Cache only paths that cannot reach a cycle. Inside a cycle, the result depends on which files the current walk has
+// already visited.
 pub(super) fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -> Vec<FileId> {
     let mut imports: FxHashMap<FileId, usize> = FxHashMap::default();
     let mut importers: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();

@@ -24,9 +24,8 @@ pub fn unused_definition(checker: &Checker) {
         return;
     }
     let project = checker.project();
-    // Walks the module once, not once per definition.
     let local_reads = ComputedReads::of(checker.body());
-    // Most definitions are ruled out before their name is looked up in the strings, so the words are split only then.
+    // Split strings into words only if a candidate survives the cheaper checks.
     let strings = LazyCell::new(|| string_words(checker));
     for definition in definitions(module_statements(checker.body())) {
         let stmt = definition.stmt;
@@ -63,9 +62,8 @@ pub fn unused_definition(checker: &Checker) {
             && class.decorator_list.is_empty()
             && !project.is_mixin(class.name.as_str())
         {
-            // The members of an unused class are reported with it, so only the members of a used class are judged. A
-            // class mixed in beside another base may supply a method that base calls, as `_send_output` does for
-            // `http.client.HTTPConnection`.
+            // Report an unused class once. A mixin may supply a method another base calls, such as
+            // `http.client.HTTPConnection._send_output`.
             members(checker, class, &local_reads, &strings);
         }
     }
@@ -106,7 +104,6 @@ fn is_framework_hook(name: &str) -> bool {
     matches!(name, "setup" | "teardown" | "setup_module" | "teardown_module") || name.starts_with("pytest_")
 }
 
-// A string outside the definition names it.
 fn is_in_strings(strings: &StringWords, name: &str, definition: TextRange) -> bool {
     strings.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
 }
@@ -130,7 +127,6 @@ fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWo
         && name.starts_with('_')
         && semantic.bindings(name).last().is_some_and(|binding| binding.range == class.name.range())
         && strings.get(name).is_none_or(|ranges| {
-            // Walks the class body once for all the name's ranges.
             let bare = bare_strings(class);
             ranges.iter().all(|range| bare.iter().any(|statement| statement.contains_range(*range)))
         })
@@ -164,7 +160,6 @@ fn bare_strings(class: &ast::StmtClassDef) -> Vec<TextRange> {
 // outside the run.
 fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedReads, strings: &StringWords) {
     let project = checker.project();
-    // Walks the class body once, as each member's check reads the loads.
     let loads = class_loads(class);
     for member in module_statements(&class.body) {
         let (name, range, is_method, decorated) = match member {
@@ -282,8 +277,7 @@ fn reads_instance_whole(class: &ast::StmtClassDef) -> bool {
 // passed on. A `locals()` or `vars()` call, or a `global` or `nonlocal` statement naming it, can reach it by name.
 fn nested_functions(checker: &Checker) {
     for outer in checker.function_defs() {
-        // A function that holds only definitions runs none of them; it is source text another tool reads, such as a
-        // plugin a test writes out.
+        // Tests sometimes use a function body as source text for a generated plugin.
         if outer.body.iter().all(|stmt| {
             matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_) | Stmt::Pass(_))
                 || stmt.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr())

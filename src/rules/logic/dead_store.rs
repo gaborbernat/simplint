@@ -25,8 +25,7 @@ pub fn dead_store(checker: &Checker) {
     });
 }
 
-// The function a block belongs to, and whether a `try` or `with` of that function holds the block. There an exception
-// raised between two assignments may go on to a handler, a `finally` or past the `with`, where the first value is read.
+// An exception between assignments can expose the first value to a handler or finally block, or after a with block.
 #[derive(Clone, Copy)]
 struct Place<'a> {
     function: Option<&'a ast::StmtFunctionDef>,
@@ -72,7 +71,6 @@ fn check_store(
     let Some((mention, context)) = names.mentions(name).find(|(range, _)| range.start() >= stmt.end()) else {
         return;
     };
-    // The next mention must be the target of a later assignment in this block, whose value does not read the name.
     let Some(position) = rest.iter().position(|later| later.range().contains_range(mention)) else {
         return;
     };
@@ -86,11 +84,11 @@ fn check_store(
     {
         return;
     }
-    // `None` over a built value lets the value go before the function ends, often to free its memory.
+    // Assigning None may deliberately release a resource before the function returns.
     if value.is_none_literal_expr() && !is_constant(first) {
         return;
     }
-    // A `break` or `continue` between them goes back to the loop, which may read the first value.
+    // A loop jump can bypass the second assignment.
     if has_own_jump(&rest[..position]) {
         return;
     }
@@ -104,8 +102,7 @@ fn check_store(
     );
 }
 
-// A constant has no effect beyond the name it binds, so the assignment goes, and an annotated one keeps its annotation.
-// Any other value may do something when it is built, so it is left in place.
+// Preserve annotations and keep any expression whose evaluation may have side effects.
 fn removal(checker: &Checker, stmt: &Stmt) -> Option<Fix> {
     if !checker.is_alone_on_lines(stmt.range()) || checker.has_comment_in(stmt.range()) {
         return None;

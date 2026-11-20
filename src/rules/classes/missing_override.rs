@@ -20,10 +20,8 @@ pub fn missing_override(checker: &Checker) {
         let mut seen: FxHashSet<&str> = FxHashSet::default();
         for &method in &methods {
             let name = method.name.as_str();
-            // The checks that hold for every definition of the name come first, as they skip most methods without
-            // resolving a decorator. Every class inherits the special methods from `object`, so overriding one is how a
-            // class takes part in a protocol. Overloads leave the decorator to the implementation, and a property's
-            // setter to its getter, the first definition of the name.
+            // Check names before resolving decorators. A property needs one marker for the getter and its setters,
+            // and an overloaded method needs one for its implementation.
             if is_dunder(name)
                 || !project.is_override(class.name.as_str(), name)
                 || marked.get_or_init(|| marked_names(checker, &methods)).contains(name)

@@ -38,8 +38,7 @@ pub(super) fn inlined_replacement(
         value.range()
     };
     let value_text = checker.text(value_range);
-    // A replacement field cannot hold a backslash or a line break before Python 3.12 (PEP 701), so a value the source
-    // spreads over lines goes in on one line, as `ruff format` joins it once the assignment is gone.
+    // Before PEP 701, joining lines keeps the field valid inside a single-line f-string.
     let field_before_312 = before_312 && !reading.fstring_quotes.is_empty();
     if field_before_312 && value_text.contains('\\') {
         return None;

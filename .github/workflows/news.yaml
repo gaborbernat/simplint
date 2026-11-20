@@ -14,9 +14,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      # A merge queue run has no pull request to read, and the pull request passed this check before it was queued.
-      # Every other run reads the labels when it checks, so runs that share this check's name agree, and a run that
-      # checked nothing never reports success over one that failed.
+      # The merge queue has no individual PR labels. Each PR gets its own news check before it is queued.
       - name: 🧭 Skip merge queue runs
         id: gate
         if: github.event_name == 'merge_group'
@@ -85,7 +83,7 @@ jobs:
           BOT_AUTHOR: ${{ github.event.pull_request.user.type == 'Bot' }}
           FOUND_ANY: ${{ steps.fragments.outputs.any }}
         run: |
-          # The event's labels are those at opening; a label added a moment later must count too.
+          # Fetch current labels because a maintainer may have changed them since the event.
           skip_news=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq 'any(.labels[]; .name == "skip news")')
           if [[ "$skip_news" == true || "$BOT_AUTHOR" == true || "$FOUND_ANY" == true ]]; then
             exit 0

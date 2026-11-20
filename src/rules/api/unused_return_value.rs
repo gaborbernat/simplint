@@ -14,7 +14,6 @@ pub fn unused_return_value(checker: &Checker) {
     if !judges_call_sites(checker) {
         return;
     }
-    // Built once per module: building it walks the module, and every function's lookup reuses it.
     let own = OwnCalls::of(checker);
     for function in candidate_functions(checker).filter(|function| returns_value(function)) {
         let name = function.name.as_str();
@@ -32,8 +31,7 @@ pub fn unused_return_value(checker: &Checker) {
     }
 }
 
-// A function only tests call is left to `test-only-code`, and one with no call to `unused-definition`; a program's
-// entry hands its value to the command line.
+// An entry point may return a process exit status.
 fn report_if_unread(checker: &Checker, range: TextRange, name: &str, sites: &CallSites) {
     if sites.opaque || sites.entry || sites.production.is_empty() || sites.production_reads {
         return;
@@ -45,7 +43,7 @@ fn report_if_unread(checker: &Checker, range: TextRange, name: &str, sites: &Cal
     );
 }
 
-// Judged by its `self` calls, as `unused-default` judges them: any other read of the name may reach this method.
+// A call through another receiver may refer to a different implementation.
 fn method_value(
     checker: &Checker,
     class: &ast::StmtClassDef,

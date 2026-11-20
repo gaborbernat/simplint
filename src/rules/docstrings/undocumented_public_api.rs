@@ -23,7 +23,6 @@ pub fn undocumented_public_api(checker: &Checker) {
             }
             _ => is_documented_variable(checker, item.stmt, item.next),
         };
-        // Ruff's D100 to D107 report these definitions when the project selects them, so this rule leaves them to Ruff.
         let left_to_ruff =
             ruff.reported_by(checker, item).is_some_and(|rule| checker.settings.from_ruff.ruff_runs(rule));
         if documented || left_to_ruff {
@@ -48,15 +47,11 @@ pub fn undocumented_public_api(checker: &Checker) {
     }
 }
 
-// The definitions Ruff's pydocstyle rules D100 to D107 check, read as Ruff reads them. A module is public unless a part
-// of its module path starts with `_`, or, outside a package, its file name does. A top-level function or class is
-// public when its name does not start with `_` and the module's `__all__` bindings, taken together, list it, where the
-// module binds one; a member is public when its enclosing class is.
+// Ruff applies its own visibility and export rules when deciding whether to require a docstring.
 struct RuffPublic<'a> {
     module_public: bool,
-    // Names listed by the module's `__all__` bindings together, or `None` when it has none.
+    // An explicit empty export list differs from having no export list.
     exports: Option<FxHashSet<&'a str>>,
-    // Aliases of `overload` and `override` from `typing`, which Ruff resolves by their original name.
     typing_aliases: FxHashMap<&'a str, &'a str>,
 }
 
@@ -83,7 +78,6 @@ impl<'a> RuffPublic<'a> {
                 Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) if is_name(target, "__all__") => {
                     Self::add_exports(&mut exports, Some(value.as_ref()));
                 }
-                // Ruff reads a binding without a value too, as `__all__: list[str]` has, and it lists nothing.
                 Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_name(target, "__all__") => {
                     Self::add_exports(&mut exports, value.as_deref());
                 }
@@ -93,14 +87,13 @@ impl<'a> RuffPublic<'a> {
         Self { module_public: Self::module_public(checker), exports, typing_aliases }
     }
 
-    // A binding without a value still makes the exports present, and lists nothing.
+    // Ruff treats a declaration without a value as an empty export list.
     fn add_exports(exports: &mut Option<FxHashSet<&'a str>>, value: Option<&'a Expr>) {
         let names = exports.get_or_insert_with(FxHashSet::default);
         names.extend(value.into_iter().flat_map(Self::listed_names));
     }
 
-    // Names as Ruff reads them: string elements of lists and tuples joined with `+`, or passed to `list()` or
-    // `tuple()`. Any other value lists none.
+    // Mirror the literal export forms recognized by Ruff's pydocstyle checks.
     fn listed_names(value: &Expr) -> Vec<&str> {
         match value {
             Expr::BinOp(ast::ExprBinOp { left, right, .. }) => {
@@ -140,7 +133,6 @@ impl<'a> RuffPublic<'a> {
         expr.as_string_literal_expr().map(|literal| literal.value.to_str())
     }
 
-    // Outside a package, the file name stands in for the module path.
     fn module_public(checker: &Checker) -> bool {
         if let Some(path) = checker.module_path() {
             return !path.iter().any(|part| Self::is_private_part(part));
@@ -154,22 +146,17 @@ impl<'a> RuffPublic<'a> {
         part.starts_with('_') && !(part.starts_with("__") && part.ends_with("__"))
     }
 
-    // The Ruff rule that reports the item as undocumented, when Ruff considers it public and does not exempt it as an
-    // overload or an override. Every undocumented item this rule reads is one of those, or a variable Ruff never
-    // reports.
     fn reported_by(&self, checker: &Checker, item: &ApiItem) -> Option<RuffRule> {
         if !self.module_public {
             return None;
         }
-        // A dotted name is a member, whose visibility follows the class it sits in, so only the outermost name matters.
+        // Ruff tests the enclosing top-level name against the module's exports.
         let top = top_level(&item.name);
         if top.starts_with('_') || self.exports.as_ref().is_some_and(|names| !names.contains(top)) {
             return None;
         }
         let rule = Self::ruff_code(item)?;
-        // Ruff exempts `@overload` on functions and `@overload` or `@override` on methods, which simplint already
-        // exempts by name. Only a decorator imported under another name needs the alias map.
-        // Classes have no such exemption.
+        // Directly named overloads and overrides have already been filtered. Ruff recognizes aliased imports too.
         let Stmt::FunctionDef(function) = item.stmt else {
             return Some(rule);
         };
@@ -190,7 +177,6 @@ impl<'a> RuffPublic<'a> {
         (!exempted).then_some(rule)
     }
 
-    // Magic methods are not this rule's items, since D105 and D107 report them.
     fn ruff_code(item: &ApiItem) -> Option<RuffRule> {
         Some(match item.kind {
             ApiKind::Variable => return None,

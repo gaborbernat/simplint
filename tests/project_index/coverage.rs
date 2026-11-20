@@ -2,7 +2,6 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// Only `coverage_init` is called by coverage, so another function of the plugin module is still reported.
 #[test]
 fn coverage_plugin_keeps_its_other_functions_reported() {
     let root = project(&[
@@ -19,7 +18,7 @@ fn coverage_plugin_keeps_its_other_functions_reported() {
     );
 }
 
-// A plugin resolves from the directories pytest's `pythonpath` and ty's `extra-paths` put on the project's import path.
+// simplint searches pytest's `pythonpath` and ty's `extra-paths` when resolving a configured coverage plugin.
 #[test_case("[tool.pytest.ini_options]\npythonpath = [\"tasks\"]\n", None ; "pytest_ini_options")]
 #[test_case("[tool.pytest]\npythonpath = [\"tasks\"]\n", None ; "pytest")]
 #[test_case("", Some(("pytest.ini", "[pytest]\npythonpath = tasks\n")) ; "pytest_ini")]
@@ -40,8 +39,6 @@ fn coverage_plugin_resolves_from_import_paths(paths: &str, ini: Option<(&str, &s
     assert!(check(without_paths.path(), &["--select", "SMP409"]).1.contains("`coverage_init`"));
 }
 
-// A plugin coverage does not load is judged as any other module, so its `coverage_init` is reported: one not listed,
-// and one whose module no import path names, which coverage cannot find.
 #[test_case("plugins = [\"tasks.other\"]\n", "tasks/coverage_pragmas.py" ; "not_listed")]
 #[test_case("plugins = [\"cov\"]\n", "tasks/cov.py" ; "outside_its_import_paths")]
 fn unloaded_coverage_plugin_init_is_reported(plugins: &str, file: &str) {
@@ -60,8 +57,7 @@ fn unloaded_coverage_plugin_init_is_reported(plugins: &str, file: &str) {
     );
 }
 
-// A test module that imports a plugin's `coverage_init` uses it outside the tests, as coverage does, so it is not
-// reported as test-only code.
+// Coverage.py calls the configured plugin's `coverage_init` even if only tests import it.
 #[test]
 fn coverage_plugin_init_imported_by_a_test_is_not_test_only() {
     let root = project(&[

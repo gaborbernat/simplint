@@ -4,11 +4,10 @@ instead of returning `NotImplemented`.
 
 ## Why is this bad?
 
-For `a == b` or `a + b`, Python calls the method of `a`, and asks `b`'s reflected method only when the first returns
-[`NotImplemented`](https://docs.python.org/3/builtins/constants.html#NotImplemented). Returning `False` or raising
-`TypeError` stops that, so another type can never make `a == b` true or define `a + b`. When neither side handles the
-pair, Python still answers `False` for `==` and raises `TypeError` for the other operators, so returning
-`NotImplemented` loses nothing.
+Returning [`NotImplemented`](https://docs.python.org/3/builtins/constants.html#NotImplemented) lets Python try the other
+operand's method. Returning a boolean ends the comparison, and raising `TypeError` ends the operation immediately. If
+both methods decline a comparison, `==` and `!=` fall back to object identity and ordering comparisons raise
+`TypeError`. [Python's data model](https://docs.python.org/3/reference/datamodel.html#object.__lt__)
 
 ## Example
 
@@ -44,10 +43,10 @@ class Point:
 
 ### Active on
 
-- **Operator methods** of a class body: the six comparisons and the binary arithmetic and bitwise operators with their
-  reflected forms. The method must start a guard on its second parameter, `if not isinstance(other, ...)`,
-  `if type(other) is not ...` or `if type(other) != ...`, whose body is only `return True`, `return False` or
-  `raise TypeError(...)`.
+- **Operator methods** include the six comparisons and the binary arithmetic and bitwise operators and their reflected
+  forms. The rule checks top-level `if` statements in the method body that test the other operand with
+  `not isinstance(other, ...)`, `type(other) is not ...` or `type(other) != ...`. The `if` must have no `elif` or `else`
+  and contain one statement that returns a boolean literal or raises `TypeError` without an explicit cause.
 
   ```python report
   class Vector:
@@ -77,12 +76,11 @@ class Point:
 
 ### Fix
 
-The fix replaces the guard's body with `return NotImplemented` and is unsafe: the other operand's method may now answer
-in place of the error or `False`. A guard body with a comment in it gets no fix.
+The unsafe fix replaces the `return` or `raise` statement with `return NotImplemented`. The other operand may then
+supply a different result. The fix skips a statement that contains a comment.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-- [pylint](https://github.com/pylint-dev/pylint) asks for `NotImplemented` over
-  [`NotImplementedError`](https://docs.python.org/3/builtins/exceptions.html#NotImplementedError) only, and leaves this
-  case alone.
+- Ruff's [rule list](https://docs.astral.sh/ruff/rules/) has no equivalent for these operand checks.
+- Pylint's [E0711](https://pylint.readthedocs.io/en/stable/user_guide/messages/error/notimplemented-raised.html) flags
+  `raise NotImplemented`, which attempts to raise a value that is not an exception.

@@ -10,7 +10,7 @@ use super::FileId;
 use super::classes::{ClassGraph, Reexports, acyclic_order};
 use super::resolve::{ClassKey, ModuleFacts};
 
-// A warning is not reported, since a warning is raised to be seen, not caught.
+// Warnings have distinct uses as filter categories even when no handler catches them.
 pub(super) fn exception_classes(
     modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
     python_version: PythonVersion,
@@ -33,7 +33,7 @@ pub(super) fn exception_classes(
     expand_tuples(&mut caught, &tuples);
     let home = graph.home(reexports);
     let exceptions = graph.descending_from(|module, name| is_exception_name(module, name, minor));
-    // A handler catches its class and every base of it, so each base of a caught class is covered too.
+    // A handler naming a subclass gives it a distinct use. Keep its base classes as part of that exception hierarchy.
     let mut covered: FxHashSet<ClassKey> = FxHashSet::default();
     let mut pending: Vec<ClassKey> = caught.iter().filter_map(|(file, name)| home(*file, name)).collect();
     while let Some(key) = pending.pop() {
@@ -152,7 +152,6 @@ mod tests {
     use super::expand_tuples;
     use crate::project::index::FileIds;
 
-    // A tuple named twice inside another expands once, so its classes are caught once.
     #[test]
     fn tuple_named_twice_expands_once() {
         let mut ids = Arc::new(FileIds::default());

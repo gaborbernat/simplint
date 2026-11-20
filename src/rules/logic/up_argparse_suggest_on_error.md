@@ -1,16 +1,10 @@
-Flags `suggest_on_error=True` in
-[`argparse.ArgumentParser()`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser) calls, which
-Python 3.15 makes the default.
+Flags the explicit Python 3.15 default `suggest_on_error=True` in
+[`argparse.ArgumentParser()`](https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser) calls.
 
 ## Why is this bad?
 
-Python 3.15 changes the default of
-[`suggest_on_error`](https://docs.python.org/3/library/argparse.html#suggest-on-error) to `True`, so `ArgumentParser`
-suggests a close match for a mistyped string choice or subparser name without being asked. Passing
-`suggest_on_error=True` therefore repeats the default. An argument that restates its default adds noise and hides the
-arguments that change behavior, and
-[refurb](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default) reports such
-arguments in any call.
+Python 3.15 enables [suggestions](https://docs.python.org/3/library/argparse.html#suggest-on-error) for a mistyped
+string choice or subparser name by default. Pass `suggest_on_error=False` to turn them off.
 
 ## Example
 
@@ -105,7 +99,7 @@ parser = argparse.ArgumentParser(prog="tool")
 
 ### Fix
 
-No fix is offered when the call has a comment, which the removal would drop. The keyword is still reported.
+simplint reports the keyword without a fix if the call contains a comment.
 
 ```toml config
 [project]
@@ -142,4 +136,5 @@ parser = argparse.ArgumentParser("prog")
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+Refurb's [FURB120](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default) also
+checks for arguments that repeat a default.

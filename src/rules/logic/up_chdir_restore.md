@@ -1,13 +1,10 @@
-Flags a directory change that a `try` block undoes in its `finally` clause, which
-[`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) does from Python 3.11.
+Flags code that saves the working directory, changes it, and restores it in a `finally` clause.
 
 ## Why is this bad?
 
-Saving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,
-where [`contextlib.chdir`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir) needs one `with` block.
-[PEP 343](https://peps.python.org/pep-0343/#abstract) added `with` to factor out such `try`/`finally` pairs. The block
-cannot forget the restore, and it leaves no saved name in scope. Both forms change process-wide state, so neither is
-parallel-safe, as the `contextlib.chdir` docs note.
+Since Python 3.11, [`contextlib.chdir(target)`](https://docs.python.org/3/library/contextlib.html#contextlib.chdir)
+restores the previous working directory when the `with` block exits, including when the body raises an exception. Both
+forms change the working directory for the whole process.
 
 ## Example
 
@@ -67,10 +64,11 @@ def build(target):
 
 ## What it does
 
-Reports three statements in one body: `old = `[`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd), then
-[`os.chdir(target)`](https://docs.python.org/3/library/os.html#os.chdir) with one argument, then a `try` whose only
-clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear nowhere
-else in its function, or in the module at module level.
+The rule looks for three consecutive statements. The first saves
+[`os.getcwd()`](https://docs.python.org/3/library/os.html#os.getcwd) under a name. The second calls
+[`os.chdir(target)`](https://docs.python.org/3/library/os.html#os.chdir). The third is a `try` block with only
+`os.chdir(saved)` in its `finally` clause and no exception handlers. The saved name must appear only in the assignment
+and the restore within its scope.
 
 ### Active on
 
@@ -166,13 +164,17 @@ def run(target):
 
 ### Fix
 
-The fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module
-imports `contextlib` already. When another binding holds the name `contextlib`, in the module or by a parameter, local
-or loop variable of a function, lambda, class body or comprehension that encloses the assignment, the rule reports
-without a fix. It also reports without a fix when a comment sits in the lines it would remove, when the assignment
-shares its line with an earlier statement, or when the line before it ends with a backslash that joins the two lines. A
-module-level `old` that another module of the run reads, through an import, a star import or an attribute, or that
-`__all__` lists, keeps its report without a fix, since removing the assignment would break those readers.
+simplint marks this fix as safe. If evaluating the target expression itself changes the working directory, the two forms
+can restore different directories. The original saves the directory before evaluating the target. `contextlib.chdir`
+saves it on entry, after the target has been evaluated.
+
+The fix uses an existing `import contextlib` or adds one to the standard library imports. simplint reports without a fix
+if the name would refer to another binding. It also skips the edit if it would remove a comment, if the assignment
+follows another statement on the same line or continues the previous line, or if the `try` body starts on the `try`
+line.
+
+For a module-level assignment, the fix also checks whether another analyzed module reads the saved name through an
+import, star import or attribute, or whether `__all__` exports it. Those uses still need the assignment.
 
 ```toml config
 [project]
@@ -209,10 +211,9 @@ def run(target):
         os.chdir(old)
 ```
 
-A module docstring that shares its line with code keeps the report without a fix, since an import above it would leave
-`__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import above it
-is a syntax error. So does a last import that shares its line with code, since the new import would land below that
-code.
+When the fix needs an import, it checks the insertion point. An import before the module docstring would change
+`__doc__`. An import before a `from __future__` import would cause a syntax error. The fix also skips an insertion after
+an import that shares its line with another statement.
 
 ```toml config
 [project]
@@ -356,8 +357,7 @@ finally:
     os.chdir(old)
 ```
 
-The import goes above the comment lines that sit directly over the import it precedes, so the comment stays with its
-statement:
+The fix keeps comments with the import they precede.
 
 ```toml config
 [project]
@@ -393,7 +393,7 @@ def run(target):
         return abc, os.listdir()
 ```
 
-A parameter named `contextlib` keeps the report without a fix, even where the module imports `contextlib`:
+A parameter named `contextlib` hides the module import inside the function.
 
 ```toml config
 [project]
@@ -428,7 +428,7 @@ def run(target, contextlib=None):
         os.chdir(old)
 ```
 
-A star import of the module counts as a read of the name, so the report stays without a fix:
+A star import in another analyzed module can expose the saved name.
 
 ```toml config
 [project]
@@ -464,7 +464,3 @@ try:
 finally:
     os.chdir(old)
 ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

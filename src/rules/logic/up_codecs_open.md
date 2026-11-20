@@ -3,14 +3,11 @@ Flags [`codecs.open()`](https://docs.python.org/3/library/codecs.html#codecs.ope
 
 ## Why is this bad?
 
-Python 3.14 [deprecates](https://docs.python.org/3/library/codecs.html#codecs.open) `codecs.open()`, which the builtin
-`open()` supersedes. `open()` takes the same mode, encoding, errors and buffering parameters. With an encoding,
-`codecs.open()` opens the file in binary mode and decodes it through a pure-Python stream wrapper, which
-[PEP 400](https://peps.python.org/pep-0400/#textiowrapper-features) measured 10 to 25 times slower than the C text layer
-of `open()` on small reads. That wrapper also splits lines at the characters
-[`str.splitlines()`](https://docs.python.org/3/builtins/stdtypes.html#str.splitlines) honors, such as form feeds and
-U+2028, where `open()` splits only at line endings. With `newline=""`, `open()` keeps line endings as they are, as
-`codecs.open()` does.
+Python 3.14 [deprecates `codecs.open()`](https://docs.python.org/3/library/codecs.html#codecs.open). For ordinary text
+encodings, the builtin `open()` accepts the encoding and error handler directly. Use `newline=""` to preserve line
+endings when reading and writing. The two APIs split lines differently during iteration.
+[PEP 400](https://peps.python.org/pep-0400/#textiowrapper-features) also describes how the builtin text stream reads
+ahead to speed up small reads.
 
 ## Example
 
@@ -49,17 +46,16 @@ def encoding_name():
 
 ## Configuration
 
-No setting changes the report. The rule reports on every target version, since `open()` takes the arguments in each of
-them.
+The rule applies to every supported target version.
 
 ## What it does
 
 ### Active on
 
 - **Calls of `codecs.open`**, by its qualified name or by a name imported from `codecs`. **Unsafe fix:** the call
-  becomes `open(...)` with `encoding=` and `newline=""`. Reading and writing whole files give the same text and bytes,
-  but iterating over lines does not for text with a form feed, U+2028, U+001C or U+0085: `codecs.open()` yields a line
-  at each of them, and `open()` does not.
+  becomes `open(...)` with `encoding=` and `newline=""`. The codecs stream also splits lines at characters such as form
+  feed, U+2028, U+001C and U+0085. The builtin text stream recognizes carriage return, line feed and CRLF. Some codecs
+  supported by `codecs.open()` are unavailable through `open()`.
 
   ```toml config
   [project]
@@ -94,9 +90,10 @@ them.
 
 ### Fix
 
-No fix is offered when:
+simplint reports the call without a fix in these cases.
 
-- no encoding is given, or it is `None`: `codecs.open()` then returns the builtin text file and ignores `errors`;
+- The encoding is omitted or `None`. In this case `codecs.open()` uses the builtin file object for the requested mode
+  and ignores `errors`.
 
   ```toml config
   [project]
@@ -111,8 +108,7 @@ No fix is offered when:
       return codecs.open(path).read()
   ```
 
-- the mode is not a string literal, or it has a `b`: a binary mode with an encoding returns a stream that `open()`
-  rejects;
+- The mode is computed or contains `b`. The builtin `open()` rejects an encoding in binary mode.
 
   ```toml config
   [project]
@@ -127,11 +123,11 @@ No fix is offered when:
       return codecs.open(path, "rb", "utf-8").read()
   ```
 
-- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123
-  (`builtin-open`) under the default settings, so simplint withdraws the fix;
+- A selected Ruff rule still flags the rewritten call after Ruff applies its fixes, for example
+  [PTH123](https://docs.astral.sh/ruff/rules/builtin-open/).
 
-- an argument is unpacked with `*` or `**`, or `open` is bound in the module, or by a parameter, local or loop variable
-  of a function, lambda, class body or comprehension that encloses the call, which the new call would pick up;
+- The call unpacks arguments with `*` or `**`, or a binding in the module or an enclosing scope would hide the builtin
+  `open`.
 
   ```toml config
   [project]
@@ -154,7 +150,7 @@ No fix is offered when:
       return codecs.open(path, "r", "utf-8").read()
   ```
 
-- the call has a comment inside it, which the rewrite would drop.
+- The call contains a comment.
 
   ```toml config
   [project]
@@ -173,8 +169,8 @@ No fix is offered when:
       ).read()
   ```
 
-A value passed as `encoding`, `errors` or `buffering` that needs parentheses, such as a walrus or a `yield`, keeps the
-parentheses it has in the source and gets them when it has none, since `encoding=name := value` is a syntax error:
+The fix preserves parentheses around `encoding`, `errors` and `buffering` values. It adds them when the new keyword
+syntax requires them, as in `encoding=(name := value)`.
 
 ```toml config
 [project]
@@ -207,7 +203,7 @@ def encoding_name():
     return codecs.lookup("utf-8").name
 ```
 
-A `yield` passed as `errors` is parenthesized in the keyword the same way:
+A `yield` expression used as a keyword value also needs parentheses.
 
 ```toml config
 [project]
@@ -242,6 +238,5 @@ def encoding_name():
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule
-  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,
-  asking for one rather than for `open()`.
+- Ruff's preview rule [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports `codecs.open()` calls
+  that omit the encoding.

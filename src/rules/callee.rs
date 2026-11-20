@@ -7,13 +7,10 @@ use crate::project::Signature;
 use crate::semantic::Semantic;
 use crate::syntax::receiver;
 
-// A function that a name or a `self.method` reference reaches, by its definition in this file or by the signature the
-// index records for a function another module of the run defines.
+// Imported functions have a signature in the project index. Only local functions also have a syntax tree here.
 pub(crate) struct Callee<'a> {
     signature: Cow<'a, Signature>,
-    // The `def` of this file, which the index's signature of an imported function does not stand in for.
     pub(crate) function: Option<&'a ast::StmtFunctionDef>,
-    // Whether the reference binds the first parameter, as `self.method` does.
     pub(crate) bound: bool,
 }
 
@@ -35,7 +32,7 @@ impl<'a> Callee<'a> {
         &self.signature.name
     }
 
-    // A decorator may replace the function with anything, so what the definition says no longer holds for the name.
+    // A decorator can replace the function and change its signature.
     pub(crate) fn is_decorated(&self) -> bool {
         self.signature.decorated
     }
@@ -44,14 +41,12 @@ impl<'a> Callee<'a> {
         self.signature.coroutine
     }
 
-    // The names of the parameters a positional argument fills, in order, after the bound one.
     pub(crate) fn positional(&self) -> Vec<&str> {
         self.signature.positional.iter().skip(usize::from(self.bound)).map(String::as_str).collect()
     }
 }
 
-// The `def` of this file that a name, or a `self.method` reference in `method` of `class`, reaches, and whether the
-// reference binds its first parameter, as `self.method` does.
+// The flag distinguishes bound methods from plain functions and static methods when matching positional arguments.
 pub(crate) fn local_function<'a>(
     semantic: &Semantic<'a>,
     expr: &'a Expr,
@@ -67,8 +62,8 @@ pub(crate) fn local_function<'a>(
             if receiver(method) != Some(object.id.as_str()) || semantic.is_rebound(object.id.as_str()) {
                 return None;
             }
-            // A method defined here has a binding in the file. An inherited helper called in every test would
-            // otherwise scan the whole class for each call.
+            // Inherited helpers can occur in every test. Skip the class scan when the file has no binding for the
+            // method name.
             if semantic.local_bindings(attr.as_str()).is_empty() && semantic.bindings(attr.as_str()).is_empty() {
                 return None;
             }
@@ -97,7 +92,6 @@ fn binds(stmt: &Stmt, name: &str) -> bool {
     }
 }
 
-// The method a reference sits in, directly in a class body, with that class.
 fn enclosing_method<'a>(walker: &Walker<'_, 'a>) -> Option<(&'a ast::StmtFunctionDef, &'a ast::StmtClassDef)> {
     match walker.scopes() {
         [.., Scope::Class(class), Scope::Function(method)] => Some((method, class)),

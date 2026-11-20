@@ -36,12 +36,11 @@ fn lines_with_reason(checker: &Checker) -> FxHashMap<TextSize, bool> {
     reasons
 }
 
-// A directive alone gives no reason, but a sentence on a line of its own does.
 fn gives_reason(comment: &str) -> bool {
     !is_tool_directive(comment) && !comment.trim_start_matches('#').trim().is_empty()
 }
 
-// A suppression on a line of its own applies to no line of code, so it takes no reason from above.
+// Only trailing suppressions take their reason from a preceding comment block.
 fn reason_above(checker: &Checker, reasons: &FxHashMap<TextSize, bool>, comment: TextRange) -> bool {
     let source = checker.source;
     if !has_leading_content(comment.start(), source) {

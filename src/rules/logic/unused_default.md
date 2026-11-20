@@ -2,11 +2,9 @@ Flags a parameter default that every call of the function in the run passes expl
 
 ## Why is this bad?
 
-A default that no call relies on documents a value nobody uses. A reader looks at the signature to learn the fallback,
-and that fallback misleads once every caller passes its own value. A required parameter also guards the next caller: a
-call that omits it is [rejected](https://docs.python.org/3/tutorial/controlflow.html#keyword-arguments) with a
-[`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError), where a default would quietly pass a value
-no current caller chose.
+A default tells callers they can omit an argument. If every known caller supplies it, a required parameter makes that
+expectation explicit. Python then raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) if
+a caller forgets the argument.
 
 ## Example
 
@@ -131,7 +129,8 @@ parameter by position counts for it, and so does one that passes it by keyword.
 
 ### Exceptions
 
-- **Functions with no call in the run**: there is nothing to pass the default, so the rule has no evidence either way.
+- **Functions with no known calls, or modules imported with `from module import *`.** Simplint needs to know which calls
+  reach the function.
 
   ```python ok
   def connect(host, timeout=30):
@@ -179,12 +178,12 @@ parameter by position counts for it, and so does one that passes it by keyword.
   [`hasattr(module, name)`](https://docs.python.org/3/builtins/functions.html#hasattr) with a name that is not a string
   literal, or reads its `__all__`, so a call such as `getattr(module, name)()` may reach any of them without arguments.
 
-- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. A
-  decorator that passes each call on unchanged keeps the function judged:
+- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written. The
+  rule recognizes decorators that preserve the arguments callers pass, including
   [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache` and `wraps`,
   [`contextlib.contextmanager`](https://docs.python.org/3/library/contextlib.html#contextlib.contextmanager),
-  [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod), `classmethod`, and
-  [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
+  `asynccontextmanager`, [`abc.abstractmethod`](https://docs.python.org/3/library/abc.html#abc.abstractmethod),
+  `classmethod`, and [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final) and `override`.
 
   ```python ok
   from atexit import register
@@ -304,7 +303,8 @@ def connect(
 connect("db", 5)
 ```
 
-**Unsafe fix:** the fix relies on the calls the run shows, so a call from outside the run may break.
+**Unsafe fix.** A caller outside the analyzed files may still omit the argument. Removing a default such as
+`make_value()` also removes its definition-time evaluation.
 
 ```python report
 def pair(first=1, second=2):

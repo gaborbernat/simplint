@@ -3,11 +3,10 @@ name, as `:param user_id: The user ID.`.
 
 ## Why is this bad?
 
-Such a description takes the space of a useful one while telling readers nothing the signature does not: not the unit,
-the accepted range, what `None` means, or how the value is used. It is often what fills a field added only to satisfy a
-check. The [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for
-enough to write a call without reading the code, and [PEP 8](https://peps.python.org/pep-0008/#inline-comments) calls
-inline comments that state the obvious unnecessary; the same holds for a field's description.
+“The user ID” tells a caller nothing beyond the parameter name `user_id`. State which system issued the ID, for example,
+or what an absent value means.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) recommends enough
+detail to call the function without reading its code.
 
 ## Example
 
@@ -62,8 +61,9 @@ fix is offered, since only the author knows what the value means.
 
 ### Active on
 
-- **`:param:` fields**: reported when every word of the description, beyond articles and words such as "parameter" or
-  "value", is a word of the parameter's name.
+- **`:param:` fields.** The rule splits the parameter name at underscores and compares words without regard to case. It
+  ignores common words such as “the”, “parameter” and “value”. It reports a description if at least one word remains and
+  every remaining word appears in the name.
 
   ```toml config
   [tool.simplint]
@@ -112,7 +112,3 @@ fix is offered, since only the author knows what the value means.
       def __init__(self, limit: int) -> None:
           self.limit = limit
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

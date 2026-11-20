@@ -1,14 +1,11 @@
-Flags a [`ContextVar.set()`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.set)
-[token](https://docs.python.org/3/library/contextvars.html#contextvars.Token) that a `try` block resets in its `finally`
-clause, which a `with` block does on exit from Python 3.14.
+Flags a `try` block whose `finally` clause resets the token from
+[`ContextVar.set()`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.set).
 
 ## Why is this bad?
 
-Since Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block
-ends. The [documentation](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.set) shows
-`with var.set(value):` as shorthand for the `try`/`finally` pair. [PEP 343](https://peps.python.org/pep-0343/#abstract)
-added `with` to factor out such pairs. The hand-written pair repeats the reset and leaves a name in scope that nothing
-else reads.
+Since Python 3.14, [the token](https://docs.python.org/3/library/contextvars.html#contextvars.Token) is a context
+manager. `with var.set(value):` restores the previous value when the block exits, including when its body raises an
+exception.
 
 ## Example
 
@@ -72,11 +69,10 @@ def handle(value):
 
 ## What it does
 
-Reports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that
-holds [`variable.reset(token)`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar.reset), with
-no `except` and no `else`. `variable` is a name the file assigns a
-[`contextvars.ContextVar(...)`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar) call to, or a
-parameter annotated as `ContextVar`.
+The assignment `token = variable.set(value)` must immediately precede the `try` block. Its only clause must be a
+`finally` containing just `variable.reset(token)`. Every binding of `variable` must be a call to
+[`ContextVar`](https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar) or a parameter annotated as
+one.
 
 ### Active on
 
@@ -106,7 +102,7 @@ with request_id.set("one"):
 
 ### Exceptions
 
-- **A token read outside the reset**: the block would take the name's last use away.
+- **Another use of the token.** The `with` statement removes the assignment that provides the token.
 
   ```toml config
   [project]
@@ -125,7 +121,8 @@ with request_id.set("one"):
   print(token)
   ```
 
-- **A `finally` with more than the reset**: the statements after the reset would run inside the block.
+- **Other statements in the `finally` clause.** Replacing the clause with an automatic reset would drop those
+  statements.
 
   ```toml config
   [project]
@@ -210,11 +207,14 @@ with request_id.set("one"):
 
 ### Fix
 
-The fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the
-comment, when the assignment shares its line with an earlier statement, or when the line before it ends with a backslash
-that joins the two lines. A module-level token that another module of the run reads, through an import, a star import or
-an attribute, or that `__all__` lists, keeps its report without a fix, since removing the assignment would break those
-readers:
+simplint marks this rewrite as safe. It assumes that the receiver of `reset()` still refers to the same variable when
+the block exits. Rebinding that name inside the block can make the original reset fail, while the context manager still
+resets the original variable.
+
+The fix replaces the assignment and cleanup with a `with` statement. simplint withholds it if an edit would remove a
+comment, the assignment follows another statement on the same line or continues the previous line, or the `try` body
+starts on the `try` line. It also keeps a module-level assignment if `__all__` exports the token or another analyzed
+module reads it through an import, star import or attribute.
 
 ```toml config
 [project]
@@ -323,7 +323,7 @@ finally:
     request_id.reset(token)
 ```
 
-A star import of the module counts as a read of the name, so the report stays without a fix:
+A star import can expose the token to another analyzed module.
 
 ```toml config
 [project]
@@ -357,7 +357,3 @@ try:
 finally:
     request_id.reset(token)
 ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

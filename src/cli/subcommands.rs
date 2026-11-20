@@ -194,10 +194,9 @@ impl Explanation {
     }
 }
 
-// Shows each example as plain Python under a label, leaving the role and attributes out of the fence. A file name
-// becomes a leading comment, and context files, which only the example's other files refer to, get neither a label nor
-// a place in the Example section, which already tells its flagged code from the code to use instead. A terminal cannot
-// draw the documentation's mermaid diagrams, so their source is left out too.
+// Keep example filenames in comments and strip fence attributes from terminal output. Within the Example section,
+// the surrounding prose already identifies the flagged code and its replacement. Hide context files there and omit
+// Mermaid diagrams throughout.
 fn plain_examples(explanation: &str, examples: &[Example]) -> String {
     let lines: Vec<&str> = explanation.lines().collect();
     let mut shown = examples.iter().flat_map(shown_fences).peekable();

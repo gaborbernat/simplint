@@ -19,7 +19,7 @@ pub fn rst_duplicate_param(checker: &Checker) {
         if autoclass == AutoclassContent::Unknown {
             continue;
         }
-        // Under `init` Sphinx renders the `__init__` docstring alone, so the class docstring holds the repeat.
+        // With `init`, autodoc uses the constructor's copy.
         let (kept, repeated, kept_name, repeated_name) = if autoclass == AutoclassContent::Init {
             (constructor, &target.docstring, "__init__", class.name.as_str())
         } else {
@@ -45,7 +45,7 @@ pub fn rst_duplicate_param(checker: &Checker) {
     }
 }
 
-// The dotted name the documentation gives the class, under its module's package, as `public_api` builds it.
+// Match the dotted name in the directive, including packages represented by __init__.py.
 fn qualified_name(checker: &Checker, class: &str) -> String {
     let module: Vec<&str> = match checker.module_path() {
         Some(path) => path.iter().map(String::as_str).collect(),

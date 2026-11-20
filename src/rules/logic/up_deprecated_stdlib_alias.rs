@@ -7,8 +7,7 @@ use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::rename_attribute;
 
 enum Replacement {
-    // The new name does the same work, so only the attribute name changes; the fix is unsafe where the new name's
-    // value differs in type or `repr`.
+    // A rename can change the type or repr, as with calendar month constants.
     Rename(&'static str, Applicability),
     // The new name differs in a way that needs a review of each use.
     Review(&'static str),
@@ -17,7 +16,7 @@ enum Replacement {
 struct Alias {
     module: &'static str,
     name: &'static str,
-    // The first version that warns about the name or no longer has it.
+    // The first target version where the rule reports this name.
     since: PythonVersion,
     replacement: Replacement,
 }
@@ -96,7 +95,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         return;
     }
     let checker = walker.checker;
-    // The name is compared first, so an attribute no alias names never builds the file's semantic model.
+    // Checking the spelling first avoids building the semantic model for unrelated attributes.
     let Some(alias) = ALIASES.iter().find(|alias| {
         alias.name == attribute.attr.as_str()
             && checker.target_version() >= alias.since

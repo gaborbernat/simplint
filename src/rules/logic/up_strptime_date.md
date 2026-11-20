@@ -1,15 +1,11 @@
-Flags
-[`datetime.strptime(...)`](https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime).[`date()`](https://docs.python.org/3/library/datetime.html#datetime.datetime.date)
-and `datetime.strptime(...)`.[`time()`](https://docs.python.org/3/library/datetime.html#datetime.datetime.time), which
-Python 3.14 replaces with [`date.strptime`](https://docs.python.org/3/library/datetime.html#datetime.date.strptime) and
-[`time.strptime`](https://docs.python.org/3/library/datetime.html#datetime.time.strptime).
+Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()` on Python 3.14 and later.
 
 ## Why is this bad?
 
-`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14
-[`date`](https://docs.python.org/3/library/datetime.html#datetime.date) and
-[`time`](https://docs.python.org/3/library/datetime.html#datetime.time) parse their own part, which says what the code
-reads and skips the intermediate value.
+When only a calendar date or time of day is needed,
+[`datetime.date.strptime()`](https://docs.python.org/3/library/datetime.html#datetime.date.strptime) and
+[`datetime.time.strptime()`](https://docs.python.org/3/library/datetime.html#datetime.time.strptime) can construct the
+requested type directly. Both methods were added in Python 3.14.
 
 ## Example
 
@@ -58,8 +54,9 @@ def parse_day(text):
 
 ## What it does
 
-Reports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether
-the class is imported by name or reached through the `datetime` module.
+Reports a call `.date()` or `.time()` with no arguments on a call that resolves to
+[`datetime.datetime.strptime`](https://docs.python.org/3/library/datetime.html#datetime.datetime.strptime), whether the
+class is imported by name or reached through the `datetime` module.
 
 ### Active on
 
@@ -84,9 +81,9 @@ def parse_day(text):
     return datetime.date.strptime(text, "%Y-%m-%d")
 ```
 
-- **`.time()` with a format that has `%:z`**: the fix is unsafe, since
-  [`time.strptime`](https://docs.python.org/3/library/time.html#time.strptime) reads the zone that `.time()` drops.
-  **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.
+- **UTC offset in a time format.** The unsafe fix switches to
+  [`datetime.time.strptime()`](https://docs.python.org/3/library/datetime.html#datetime.time.strptime), which retains
+  the offset that `.time()` discards.
 
   ```toml config
   [project]
@@ -109,9 +106,10 @@ def parse_day(text):
       return datetime.time.strptime(text, "%H:%M:%:z")
   ```
 
-- **`.time()` with a format that has a date directive**: the fix is unsafe, since `time.strptime` does not check the
-  date that `datetime.strptime` checks, so a day that does not exist is accepted. **Unsafe fix:** the call becomes
-  `time.strptime`.
+- **Date directive in a time format.** simplint marks this fix as unsafe. For example, on Python 3.14, `%m-%d` without a
+  year can parse February 29 into a time. Constructing a datetime additionally checks that date against the default
+  year, 1900. From 3.15, `%d` without a year raises
+  [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError) in both calls.
 
   ```toml config
   [project]
@@ -177,19 +175,18 @@ def parse_day(text):
 
 ### Fix
 
-For `.date()` the fix is safe when the format is a string literal without a seconds directive, `%S`, or a composite that
-includes seconds, `%X`, `%c`, `%T` or `%r`, and unsafe otherwise: `date.strptime` accepts the second 60 that
-`datetime.strptime` rejects.
+For `.date()`, simplint marks the fix as unsafe when the format is computed, ends in a lone `%`, or contains `%S`, `%X`,
+`%c`, `%T` or `%r`. A date can discard a leap second that a datetime would reject. The rule marks other literal formats
+as safe, even though an invalid offset such as `+2400` with `%z` can be discarded by `date.strptime()` and rejected by
+`datetime.strptime()`.
 
-The `.time()` fix is safe when the format is a string literal whose directives are all time-of-day ones, `%H`, `%I`,
-`%M`, `%f` and `%p`, with `%%`, and unsafe otherwise. `time.strptime` keeps the zone that `.time()` drops, does not
-check the date that `datetime.strptime` checks, and accepts the second 60, so `%z`, `%:z`, a date directive and a
-seconds directive change the result.
+For `.time()`, simplint marks the fix as safe only for literal formats using `%H`, `%I`, `%M`, `%f`, `%p`, `%%` or
+ordinary text. For example, `%H:%M:%S` is marked unsafe, although both `datetime.time.strptime()` and
+`datetime.datetime.strptime()` reject a second of 60.
 
-When the class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports
-without a fix when the file already spells `date` or `time` outside an attribute, since the new name would take that
-binding's place. No fix is offered when a comment lies in the class or in the `.date()` or `.time()` call it drops,
-since the rewrite would drop it. A comment inside the `.date()` call keeps the report without a fix:
+When the class comes from a module-level `from datetime import datetime`, the fix adds `date` or `time` to that import.
+It skips the edit if that name already appears unqualified in the file or if the import is local to a function. A
+comment in the class expression or the removed suffix also prevents a fix.
 
 ```toml config
 [project]
@@ -218,7 +215,6 @@ def parse_day(text):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule
-  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing
-  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before
-  `.date()`; this rule's fix clears both.
+- Ruff's [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports `datetime.strptime()`
+  without timezone information. [Ruff issue #13359](https://github.com/astral-sh/ruff/issues/13359) discusses calls
+  followed by `.date()`.

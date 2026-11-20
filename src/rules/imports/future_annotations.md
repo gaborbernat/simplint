@@ -2,16 +2,16 @@ Flags `from __future__ import annotations` when the target version is Python 3.1
 
 ## Why is this bad?
 
-Since Python 3.14, annotations are
-[evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default
-([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer
-avoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to
-turn annotations into strings, which code that inspects them at runtime then has to
-[evaluate back](https://docs.python.org/3/howto/annotations.html#manually-un-stringizing-stringized-annotations).
+Python 3.14
+[defers annotation evaluation](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by
+default. With the future import, reading `__annotations__` still returns strings. Without it, reading the attribute
+evaluates the annotations and can raise if a name is missing. [PEP 649](https://peps.python.org/pep-0649/) describes
+this behavior.
 
-The import is also scheduled for removal. Once Python 3.13 reaches its end of life, compiling it emits a
-[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), and it is removed at
-least two releases later ([PEP 749](https://peps.python.org/pep-0749/#the-future-of-from-future-import-annotations)).
+[PEP 749](https://peps.python.org/pep-0749/#the-future-of-from-future-import-annotations) allows deprecation from the
+first release after Python 3.13 reaches end of life. Once compiling the import starts emitting a
+[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), it will remain available
+for at least two releases.
 
 ## Example
 
@@ -36,13 +36,13 @@ from __future__ import generator_stop
 When Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists
 `from __future__ import annotations`,
 [missing-required-import](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this rule
-removes. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer; drop
-the import from `required-imports` once the project targets Python 3.14, or turn this rule off.
+removes. If both rules apply to a file targeting Python 3.14 or newer, simplint stops before linting. Remove the
+required import or disable this rule.
 
 ## Configuration
 
-- The Python version the code targets, taken from the first of these that applies; see
-  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
+- The following settings can select the target version. See \[Python version\](https for command-line overrides, other
+  project declarations and the default.//simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
 
   1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for
      the files a pattern matches
@@ -229,8 +229,8 @@ the import from `required-imports` once the project targets Python 3.14, or turn
 ### Exceptions
 
 - **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a
-  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,
-  so the rule reports nothing in the module while any class does this.
+  method named `list` makes `list[str]` mean the method. With the import, these annotations stay strings until the
+  caller decides how to evaluate them. simplint skips the whole module if it finds such a class.
 
   ```toml config
   [project]
@@ -264,15 +264,6 @@ the import from `required-imports` once the project targets Python 3.14, or turn
 
   VALUE = 1
   ```
-
-### Target version
-
-simplint reads the target version from Ruff's configuration, as `ruff check` does, taking the first that is set:
-
-1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
-   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version)
-1. `project.requires-python`
-1. Ruff's default
 
 ### Fix
 

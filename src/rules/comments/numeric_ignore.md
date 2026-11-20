@@ -2,10 +2,9 @@ Flags numeric codes in `# simplint: ignore[...]` comments and replaces them with
 
 ## Why is this bad?
 
-A rule name says what the suppression covers. A code such as `SMP602` has to be looked up, and a reviewer reading the
-comment in a diff has no report beside it to explain the code. pylint makes the same point with its
+A reviewer can read `imprecise-annotation` directly in a diff. `SMP602` requires a lookup. Pylint's
 [use-symbolic-message-instead](https://pylint.readthedocs.io/en/latest/user_guide/messages/information/use-symbolic-message-instead.html)
-check, which flags a message disabled by its numeric id.
+makes the same distinction for its suppressions.
 
 ## Example
 

@@ -11,10 +11,8 @@ use rustc_hash::FxHashMap;
 use crate::project::facts::qualified;
 use crate::syntax::alias_binding;
 
-// The dotted names the `.pth` files at the top of each root make the interpreter load and read at startup, sorted and
-// without repeats. `site` runs a line that starts with `import` as Python and reads no other line as code, so a path
-// line names nothing. A file that is not UTF-8 is skipped with a warning, as an unreadable Python file is, since `site`
-// does not refuse it either.
+// Count import lines in UTF-8 `.pth` files at each root as possible startup uses. Python 3.15 deprecates these lines
+// and skips them when a matching `.start` file exists. This scan reads only `.pth` files.
 pub(super) fn names(roots: &[PathBuf]) -> Vec<String> {
     let mut names = Vec::new();
     for root in roots {

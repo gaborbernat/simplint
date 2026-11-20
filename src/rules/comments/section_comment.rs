@@ -23,7 +23,7 @@ pub fn section_comment(checker: &Checker) {
                     && source[previous].chars().any(char::is_alphanumeric)
                     && !is_section_comment(&source[previous])
             });
-        // A short line of a `##` paragraph, a URL or code after `##` is no heading, so it is left to Ruff too.
+        // Delegate plain `##` prose to Ruff, including continuation lines short enough to resemble a title.
         let ruff_prose = left_to_ruff(&source[range])
             && (prose(&source[range]).is_some()
                 || !is_title(content)
@@ -79,7 +79,7 @@ fn is_section_comment(comment: &str) -> bool {
             && content.chars().filter(|char| !char.is_whitespace()).count() + hashes >= 4
             && content.chars().all(|char| char.is_whitespace() || DIVIDER_CHARS.contains(&char));
     }
-    // Two repeated characters also end prose (`C++`), so a single run needs three; a pair on both ends frames a title.
+    // Two characters can end a word such as `C++`. Require three on one side, or a separated pair on both sides.
     let (leading, trailing) = decoration(content);
     hashes >= 2 || leading.max(trailing) >= 3 || leading.min(trailing) >= 2
 }
@@ -94,8 +94,7 @@ fn decoration(content: &str) -> (usize, usize) {
     (leading, trailing)
 }
 
-// Ruff's E266 and E265 report text after more than one `#`. Their fix keeps a decorated comment's decoration, and a
-// title's text where this rule removes it.
+// Ruff can normalize the hashes and spacing of a heading. simplint keeps cases where it removes more than Ruff.
 fn left_to_ruff(comment: &str) -> bool {
     let hashes = comment.chars().take_while(|char| *char == '#').count();
     let content = comment[hashes..].trim();

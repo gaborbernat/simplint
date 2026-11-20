@@ -2,13 +2,11 @@ Flags module-level functions and classes that only test modules use.
 
 ## Why is this bad?
 
-Code that only tests call is test support, and it ships with the product. Readers take it for part of the package, and
-it outlives the tests that needed it. Gerard Meszaros catalogs this as
-[Test Logic in Production](http://xunitpatterns.com/Test%20Logic%20in%20Production.html), a smell in *xUnit Test
-Patterns*. Moving it into the tests, or into a test helper module, keeps the package to what the program runs.
+A test helper in a production module ships with the package and looks like part of its API. Moving it into the test
+suite makes its callers clear. Gerard Meszaros calls this
+[Test Logic in Production](http://xunitpatterns.com/Test%20Logic%20in%20Production.html) in *xUnit Test Patterns*.
 [Chromium](https://chromium.googlesource.com/chromium/src/+/0617fa211418e43df39b94de1d10bbcf6bbe0fe6/docs/patterns/fortesting-methods.md)
-accepts clearly named `ForTesting` methods on widely used objects, but a name does not change what ships with the
-package.
+allows explicitly named `ForTesting` methods in some cases.
 
 ## Example
 
@@ -44,9 +42,9 @@ def build_fixture() -> dict[str, int]:
 
 ### Active on
 
-- **Module-level functions and classes** whose every reference in the run comes from a test module. A reference is an
-  import, a call, an attribute read through the module, or a dotted string the index records. Methods are not covered
-  yet, so a method used only by tests is not reported.
+- **Module-level functions and classes** whose every reference in the run comes from a test module. References include
+  imports, calls, attribute reads through the module and dotted strings such as patch targets. The rule checks functions
+  and classes at module scope.
 
   ```python report file=app/builders.py
   def build_fixture() -> int:
@@ -268,8 +266,10 @@ def build_fixture() -> dict[str, int]:
       main()
   ```
 
-- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source
-  directory when it starts, so a name those lines read is kept. A path line runs nothing.
+- **Startup imports in `.pth` files** can use a name outside the test suite. simplint scans import lines in UTF-8 `.pth`
+  files at the project's import roots as potential startup code. Python processes these files in
+  [site directories](https://docs.python.org/3/library/site.html#path-extensions-pth-files). Python 3.15 deprecates
+  executable import lines and skips them when a matching `.start` file exists. simplint still counts those lines.
 
   ```python ok file=app/hook.py
   def _run() -> None:
@@ -345,15 +345,12 @@ def build_fixture() -> dict[str, int]:
       assert normalize(" a ") == "a"
   ```
 
-- **Test modules**: a module that is itself a test module is not checked.
+- **Test modules and sources of star imports** are exempt. With `from module import *`, callers can use a definition
+  without naming it in an import.
 
   ```python ok file=tests/helpers.py
   def make_user() -> str:
       return "alice"
   ```
 
-The rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+The rule offers no fix. Moving a helper requires choosing its new module and updating its callers.

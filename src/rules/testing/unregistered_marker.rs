@@ -6,10 +6,9 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
 pub fn unregistered_marker(checker: &Checker) {
-    // The marks pytest registers itself.
     const BUILTIN: &[&str] =
         &["skip", "skipif", "xfail", "parametrize", "usefixtures", "filterwarnings", "tryfirst", "trylast"];
-    // Marks that common plugins register when they load, so the project's configuration never lists them.
+    // Plugins can register marks without an entry in the project configuration.
     const PLUGIN: &[&str] = &[
         "anyio",
         "asyncio",
@@ -62,8 +61,7 @@ pub fn unregistered_marker(checker: &Checker) {
     finder.visit_body(checker.body());
     for attribute in finder.found {
         let name = attribute.attr.as_str();
-        // A conftest's `pytest_configure` registers marks with `config.addinivalue_line("markers", "name: ...")`,
-        // which spells the name in a string.
+        // A registration such as `config.addinivalue_line("markers", "slow: ...")` puts the name in a string.
         if registered.contains(name)
             || BUILTIN.contains(&name)
             || PLUGIN.contains(&name)

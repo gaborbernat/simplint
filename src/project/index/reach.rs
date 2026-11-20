@@ -192,7 +192,7 @@ pub(super) fn starred_by_importer(stars: &[(FileId, FileId)]) -> FxHashMap<FileI
     by_importer
 }
 
-// Names only spread, so this settles.
+// Names are only added, so the loop finishes when a pass adds none.
 pub(super) fn reexport(
     names: &mut FxHashMap<FileId, FxHashSet<String>>,
     stars: &[(FileId, FileId)],

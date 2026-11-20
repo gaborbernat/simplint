@@ -9,9 +9,8 @@ use crate::lint::registry::Rule;
 use crate::rules::comments::own_line_comment_runs;
 use crate::syntax::identifier_words;
 
-// A comment only restates code when deleting it loses nothing. Only plain prose can restate: a colon marks a directive
-// or a label, and code punctuation quotes syntax, which says more than the names in it. Consecutive own-line comments
-// form one block, judged as a whole, since a line such as `# status.` completes the sentence above it.
+// Punctuation can mark a label, directive or code example. Compare plain prose as a block because a short line
+// such as `# status.` can complete the preceding sentence.
 pub fn restating_comment(checker: &Checker) {
     for block in own_line_comment_runs(checker) {
         let texts: Vec<&str> = block.iter().map(|comment| checker.text(*comment).trim_start_matches('#')).collect();
@@ -30,8 +29,7 @@ pub fn restating_comment(checker: &Checker) {
             continue;
         }
         let tokens = checker.parsed.tokens();
-        // The statement below is the code the comment restates, all of it: `ruff format` joins a statement that spans lines
-        // into one, so the words of its later lines must count the same before and after the format.
+        // Use the entire logical line so wrapping a statement cannot change which words match.
         let code: FxHashSet<String> = tokens[tokens.partition_point(|token| token.start() < next)..]
             .iter()
             .take_while(|token| token.kind() != TokenKind::Newline)

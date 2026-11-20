@@ -3,18 +3,16 @@ Flags an `except` handler that tells exceptions apart by their text, by comparin
 
 ## Why is this bad?
 
-The text of an exception is a message for people, and it changes with the wording, the translation and the library
-version. CPython makes no promise about it: core developers
-[keep messages out of the API](https://bugs.python.org/msg227794) and
-[advise against relying on them](https://discuss.python.org/t/pep-387-including-exception-messages-in-the-backward-compatibility-policy/35850/20).
-A check on the text stops matching without any error, and the handler then takes the wrong branch.
+A library can reword or translate an exception message without changing the error it describes. A handler that looks for
+the old wording can silently take the wrong branch. Python core developers
+[advise against relying on exception text](https://bugs.python.org/msg227794).
 
 A specific exception type says what happened, and it does not change with the text.
 [PEP 3151](https://peps.python.org/pep-3151/#lack-of-fine-grained-exceptions) added subclasses such as
 [`TimeoutError`](https://docs.python.org/3/builtins/exceptions.html#TimeoutError) and
-[`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), so handlers no longer
-inspect a caught [`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError). Where no subclass exists, a
-data attribute such as `errno` is the value to test.
+[`FileNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#FileNotFoundError), so handlers can catch these
+conditions directly. For other cases, inspect a caught
+[`OSError`](https://docs.python.org/3/builtins/exceptions.html#OSError) attribute such as `errno`.
 
 ## Example
 
@@ -73,7 +71,7 @@ asserts may check the messages the code raises.
 
 - **`re` functions matching the text**: [`re.search`](https://docs.python.org/3/library/re.html#re.search),
   [`re.match`](https://docs.python.org/3/library/re.html#re.match) and
-  [`re.fullmatch`](https://docs.python.org/3/library/re.html#re.fullmatch) with `str(exc)` as an argument.
+  [`re.fullmatch`](https://docs.python.org/3/library/re.html#re.fullmatch) with `str(exc)` as a positional argument.
 
   ```python report
   import re
@@ -144,11 +142,10 @@ asserts may check the messages the code raises.
           assert "gone" in str(exc)
   ```
 
-- **Comparisons of two exceptions' text**: every operand is the text of an exception, such as `str(exc) == str(other)`.
-  Both sides are text the runtime produces, so no fixed wording is written into the code that could drift. A name is an
-  exception when each of its bindings in scope is an `except` clause name, or a parameter annotated with an exception
-  type: a builtin one, a class of the run or one it imports from there, alone, in a union with `None`, in
-  `Optional[...]`, or in a string annotation of those.
+- **Comparisons of two exceptions' text**: every operand comes from an exception, as in `str(exc) == str(other)` or
+  `exc.args == other.args`. These comparisons use no fixed wording. For the other exception, each binding must be an
+  `except` target or a parameter annotated with a recognized exception class. The rule accepts built-in and project
+  exception classes, unions of them (including with `None`), `Optional[...]` and quoted annotations.
 
   ```python ok
   def replayed(target, error: OSError):
@@ -181,6 +178,5 @@ asserts may check the messages the code raises.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [PT017](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/), which reports an `assert` on the caught exception
-  and which this rule leaves to it; branching on the message text is not requested yet.
+- Ruff reports assertions that mention the caught exception in
+  [PT017](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/).

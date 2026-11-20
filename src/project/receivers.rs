@@ -13,50 +13,37 @@ use crate::syntax::{
     receiver,
 };
 
-// The class of an access the file cannot tie to one class, such as `type(obj).timeout` on an `obj` of unknown class.
+// An access such as `type(obj).timeout` may target any class when the type of obj is unknown.
 pub(crate) const UNRESOLVED_CLASS: &str = "*";
 
-// The attribute a write with a computed name is recorded under: the name is decided at run time, so the write may hit
-// any field or none, and no field is named `*`.
+// A computed attribute name may match any declared field.
 pub(crate) const ANY_ATTRIBUTE: &str = "*";
 
-// The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
-// is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
-// name, such as `pkg.models.Result`, as two modules can each define a class with the same name.
-//
-// A mock accepts any attribute and is never a real instance, so writes to one are left out; writes to anything else are
-// untyped. Reaching the instance `__dict__`, as `obj.__dict__` or `vars(obj)` do, counts as writing `__dict__`. A write
-// whose name is computed at run time is recorded as `*`, and a weak reference to an instance as `__weakref__`.
+// Qualify receiver classes so unrelated classes with the same name stay distinct. Track writes on unknown receivers by
+// attribute name and skip writes on known mocks.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
     pub(super) untyped: Vec<String>,
-    // Classes whose instances get a `__dict__` store, such as `x.__dict__ = ...`, `del x.__dict__`, or a `setattr` or
-    // `delattr` of it, which a frozen instance rejects. Reading `__dict__` is in `typed` and `untyped` alone.
+    // Freezing an instance can prevent assignment or deletion of __dict__ even when reading it still works.
     pub(super) dict_stores: Vec<String>,
-    // The qualified bases of classes a slotted base breaks: one using `functools.cached_property`, which stores into an
-    // instance `__dict__`, or one with several bases, as a slotted base's layout conflicts with another's.
+    // A slotted base can remove the instance dictionary a cached property needs or cause a layout conflict with another
+    // base.
     pub(super) unslottable_bases: Vec<String>,
-    // The qualified bases of classes whose methods store attributes on `self`. The `__getstate__` a frozen slotted
-    // dataclass gets pickles only fields, so a pickled instance of such a subclass loses the others.
+    // A frozen, slotted dataclass pickles its declared fields. Subclasses with extra instance state can lose that
+    // state.
     pub(super) stateful_bases: Vec<String>,
-    // Whether the file pickles with a protocol that may be 0 or 1, which cannot pickle a slotted class without its own
-    // `__getstate__`, as a dataclass gets only when frozen.
+    // Pickle protocols 0 and 1 may need an explicit __getstate__ for slotted instances.
     pub(super) pickles_low_protocol: bool,
-    // The writes through a name an annotation gives a class, as (qualified class, attribute). Whether the run defines
-    // that class is known only across the run, so the index decides which of these are typed.
+    // Only the project index can tell whether an annotation names a concrete class defined in another file.
     pub(super) declared: Vec<(String, String)>,
     pub(super) declared_dict_stores: Vec<String>,
     pub(super) classes: Vec<String>,
-    // The attributes the file reads, sets or deletes through a class name, as (qualified class, attribute), which
-    // replace a class attribute a slotted class turns into a descriptor. A class the file cannot resolve is
-    // `UNRESOLVED_CLASS`, which counts against every class.
+    // Slots turn class-level field defaults into descriptors. An unresolved class access can affect any class.
     pub(super) class_attributes: Vec<(String, String)>,
-    // The classes the file defines with each base they name, as (qualified class, qualified base), so an access through
-    // a subclass reaches the base's attributes.
+    // A subclass can expose attributes defined on its bases.
     pub(super) class_bases: Vec<(String, String)>,
-    // The attributes the file's classes give their instances or themselves: the names their bodies bind and the ones
-    // their methods set on the instance. An untyped write of any other name is to an object no class of the run makes.
+    // Known member names help distinguish ordinary field updates from writes that add attributes at runtime.
     pub(super) members: Vec<String>,
 }
 
@@ -70,8 +57,7 @@ impl AttributeWrites {
     }
 }
 
-// The classes a module defines at its top level, qualified by the module, which an annotation may name. A protocol is
-// not one: its instances are any object with the attributes it lists.
+// A protocol annotation can describe unrelated concrete classes.
 fn module_classes(body: &[Stmt], module: &str) -> Vec<String> {
     module_statements(body)
         .filter_map(Stmt::as_class_def_stmt)
@@ -249,7 +235,7 @@ impl<'a> Collector<'a, '_> {
         qualified(segments, self.aliases).unwrap_or_else(|| format!("{}.{}", self.module, segments.join(".")))
     }
 
-    // A `WeakKeyDictionary` holds the keys stored into it and a `WeakValueDictionary` the values.
+    // WeakKeyDictionary needs weak-referenceable keys. WeakValueDictionary needs weak-referenceable values.
     fn weakly_stored_by_assign(&mut self, targets: &'a [Expr], value: &'a Expr) {
         for target in targets {
             let Expr::Subscript(ast::ExprSubscript { value: container, slice, .. }) = target else {
@@ -278,7 +264,7 @@ impl<'a> Collector<'a, '_> {
                 }
                 Receiver::Unknown => Receiver::Unknown,
             },
-            // Anything reached from a mock, such as `client.return_value.session`, is a mock too.
+            // Treat chained mock calls and lookups, such as `client.return_value.session`, as mock uses.
             Expr::Call(ast::ExprCall { func, .. }) | Expr::Subscript(ast::ExprSubscript { value: func, .. })
                 if self.receiver(func) == Receiver::Mock || assigned(expr) == Receiver::Mock =>
             {
@@ -381,8 +367,7 @@ impl<'a> Collector<'a, '_> {
         self.writes.dict_stores.push(class);
     }
 
-    // A weak container holds the items put into it through `weakref.ref`, so the items need a `__weakref__` slot: the
-    // item a `WeakSet` gets through `add`, a `WeakMethod`'s object and a `WeakKeyDictionary` key.
+    // A WeakSet item or the instance bound to a WeakMethod must support weak references.
     fn weakly_stored_by_call(&mut self, call: &ast::ExprCall) {
         let item = match (&*call.arguments.args, call.func.as_ref()) {
             ([item, ..], Expr::Attribute(ast::ExprAttribute { value, attr, .. }))
@@ -414,16 +399,14 @@ impl<'a> Collector<'a, '_> {
         }
     }
 
-    // Computed names are left out of an untyped receiver: the untyped list matches by field name, which a computed
-    // name does not give.
+    // An unknown receiver and a computed attribute name leave no field to match.
     fn record_computed(&mut self, receiver: &Expr) {
         if matches!(self.receiver(receiver), Receiver::Instance(_) | Receiver::Declared(_) | Receiver::Own(_)) {
             self.record(receiver, ANY_ATTRIBUTE);
         }
     }
 
-    // `obj.__setattr__(name, value)` and `obj.__delattr__(name)` write `name` on `obj`. `object.__setattr__` and
-    // `super().__setattr__` stay out: they are how a frozen dataclass writes its own fields.
+    // Direct calls through object or super can deliberately bypass a frozen dataclass setter.
     fn record_dunder_write(&mut self, func: &Expr, arguments: &ast::Arguments) {
         let Some(ast::ExprAttribute { value, attr, .. }) = func.as_attribute_expr() else {
             return;
@@ -447,14 +430,12 @@ impl<'a> Collector<'a, '_> {
         })
     }
 
-    // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a
-    // protocol that is not known to be 2 or above, such as a test looping over every protocol.
+    // An explicit but unknown protocol can include 0 or 1, for example in a loop over pickle protocols.
     fn pickles_low_protocol(&self, call: &ast::ExprCall) -> bool {
         let Some(written) = UnqualifiedName::from_expr(&call.func) else {
             return false;
         };
-        // Qualifying keeps the last segment, except for a bare name bound by an import, as `from pickle import dumps as
-        // write` makes `write` mean `pickle.dumps`. Other calls cannot be a pickle function, so they skip qualifying.
+        // An import can rename a pickle function, as in `from pickle import dumps as write`.
         let last = match written.segments() {
             [name] => self.aliases.get(name).map_or(*name, |module| last_dotted_segment(module)),
             segments => segments.last().copied().unwrap_or_default(),
@@ -493,8 +474,7 @@ impl<'a> Collector<'a, '_> {
     }
 }
 
-// The names a scope binds and what each holds; a name bound more than one way, or in a way parsing cannot follow, holds
-// something unknown. Nested functions and classes are scopes of their own.
+// Conflicting bindings in the same scope leave the receiver's class unknown.
 struct Bindings<'a, 'c, 'm> {
     collector: &'c Collector<'a, 'm>,
     bound: FxHashMap<&'a str, Receiver>,
@@ -596,8 +576,7 @@ fn bind<'a>(bound: &mut FxHashMap<&'a str, Receiver>, name: &'a str, receiver: R
         .or_insert(receiver);
 }
 
-// What the methods of a class assign to their instances, each a single target. `object.__setattr__` writes stay out, as
-// the index has never read them.
+// Track annotated fields and direct instance writes. A call through object.__setattr__ bypasses the instance setter.
 fn members(class: &ast::StmtClassDef) -> FxHashMap<&str, Receiver> {
     let mut members = FxHashMap::default();
     for write in
@@ -643,10 +622,8 @@ fn assigned(value: &Expr) -> Receiver {
     }
 }
 
-// Only a capitalized name is taken for a class; calling a lowercase factory says nothing about what it returns. A
-// private class is taken without its leading underscores, and an all-caps name such as `URL` is a class too, while a
-// one- or two-letter capital is more likely a type variable such as `T` or `KT`. The name keeps its module, as
-// `models.Release`, so the import that binds the module qualifies it.
+// Use capitalization as a class-name heuristic. Ignore leading underscores for the check but keep the full name for
+// import resolution. Short all-caps names such as T and KT often name type variables.
 fn class_name(written: &str) -> Option<String> {
     let bare = last_dotted_segment(written).trim_start_matches('_');
     let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())

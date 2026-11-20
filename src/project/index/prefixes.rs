@@ -23,8 +23,8 @@ impl CacheKey for PrefixSiblings {
     }
 }
 
-// A stub counts toward its prefix without being reported. A `_<prefix>/` directory is a package when the run holds a
-// file in it or an `__init__.py` sits on disk, so a package the run leaves out still counts.
+// Stubs count toward a prefix group. An existing package also counts when the run omits it but its __init__.py is on
+// disk.
 pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds) -> FxHashMap<FileId, PrefixSiblings> {
     let mut directories: FxHashSet<&Path> = FxHashSet::default();
     let mut groups: FxHashMap<(&Path, &str), FxHashSet<&str>> = FxHashMap::default();
@@ -48,7 +48,6 @@ pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds)
             let stem = path.file_stem().expect("a file with an extension has a stem");
             let prefix = name_prefix(stem.to_str()?)?;
             let directory = path.parent().expect("a run file sits in a directory");
-            // The loop above grouped every file with a prefix, this one among them.
             let modules = groups[&(directory, prefix)].len();
             let package = directory.join(format!("_{prefix}"));
             if modules < 3 || directories.contains(package.as_path()) || package.join("__init__.py").is_file() {
@@ -61,7 +60,7 @@ pub(super) fn prefix_siblings(indexed: &[(FileId, &FileFacts)], files: &FileIds)
         .collect()
 }
 
-// The file names of the run in each directory that holds a test module, which tell whether pytest collects from it.
+// Include sibling filenames so test rules can check whether pytest would collect them.
 pub(super) fn test_directory_modules(
     indexed: &[(FileId, &FileFacts)],
     test_modules: &FxHashSet<FileId>,
@@ -92,7 +91,6 @@ mod tests {
 
     use super::{FileIds, prefix_siblings};
 
-    // A name that is not UTF-8 has no prefix to group by, so only the readable siblings count toward theirs.
     #[cfg(unix)]
     #[test]
     fn file_name_that_is_not_utf8_joins_no_group() {

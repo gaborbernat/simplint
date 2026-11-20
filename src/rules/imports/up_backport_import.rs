@@ -11,7 +11,7 @@ use crate::syntax::for_each_body;
 pub fn up_backport_import(checker: &Checker) {
     let target = checker.target_version();
     for_each_body(checker.body(), &mut |statements, owner| {
-        // A guarded import is a fallback, which the import guard rule reviews, so it is left alone here.
+        // Imports directly inside `try` clauses often implement a version fallback.
         if matches!(owner, Some(Stmt::Try(_))) {
             return;
         }
@@ -74,9 +74,8 @@ pub fn up_backport_import(checker: &Checker) {
 enum Replacement {
     // The standard library module keeps the backport's API, so only the module name changes.
     Module(&'static str),
-    // The builtins define these names from the version on, so the import goes.
     Builtins(&'static [&'static str]),
-    // The standard library moved the API, so each use needs a review.
+    // APIs can differ between the backport and the standard library version.
     Review(&'static str),
 }
 

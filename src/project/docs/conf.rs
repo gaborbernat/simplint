@@ -9,13 +9,12 @@ use rustc_hash::{FxHashMap, FxHashSet};
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, CacheKey, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize,
 )]
 pub enum AutoclassContent {
-    // The class docstring alone, which Sphinx renders when no option sets another.
     #[default]
     Class,
-    // The `__init__` docstring alone, or the class docstring when `__init__` has none.
+    // Sphinx tries the `__init__` docstring, then `__new__`, then the class docstring.
     Init,
     Both,
-    // A value the rules cannot read, so which docstring Sphinx renders is unknown and no copy is removed.
+    // Keep both copies when the configuration is ambiguous.
     Unknown,
 }
 
@@ -30,8 +29,7 @@ impl AutoclassContent {
     }
 }
 
-// The docstrings a Sphinx configuration renders for a class: `default` for one no `autoclass` or `autoexception`
-// directive names, and `named` for one a directive names without its own `class-doc-from`.
+// An explicit autoclass or autoexception directive can inherit `class-doc-from` from `autodoc_default_options`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Rendered {
     pub(super) default: AutoclassContent,
@@ -42,8 +40,7 @@ impl Rendered {
     pub(super) const UNKNOWN: Self = Self { default: AutoclassContent::Unknown, named: AutoclassContent::Unknown };
 }
 
-// The docstring of a project's classes, when its Sphinx configurations agree. Sphinx reads each configuration of
-// a project on its own, so one that sets nothing renders the class docstring, and two that disagree leave it unknown.
+// Several documentation builds may describe the same project. Conflicting choices make a docstring removal unsafe.
 pub(super) fn agreed(values: impl IntoIterator<Item = AutoclassContent>) -> AutoclassContent {
     let distinct: FxHashSet<AutoclassContent> = values.into_iter().collect();
     match distinct.len() {
@@ -53,9 +50,8 @@ pub(super) fn agreed(values: impl IntoIterator<Item = AutoclassContent>) -> Auto
     }
 }
 
-// The docstrings a Sphinx configuration renders for its classes, or `None` when the file is not a Sphinx configuration.
-// Sphinx's master document is `index`, and a configuration names its extensions or master document, so one with neither
-// does not count. A file that does not parse may still be one, so its docstrings are unknown.
+// Recognize Sphinx by a neighboring index or by its extension or root-document settings. A parse error leaves the
+// settings unknown.
 pub(super) fn class_doc_from(text: &str, has_index: bool) -> Option<Rendered> {
     let Ok(parsed) = parse_module(text) else {
         return Some(Rendered::UNKNOWN);
@@ -79,9 +75,7 @@ fn literal(value: &Expr) -> Option<&str> {
     value.as_string_literal_expr().map(|literal| literal.value.to_str())
 }
 
-// The names a configuration binds that the rules read. A top-level assignment of the option in a form read statically
-// is recorded; any other way of binding one of the names, nested in a block, through an import, a star import, `exec`,
-// or a mutation such as `globals()[...]`, makes its value unknown, since Sphinx may then render either docstring.
+// Sphinx executes conf.py. The scan reads simple top-level assignments without running the file.
 #[derive(Default)]
 struct Scan<'a> {
     bound: FxHashSet<&'static str>,
@@ -104,8 +98,7 @@ impl<'a> Scan<'a> {
         tracked(name).is_some_and(|name| self.bound.contains(name))
     }
 
-    // Records a top-level assignment of a tracked name, or a tuple assignment, whose values are read statically. The
-    // values and any subscript targets are still scanned, so `exec` or a mutation inside them is seen.
+    // An assignment can change other settings through a call in its value or in a subscript target.
     fn assigned(&mut self, stmt: &'a Stmt) -> bool {
         match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match (targets.as_slice(), value.as_ref()) {
@@ -156,12 +149,12 @@ impl<'a> Scan<'a> {
         }
     }
 
-    // A wildcard may bind any name, which leaves the options unknown, but it does not tell a configuration apart.
+    // A wildcard import can override either option without identifying the file as a Sphinx configuration.
     fn bind_all(&mut self) {
         self.unknown.extend([OPTION, DEFAULT_OPTIONS]);
     }
 
-    // A change to what a name holds, such as a key set in a dict, is a change the scan cannot read.
+    // Mutating an option invalidates its literal value.
     fn mutate(&mut self, value: &Expr) {
         if let Some(name) = value.as_name_expr() {
             self.bind(name.id.as_str());
@@ -175,7 +168,6 @@ impl<'a> Scan<'a> {
         }
     }
 
-    // The option's value at the top level, which `autodoc_default_options` overrides for the classes a directive names.
     fn option(&self) -> Option<AutoclassContent> {
         if self.unknown.contains(OPTION) {
             return Some(AutoclassContent::Unknown);
@@ -185,7 +177,7 @@ impl<'a> Scan<'a> {
             .map(|value| literal(value).map_or(AutoclassContent::Unknown, AutoclassContent::from_option))
     }
 
-    // The `class-doc-from` key of the dict literal, the last one the dict sets, when it sets one.
+    // A later literal key overrides an earlier one. An unpacked mapping or computed key leaves the value unknown.
     fn default_options(&self) -> Option<AutoclassContent> {
         if self.unknown.contains(DEFAULT_OPTIONS) {
             return Some(AutoclassContent::Unknown);
@@ -269,7 +261,6 @@ impl<'a> Visitor<'a> for Scan<'a> {
 mod tests {
     use super::{AutoclassContent, Rendered, class_doc_from};
 
-    // An imported `extensions` makes the file a Sphinx configuration without changing which docstring it renders.
     #[test]
     fn imported_extensions_mark_a_configuration() {
         let class = Rendered { default: AutoclassContent::Class, named: AutoclassContent::Class };

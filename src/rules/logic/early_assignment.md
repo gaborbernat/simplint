@@ -1,15 +1,11 @@
-Flags a local assigned a constant above the statements that do not use it, when the first statement that reads it comes
-further down the same block. Moving the assignment down to that statement keeps the value next to the code that reads
-it.
+Flags a local constant assignment when at least one statement separates it from its first use in the same block.
 
 ## Why is this bad?
 
-A value set at the top of a function and read many statements later makes the reader carry it across everything in
-between. The assignment looks like it matters to the code around it, when only the later read does. Assigning the
-constant just before its first use shows where the value comes from.
+Assigning a constant just before its first use lets the reader see the value where it matters.
 
-[Sourcery's move-assign refactoring](https://docs.sourcery.ai/reference/refactorings/python/move-assign/) gives the
-reasons: a tight scope leaves less to track, is easier to split into functions, and strands fewer assignments.
+[Sourcery's move-assign refactoring](https://docs.sourcery.ai/reference/refactorings/python/move-assign/) keeps a
+variable close to its uses, which also makes it easier to extract a function.
 [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html#Local_Variables) asks for the same,
 declaring each variable in the narrowest scope and close to its first use.
 
@@ -36,7 +32,8 @@ def total(items: list[int]) -> int:
 ## What it does
 
 A constant is a number, string, bytes, `True`, `False`, `None` or `...`, or a list, tuple, set or dict display of
-constants. Dict keys and set elements must be hashable, so a display of lists is not one of them.
+constants. The rule also accepts `not` on a constant and unary `+` or `-` on a numeric literal. Dict keys and set
+elements must be hashable.
 
 ### Active on
 
@@ -80,8 +77,8 @@ that statement comes at least two statements below the assignment in the same bl
       return count + len(items)
   ```
 
-- **A first use that binds the name again**, such as a `for` target, an assignment or an augmented assignment: the
-  assignment is then not the one that supplies the value at that point.
+- **A first use that binds the name again**, such as a `for` target, an assignment or an augmented assignment: the rule
+  only moves the assignment when the first mention reads the name.
 
   ```python ok
   def last(items: list[int]) -> int:
@@ -187,8 +184,8 @@ that statement comes at least two statements below the assignment in the same bl
       return send(items, limit)
   ```
 
-- **A constant assigned again between the assignment and its use**: the two constants would take turns moving past each
-  other from one fix round to the next, so only the constant nearest its use is reported, and that one moves first.
+- **Another constant assignment before the first use.** Moving constants past one another can make repeated fixes undo
+  each other. The rule skips the earlier assignment.
 
   ```python ok
   def total(items: list[int]) -> int:
@@ -224,9 +221,9 @@ that statement comes at least two statements below the assignment in the same bl
 
 ### Fix
 
-The fix moves the assignment's lines in front of the statement that reads the name. It is offered only when both the
-assignment and that statement sit on lines of their own, so a `;` never has to be split. The move is safe, since a
-constant has no effect and the statements in between do not read or bind the name.
+The safe fix moves the assignment immediately before the statement that reads the name. The assignment must occupy its
+own lines. If the destination shares a line with other statements separated by `;`, the fix splits the line. A trailing
+comment on the destination can prevent the fix.
 
 ## Related rules
 
@@ -235,7 +232,7 @@ constant has no effect and the statements in between do not read or bind the nam
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).
+- **[Ruff](https://github.com/astral-sh/ruff):** issue [#11060](https://github.com/astral-sh/ruff/issues/11060) tracks
+  Sourcery refactorings.
 - [Sourcery](https://sourcery.ai) moves an assignment down to its first use through
-  [move-assign](https://docs.sourcery.ai/reference/refactorings/python/move-assign/), for any variable. This rule covers
-  constants only.
+  [move-assign](https://docs.sourcery.ai/reference/refactorings/python/move-assign/). simplint only moves constants.

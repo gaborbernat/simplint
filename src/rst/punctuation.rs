@@ -50,18 +50,15 @@ const QUOTE_PAIRS: [(char, &str); 8] = [
     ('\u{203a}', "\u{203a}"),
 ];
 
-// Whether `closer` closes `opener` under docutils' `match_chars`: the closer at the same index, or a quote pair.
 pub(crate) fn match_chars(opener: char, closer: char) -> bool {
     OPENERS.chars().position(|char| char == opener).is_some_and(|at| CLOSERS.chars().nth(at) == Some(closer))
         || QUOTE_PAIRS.iter().any(|(open, closers)| *open == opener && closers.contains(closer))
 }
 
-// Whether a start-string may follow `before`: whitespace, an opening bracket or quote, or a delimiter.
 pub(crate) fn starts_after(before: char) -> bool {
     before.is_whitespace() || OPENER_CHARS.contains(&before) || DELIMITER_CHARS.contains(&before)
 }
 
-// Whether an end-string may precede `after`: whitespace, a closing bracket or quote, or a delimiter.
 pub(crate) fn ends_before(after: char) -> bool {
     after.is_whitespace()
         || after == '\0'

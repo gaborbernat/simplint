@@ -44,7 +44,7 @@ fn script_targets<'a>(checker: &'a Checker<'_>) -> Vec<&'a str> {
         .collect()
 }
 
-// Each def, class and lambda, keyed by its range (the module's is empty), reports a name once, at its first binding.
+// An empty range identifies the module scope.
 #[derive(Default)]
 pub(crate) struct ReportedNames<'a>(RefCell<FxHashSet<(TextRange, &'a str)>>);
 
@@ -54,22 +54,19 @@ impl<'a> ReportedNames<'a> {
     }
 }
 
-// A name as a binding site introduces it, with the range of the name itself.
 #[derive(Clone, Copy)]
 struct NameSite<'a> {
     text: &'a str,
     range: TextRange,
 }
 
-// The check a naming rule runs on each name a binding site introduces, with the scope it binds in.
 type NameCheck<'a> = fn(&Walker<'_, 'a>, TextRange, NameSite<'a>);
 
 fn current(walker: &Walker) -> TextRange {
     walker.scopes().last().map_or_else(TextRange::default, Ranged::range)
 }
 
-// `exempt` skips the functions whose parameter names a rule leaves alone. An override must keep the names of the method
-// it replaces.
+// Overriding methods can inherit parameter names from callers using the base signature.
 fn parameters<'a>(
     walker: &mut Walker<'_, 'a>,
     scope: &Scope<'a>,

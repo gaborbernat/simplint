@@ -2,13 +2,9 @@ Flags module-level constants that only one function uses.
 
 ## Why is this bad?
 
-A module constant that only one function uses sits away from that function, so the reader scrolls to find the value, and
-in later pull requests the constant may not be in the diff at all. For a number, string or tuple of constants, nothing
-pays for that distance: with one user, there is no duplication the constant avoids.
-
-A module-level constant also suggests the value is shared, so a reader has to search the module to learn that one
-function uses it. Defined in that function, its scope matches its use. A comment does not make it shared: the comment
-moves with the value to where it is used.
+A private constant used by one function is easier to find inside that function. Inlining a literal at its only use can
+remove a name entirely. If several expressions in the function need the value or its annotation matters, keep a local
+variable.
 
 ## Example
 
@@ -134,10 +130,10 @@ functions nested in it. These values count:
       _LOGGER.info("run")
   ```
 
-- **Binary operations the compiler leaves to run per call**: CPython 3.11 folds an integer result of at most 128 bits, a
-  string or bytes repetition of at most 4096 characters, a tuple repetition of at most 256 items (1024 counting the
-  items of nested tuples), and no operation that raises, such as a division by zero or a type error. Past a limit, the
-  operation runs on each call, so the constant stays at module level, and so does a tuple holding such a value.
+- **Binary operations the compiler leaves to run per call**: simplint follows CPython's 128-bit size estimates for
+  integer multiplication, powers and left shifts. Repeated strings and bytes are limited to 4,096 characters or bytes,
+  and repeated tuples to 256 items (1,024 counting nested items). An operation that can raise, such as division by zero,
+  stays at module scope.
 
   ```python ok
   _LIMIT = 2**128
@@ -229,11 +225,8 @@ functions nested in it. These values count:
   config._TIMEOUT = 5
   ```
 
-- **Lists, sets and dicts, and a tuple holding one**: a display is built again on each call, so moving it into the
-  function costs more than the lookup it saves. Measured with [`timeit`](https://docs.python.org/3/library/timeit.html)
-  on Python 3.15.2, a 3-key dict lookup in a function took 19.5 ns through a module constant and 54.3 ns with the
-  display written inside it. Such a constant is never reported, whatever the function does with it. A comprehension is
-  not a value written out in full, so it is not reported either.
+- **Lists, sets and dicts, and a tuple holding one**: moving a display into the function would create a fresh container
+  on each call. Comprehensions are excluded too.
 
   ```python ok
   _CODES = {"ok": 0, "error": 1, "warning": 2}
@@ -264,8 +257,8 @@ functions nested in it. These values count:
       return _BLUE
   ```
 
-- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must
-  exist while the module loads, before any function runs.
+- **References in defaults, decorators or annotations**. Definition-time expressions may run before the function. Even a
+  deferred annotation can need the name in the module namespace later.
 
   ```python ok
   _LIMIT = 3
@@ -384,8 +377,7 @@ The fix moves the value in one of two ways:
 
   - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be
     typed on its own. A tuple of constants under `tuple[float, float]` is one: inlined, `(0.5, 2)` is typed as
-    `tuple[float, int]`, which does not match the declared annotation, so the constant keeps its declared type as a
-    local.
+    `tuple[float, int]`. A local keeps the explicit `tuple[float, float]` annotation.
 
     ```python report
     _BOUNDS: tuple[float, float] = (0.5, 2)
@@ -479,9 +471,10 @@ flowchart TD
 Of the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider
 gap. At the top of the file, the blank lines below go with it.
 
-No fix is offered when:
+These cases can prevent a fix.
 
-- the constant shares a line with other code;
+- A constant shares a line with other code. In the example below, placing `_TIMEOUT` and `_RETRIES` on the same line
+  would prevent the fix.
 
   ```python report
   _TIMEOUT = 30
@@ -492,8 +485,8 @@ No fix is offered when:
       return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)
   ```
 
-- a comment that moves with the constant is another tool's directive, such as `# noqa: E501`, which would stop applying
-  to the line it was written for;
+- A comment moving with the constant contains another tool's directive, such as `# noqa: E501`. Moving it would change
+  which line it applies to.
 
   ```python report
   _URL = "https://example.com/a/very/long/path"  # noqa: E501
@@ -503,7 +496,8 @@ No fix is offered when:
       return _URL
   ```
 
-- a comment would move into a function whose body sits on its `def` line;
+- A comment would move into a function whose entire body occupies the `def` line. Writing the example below as
+  `def tick() -> int: return _TICK` would prevent the edit.
 
   ```python report
   _TICK = 1  # one step
@@ -513,9 +507,9 @@ No fix is offered when:
       return _TICK
   ```
 
-- a moved comment would run past Ruff's `line-length` once indented into the function;
+- Indenting a comment at its new location would exceed the configured comment width.
 
-- the local name already appears in the file;
+- The proposed local name already appears in the file.
 
   ```python report
   _TIMEOUT = 30
@@ -528,7 +522,7 @@ No fix is offered when:
       return socket.create_connection((host, 443), timeout=timeout)
   ```
 
-- the constant is read in a t-string, which keeps the source text of its expressions;
+- A t-string reads the constant. Its expression text is observable at runtime.
 
   ```toml config
   [project]
@@ -543,8 +537,8 @@ No fix is offered when:
       return t"{_LIMIT}"
   ```
 
-- the constant becomes a local and its value holds a string that a backslash continues onto the next line, since
-  indenting that line would change the value;
+- A string in the proposed local uses a backslash to continue onto the next line. Indenting that line would change the
+  string.
 
   ```python report
   _MESSAGE = "hello \
@@ -566,9 +560,5 @@ No fix is offered when:
           print(_MESSAGE)
   ```
 
-- a file of the run sets an attribute of the module under a computed name, as
-  [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- A file in the run sets an attribute of the module under a computed name, as
+  [`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) does.

@@ -1,5 +1,5 @@
-Flags `==` and `!=` comparisons with an empty list, tuple or dict literal. A truth test says the same without building a
-new object to compare with.
+Flags `==` and `!=` comparisons with an empty list, tuple or dict literal. Use a truth test when any empty collection
+should match.
 
 ## Why is this bad?
 
@@ -29,10 +29,11 @@ def first(items):
 
 ### Active on
 
-- **`==` and `!=` with `[]`, `()` or `{}` on either side.** **Unsafe fix:** when only the comparison's truth is used, as
-  the test of an `if`, `elif`, `while`, conditional expression, comprehension filter or `case` guard, or under `not`,
-  `bool()`, `and` or `or`, `x == []` becomes `not x` and `x != []` becomes `x`; `not x == []` becomes `x`. It is unsafe
-  because `None`, `0` and `""` are falsy too, while only an empty list equals `[]`.
+- **A single `==` or `!=` comparison with `[]`, `()` or `{}` on exactly one side.** The unsafe fix replaces `x == []`
+  with `not x` and `x != []` with `x` when only the truth value matters. This includes conditions, comprehension
+  filters, `case` guards, `not`, `bool()` and `and` or `or` within a truth test. `if not x == []:` becomes `if x:`,
+  while `return not x == []` becomes `return bool(x)`. Check the expected type before applying the fix. For example,
+  `None` is falsy but does not equal `[]`.
 
   ```python report
   def first(items):
@@ -58,7 +59,7 @@ def first(items):
 
 ### Exceptions
 
-- **`assert` statements**: a test that a result equals `[]` also checks that it is a list.
+- **`assert` statements.** An assertion may need to distinguish an empty list from an empty tuple.
 
   ```python ok
   def test_empty(result):
@@ -73,6 +74,10 @@ def first(items):
       return value == [] or value is None
   ```
 
+- **Lookups that default to `None`.** The rule skips `.get(key)`, `.get(key, None)` and
+  [`getattr(obj, name, None)`](https://docs.python.org/3/builtins/functions.html#getattr) so a missing key or attribute
+  stays distinguishable from an empty collection.
+
 - **Empty strings**: Ruff's [compare-to-empty-string](https://docs.astral.sh/ruff/rules/compare-to-empty-string/)
   (PLC1901) reports `== ""`, so this rule leaves it to Ruff.
 
@@ -83,6 +88,6 @@ def first(items):
 
 ## Other tools
 
-- [Pylint](https://github.com/pylint-dev/pylint) reports the same comparisons as
+- [Pylint](https://github.com/pylint-dev/pylint) also checks comparisons with empty collections in
   [use-implicit-booleaness-not-comparison](https://pylint.readthedocs.io/en/stable/user_guide/messages/convention/use-implicit-booleaness-not-comparison.html)
   (C1803), with no fix.

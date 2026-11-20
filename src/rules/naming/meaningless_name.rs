@@ -21,8 +21,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
 }
 
-// A field of a model class, such as a dataclass, a pydantic model or a `TypedDict`, is also a key of the data it reads
-// and writes, so its name is set by that data's schema.
+// A model's field names may be fixed by an external schema.
 fn is_model_field(walker: &Walker) -> bool {
     let [.., Scope::Class(class)] = walker.scopes() else {
         return false;
@@ -43,8 +42,7 @@ fn is_model_field(walker: &Walker) -> bool {
         })
 }
 
-// `self.data = ...` in a method, or `cls.data = ...` in a classmethod, declares an attribute of the class, which the
-// class's own name for it must describe. Writes through other objects name attributes the code does not choose.
+// A method chooses attributes on its own receiver. Other objects can expose attribute names fixed elsewhere.
 fn is_receiver_write(walker: &Walker, value: &Expr) -> bool {
     let Expr::Name(ast::ExprName { id, .. }) = value else {
         return false;
@@ -67,7 +65,7 @@ fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, site: NameSite<'a>) {
     }
 }
 
-// A dunder method implements a protocol whose parameter names are fixed, as an override's are.
+// Protocol and override signatures can have externally defined parameter names.
 pub fn scope<'a>(walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
     parameters(walker, scope, |function| is_dunder(function.name.as_str()), check);
 }

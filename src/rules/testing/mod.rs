@@ -43,7 +43,6 @@ pub(crate) use up_unittest_enter_context::up_unittest_enter_context;
 use crate::lint::checker::Checker;
 use ruff_python_ast as ast;
 
-// pytest collects the functions whose name starts with `test`.
 fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
     function.name.as_str().starts_with("test")
 }
@@ -52,21 +51,18 @@ pub(crate) fn is_test_module_function(checker: &Checker, function: &ast::StmtFun
     checker.is_test_module() && is_test_function(function)
 }
 
-// A class that visibly derives from `unittest.TestCase`; a base under another name may define the assert helpers
-// differently.
+// An unresolved base may define its own assertion helpers.
 pub(crate) fn is_test_case(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     class.arguments.as_ref().is_some_and(|arguments| {
         arguments.args.iter().any(|base| checker.semantic().resolves_to(base, &["unittest", "TestCase"]))
     })
 }
 
-// A class pytest collects tests from, named `Test*`, or one deriving from `unittest.TestCase`.
 fn is_test_class(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     class.name.as_str().starts_with("Test") || is_test_case(checker, class)
 }
 
-// The test functions pytest collects from the module: `test*` functions at module level and in test classes, other
-// than fixtures, which pytest calls to set a test up.
+// Use pytest's default class and function prefixes. Fixture functions can also start with `test`.
 fn collected_tests<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
     let is_test = |function: &ast::StmtFunctionDef| {
         is_test_function(function) && !function.decorator_list.iter().any(recognize::is_fixture)

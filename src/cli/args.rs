@@ -40,7 +40,6 @@ pub(crate) struct Cli {
     pub global_options: GlobalConfigArgs,
 }
 
-// The subcommands mirror `ruff`'s, with the same names, flags and help text.
 #[derive(Subcommand)]
 pub(crate) enum Command {
     /// Run simplint on the given files or directories.
@@ -79,7 +78,7 @@ pub(crate) enum Command {
         #[arg(long, value_enum, default_value = "text")]
         output_format: HelpFormat,
     },
-    /// Clear simplint's caches from the Ruff cache directories in the current directory and any subdirectories.
+    /// Remove simplint's caches from `.ruff_cache` directories in or below the current directory.
     Clean,
     /// Generate shell completion.
     #[command(hide = true)]
@@ -102,11 +101,9 @@ pub(crate) enum Command {
 pub struct GlobalConfigArgs {
     #[command(flatten)]
     log_level_args: LogLevelArgs,
-    /// Either a path to a TOML configuration file (`pyproject.toml` or `ruff.toml`), or a TOML `<KEY> = <VALUE>` pair
-    /// (such as you might find in a `ruff.toml` configuration file or a `[tool.simplint]` table) overriding a specific
-    /// configuration option (e.g., `--config "fix = true"` or `--config "line-length = 100"`).
-    /// Overrides of individual settings using this option always take precedence over all configuration files,
-    /// including configuration files that were also specified using `--config`.
+    /// Read a TOML configuration file, or override one setting with a TOML `KEY = VALUE` pair. For example,
+    /// `--config "fix = true"` sets a simplint option and `--config "line-length = 100"` sets a Ruff option.
+    /// Inline settings override configuration files, including a file given with `--config`.
     #[arg(
         long,
         action = clap::ArgAction::Append,
@@ -116,7 +113,7 @@ pub struct GlobalConfigArgs {
         help_heading = "Global options",
     )]
     pub config: Vec<ConfigArgument>,
-    /// Ignore all configuration files.
+    /// Ignore Ruff and simplint configuration files.
     #[arg(long, help_heading = "Global options", global = true)]
     pub(crate) isolated: bool,
     /// Control when colored output is used.
@@ -141,7 +138,6 @@ pub(crate) enum TerminalColor {
     Never,
 }
 
-// The flags mirror `ruff check`'s, with the same names, defaults, help text and conflicts.
 #[derive(Args)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag is a switch, as in `ruff check`")]
 pub struct CheckCommand {
@@ -157,78 +153,77 @@ pub struct CheckCommand {
     unsafe_fixes: bool,
     #[arg(long, overrides_with("unsafe_fixes"), hide = true)]
     no_unsafe_fixes: bool,
-    /// Show an enumeration of all fixed lint violations. Use `--no-show-fixes` to disable.
+    /// In text output, list the fixes applied by file and rule. Use `--no-show-fixes` to disable.
     #[arg(long, overrides_with("no_show_fixes"))]
     show_fixes: bool,
     #[arg(long, overrides_with("show_fixes"), hide = true)]
     no_show_fixes: bool,
-    /// Avoid writing any fixed files back; instead, output a diff for each changed file to stdout, and exit 0 if there
-    /// are no diffs. Implies `--fix-only`.
+    /// Print a diff of the proposed fixes to stdout and leave the files unchanged. Exit 1 if a diff is present,
+    /// unless `--exit-zero` is set. Implies `--fix-only`.
     #[arg(long, conflicts_with = "show_fixes")]
     pub(crate) diff: bool,
-    /// Run in watch mode by re-running whenever files change.
+    /// Recheck when a watched Python file, TOML file or hook configuration changes.
     #[arg(short, long)]
     pub(super) watch: bool,
-    /// Apply fixes to resolve lint violations, but don't report on, or exit non-zero for, leftover violations. Implies
-    /// `--fix`. Use `--no-fix-only` to disable or `--unsafe-fixes` to include unsafe fixes.
+    /// Apply fixes and omit remaining violations from the report and exit status. Implies `--fix`.
+    /// Use `--no-fix-only` to disable or `--unsafe-fixes` to include unsafe fixes.
     #[arg(long, overrides_with("no_fix_only"))]
     fix_only: bool,
     #[arg(long, overrides_with("fix_only"), hide = true)]
     no_fix_only: bool,
-    /// Ignore any `# noqa` comments.
+    /// Report violations even when `noqa` or `simplint: ignore` comments suppress them.
     #[arg(long)]
     pub(super) ignore_noqa: bool,
-    /// Output serialization format for violations. The default serialization format is "full".
+    /// Format for reported violations. The default is `full`, which shows the source.
     #[arg(long, value_enum, env = "SIMPLINT_OUTPUT_FORMAT")]
     output_format: Option<OutputFormat>,
-    /// Specify file to write the linter output to (default: stdout).
+    /// Write the report to this file. The default is stdout, or stderr when sending fixed source to stdout.
     #[arg(short, long, env = "SIMPLINT_OUTPUT_FILE")]
     pub(super) output_file: Option<PathBuf>,
     /// The minimum Python version that should be supported.
     #[arg(long, value_enum)]
     target_version: Option<PythonVersion>,
-    /// Enable Ruff's preview mode: reports name rules instead of codes, and simplint's fixes are checked against
-    /// Ruff's preview rules too. simplint has no preview rules of its own. Use `--no-preview` to disable.
+    /// Enable Ruff's preview rules when checking fixes. Preview output uses rule names unless Ruff's
+    /// `output-prefer-rule-codes` is set. simplint has no preview rules of its own. Use `--no-preview` to disable.
     #[arg(long, overrides_with("no_preview"))]
     preview: bool,
     #[arg(long, overrides_with("preview"), hide = true)]
     no_preview: bool,
-    /// Comma-separated list of rule codes to enable (or ALL, to enable all rules).
+    /// Enable rules by code, code prefix or name, separated by commas. `ALL` includes `unused-ignore`.
+    /// Opt-in rules such as `init-module-content` require a full code or name.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     select: Option<Vec<String>>,
-    /// Comma-separated list of rule codes to disable.
+    /// Disable rules by code, code prefix or name, separated by commas.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     ignore: Option<Vec<String>>,
-    /// Like --select, but adds additional rule codes on top of those already specified.
+    /// Enable additional rules by code, code prefix or name.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     extend_select: Option<Vec<String>>,
-    /// Like --ignore. (Deprecated: You can just use --ignore instead.)
+    /// Deprecated alias for `--ignore`.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection", hide = true)]
     extend_ignore: Option<Vec<String>>,
-    /// List of mappings from file pattern to code to exclude.
+    /// Ignore rules for matching files, for example `--per-file-ignores 'tests/*.py:SMP1'`.
     #[arg(long, value_delimiter = ',', help_heading = "Rule selection")]
     per_file_ignores: Option<Vec<PatternPrefixPair>>,
-    /// Like `--per-file-ignores`, but adds additional ignores on top of those already specified.
+    /// Add file patterns and rule selectors to `--per-file-ignores`.
     #[arg(long, value_delimiter = ',', help_heading = "Rule selection")]
     extend_per_file_ignores: Option<Vec<PatternPrefixPair>>,
-    /// List of paths, used to omit files and/or directories from analysis.
+    /// Exclude files and directories that match these patterns.
     #[arg(long, value_delimiter = ',', value_name = "FILE_PATTERN", help_heading = "File selection")]
     exclude: Option<Vec<String>>,
-    /// Like --exclude, but adds additional files and directories on top of those already excluded.
+    /// Add patterns to the current exclusions.
     #[arg(long, value_delimiter = ',', value_name = "FILE_PATTERN", help_heading = "File selection")]
     extend_exclude: Option<Vec<String>>,
-    /// List of rule codes to treat as eligible for fix. Only applicable when fix itself is enabled (e.g., via
-    /// `--fix`).
+    /// Allow fixes for rules matching these codes, code prefixes or names.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     fixable: Option<Vec<String>>,
-    /// List of rule codes to treat as ineligible for fix. Only applicable when fix itself is enabled (e.g., via
-    /// `--fix`).
+    /// Hide and disable fixes for rules matching these codes, code prefixes or names.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     unfixable: Option<Vec<String>>,
-    /// Like --fixable, but adds additional rule codes on top of those already specified.
+    /// Allow fixes for additional rules by code, code prefix or name.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection")]
     extend_fixable: Option<Vec<String>>,
-    /// Like --unfixable. (Deprecated: You can just use --unfixable instead.)
+    /// Deprecated alias for `--unfixable`.
     #[arg(long, value_delimiter = ',', value_name = "RULE_CODE", help_heading = "Rule selection", hide = true)]
     extend_unfixable: Option<Vec<String>>,
     /// Respect file exclusions via `.gitignore` and other standard ignore files. Use `--no-respect-gitignore` to
@@ -243,7 +238,7 @@ pub struct CheckCommand {
     force_exclude: bool,
     #[arg(long, overrides_with("force_exclude"), hide = true)]
     no_force_exclude: bool,
-    /// Disable cache reads.
+    /// Disable cache reads and writes.
     #[arg(short, long, env = "SIMPLINT_NO_CACHE", help_heading = "Miscellaneous")]
     pub(crate) no_cache: bool,
     /// Path to Ruff's cache directory, which simplint keeps its cache in.
@@ -258,11 +253,10 @@ pub struct CheckCommand {
     /// Exit with a non-zero status code if any files were modified via fix, even if no lint violations remain.
     #[arg(long, help_heading = "Miscellaneous", conflicts_with = "exit_zero")]
     pub(super) exit_non_zero_on_fix: bool,
-    /// Show counts for every rule with at least one violation.
+    /// Count violations by rule. Supports `full`, `concise` and `json` output.
     #[arg(long, conflicts_with = "diff", conflicts_with = "watch")]
     pub(super) statistics: bool,
-    /// Enable automatic additions of `noqa` directives to failing lines. Optionally provide a reason to append after
-    /// the codes.
+    /// Add `noqa` directives for reported violations. Use `--add-noqa=REASON` to explain the suppression.
     #[arg(
         long,
         value_name = "REASON",
@@ -280,8 +274,8 @@ pub struct CheckCommand {
         conflicts_with = "diff",
     )]
     add_noqa: Option<String>,
-    /// Enable automatic additions of `simplint: ignore` comments to failing lines. Optionally provide a reason to
-    /// append after the codes.
+    /// Add `simplint: ignore` comments with rule names for reported violations. Use `--add-ignore=REASON` to explain
+    /// the suppression.
     #[arg(
         long,
         value_name = "REASON",
@@ -299,7 +293,7 @@ pub struct CheckCommand {
         conflicts_with = "diff",
     )]
     add_ignore: Option<String>,
-    /// See the files simplint will be run against with the current settings.
+    /// List the files simplint would check with the current settings.
     #[arg(
         long,
         conflicts_with = "add_noqa",
@@ -310,7 +304,7 @@ pub struct CheckCommand {
         conflicts_with = "watch"
     )]
     pub(super) show_files: bool,
-    /// See the settings simplint will use to lint a given Python file.
+    /// Show the resolved settings for the first Python file found.
     #[arg(
         long,
         conflicts_with = "add_noqa",
@@ -466,10 +460,8 @@ pub enum ConfigArgument {
     Override { simplint: Box<SimplintOptions>, ruff: Option<String> },
 }
 
-// Ruff's parser decides between a file and inline TOML and reports invalid values with its own messages. Every
-// top-level `[tool.simplint]` key is also a (deprecated, top-level) `ruff.toml` key of the same type, so what Ruff
-// accepts, the `[tool.simplint]` table accepts too; those keys go to simplint, and only the rest to Ruff. Ruff knows
-// none of simplint's own tables, such as `naming`, so they leave the value before Ruff's parser sees it.
+// Ruff's parser distinguishes file paths from inline TOML. Remove simplint-only keys before Ruff validates the rest.
+// Shared keys such as `fix` configure simplint, while Ruff keeps keys such as `line-length`.
 #[derive(Clone)]
 struct ConfigArgumentParser;
 

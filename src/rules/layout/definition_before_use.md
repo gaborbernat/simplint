@@ -2,19 +2,10 @@ Flags functions and classes that do not sit directly below their first user.
 
 ## Why is this bad?
 
-Code reads top-down when each function is followed by the helpers it calls, so the reader starts at the entry point and
-drills into details. This is the stepdown rule of Robert C. Martin's *Clean Code*, which
-[flake8-stepdown](https://github.com/didmar/flake8-stepdown) also enforces. A helper far from its caller makes the
-reader jump around the file.
-
-Putting helpers first is a habit from compiled languages such as C, where a function has to be
-[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python looks up a name in a
-function body [when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), so
-a helper can sit anywhere in the module.
-
-[ssort](https://github.com/bwhmather/ssort) argues for the opposite order, definitions first, because import-time
-lookups such as decorators and base classes need the definition to exist. The rule's exceptions keep those definitions
-in place.
+Keeping a helper near its first caller lets a reader follow a call without searching the file. Python resolves names in
+a function body [when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names),
+so helpers can often follow their callers. Names evaluated at import time, such as decorators and base classes, must
+already exist.
 
 ## Example
 
@@ -219,35 +210,26 @@ would leave the name unbound when it is read:
 
 Annotations do not make a user when Python evaluates them lazily:
 
-- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), read from Ruff's
-  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
-  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)
+- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), using the project's
+  [Python version settings](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
 - when the module has [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html)
 
 Otherwise an annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time
 use. Annotations inside a function body never make that function a user: a name a function only annotates with is not a
 helper it calls.
 
-The signature of a decorated function and the class-level annotations of a decorated class count as an import-time use
-whatever the target version, because many decorators read them while the module loads:
-
-- a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation
-- pydantic's `validate_call`, typer, click, attrs and
-  [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too
-
-Moving such a name below its user would leave the decorator with an unresolved forward reference. Decorators that never
-evaluate those annotations are the exception: `property` and its accessors, `classmethod`, `staticmethod`,
-`abstractmethod`, `contextmanager`,
-[`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache), `lru_cache`, `cached_property`,
-`wraps` and `total_ordering`, [`typing.final`](https://docs.python.org/3/library/typing.html#typing.final), `overload`,
-`override` and `deprecated`, `mock.patch`, `pytest.fixture`, `pytest.hookimpl` and every `pytest.mark`, and `dataclass`,
-which reads its fields as strings or forward references.
+A decorator can inspect annotations when the module loads. simplint therefore treats references in decorated function
+signatures and decorated class fields as import-time uses, unless it recognizes the decorator. The exceptions include
+property accessors, `classmethod`, `staticmethod`, `abstractmethod`, `contextmanager`, `asynccontextmanager`,
+`dataclass`, `functools` wrappers such as `cache`, typing decorators such as `override`, `mock.patch` and its `dict`,
+`multiple` and `object` variants, and pytest's `fixture`, `hookimpl`, `hookspec` and `mark` decorators.
 
 ### Type parameters and type statements
 
-Python 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),
-[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need
-not exist yet. They make their statement a user like a function body does:
+Python 3.12 introduced lazy evaluation for type parameter bounds and `type` statements
+([PEP 695](https://peps.python.org/pep-0695/)). Python 3.13 added lazy type parameter defaults
+([PEP 696](https://peps.python.org/pep-0696/)). Names used in these expressions can be defined later. They make their
+statement a user like a function body does:
 
 ```toml config
 [project]
@@ -429,21 +411,17 @@ The fix rewrites the span from the first to the last misplaced statement in the 
       return line.strip()
   ```
 
-The fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a
-class or a decorated function, even when that definition only shifts to make room, because
-[decorators](https://docs.python.org/3/glossary.html#term-decorator),
-[metaclasses](https://docs.python.org/3/reference/datamodel.html#metaclasses) and
-[`__init_subclass__`](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__) hooks then run in a
-different order.
+simplint marks the fix unsafe when it moves a class, a function with a call in a default value or decorator, or a
+function with a decorator outside the recognized set. It accepts `property`, `cached_property`, `classmethod`,
+`staticmethod`, `overload`, `setter`, `getter` and `deleter` by their final name. A definition that keeps its position
+in the rewritten span does not affect the safety classification.
 
 No fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a
 line.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
-  [#3946](https://github.com/astral-sh/ruff/issues/3946) asks for ssort, which orders the other way, with definitions
-  above their users.
+- [ssort](https://github.com/bwhmather/ssort) puts definitions before their users.
 - [pyorder](https://github.com/Winipedia/pyorder) orders module-level definitions with the same
   [callers-before-callees](https://github.com/Winipedia/pyorder#ordering-rules) rule, and its `--fix` option rewrites
   the file. Ties break by visibility and then alphabetically, which this rule does not check.

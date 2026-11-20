@@ -36,11 +36,11 @@ fn check_target(checker: &Checker, names: &FunctionNames, for_loop: &ast::StmtFo
         return;
     }
     let mut mentions = names.mentions(name);
-    // A name bound or read before the loop keeps a value of its own when the loop runs zero times.
+    // An earlier mention can refer to a value that survives an empty loop.
     if mentions.clone().any(|(range, _)| range.start() < for_loop.target.start()) {
         return;
     }
-    // So does one the `else` binds, and it runs whenever the loop ends.
+    // The `else` can supply a fallback value when the loop runs zero times.
     let orelse = for_loop
         .orelse
         .first()

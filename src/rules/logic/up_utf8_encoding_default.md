@@ -3,14 +3,10 @@ the default in Python 3.15.
 
 ## Why is this bad?
 
-[PEP 686](https://peps.python.org/pep-0686/) turns on [UTF-8 mode](https://docs.python.org/3/library/os.html#utf8-mode)
-by default in Python 3.15, so [`open()`](https://docs.python.org/3/builtins/functions.html#open) and the `pathlib` text
-methods decode and encode UTF-8 when no `encoding` is given. An argument that names the same encoding repeats the
-default, and a reader has to check whether it changes anything.
-
-`PYTHONUTF8=0` or `-X utf8=0` switch the default off, and then the argument is what keeps the file in UTF-8. The PEP's
-migration advice suggests an explicit `encoding="utf-8"` where code relies on the default. The rule fires only for
-targets of 3.15 or newer.
+Python 3.15 enables [UTF-8 mode](https://docs.python.org/3/library/os.html#utf8-mode) by default. In that mode,
+[`open()`](https://docs.python.org/3/builtins/functions.html#open) and the `pathlib` text methods already use UTF-8.
+Code that requires UTF-8 even when the mode is disabled should keep the explicit encoding, as
+[PEP 686](https://peps.python.org/pep-0686/#backward-compatibility) recommends.
 
 ## Example
 
@@ -49,9 +45,9 @@ def write_log(path, text):
 
 ## Conflicts with Ruff
 
-Ruff's [unspecified-encoding](https://docs.astral.sh/ruff/rules/unspecified-encoding/) (PLW1514), a preview rule, asks
-for the `encoding` argument this rule removes, and its fix adds `encoding="utf-8"` back. simplint stops with an error
-before linting while both apply to a file that targets Python 3.15 or newer; ignore one of the two rules.
+Ruff's preview rule [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) requests an explicit encoding.
+Its fix adds the keyword this rule removes. When both rules apply to a file targeting Python 3.15 or later, simplint
+stops before linting. Ignore either rule for that file.
 
 ## Configuration
 
@@ -79,9 +75,10 @@ before linting while both apply to a file that targets Python 3.15 or newer; ign
   [`io.TextIOWrapper()`](https://docs.python.org/3/library/io.html#io.TextIOWrapper), and of `open`,
   [`read_text`](https://docs.python.org/3/library/pathlib.html#pathlib.Path.read_text) and
   [`write_text`](https://docs.python.org/3/library/pathlib.html#pathlib.Path.write_text) methods**, when the call passes
-  `encoding=` with a UTF-8 codec name: `utf-8`, `UTF-8`, `utf8`, `u8`, `utf_8` and the other spellings Python maps to
-  UTF-8. The methods are matched by name, since their receiver's type is not known, so a method of another class with
-  the same name is reported too. **Unsafe fix:** the keyword is removed.
+  a string literal for `encoding=`. Recognized names are `utf_8`, `utf8`, `u8`, `utf`, `utf8_ucs2`, `utf8_ucs4` and
+  `cp65001` after lowercasing and replacing hyphens and spaces with underscores. The methods are matched by name, since
+  their receiver's type is not known, so a method of another class with the same name is reported too. **Unsafe fix:**
+  the keyword is removed.
 
   ```toml config
   [project]
@@ -102,14 +99,13 @@ before linting while both apply to a file that targets Python 3.15 or newer; ign
 
 ### Fix
 
-The fix is unsafe because the default is not always UTF-8. With UTF-8 mode off, `open()` uses the locale's encoding,
-which is ASCII under `LC_ALL=C`, so the file that the argument read as UTF-8 raises
-[`UnicodeDecodeError`](https://docs.python.org/3/builtins/exceptions.html#UnicodeDecodeError) once the argument is gone.
-Python 3.15 also still emits [`EncodingWarning`](https://docs.python.org/3/builtins/exceptions.html#EncodingWarning) for
-a call without `encoding` under `-X warn_default_encoding` or `PYTHONWARNDEFAULTENCODING`, so a test suite that turns
-that warning into an error fails after the fix.
+The fix is unsafe. With `PYTHONUTF8=0` or `-X utf8=0`, the default encoding can be locale-specific, so removing the
+argument can change the bytes written or cause a decoding error. A same-named method on another class may also use a
+different default. Omitting the keyword can trigger
+[`EncodingWarning`](https://docs.python.org/3/builtins/exceptions.html#EncodingWarning) under `-X warn_default_encoding`
+or `PYTHONWARNDEFAULTENCODING`, including in UTF-8 mode.
 
-No fix is offered when the call has a comment inside it, which the rewrite would drop.
+simplint reports the keyword without a fix if the call contains a comment.
 
 A parenthesized positional argument stays a valid call when the keyword after it is removed.
 
@@ -132,7 +128,7 @@ def read_config(path):
 
 ### Exceptions
 
-- **Targets before Python 3.15**: UTF-8 mode is not the default there, so the argument stays.
+- **Targets before Python 3.15.** The rule starts at 3.15, when UTF-8 mode became the default across locales.
 
   ```toml config
   [project]
@@ -190,8 +186,6 @@ def read_config(path):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) (preview), which asks for an explicit encoding, the
-  opposite; open issue [#29326](https://github.com/astral-sh/ruff/issues/29326).
-- [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same `encoding="UTF-8"` arguments as
-  [FTP140](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp140), with no fix.
+- [Ruff issue #29326](https://github.com/astral-sh/ruff/issues/29326) tracks the behavior of PLW1514 on Python 3.15.
+- flake8-tergeo's [FTP140](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp140) checks explicit UTF-8
+  encodings in any function call on Python 3.15 and later.

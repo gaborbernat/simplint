@@ -6,9 +6,7 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::syntax::has_decorator;
 
-// The methods the pickle and copy protocols call, which return a tuple of the shape they read. `__getstate__` returns
-// what the class's own `__setstate__` reads back, as `getstate` of an incremental codec returns what its `setstate`
-// does.
+// Pickle and copy specify some tuple shapes. For `__getstate__` and codec `getstate`, the matching setter reads them.
 const PROTOCOL_METHODS: [&str; 6] =
     ["__reduce__", "__reduce_ex__", "__getnewargs__", "__getnewargs_ex__", "__getstate__", "getstate"];
 
@@ -23,8 +21,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Some(Scope::Function(function)) = walker.scopes().last() else { return };
     let name = function.name.as_str();
     let length = tuple.elts.len();
-    // A starred element stands for any number of values, so the tuple's length is unknown. A key function's tuple is
-    // compared or hashed as a whole, and one declared `tuple[T, ...]` is a sequence: neither is unpacked by position.
+    // Starred elements hide the tuple length. Sorting keys and variable-length tuples commonly use positions
+    // without assigning field names.
     if length <= walker.checker.settings.project.knobs.max_tuple_elements
         || PROTOCOL_METHODS.contains(&name)
         || name == "key"

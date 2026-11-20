@@ -14,7 +14,7 @@ pub fn long_docstring_paragraph(checker: &Checker) {
         .chain(checker.function_defs().iter().map(|function| function.body.as_slice()))
         .chain(checker.class_defs().iter().map(|class| class.body.as_slice()));
     for literal in bodies.filter_map(docstring) {
-        // Each part of an implicitly concatenated docstring is read as written, so a report points at its own lines.
+        // Keep source offsets local to each literal in a concatenated docstring.
         for part in &literal.value {
             for range in long_paragraphs_of(checker.text(part.content_range()), part.content_range().start(), limit) {
                 checker.report(
@@ -27,8 +27,6 @@ pub fn long_docstring_paragraph(checker: &Checker) {
     }
 }
 
-// Each paragraph of `text` longer than `limit` words, from its first line to the line that passes the limit. A blank
-// line and a doctest line, which is code rather than prose, each end a paragraph.
 fn long_paragraphs_of(text: &str, start: TextSize, limit: usize) -> Vec<TextRange> {
     let mut offset = start;
     let lines = text.split_inclusive('\n').map(|line| {

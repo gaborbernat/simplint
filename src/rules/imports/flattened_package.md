@@ -1,5 +1,4 @@
-Flags private modules whose names share a `_<prefix>_` prefix with two or more sibling modules, which a package would
-group.
+Flags private modules when at least three files in the same directory share a prefix such as `_html_`.
 
 ## Why is this bad?
 
@@ -59,8 +58,9 @@ parse_url("text")
 ## What it does
 
 The rule reports a `_<prefix>_<rest>.py` module once, at the start of the file, when at least three private modules of
-its directory share the `_<prefix>_` prefix, itself included. A stub counts toward its prefix, once when it sits beside
-its `.py` module. The message names the number of other modules.
+its directory share the `_<prefix>_` prefix, itself included. A `.pyi` stub counts toward the threshold. A `.py` file
+and its matching stub count as one module. Only `.py` files receive reports. The message names the number of other
+modules.
 
 ### Active on
 
@@ -124,8 +124,8 @@ its `.py` module. The message names the number of other modules.
   VALUE = 1
   ```
 
-- **A package for the prefix**: a `_csv/` package that holds files of the run already groups the modules, so the flat
-  modules beside it are left alone, whether or not the run passes its files.
+- **A package for the prefix**: simplint skips the group if `_csv/__init__.py` exists on disk or if the run includes
+  Python files under `_csv/`.
 
   ```python context file=pkg/_csv/__init__.py
   ```
@@ -196,8 +196,7 @@ its `.py` module. The message names the number of other modules.
 
 ## Fix
 
-No fix is offered. Moving the modules into a package changes their import paths, and the package's `__init__.py` needs
-the names callers use.
+Move the files by hand. Their import paths change, and you need to choose which names the new package re-exports.
 
 ## Other tools
 

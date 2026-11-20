@@ -5,9 +5,9 @@ list it.
 ## Why is this bad?
 
 Python 3.15 defers an import that `__lazy_modules__` lists until the first use of a name it binds
-([PEP 810](https://peps.python.org/pep-0810/)), and older versions ignore the list. An unlisted import that the module
-uses only inside functions still loads in full each time the module is imported, so every caller pays for it, including
-a command line run that only prints `--help`.
+([PEP 810](https://peps.python.org/pep-0810/)), and older versions ignore the list. An eager import can load a
+dependency before any caller needs it. For example, a command that only prints `--help` might still import the library
+used to send a request.
 
 ## Example
 
@@ -45,13 +45,8 @@ def main() -> None:
 
 ## Configuration
 
-- The Python version the code targets, taken from
-  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to
-  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);
-  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version). From Python
-  3.15 the `lazy` keyword spells a lazy import, which Ruff's
-  [`lazy-import-mismatch`](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/) (`TID254`) asks for, so the rule
-  stays silent there.
+- The [target Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) for
+  the file. The rule runs only for targets below Python 3.15. On 3.15 and later, use `lazy` directly.
 
   ```toml config
   [project]
@@ -152,9 +147,8 @@ def main() -> None:
   outside a function, in a function or class that module-level code calls, in the methods of a class that a module-level
   class uses as its metaclass, in the `__init_subclass__` of a class it subclasses, or in an annotation a decorator such
   as FastAPI's reads. A class call counts the methods of the classes it inherits from too. A lazy import of it would
-  load at once. Ruff's
-  [`lazy-import-immediately-resolved`](https://docs.astral.sh/ruff/rules/lazy-import-immediately-resolved/) (`TID255`)
-  reports a listed import used this way.
+  load at once. Ruff's [TID255](https://docs.astral.sh/ruff/rules/lazy-import-immediately-resolved/) also checks for
+  immediate use, though it can miss reads by a decorator.
 
   ```toml config
   [project]
@@ -177,8 +171,8 @@ def main() -> None:
   PATTERNS = compile_all()
   ```
 
-- **An import whose name nothing reads and no other module imports**: it runs for what loading the module does, such as
-  registering a type or a plugin, which a lazy import would never do.
+- **An unused, unexported name or a name that is rebound**. An unread import may register a type or plugin as a side
+  effect. Making it lazy could prevent registration entirely.
 
   ```toml config
   [project]
@@ -207,26 +201,20 @@ def main() -> None:
 
 ### Fix
 
-The fix adds every missing module to the list in one edit, sorted as [`unsorted-lazy-modules`](SMP315.html) asks when
-the list is sorted, and at its end otherwise. A new list goes above the first import, below the docstring and the
-`from __future__` imports. The fix is unsafe: on Python 3.15 the module then loads on first use, so anything its import
-does, such as registering a handler, happens later or not at all. A comment inside the list other than at the end of an
-entry's line withholds the fix.
+One unsafe fix adds all the missing modules. It preserves an existing sort order or appends the entries if the list is
+unsorted. A new list goes above the first ordinary import, after the docstring and future imports. An unparenthesized
+tuple or a comment that cannot stay with its entry prevents the rewrite.
+
+Review what each module does at import time. On Python 3.15, an import that registers a handler may now register it
+later or never.
 
 ## Other tools
 
-- **[flake8-lazy](https://github.com/henryiii/flake8-lazy):** `LZY101` and `LZY102`. It treats every function body as
-  deferred, so it also lists an import that a function called at module level uses, and one imported only for what
-  loading it does.
-- **[Ruff](https://github.com/astral-sh/ruff):** [`TID254`](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/)
-  asks for `lazy` on the imports its `require-lazy` setting names, from Python 3.15, without looking at how they are
-  used. Open issue [#29175](https://github.com/astral-sh/ruff/issues/29175) asks it to write `__lazy_modules__` for
-  older versions.
-- **[Lifeguard](https://github.com/meta/Lifeguard):** Meta's analyzer follows imports across a whole project, finds
-  module-level side effects that break when a module loads lazily, such as a registry filled on import or
-  [`sys.modules`](https://docs.python.org/3/library/sys.html#sys.modules) writes, and writes the modules that are safe
-  to defer as JSON for
-  [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter). This
-  rule reads one file at a time and judges an import only by where the file uses its names, so it cannot see what
-  loading the imported module does. Lifeguard answers which modules are safe to defer; this rule keeps each module's
-  `__lazy_modules__` complete once the author has decided.
+- [flake8-lazy](https://github.com/henryiii/flake8-lazy) reports missing standard library entries as `LZY101` and
+  third-party or local modules as `LZY102`.
+- Ruff's [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/) enforces configured `require-lazy` and
+  `ban-lazy` policies. [Issue #29175](https://github.com/astral-sh/ruff/issues/29175) requests a fix that writes
+  `__lazy_modules__` when targeting older versions.
+- [Lifeguard](https://github.com/meta/Lifeguard) analyzes import-time effects across modules. Its JSON output identifies
+  modules eligible for lazy loading and constraints on how to load them. That output can drive a
+  [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter) callback.

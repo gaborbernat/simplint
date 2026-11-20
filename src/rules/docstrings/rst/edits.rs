@@ -18,8 +18,7 @@ impl Field {
     }
 }
 
-// Fields that end the docstring take the blank lines before them too. The closing quotes move to a line of their own
-// when the text left spans lines or ends in a quote or backslash, which would end or escape the string.
+// A quote or backslash at the end of the retained text can interfere with the closing delimiter.
 pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &[&Field]) -> Option<Fix> {
     let content = docstring.content?;
     let source = checker.source;

@@ -34,9 +34,8 @@ struct Assignment<'a> {
 }
 
 fn following_assignments<'a>(mock: &str, statements: &'a [Stmt]) -> Vec<Assignment<'a>> {
-    // The constructors bind these parameters (`Lib/unittest/mock.py` lines 444, 463 and 1152), so passing one configures
-    // the mock or fails for `cls` and `self`, rather than setting the attribute. `return_value` and `side_effect` are
-    // left out, since passing them is the fix.
+    // These constructor keywords configure the mock itself or conflict with a parameter. Moving an assignment into the
+    // call could change its meaning.
     const RESERVED_KEYWORDS: &[&str] = &[
         "cls",
         "self",

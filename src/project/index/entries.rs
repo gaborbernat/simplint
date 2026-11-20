@@ -11,8 +11,7 @@ use super::resolve::{ImportResolver, resolve};
 
 type FileNames = Vec<(FileId, String)>;
 
-// A bare module entry point is loaded whole and read by convention, so every public name it defines or imports is in
-// use, such as the hooks and fixtures of a pytest plugin.
+// Hosts can look up public names by convention, such as pytest hooks in a module entry point.
 pub(super) fn interned_entry_names(
     resolver: &mut ImportResolver,
     entry_points: &[(PathBuf, String)],
@@ -70,7 +69,7 @@ fn public_names(facts: &FileFacts) -> Vec<String> {
         .collect()
 }
 
-// Coverage calls `coverage_init` on a module it loads by dotted name, so no import reaches the function.
+// A coverage.py plugin exposes `coverage_init` to the host without a project import.
 pub(super) fn coverage_plugin_names(
     resolver: &mut ImportResolver,
     plugins: &[(PathBuf, String)],

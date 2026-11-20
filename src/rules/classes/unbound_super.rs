@@ -4,9 +4,7 @@ use ruff_text_size::Ranged;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-// Zero-argument `super()` reads the `__class__` cell and the first argument of the function it runs in. A generator
-// expression's first argument is the iterator it loops over, a lambda or nested function without parameters has none,
-// and a function outside a class has no `__class__` cell, so each call fails when it runs.
+// Zero-argument super() needs the enclosing class and a suitable first positional argument.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
         return;

@@ -2,16 +2,13 @@ Flags `object` and `Any` in annotations, type alias values, and type parameter b
 
 ## Why is this bad?
 
-`object` accepts anything and permits almost no operations, so the code behind it narrows with `isinstance` or casts at
-runtime. `Any` skips type checking for each value it touches, and
-[values derived from it](https://mypy.readthedocs.io/en/stable/dynamic_typing.html#operations-on-any-values) are usually
-`Any` too, so one annotation can switch off checks far from where it is written. A precise type moves that check to the
-type checker and documents what callers pass.
+`object` accepts any value. To use a type-specific operation you must narrow the type or tell the checker which type to
+assume. `Any` permits unchecked operations and can
+[propagate to other expressions](https://mypy.readthedocs.io/en/stable/dynamic_typing.html#operations-on-any-values). A
+more specific annotation lets the checker catch incorrect calls.
 
-The
-[typing best practices](https://typing.python.org/en/latest/reference/best_practices.html#arguments-and-return-types)
-recommend `object` for a parameter that accepts any value; this rule still reports it, since each use then narrows the
-value at runtime.
+The [typing guidelines](https://typing.python.org/en/latest/reference/best_practices.html#arguments-and-return-types)
+recommend `object` for parameters that accept every value. simplint still reports it outside the exceptions below.
 
 ## Example
 
@@ -187,8 +184,9 @@ ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload i
 otherwise.
 
 - **`object` as the return type of a `Callable`**, such as `Callable[..., object]` or `Callable[[int], object]`, from
-  `typing` or [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc): the
-  callable's result is ignored, which is what `object` says there. `object` in its parameter types is still reported.
+  `typing` or [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc):
+  callers can accept a result of any type, for example when they discard it. `object` in its parameter types is still
+  reported.
 
   ```python ok
   from collections.abc import Callable
@@ -235,22 +233,13 @@ otherwise.
 
 ## Ruff overlap
 
-Each tool owns a different part of the `Any` reports:
-
-- **[ANN401](https://docs.astral.sh/ruff/rules/any-type/) owns the `Any` it reports** on a parameter or return value:
-  the whole annotation, or an `Any` inside `Optional`, `Union`, `|` or `Annotated`. It reports each such annotation
-  once, at its first character, so `Any | None` and `Optional[Any]` are one report each, at the start of the annotation,
-  not at the `Any`.
-- **This rule owns everything else**: `object` everywhere except as the annotation of `*args` or `**kwargs`, `Any` in
-  variable annotations, and `Any` in other nested positions such as `list[Any]`, which ANN401 does not report. It also
-  keeps the `Any` of the signatures ANN401 skips, such as `self: Any` or an `@override` method.
+Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports the whole parameter or return annotation when it
+finds `Any` directly, in a union, in `Optional` or in the type argument of `Annotated`. simplint skips those
+occurrences. It can still report `Any` in variables, in other nested types, and in signatures ANN401 skips. The
+exceptions above apply to `object` independently.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [ANN401](https://docs.astral.sh/ruff/rules/any-type/), which reports a parameter or return annotation that is `Any` or
-  a union with `Any` and which this rule leaves to it; this rule covers `object` and `Any` nested in other types or in
-  variables (open issue [#5871](https://github.com/astral-sh/ruff/issues/5871)).
 - [basedpyright](https://github.com/DetachHead/basedpyright) reports every explicit `Any` as
   [reportExplicitAny](https://docs.basedpyright.com/latest/configuration/config-files/). It does not report `object`,
   which this rule also flags.

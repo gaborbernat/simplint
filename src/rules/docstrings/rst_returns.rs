@@ -13,7 +13,6 @@ pub fn rst_returns(checker: &Checker) {
         let Some(def) = returning_function(checker, target) else {
             continue;
         };
-        // A constructor returns nothing to document.
         if def.name.as_str() == "__init__" {
             continue;
         }
@@ -27,9 +26,7 @@ pub fn rst_returns(checker: &Checker) {
     }
 }
 
-// The function whose return the docstring documents. A class's and a property's docstrings describe the class and the
-// value instead, so their return fields are reported here, and moving their text into the description is for the
-// author.
+// For classes and properties a return description belongs in the prose. Moving it there needs an author's judgment.
 fn returning_function<'a>(checker: &Checker, target: &Target<'a>) -> Option<&'a ast::StmtFunctionDef> {
     let value_fields = || {
         target.docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType, FieldKind::Yields, FieldKind::YieldType])
@@ -66,7 +63,6 @@ fn returning_function<'a>(checker: &Checker, target: &Target<'a>) -> Option<&'a 
     }
 }
 
-// A generator documents what it yields, so its `:returns:` field is `:yields:` and the field is missing when absent.
 fn generator_fields(checker: &Checker, target: &Target, name: &str) {
     let docstring = &target.docstring;
     let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
@@ -87,7 +83,6 @@ fn generator_fields(checker: &Checker, target: &Target, name: &str) {
     }
 }
 
-// A function that is not a generator documents its return value and not its yields.
 fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef, visitor: &ReturnVisitor) {
     let docstring = &target.docstring;
     let name = def.name.as_str();
@@ -117,7 +112,7 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
             format!("`{name}` returns a value, yet its docstring has no `:returns:` field"),
         );
     }
-    // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
+    // An unannotated abstract method can leave its return value to the implementation.
     if has_returns && !returns_value && (returns_nothing || !placeholder) {
         let fields: Vec<_> = docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType]).collect();
         checker.report_fix(
@@ -141,7 +136,6 @@ fn is_placeholder(body: &[Stmt]) -> bool {
     })
 }
 
-// A quoted annotation, as in `-> "None"`, returns what its unquoted form does.
 fn is_nothing_annotation(annotation: &Expr) -> bool {
     if let Expr::StringLiteral(literal) = annotation {
         return parse_expression(literal.value.to_str()).is_ok_and(|parsed| is_nothing_annotation(parsed.expr()));

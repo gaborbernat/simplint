@@ -2,14 +2,13 @@ Flags top-level functions and classes that look public, with no leading undersco
 
 ## Why is this bad?
 
-`__all__` declares the public API, and the
-[language reference](https://docs.python.org/3/reference/simple_stmts.html#the-import-statement) asks it to contain all
-of it. A name that looks public but is missing from `__all__` gets conflicting answers: a star import and Sphinx's
-[`automodule`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
-skip it, while the
-[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)
-does not make it private. [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) settles it with a
-leading underscore on internal names, even when `__all__` is set, so readers see the answer wherever the name appears.
+A star import and Sphinx's
+[`automodule` with `:members:`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-members)
+normally skip names that `__all__` omits. A reader who sees `helper()` elsewhere has no such clue.
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) recommends a leading underscore for internal
+interfaces even when `__all__` is set. The
+[language reference](https://docs.python.org/3/reference/simple_stmts.html#the-import-statement) asks modules to list
+their entire public API in `__all__`.
 
 ## Example
 
@@ -109,8 +108,7 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
         __all__ = ["helper"]
     ```
 
-- **Test modules**: `test_*.py`, `*_test.py`, `conftest.py`, and files under a `tests` or `test` directory. The test
-  runner finds test functions and fixtures by their public names.
+- **[Test modules](SMP801.html)** are exempt because test runners discover functions and fixtures by name.
 
   ```python ok file=test_helpers.py
   def helper() -> int:
@@ -134,8 +132,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   __all__ = []
   ```
 
-- **Names another module in the run imports**: [missing-from-all](SMP401.html) asks you to add these to `__all__`. The
-  same holds for the forms below.
+- **Names another module uses** keep their spelling. [missing-from-all](SMP401.html) checks production imports.
+  References confined to tests or dotted strings also prevent a rename here.
 
   - `from module import name`, and a dotted string such as a `mocker.patch` target:
 
@@ -403,7 +401,10 @@ def _helper() -> int:
     return 1
 ```
 
-No fix is offered when:
+Other uses that prevent a fix include the following.
+
+- the old name is a Python builtin or part of the library API, or appears in a doctest or an import whose module
+  simplint cannot resolve
 
 - the old name is read in a t-string, which keeps the source text of its expressions
 

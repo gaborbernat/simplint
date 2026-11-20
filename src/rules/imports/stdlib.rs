@@ -1,8 +1,7 @@
 use super::stdlib_submodules::{LATEST_MINOR, STDLIB_SUBMODULES};
 use crate::syntax::{is_stdlib_root, top_level};
 
-// A module the standard library ships on some supported Python, since a version check may pick it, as `tomllib` on
-// 3.11.
+// A compatibility branch can import a module from a Python version other than the target.
 pub(super) fn ships_on_some_version(module: &str) -> bool {
     (7..=LATEST_MINOR).any(|minor| is_stdlib_root(minor, module))
 }
@@ -81,16 +80,13 @@ pub(super) fn ships_everywhere(target: u8, module: &str) -> bool {
         "winsound",
         "xml.parsers.expat",
     ];
-    // The C accelerators that CPython itself imports under an `ImportError` fallback, so a guard around one is
-    // CPython's own pattern: `_bisect` (Lib/bisect.py:111-114), `_collections` (Lib/collections/__init__.py:46-49),
-    // `_datetime` (Lib/datetime.py:7-10), `_functools` (Lib/functools.py:225-228), `_heapq` (Lib/heapq.py:596-599),
-    // `_json` (Lib/json/scanner.py:4-7), `_operator` (Lib/operator.py:421-424) and `_pickle` (Lib/pickle.py:1970-1971).
+    // CPython has pure Python fallbacks for these accelerators, so the same import guard is valid in user code.
     const ACCELERATORS: &[&str] =
         &["_bisect", "_collections", "_datetime", "_functools", "_heapq", "_json", "_operator", "_pickle"];
     let root = top_level(module);
     // A module removed in a later version, such as `distutils` in 3.12, is optional for a project that supports both.
     (target..=LATEST_MINOR).all(|minor| is_stdlib_root(minor, module))
-        // CPython builds its `_test*` extensions for its own test suite, which release builds leave out.
+        // Python builds can omit the `_test*` extensions.
         && !root.starts_with("_test")
         && !PLATFORM_MODULES.contains(&root)
         && !PLATFORM_MODULES.contains(&module)
@@ -98,8 +94,7 @@ pub(super) fn ships_everywhere(target: u8, module: &str) -> bool {
         && (root == module || is_standard_submodule(target, module))
 }
 
-// The top-level table cannot say whether a submodule such as `asyncio.taskgroups` ships on the target, so the
-// generated table does. A submodule it lacks is never assumed present.
+// Finding a package in the standard library does not establish which versions include a particular submodule.
 fn is_standard_submodule(target: u8, module: &str) -> bool {
     STDLIB_SUBMODULES.binary_search_by_key(&module, |submodule| submodule.name).is_ok_and(|index| {
         let submodule = &STDLIB_SUBMODULES[index];

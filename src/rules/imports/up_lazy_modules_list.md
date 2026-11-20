@@ -4,13 +4,9 @@ list whose entries are plain imports in the same module, which Python 3.15 spell
 
 ## Why is this bad?
 
-`__lazy_modules__` is the
-[compatibility spelling](https://docs.python.org/3/reference/simple_stmts.html#compatibility-via-lazy-modules) of lazy
-imports for code that still supports Python before 3.15, where the list is the only way to ask for lazy loading without
-a syntax error. [PEP 810](https://peps.python.org/pep-0810/#rationale) calls it a transitional mechanism, kept until
-code can rely on the keyword. A project that targets Python 3.15 has the `lazy` keyword, which puts the request on each
-import where a reader sees it. The list says which imports are lazy from a line away, and an import that drifts out of
-sync with it loads eagerly without notice.
+[`__lazy_modules__`](https://docs.python.org/3/reference/simple_stmts.html#compatibility-via-lazy-modules) lets the same
+file parse on older versions and request lazy imports on Python 3.15. Older interpreters ignore the declaration. Once a
+project requires Python 3.15, `lazy` on each import makes it clear which imports may be deferred.
 
 ## Example
 
@@ -41,10 +37,8 @@ print(json.dumps([1]), pathlib.Path("demo").name)
 
 ## Configuration
 
-- The Python version the code targets, taken from
-  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to
-  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);
-  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
+- The [target Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) for
+  the file
 
   ```toml config
   [tool.ruff]
@@ -150,18 +144,13 @@ print(json.dumps([1]), pathlib.Path("demo").name)
 
 ### Fix
 
-The fix is safe. It puts `lazy` in front of each matching import and deletes the list. It is offered only when every
-entry has a matching import that can take `lazy`, and the list is alone on its lines. An import that is `lazy` already
-needs no second `lazy`, and counts as matching.
+The rule marks the fix safe. It preserves existing `lazy` keywords, adds `lazy` to matching imports directly in the
+module body and removes the declaration. Removing the declaration also removes any comments inside it.
 
-An import that names a listed module together with other modules, such as `import json, os`, is reported with no fix:
-`lazy` would make the other modules lazy too. A statement that is not `lazy`-able keeps its entry, so the fix does not
-apply.
-
-The fix is also withheld when a listed module is imported again where the list keeps the import lazy and the fix would
-make it eager: under an `if`, `with`, `for`, `while` or `match` at module level, in the `else` of a `try` without a
-`finally`, or in its `finally`. The list is what keeps those imports lazy, and deleting it would make them eager. So is
-a listed module imported above the list, which loads eagerly, while the fix would make that import lazy.
+Every entry must match an import, and the declaration must occupy its own lines. The rule leaves `import json, os` alone
+if only `json` is listed, because `lazy` would apply to both. It also withholds the fix if a matching eager import
+occurs above the declaration or another import depends on the declaration inside a module-level block. Such blocks
+include `if`, `with`, loops, `match`, a `try` statement's `finally` and its `else` when there is no `finally`.
 
 ```toml config
 [project]
@@ -246,13 +235,8 @@ else:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
-  [#29175](https://github.com/astral-sh/ruff/issues/29175) asks for the reverse, adding `__lazy_modules__` for Python
-  before 3.15.
-- **[Lifeguard](https://github.com/meta/Lifeguard):** Meta's analyzer for [PEP 810](https://peps.python.org/pep-0810/)
-  lazy imports works across a whole project. It follows imports, finds module-level side effects that break when a
-  module loads lazily, and writes the modules that are safe to load lazily as JSON for
-  [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter). Use it
-  when a large codebase starts adopting lazy imports. This rule stays within one file and judges no import's safety: it
-  rewrites a `__lazy_modules__` list the author already wrote as `lazy import` statements, which load the same modules
-  lazily.
+- [Ruff issue #29175](https://github.com/astral-sh/ruff/issues/29175) requests adding `__lazy_modules__` for files
+  targeting Python before 3.15.
+- [Lifeguard](https://github.com/meta/Lifeguard) analyzes which modules can load lazily and reports constraints for a
+  [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter) callback.
+  This rule converts lazy imports the module already declares.

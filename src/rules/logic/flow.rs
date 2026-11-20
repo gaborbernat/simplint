@@ -83,7 +83,7 @@ pub(super) fn is_false_constant(expr: &Expr) -> bool {
     }
 }
 
-// Whether the loop body holds a `break` or `continue` of its own, not one of a loop or function nested in it.
+// An inner loop's `break` does not leave the outer loop.
 pub(super) fn has_own_break(body: &[Stmt]) -> bool {
     own_jump(body, |stmt| matches!(stmt, Stmt::Break(_)))
 }

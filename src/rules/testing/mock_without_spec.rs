@@ -85,12 +85,12 @@ impl MockCall {
         }
     }
 
-    // On a mock constructor, `autospec` and `new_callable` are only attributes, so they make no spec.
+    // Mock treats `autospec` and `new_callable` as ordinary attributes.
     fn is_patch(&self) -> bool {
         matches!(self, Self::Patch | Self::PatchObject)
     }
 
-    // `patch` replaces its target with its second positional argument, `patch.object` with its third, so no mock is made.
+    // An explicit positional replacement can be a real object.
     fn replaces(&self, arguments: &ast::Arguments) -> bool {
         match self {
             Self::Mock => false,
@@ -107,14 +107,12 @@ impl MockCall {
     }
 }
 
-// Spelled out as `None` or `False`, a value is the default, which is no spec.
 fn is_set(value: &Expr) -> bool {
     !matches!(value, Expr::NoneLiteral(_)) && value.as_boolean_literal_expr().is_none_or(|literal| literal.value)
 }
 
-// `create_autospec` cannot see instance attributes a constructor sets, and it evaluates properties. A spec for a class
-// the module defines is accepted when the test reads one of those members through the mock: the variable the call is
-// bound to, or that variable's `return_value`.
+// Autospeccing a class misses attributes created by __init__ and can inspect descriptors. Keep an explicit spec when
+// the test reads one of those members on the mock.
 fn reads_unspecced_member(checker: &Checker, call: &ast::ExprCall, spec: &Expr) -> bool {
     let Expr::Name(name) = spec else {
         return false;
@@ -149,7 +147,6 @@ fn bound_name(body: &[Stmt], call: TextRange) -> Option<&str> {
     binding.name
 }
 
-// The variable a statement binds the call to: an assignment's target, or the `as` name of a `with` item.
 struct BoundName<'a> {
     call: TextRange,
     name: Option<&'a str>,

@@ -3,8 +3,8 @@ where the variables are named after those parameters.
 
 ## Why is this bad?
 
-A variable named after a parameter was most likely meant for that parameter. When such a variable lands in another
-parameter's slot, the call passes values in the wrong order or skips one, and nothing fails until the values are used.
+Passing a positional argument twice can shift the remaining values into the wrong parameters. In the example, `shutdown`
+receives a boolean as its cancellation message and a string as its exception type.
 
 ## Example
 
@@ -48,7 +48,7 @@ def stop(cancel: bool, cancel_msg: str) -> None:
       return distance(start, end) == distance(end, start)
   ```
 
-- **One misplaced argument**, as `notify(user, user)`, which passes the same value twice on purpose as often as not.
+- **One misplaced argument.** A call such as `notify(user, user)` may intentionally pass the same value twice.
 
 - **Decorated functions** and calls with `*args`, whose parameters the definition no longer tells.
 
@@ -59,4 +59,5 @@ Ruff has no rule for misplaced arguments.
 ## Other tools
 
 - **[Pylint](https://pylint.readthedocs.io/en/stable/user_guide/messages/warning/arguments-out-of-order.html):**
-  `arguments-out-of-order` (W1114) reports any argument named after another parameter, deliberate swaps included.
+  `arguments-out-of-order` (W1114) checks calls whose positional argument names match the parameter names in a different
+  order. This includes swaps such as `distance(end, start)`.

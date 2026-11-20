@@ -11,8 +11,7 @@ from docs.rules_data import rule_entries
 from tasks.assemble_release import RULE_SOURCE_LINK, rule_source_name
 
 _RULE_PAGE: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/(?:en/[^/]+/)?rules/")
-# Only a link of the exact RULE_SOURCE_LINK form becomes a rule page link; any other link into the rule sources stays a
-# relative path, which the published changelog resolves outside the documentation.
+# The docs build recognizes one spelling for rule source links. Other relative links can point outside the built docs.
 _ANY_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
     r"""
     \[[^\]]*\]  # any link text

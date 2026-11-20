@@ -2,13 +2,12 @@ Flags `from ... import` statements that name the file's own package, or a packag
 
 ## Why is this bad?
 
-An absolute import repeats the package name, so renaming, moving or vendoring the package means editing every such
-import. Letting a package be rearranged without editing its sub-packages was the main reason
-[PEP 328](https://peps.python.org/pep-0328/#rationale-for-relative-imports) added relative imports, and a
-[relative import](https://docs.python.org/3/reference/import.html#package-relative-imports) shows at a glance that the
-target lives next to the importing module. [PEP 8](https://peps.python.org/pep-0008/#imports) prefers absolute imports
-and the [Google style guide](https://google.github.io/styleguide/pyguide.html#224-decision) forbids relative ones. This
-rule follows PEP 328 and flags absolute in-package imports.
+A [relative import](https://docs.python.org/3/reference/import.html#package-relative-imports) keeps working when you
+rename the enclosing package. This was a reason
+[PEP 328](https://peps.python.org/pep-0328/#rationale-for-relative-imports) introduced relative imports.
+[PEP 8](https://peps.python.org/pep-0008/#imports) generally prefers absolute imports and the
+[Google style guide](https://google.github.io/styleguide/pyguide.html#224-decision) requires them. Enable this rule if
+you prefer relative imports within a package.
 
 ## Example
 
@@ -25,7 +24,7 @@ rule follows PEP 328 and flags absolute in-package imports.
 ```
 
 ```python context file=package/sub/deep.py
-
+thing = 1
 ```
 
 ```python report file=package/sub/module.py
@@ -48,7 +47,7 @@ Use instead:
 ```
 
 ```python context file=package/sub/deep.py
-
+thing = 1
 ```
 
 ```python ok file=package/sub/module.py
@@ -58,14 +57,10 @@ from .deep import thing
 
 ## Conflicts with Ruff
 
-Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans only relative imports from parent
-packages by default, which fits this rule.
-
-Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) with
-[`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports) set to
-`"all"` contradicts it: it asks for the absolute import this rule replaces, and its fix turns the relative import back.
-simplint stops with an error before linting while both apply to a file; set `ban-relative-imports` to `"parents"`, or
-turn one of the two rules off. A project that runs flake8-lazy has no such conflict, since this rule stays off there.
+Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans parent-relative imports by default.
+If you set [`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports)
+to `"all"`, Ruff can reverse simplint's fix. When both rules apply to a file, simplint stops before linting. Set
+`ban-relative-imports` to `"parents"` or disable one rule.
 
 ## What it does
 
@@ -119,8 +114,8 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
   ```
 
 - **Imports in a directory without an `__init__.py` that Ruff's
-  [`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) makes a package**: pytest imports a
-  test module there as a top-level module, where a relative import fails.
+  [`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) treats as a package**. pytest can
+  import a test file there as a top-level module, where relative imports fail.
 
   ```python context file=namespace/other.py
   VALUE = 1
@@ -130,10 +125,10 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
   from namespace import other
   ```
 
-- **A module with a top-level `if` that compares `__name__` with a string**, such as
-  [`if __name__ == "__main__":`](https://docs.python.org/3/library/__main__.html#name-main) for a file run as
-  `python path/to/module.py`, or execnet's `if __name__ == "__channelexec__":` for a module sent to another interpreter
-  as source: the code runs outside its package, where a relative import fails.
+- **A top-level `if` or `elif` that tests `__name__` against a string with `==` or `!=`** exempts the whole module.
+  Examples include [`if __name__ == "__main__":`](https://docs.python.org/3/library/__main__.html#name-main) for a file
+  run as `python path/to/module.py`, or execnet's `if __name__ == "__channelexec__":` for a module sent to another
+  interpreter as source. Relative imports can fail in either case.
 
   ```python context file=package/__init__.py
   # A package.
@@ -156,7 +151,8 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
 
 - **The body of a top-level function passed by name as the first argument to a `remote_exec(...)` or
   [`inspect.getsource(...)`](https://docs.python.org/3/library/inspect.html#inspect.getsource) call in the same
-  module**: that call turns the function into source text that runs elsewhere, outside the package.
+  module**. The function's source may run outside its package. simplint matches the call by its final name
+  (`remote_exec` or `getsource`).
 
   ```python context file=package/__init__.py
   # A package.
@@ -177,20 +173,19 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
       channel.send(sibling.VALUE)
 
 
-  execnet.remote_exec(remote)
+  def start(gateway):
+      gateway.remote_exec(remote)
   ```
 
-- **Every file of a project that runs [flake8-lazy](https://github.com/henryiii/flake8-lazy)**: flake8-lazy rewrites
-  each module's `__lazy_modules__` list from its absolute imports. In pipx, a relative import made it write a list that
-  `ty` rejects (99 errors), and flake8-lazy and this fix then keep rewriting each other's output, so the rule stays off.
-  An explicit `--select absolute-sibling-import` does not turn it back on for such a project.
+- **Projects configured for [flake8-lazy](https://github.com/henryiii/flake8-lazy)**. Its standalone runner can rewrite
+  `__lazy_modules__` based on import paths. simplint disables this rule for those projects, even with
+  `--select absolute-sibling-import`.
 
-  The project runs flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with
-  `[tool.simplint]`, has a `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`,
-  `.pre-commit-config.yml` or `prek.toml` from the project upwards, stopping at the repository root, or at the linted
-  project outside a repository, has a hook with id `flake8-lazy`. A hook configuration simplint cannot read or parse
-  counts as none, with a warning. A `flake8-lazy` entry in another hook's `additional_dependencies` does not count,
-  since it only installs the plugin into flake8.
+  simplint looks for a `[tool.flake8-lazy]` table in the `pyproject.toml` that defines `[project]` or `[tool.simplint]`.
+  It also checks the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml` for a hook with the ID
+  `flake8-lazy`. The search stops at the repository root or, outside a repository, at the project being linted. An
+  unreadable or invalid hook configuration produces a warning. Listing `flake8-lazy` in another hook's
+  `additional_dependencies` only installs the plugin and does not disable this rule.
 
   ```toml config
   [tool.flake8-lazy]
@@ -214,12 +209,10 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
 
 ### Undetected cases
 
-A build script that a tool runs by path without a `__name__` check, or a module that only another file sends as source,
-is not detected; turn the rule off for that file.
+Disable the rule for files that run outside their package without a `__name__` guard. Examples include a build script
+invoked by path and a module sent as source by another file.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [TID252](https://docs.astral.sh/ruff/rules/relative-imports/), which bans relative imports, the opposite direction;
-  open pull request [#16772](https://github.com/astral-sh/ruff/pull/16772); open issue
-  [#1014](https://github.com/astral-sh/ruff/issues/1014).
+Ruff tracks relative sibling imports in [PR #16772](https://github.com/astral-sh/ruff/pull/16772) and relative import
+management in [issue #1014](https://github.com/astral-sh/ruff/issues/1014).

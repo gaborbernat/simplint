@@ -8,7 +8,6 @@ use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, w
 use crate::rules::logic::sole_name_target;
 use crate::syntax::{for_each_body, is_name, sole_argument};
 
-// Since Python 3.14 the token `ContextVar.set` returns is a context manager that resets the variable on exit.
 pub fn up_context_var_token_reset(checker: &Checker) {
     for_each_body(checker.body(), &mut |body, _| {
         for pair in body.windows(2) {
@@ -47,7 +46,7 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
     {
         return;
     }
-    // The assignment and the `reset` argument are the token's only spellings; any other use reads it after the block.
+    // The rewrite removes the token binding, so any other use needs the original assignment.
     if checker.identifier_count_in(checker.enclosing_scope(assign.range()), token.id.as_str()) != 2 {
         return;
     }
@@ -63,9 +62,7 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
     );
 }
 
-// Whether every binding of the receiver gives it a `ContextVar`: an assignment of a `contextvars.ContextVar(...)`
-// call, or a parameter annotated as one. Any other object's `set` returns something that need not enter as a context
-// manager.
+// An unrelated set() method may return an object that cannot be used with a with statement.
 fn is_context_var(checker: &Checker, receiver: &Expr) -> bool {
     let Expr::Name(name) = receiver else {
         return false;

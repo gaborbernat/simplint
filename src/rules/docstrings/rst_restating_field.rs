@@ -22,8 +22,7 @@ pub fn rst_restating_field(checker: &Checker) {
     }
 }
 
-// Whether a description is the name again, as `The user ID.` for `user_id`: every word it has beyond articles and words
-// that name what any parameter is is a word of the name.
+// Descriptions such as “The user ID.” add nothing to `user_id`.
 fn restates(name: &str, description: &str) -> bool {
     const FILLER: &[&str] = &[
         "a",

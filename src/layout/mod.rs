@@ -8,14 +8,9 @@ mod width;
 
 pub(crate) use width::{fits, fits_line, joined};
 
-// Lines too long for any layout `ruff format` can give the code, and pragma comments it would move off their code,
-// judged from the tokens alone: the formatter decides the layout after simplint, so a fix is judged by what every
-// layout of its result shows, and the same code gets the same answer however it is laid out now.
-//
-// The formatter never splits a name, a string or an f-string, nor a name from the bracket opening after it. It wraps a
-// value it cannot fit in parentheses one indentation level deeper only if it then fits, puts each item of a bracket it
-// splits on a line of its own, keeps a dict value or keyword argument after its key, and leaves a statement's start and
-// a `def`, `class` or import name where they are. Code under `# fmt: off` or `# fmt: skip` keeps the layout it has.
+// Ruff formats the file after simplint applies fixes. Estimate which lines will still exceed the limit and which
+// pragmas could move to a different line. Use tokens so equivalent layouts get the same result. For code excluded
+// from formatting, measure the existing lines.
 pub struct Layout {
     pub overlong: usize,
     pub moved_pragmas: usize,
@@ -72,14 +67,12 @@ impl Layout {
     }
 }
 
-// One pass over the tokens: what it placed and found so far, and where in the code's structure it stands.
 struct Walk<'s> {
     source: &'s str,
     widths: Widths,
     placed: Vec<Placed>,
     moved_pragmas: usize,
     overlong_comments: usize,
-    // How many comments of the logical line so far are pragmas, and those comments.
     pragmas: usize,
     comments: Vec<TextRange>,
     frozen: Frozen,
@@ -89,7 +82,7 @@ struct Walk<'s> {
     line: Option<TextSize>,
     // Where the item in each open bracket starts, once it has a token.
     items: Vec<Option<TextSize>>,
-    // F-strings open, and where the outermost one starts.
+    // Nested f-strings belong to the outermost token for width calculations.
     fstrings: usize,
     fstring_start: TextSize,
 }
@@ -189,8 +182,7 @@ impl Walk<'_> {
 struct Frozen {
     whole: bool,
     ranges: Vec<TextRange>,
-    // The ranges with overlapping ones joined, in order, for `contains` to search: a file with a `# fmt: skip` on
-    // every line asks once per token.
+    // Keep ranges sorted and merged for binary search. A file with `# fmt: skip` on every line checks every token.
     joined: Vec<TextRange>,
     off: Option<TextSize>,
 }
@@ -302,9 +294,8 @@ fn without_comments(source: &str, range: TextRange, comments: &[TextRange]) -> S
     code
 }
 
-// Whether the atom at `index` ends up on a line longer than the limit whatever the layout, one Ruff reports: its line
-// has whitespace, as Ruff's E501 skips a line that is a single word, and does not end in a URL starting within the
-// limit. A string over several lines is judged by its first line, which stays after the code before it.
+// Ruff's E501 exempts single words and URLs that start within the limit. For a multiline string, only the first
+// line shares the preceding code's indentation and tokens.
 fn overlong(source: &str, placed: &[Placed], index: usize, widths: Widths) -> bool {
     let atom = &placed[index];
     if !is_atom(atom.kind) {

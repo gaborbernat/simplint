@@ -1,15 +1,15 @@
-Flags a function that returns a tuple with more elements than the limit, which is two by default. A tuple of three or
-more values that travel together is a record, and a dataclass or a named tuple gives its fields names.
+Flags a `return` statement with more than two tuple elements by default. When the elements are fields of a record, a
+dataclass or named tuple gives each one a name.
 
 ## Why is this bad?
 
 Callers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or
-three elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it
-is defined and where it is read. The
+three elements that is easy to get wrong: swapping two `int`s type-checks and runs. A caller can read `span.start`
+directly in place of `span[0]`. The
 [`namedtuple` docs](https://docs.python.org/3/library/collections.html#collections.namedtuple) describe that as
 self-documenting code.
 
-The standard library returns named tuples for several multi-field results, such as
+The standard library uses named fields for results such as
 [`os.stat()` and `time.localtime()`](https://docs.python.org/3/glossary.html#term-named-tuple) and
 [`urllib.parse.urlparse()`](https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlparse). A named tuple
 still unpacks and indexes like a tuple, so callers that unpack it keep working.
@@ -61,10 +61,9 @@ def span(text: str) -> Span:
 
 ### Active on
 
-A `return` whose value is a tuple display longer than the limit is reported, at the tuple. Each function is judged by
-its own `return` statements, so a nested function's return belongs to the nested function.
+The rule checks tuple literals in each function's own `return` statements.
 
-- **A tuple display of the length**: parentheses do not matter.
+- **A tuple longer than the limit**, with or without parentheses.
 
   ```python report
   def bounds(values: list[int]) -> tuple[int, int, int]:
@@ -83,9 +82,9 @@ its own `return` statements, so a nested function's return belongs to the nested
 
 ### Exceptions
 
-- **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes
-  compatibility imports of `override` that forward to
-  [`typing.override`](https://docs.python.org/3/library/typing.html#typing.override).
+- **Functions or methods decorated with `@override`.** The rule matches the final name `override`, including in
+  [`@typing.override`](https://docs.python.org/3/library/typing.html#typing.override). A base class may require the
+  method to return a particular shape.
 
   ```python ok
   from typing import override
@@ -121,8 +120,8 @@ its own `return` statements, so a nested function's return belongs to the nested
           return self.__class__, (self.x,), self.__dict__
   ```
 
-- **`__getstate__`**, and **`getstate`** of an incremental codec: its tuple goes back to the class's own `__setstate__`
-  or `setstate`, which the pickle protocol or the codec calls with it.
+- **`__getstate__` and `getstate`.** Pickle and incremental codecs can pass this state back to `__setstate__` or
+  `setstate`. The rule exempts the function names without checking the enclosing class.
 
   ```python ok
   class Point:
@@ -130,8 +129,7 @@ its own `return` statements, so a nested function's return belongs to the nested
           return self.x, self.y, self.z
   ```
 
-- **A key function**, named `key` or ending in `_key`: its tuple is compared or hashed as a whole to sort or cache, and
-  never unpacked.
+- **A key function**, named `key` or ending in `_key`: sorting and caching often use the tuple as a single key.
 
   ```python ok
   class Version:
@@ -161,7 +159,7 @@ its own `return` statements, so a nested function's return belongs to the nested
       return (*items, 1, 2)
   ```
 
-- **A `yield`**: a generator's tuples are the items of a stream, which callers loop over, and not one value to unpack.
+- **A `yield`** produces a stream item. The rule only checks `return` statements.
 
   ```python ok
   def rows() -> Iterator[tuple[int, int, int]]:
@@ -178,12 +176,13 @@ Ruff has no rule for the length of a returned tuple.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and
-  [#8022](https://github.com/astral-sh/ruff/issues/8022).
+- **[Ruff](https://github.com/astral-sh/ruff):** issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and
+  [#8022](https://github.com/astral-sh/ruff/issues/8022) track the wider wemake-python-styleguide ruleset and its
+  complexity checks.
 - [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as
   [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.
   This rule's limit defaults to 2.
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long returned tuples
-  as
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long tuples in both
+  `return` and `yield` as
   [WPS227](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooLongOutputTupleViolation),
   with no fix.

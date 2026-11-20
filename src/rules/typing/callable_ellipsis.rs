@@ -26,8 +26,7 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
     }
 }
 
-// The bound of a type variable, as `TypeVar("F", bound=Callable[..., Any])` or `def wrap[F: Callable[..., Any]]`: a
-// decorator typed with it keeps the signature of what it wraps, which a `Protocol` cannot spell.
+// Decorator type variables often use a callable bound to preserve the wrapped function's exact type.
 fn is_type_var_bound(walker: &Walker, annotation: &Expr) -> bool {
     if let Some(Expr::Call(call)) = walker.expression_parent() {
         return walker.checker.semantic().match_typing_expr(&call.func, "TypeVar")

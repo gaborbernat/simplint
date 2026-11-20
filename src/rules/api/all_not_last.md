@@ -2,11 +2,10 @@ Flags modules where the last top-level statement that binds `__all__` is not the
 
 ## Why is this bad?
 
-Readers look for the export list in one place. At the end of the module it comes after the definitions it names, so it
-reads as a summary of what the module provides. [PEP 8](https://peps.python.org/pep-0008/#module-level-dunder-names)
-asks for `__all__` after the docstring and before the imports, the placement this rule reports; simplint keeps the
-report because a list at the top cannot summarize the definitions below it. [missing-from-all](SMP401.html) and
-[all-format](SMP405.html) also check `__all__`.
+At the end of a module, readers can check the export list against the definitions above it. This is a project
+convention. [PEP 8](https://peps.python.org/pep-0008/#module-level-dunder-names) places `__all__` after the module
+docstring and any `from __future__` imports, before the other imports. [missing-from-all](SMP401.html) checks which
+names the list contains and [all-format](SMP405.html) checks its layout.
 
 ## Example
 
@@ -129,8 +128,9 @@ if __name__ == "__main__":
         main()
     ```
 
-- **Calls on `__all__` after its binding**, such as `__all__.extend(...)` or `__all__.append(...)`: a call changes the
-  list the binding made, so the calls stay with it. The binding and its calls form one block, which must still be last.
+- **Calls on `__all__` after its binding**, such as `__all__.extend(...)` or `__all__.append(...)`: the rule allows
+  consecutive method calls after the assignment. That entire group must come last, ahead of any trailing `__main__`
+  block.
 
   ```python ok
   def main() -> None:
@@ -153,10 +153,10 @@ if __name__ == "__main__":
 
 ### Fix
 
-The fix is safe. It moves the statement to the end of the module, before a trailing `__main__` block, with two blank
-lines before it, also when the file has no trailing newline. Comments further up stay where they are. A comment on the
-line directly above the statement blocks the fix, and so does one above a `# fmt: off` / `# fmt: on` pair around the
-statement; the pair itself moves with it.
+simplint marks the fix safe. It moves the statement to the end of the module, before a trailing `__main__` block, with
+two blank lines before it, also when the file has no trailing newline. Comments further up stay where they are. A
+comment on the line directly above the statement blocks the fix, and so does one above a `# fmt: off` / `# fmt: on` pair
+around the statement; the pair itself moves with it.
 
 ```python report
 __all__ = ["main"]
@@ -185,7 +185,7 @@ if __name__ == "__main__":
 The fix is offered only when:
 
 - a single statement binds `__all__`, to a list or tuple of string literals
-- no later statement reads `__all__` or calls a method on it
+- no later statement reads or binds `__all__`, including inside a conditional block
 - no later statement reads `__all__` at run time, through an attribute such as `sys.modules[__name__].__all__`, a
   `"__all__"` string or a call to [`globals()`](https://docs.python.org/3/builtins/functions.html#globals),
   [`vars()`](https://docs.python.org/3/builtins/functions.html#vars) or
@@ -193,6 +193,10 @@ The fix is offered only when:
 - no function or lambda reads `__all__`, by name or at run time, wherever it is defined
 - the statement shares no line with other code
 - no comment sits on the line above it, or above the `# fmt: off` / `# fmt: on` pair around it
+
+For a chained assignment such as `list = __all__ = ["main"]`, the fix moves both bindings. The rule checks later
+references to `__all__` only. If [`print(list)`](https://docs.python.org/3/builtins/functions.html#print) follows the
+assignment, moving it below that call changes the output from the export list to Python's built-in `list` type.
 
 With several bindings or a later reader, moving the statement could change the value of `__all__` or what that reader
 sees:
@@ -519,8 +523,5 @@ def main() -> None:
 
 ### Related rules
 
-[all-format](SMP405.html) checks the shape of `__all__` itself: a list, not a tuple, with a trailing comma.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+[all-format](SMP405.html) checks that `__all__` is a list and, under the default settings, that its last name has a
+trailing comma.

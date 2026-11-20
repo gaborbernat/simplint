@@ -8,10 +8,6 @@ from tempfile import TemporaryDirectory
 
 
 def main() -> None:
-    # Check that the sdist builds a wheel that runs offline and ships everything its test suite needs.
-    #
-    # :raises subprocess.CalledProcessError: if a build, install or test compile step fails
-    # :raises SystemExit: if the sdist misses a tracked file the build or the tests read
     root = Path(__file__).resolve().parents[1]
     with TemporaryDirectory() as folder:
         at = Path(folder)
@@ -24,7 +20,6 @@ def main() -> None:
 
 
 def _ships_every_tracked_file(sdist: Path, root: Path) -> None:
-    # What the build and the test suite read.
     tracked = subprocess.run(
         ["git", "ls-files", "--", "src", "tests", "docs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml"],
         cwd=root,
@@ -37,18 +32,17 @@ def _ships_every_tracked_file(sdist: Path, root: Path) -> None:
     if missing := sorted(set(tracked) - shipped):
         msg = f"{sdist.name} misses {', '.join(missing)}"
         raise SystemExit(msg)
-    print(f"{sdist.name} ships every tracked file the build and the tests read", flush=True)
+    print(f"{sdist.name} contains the tracked source, tests, docs and Cargo files", flush=True)
 
 
 def _runs_on_its_own(wheel: Path) -> None:
-    # --no-index leaves nothing to fall back on, so a wheel missing its binary cannot install or run
     subprocess.check_call(["uv", "pip", "install", "--python", sys.executable, "--no-index", str(wheel)])
     subprocess.check_call([str(Path(sys.executable).parent / "simplint"), "--version"])
-    print(f"{wheel.name} built from the sdist runs with no index behind it", flush=True)
+    print(f"{wheel.name} installed without a package index and reported its version", flush=True)
 
 
 def _ships_a_suite_that_compiles(sdist: Path, at: Path) -> None:
-    # what a packager builds before running the suite, which the main test job runs against the same files
+    # CI runs the tests from the checkout. Here we check that a packager can compile the suite from the sdist.
     at.mkdir()
     with tar_open(sdist) as tar:
         tar.extractall(at, filter="data")

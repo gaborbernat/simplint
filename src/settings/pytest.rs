@@ -6,10 +6,8 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 
 use crate::settings::metadata::tool_value;
 
-// The parts of the project's pytest configuration that simplint reads: the markers it registers, the files it collects
-// tests from, the plugins `addopts` loads and the directories `pythonpath` adds to the import path. pytest reads the
-// first of `pytest.ini`, `.pytest.ini`, `pyproject.toml`, `tox.ini` and `setup.cfg` that configures it, so the others
-// never apply.
+// simplint reads one pytest configuration per project. In each directory it checks `pytest.ini`, `.pytest.ini`,
+// `pyproject.toml`, `tox.ini` and `setup.cfg`, in that order. It skips standalone `pytest.toml` and `.pytest.toml`.
 #[derive(Default)]
 pub struct PytestConfig {
     // `None` when no file configures pytest, or the one that does cannot be read, so registration is unknown.
@@ -21,7 +19,6 @@ pub struct PytestConfig {
     testpaths: Vec<PathBuf>,
 }
 
-// The options as a configuration file spells them, before the defaults fill in what it leaves out.
 #[derive(Default)]
 struct Options {
     markers: Option<BTreeSet<String>>,
@@ -69,13 +66,11 @@ impl PytestConfig {
         }
     }
 
-    // Whether pytest collects tests from a file of this name, as its `python_files` patterns match the base name.
     pub(crate) fn collects(&self, file_name: &str) -> bool {
         self.collected.is_match(file_name)
     }
 
-    // Whether a run of pytest without arguments collects tests from the file: its name matches `python_files`, under
-    // one of the `testpaths` when the configuration sets them.
+    // Approximate default pytest collection using `python_files` and literal `testpaths` directories.
     pub(crate) fn collects_path(&self, path: &Path) -> bool {
         path.file_name().and_then(|name| name.to_str()).is_some_and(|name| self.collects(name))
             && (self.testpaths.is_empty() || self.testpaths.iter().any(|directory| path.starts_with(directory)))
@@ -122,8 +117,7 @@ fn read(directory: &Path, pyproject: Option<&toml::Table>) -> Option<PytestConfi
     })
 }
 
-// An INI file's section as pytest reads it, `None` when the file has no such section. A value continues on the
-// indented lines below its key.
+// An indented line continues the preceding INI option, including multiline marker declarations.
 fn from_ini(text: &str, wanted: &str) -> Option<Options> {
     let mut in_section = false;
     let mut found = false;
@@ -176,7 +170,7 @@ fn marker_name(line: &str) -> String {
 
 fn from_pyproject(pyproject: &toml::Table) -> Option<Options> {
     let pytest = tool_value(pyproject, &["pytest"])?;
-    // pytest 9 reads its options from `[tool.pytest]` itself; earlier versions from its `ini_options` table.
+    // pytest 9 added native TOML options in `[tool.pytest]`. The older `ini_options` table is still supported.
     let options = pytest.get("ini_options").unwrap_or(pytest);
     let strings = |key: &str| -> Option<Vec<String>> {
         match options.get(key)? {

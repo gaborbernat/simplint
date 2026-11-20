@@ -107,8 +107,7 @@ fn fix_is_withdrawn_when_no_layout_fits(line_length: usize, source: &str, select
     assert_eq!(fixed(line_length, source, select), (1, report.to_owned(), source.to_owned()));
 }
 
-// The formatter keeps the parentheses after a `def` name on its line, and when they are empty what follows them up to
-// the return annotation it splits: `def test_settings_loads() -> (`.
+// The formatter can wrap a long return annotation after `-> (` while keeping the empty parameter list on one line.
 #[test_case(25, "class TestSettings:\n    def test_loads(self) -> None:\n        assert True\n" ; "return annotation")]
 #[test_case(24, "class TestSettings:\n    def test_loads(self):\n        assert True\n" ; "no return annotation")]
 #[test_case(
@@ -226,9 +225,6 @@ fn split_operation_starts_with_its_operator(limit: usize, source: &str, (code, s
     assert_eq!(fixed_file(&pyproject, "module.py", source, "SMP202"), (code, stdout.to_owned(), expected.to_owned()));
 }
 
-// Comments and pragmas that keep their lines whatever the layout: a comment of one word, one after strings joined
-// without an operator, a pragma after a value too long even in parentheses of its own, and suppression comments that
-// open no region.
 #[test]
 fn fix_is_kept_when_comments_and_pragmas_keep_their_lines() {
     let source = "names = [\n    #tight\n    \"a\" \"b\"  # joined\n]\n# fmt: on\n# fmt: skip\n\
@@ -244,8 +240,6 @@ fn fix_is_kept_when_comments_and_pragmas_keep_their_lines() {
     );
 }
 
-// What a fix leaves of `module.py` under a line length limit with E501 on: a fix that makes a line too long for any
-// layout `ruff format` can give it is withdrawn, one that only seems to is kept.
 fn fixed(line_length: usize, source: &str, select: &str) -> (i32, String, String) {
     let pyproject = format!("[tool.ruff]\nline-length = {line_length}\n[tool.ruff.lint]\nselect = [\"E501\"]\n");
     fixed_file(&pyproject, "module.py", source, select)

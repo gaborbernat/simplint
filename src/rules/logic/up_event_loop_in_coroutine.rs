@@ -27,9 +27,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// A class body runs as part of the function around it, and a `def` header runs where its statement does, so the
-// innermost scope whose body holds the call decides. Lazy annotations are never evaluated, so a call in one is left
-// alone.
+// Class bodies and default arguments run in the enclosing scope. A deferred annotation can be evaluated later,
+// outside the coroutine that defined the function.
 fn in_coroutine(walker: &Walker, expr: &Expr) -> bool {
     let lazy = walker.checker.semantic().annotations_are_lazy();
     walker

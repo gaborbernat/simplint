@@ -156,8 +156,8 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
-// A defaulted parameter that a test passes is exempt only when its default is a collaborator the body calls. Values,
-// call results, enum members, loop variables and calls of anything but a class stay reported.
+// A test may pass a substitute for a callable dependency. Passing an ordinary value does not make the parameter a
+// dependency.
 #[test_case(
     "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n",
     "send(\"a@b.c\", urgent=True)", 1 ; "flag_stays_reported"
@@ -210,7 +210,6 @@ fn test_only_parameter_exempts_only_collaborators(module: &str, test_call: &str,
     assert_eq!(test_only_parameter_reports(module, test_call), reported);
 }
 
-// Production calls `send` without the parameter and a test passes it, so the rule judges the parameter.
 fn test_only_parameter_reports(module: &str, test_call: &str) -> usize {
     let service = "from app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n";
     let test = format!("from app.mail import send\n\n\ndef test_send() -> None:\n    {test_call}\n");
@@ -287,7 +286,7 @@ fn init_module_content_leaves_future_imports_alone() {
 
 const PYPROJECT_HEAD: &str = "[project]\nname = \"package\"\ndynamic = [\"version\"]\n";
 
-// The tool reads only `__version__`, so `__version_info__` is reported either way.
+// The two assignments distinguish a tool that reads `__version__` from one that does not use this file for versioning.
 const INIT_WITH_VERSION: &str =
     "__version__ = \"1.0\"\n__version_info__: tuple[int, ...] = (1, 0)\nprint(__version__)\n";
 
@@ -358,8 +357,7 @@ fn missing_from_all_drops_the_noqa_it_leaves_unused() {
     );
 }
 
-// Two names imported from one line share its `noqa`. The fix removes it once and in order, so the full report of the
-// unapplied unsafe fix renders instead of panicking.
+// The two names share one suppression. Overlapping edits to it used to break full diagnostic output.
 #[test]
 fn missing_from_all_drops_a_noqa_shared_by_names_on_one_line() {
     let root = common::project(&[
@@ -370,8 +368,7 @@ fn missing_from_all_drops_a_noqa_shared_by_names_on_one_line() {
     assert_eq!((code, stderr.as_str()), (1, ""));
 }
 
-// A `noqa` for F401 stays while another name its import binds is left out of the listing, since that name still needs
-// it.
+// Removing the shared `noqa` would expose the import that remains unlisted.
 #[test]
 fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
     let root = common::project(&[
@@ -386,8 +383,8 @@ fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
     );
 }
 
-// Ruff's F401 reports an import of a name that its own file never reads, which another module imports, whether or not
-// the project selects F401. simplint keeps that report either way.
+// A name another file imports can still look unused within its defining module. Adding it to `__all__` preserves the
+// re-export.
 #[test]
 fn missing_from_all_reports_unused_import_others_use_under_f401() {
     let case = common::RuffOverlap {
@@ -402,8 +399,6 @@ fn missing_from_all_reports_unused_import_others_use_under_f401() {
     assert_eq!(common::reported_without_and_with_ruff(&case, "`sep` is imported by other modules"), [true, true]);
 }
 
-// With F401 selected, the fix lists the name and keeps the import, so Ruff's fix does not delete it. A `noqa` with its
-// reason goes once the fix lists every name on its line.
 #[test_case("from os import sep" ; "import_kept")]
 #[test_case("from os import sep  # noqa: F401  # imported by cli.py" ; "reasoned_noqa_removed")]
 fn missing_from_all_lists_unused_import_others_use_under_f401(import: &str) {
@@ -423,7 +418,7 @@ fn missing_from_all_lists_unused_import_others_use_under_f401(import: &str) {
     );
 }
 
-// Each report of a listing shows the whole fix in the full output, so a module with many missing names shows it once.
+// One edit adds all the names. Attaching it to each diagnostic would repeat the entire diff.
 #[test]
 fn missing_from_all_shows_the_fix_once_for_many_names() {
     let names: Vec<String> = (0..200).map(|index| format!("f{index}")).collect();
@@ -466,8 +461,7 @@ fn missing_from_all_fixes_with_all_suppressions_ignored() {
     );
 }
 
-// A name bound only under `if TYPE_CHECKING:` exists for type checkers alone, so listing it would make `import *` fail,
-// while a name the module also binds at run time is still reported.
+// An entry in `__all__` must exist at runtime for `import *` to succeed.
 #[test]
 fn missing_from_all_leaves_out_names_bound_only_for_type_checkers() {
     let root = common::project(&[
@@ -504,7 +498,6 @@ fn all_format_follows_skip_magic_trailing_comma() {
     );
 }
 
-// A public name the run never reads is reported, unless a computed read may fetch it, which keeps every public name.
 #[test]
 fn unused_definition_reports_public_names_nothing_reads() {
     let reported = unused_definitions("return None");
@@ -542,8 +535,6 @@ fn unused_definition_keeps_only_the_member_a_literal_getattr_names() {
     );
 }
 
-// The diagnostics of a project whose `read` returns `body`, with `main` reading the class and calling `read`, so
-// only the definitions of `core` can be unused.
 fn unused_definitions(body: &str) -> String {
     let core = "class Client:\n    LIMIT = 3\n\n    def send(self) -> None:\n        pass\n\n\ndef helper() -> None:\
         \n    pass\n";
@@ -554,8 +545,7 @@ fn unused_definitions(body: &str) -> String {
     stdout
 }
 
-// A private method is judged by its own file, so a computed read there keeps it. A read in another file keeps it only
-// when the name it computes starts with a literal prefix of the method's, as a dispatch table's does.
+// A literal prefix in a computed name can identify private methods used by a dispatcher in another file.
 #[test_case("'_' + kind", true, false ; "same_file")]
 #[test_case("'_' + kind", false, true ; "other_file_underscore_prefix")]
 #[test_case("kind", false, true ; "other_file_no_prefix")]
@@ -585,9 +575,8 @@ fn handler_and_dispatch(name: &str, same_file: bool) -> (String, String) {
 const RUF067_PREVIEW: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n";
 const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n[tool.ruff.lint.ruff]\
     \nstrictly-empty-init-modules = true\n";
-// RUF067 reports the statements of an `__init__.py` only in preview mode, and then the statements it does not allow, so
-// the run leaves those to Ruff. The default allows imports, dunder assignments and `if TYPE_CHECKING` blocks, and a
-// project that bans all code leaves nothing to the run but attribute docstrings.
+// In preview mode, RUF067 can also report code in a package initializer. Its `strictly-empty-init-modules` setting
+// changes which statements overlap.
 #[test_case(RUF067_PREVIEW, common::CLEAN_MODULE, 0 ; "preview_assignment")]
 #[test_case(RUF067_PREVIEW, "import os\n", 0 ; "preview_unused_import_left_to_f401")]
 #[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
@@ -615,8 +604,7 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
     assert_eq!(stdout.matches("\"code\": \"SMP407\"").count(), reported, "{stdout}");
 }
 
-// F401 reports an import of an `__init__.py` that nothing reads, so the rule leaves that statement to it. A statement
-// keeps its report when one of its names is not one F401 reports.
+// A single import statement may contain both a used and an unused name.
 #[test_case("", "from json import dumps\n", &[] ; "unused_import_left_to_f401")]
 #[test_case("[tool.ruff.lint]\nselect = []\n", "from json import dumps\n", &[] ; "unused_import_skipped_without_f401")]
 #[test_case("", "from json import dumps, loads\nprint(dumps)\n", &[1] ; "partly_used_statement_kept")]
@@ -763,8 +751,6 @@ fn init_module_content_leaves_unused_imports_to_f401(config: &str, source: &str,
     assert_eq!(found, rows);
 }
 
-// PYI046 and PYI049 report a private protocol or TypedDict that its file never reads, so the run leaves those to Ruff
-// whether or not the project selects them. A class Ruff reads, or one that is not its last binding, stays with the run.
 #[test_case(
     "from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", 0
     ; "protocol"
@@ -799,7 +785,6 @@ fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &s
     assert_eq!(common::reports(&stdout, "SMP409").len(), reported, "{stdout}");
 }
 
-// A method a version switch defines inside an `if` in the class body is the class's method, so its calls count.
 #[test]
 fn unused_definition_counts_calls_of_a_method_under_an_if_block() {
     let root = common::project(&[
@@ -825,9 +810,6 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
     assert_eq!(stdout, common::PASSED);
 }
 
-// A definition a page of the project's documentation names is used: by a Sphinx role, an autodoc directive, or the
-// options of a directive that renders a module's parser. Hidden and excluded directories, and files that are neither
-// reStructuredText nor Markdown, are not read.
 #[test_case("docs/index.rst", ":func:`app.core.helper`", false, true ; "role")]
 #[test_case("docs/index.rst", ":py:func:`~app.core.helper`", false, true ; "domain_role_short")]
 #[test_case("docs/index.rst", "See :meth:`sending <app.core.Client.send>`.", true, false ; "role_with_title")]
@@ -902,8 +884,6 @@ fn unused_definition_skips_documentation_an_ignore_file_hides(ignore_file: &str,
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 
-// Only a project with a `pyproject.toml` has documentation to read, and only a run with `unused-definition` on reads
-// it.
 #[test]
 fn unused_definition_reads_no_documentation_without_a_project() {
     let root = common::project(&[
@@ -914,8 +894,7 @@ fn unused_definition_reads_no_documentation_without_a_project() {
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 
-// The documentation is part of what each file's cached result depends on, so a page that starts naming a definition
-// clears its report on the next run.
+// A documentation-only change can invalidate an unused-definition diagnostic in an unchanged Python file.
 #[test]
 fn unused_definition_cache_follows_the_documentation() {
     let root = common::project(&[
@@ -931,7 +910,6 @@ fn unused_definition_cache_follows_the_documentation() {
     assert_eq!((before.contains("`helper`"), after.contains("`helper`")), (true, false), "{before}\n{after}");
 }
 
-// Renaming would change the name a reflective read returns, so the name stays.
 #[test_case(
     "__all__ = []\n\n\nclass Item:\n    def label(self) -> str:\n        return type(self).__name__\n", "", "Item"
     ; "class_read_through_type"
@@ -978,8 +956,6 @@ fn unexported_public_name_keeps_a_name_read_by_reflection(module: &str, consumer
     );
 }
 
-// A name read off a value that is neither a variable, an attribute nor a call names no class or function, and a
-// function nobody reads by name is still renamed: only reflective reads withhold the rename.
 #[test_case(
     "__all__ = []\n\n\nclass Item:\n    def label(self) -> str:\n        return self.items[0].__name__\n"
     ; "class_read_off_a_subscript"
@@ -991,7 +967,7 @@ fn unexported_public_name_renames_when_no_reflective_read_names_it(module: &str)
     assert!(stdout.contains("SMP403 [*]"), "{stdout}");
 }
 
-// The name a script's `main` is looked up by in a test is a string of another file, which keeps `main` in place.
+// The string in the test could be used to look up `main` by name.
 #[test]
 fn unexported_public_name_checks_strings_of_other_files() {
     let root = common::project(&[
@@ -1006,9 +982,7 @@ fn unexported_public_name_checks_strings_of_other_files() {
     );
 }
 
-// Ruff's COM812 reports a list whose closing bracket follows a line break with no trailing comma, so SMP405 leaves that
-// list to it while Ruff runs the rule: `ruff format` joins a list that fits on one line, where COM812 no longer reports
-// it. A list that closes on its last element's line is not COM812's.
+// Formatting can collapse a short list onto one line before COM812 sees the missing trailing comma.
 #[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", COM812, false ; "closing_bracket_on_own_line")]
 #[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", "", true ; "closing_bracket_on_own_line_without_com812")]
 #[test_case("__all__ = [\n    \"a\"  # note\n]\n", COM812, false ; "comment_before_closing_bracket")]
@@ -1027,7 +1001,6 @@ fn all_format_leaves_com812_lists_to_ruff(source: &str, selected: &str, reported
 
 const COM812: &str = "\"COM812\"";
 
-// A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.
 #[test]
 fn all_format_keeps_parenthesized_trailing_comma() {
     let root = common::project(&[("module.py", "__all__ = [\n    (\"a\"),\n]\n")]);
@@ -1037,8 +1010,8 @@ fn all_format_keeps_parenthesized_trailing_comma() {
 
 const DYNAMIC_LOADER: &str = "def load(names):\n    return [__import__(name).__all__ for name in names]\n";
 
-// A loader that walks the `__all__` of modules it imports by a computed name uses whatever they list, so removing a name
-// or adding one changes what it loads: the report stays without a fix. A loader in the tests only checks the lists.
+// Changing `__all__` can change what a production loader discovers. Reading the same list in a test does not establish
+// a production dependency.
 #[test_case("SMP402", "def helper() -> None: ...\n\n\n__all__ = [\"helper\"]\n", "app/loader.py", false ; "unused_export")]
 #[test_case(
     "SMP401", "def helper() -> None: ...\n\n\n__all__ = []\n", "app/loader.py", false ; "missing_from_all"
@@ -1064,8 +1037,7 @@ fn api_rules_leave_lists_a_dynamic_loader_reads(code: &str, module: &str, loader
     );
 }
 
-// The `__all__` of a public module of a library is the interface its author declares, so no importer in the run is
-// needed. A private module and an application keep reporting the names nothing imports.
+// A library's callers can import its declared exports from outside the project.
 #[test_case("project-kind = \"library\"", "core.py", 0 ; "public_module_of_library")]
 #[test_case("project-kind = \"library\"", "_core.py", 1 ; "private_module_of_library")]
 #[test_case("project-kind = \"application\"", "core.py", 1 ; "public_module_of_application")]
@@ -1083,8 +1055,6 @@ const PRIVATE_FUNCTION: &str = "def _helper() -> None: ...\n\n\n__all__ = []\n";
 const VARIABLE: &str = "limit = 3\n\n\n__all__ = []\n";
 const PRIVATE_VARIABLE: &str = "_limit = 3\n\n\n__all__ = []\n";
 
-// A public module's names are the API its users import, so the rename to private stays with the author, though the
-// report stays. A private module and an application keep the rename.
 #[test_case("unexported-public-name", FUNCTION, FUNCTION, "library", "core.py" ; "function_public_module_of_library")]
 #[test_case(
     "unexported-public-name", FUNCTION, PRIVATE_FUNCTION, "library", "_core.py"
@@ -1112,8 +1082,7 @@ fn private_rename_follows_the_module_role(rule: &str, source: &str, expected: &s
     assert_eq!(common::read(root.path(), module), expected, "{rule}: {stdout}");
 }
 
-// Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays without
-// a fix. A private module keeps the safe fix.
+// Adding a name to a public module's `__all__` changes what downstream star imports bind.
 #[test_case("core.py", "def run() -> None: ...\n" ; "public_module_of_library_no_fix")]
 #[test_case(
     "_core.py", "def run() -> None: ...\n\n\n__all__ = [\n    \"run\",\n]\n"
@@ -1129,8 +1098,6 @@ fn missing_from_all_offers_no_fix_in_public_library_modules(module: &str, expect
     assert_eq!(common::read(root.path(), module), expected);
 }
 
-// A name a doctest imports is read by code the index cannot follow, so `unused-export` keeps it in `__all__`, and its
-// fix leaves the import the doctest needs.
 #[test]
 fn unused_export_keeps_a_name_a_doctest_imports() {
     let source = "from app.impl import helper\n\n__all__ = [\"helper\"]\n";
@@ -1147,8 +1114,6 @@ fn unused_export_keeps_a_name_a_doctest_imports() {
     assert_eq!(common::read(root.path(), "app/mod.py"), source);
 }
 
-// A public module of a library keeps the names it offers, and so does a name `__all__` lists there, so their renames
-// stay with the author. The rules still report them.
 #[test]
 fn public_module_names_are_not_renamed_by_fixes() {
     let source =
@@ -1162,8 +1127,6 @@ fn public_module_names_are_not_renamed_by_fixes() {
     );
 }
 
-// An import of a name the run cannot resolve, such as a stdlib one, says nothing about the names of the project, so a
-// block-local name of another module stays block-local and a module variable of the project stays reported.
 #[test]
 fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
     let root = common::project(&[
@@ -1178,7 +1141,6 @@ fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
     common::assert_clean(root.path(), "SMP102,SMP404");
 }
 
-// A name an unresolved import may read keeps its report, and only the rename is withheld.
 #[test]
 fn unresolved_import_keeps_the_report_but_withholds_the_rename() {
     let root = common::project(&[
@@ -1191,7 +1153,6 @@ fn unresolved_import_keeps_the_report_but_withholds_the_rename() {
     assert_eq!((stdout.contains("`loads` is not in `__all__`"), stdout.contains("[fix")), (true, false), "{stdout}");
 }
 
-// A doctest that imports a name from its module reads it, so the name is neither reported as private nor as unused.
 #[test]
 fn doctest_import_counts_as_a_read_of_the_name() {
     let root = common::project(&[
@@ -1208,7 +1169,6 @@ fn doctest_import_counts_as_a_read_of_the_name() {
     assert_eq!((stdout.contains("`LIMIT`"), stdout.contains("`helper`")), (false, false), "{stdout}");
 }
 
-// A documented function is public to SMP408 too, so a test module that calls it does not make it test-only code.
 #[test]
 fn documented_function_is_not_test_only_code() {
     let root = common::project(&[
@@ -1225,8 +1185,6 @@ fn documented_function_is_not_test_only_code() {
     common::assert_clean(root.path(), "SMP408");
 }
 
-// A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
-// rename by hand rather than offering it.
 #[test]
 fn listed_private_name_is_renamed_by_hand_in_public_library_modules() {
     let root = common::project(&[
@@ -1242,7 +1200,6 @@ fn listed_private_name_is_renamed_by_hand_in_public_library_modules() {
     );
 }
 
-// A doctest's relative import reads the name as a relative import of the code does, so the name stays used.
 #[test]
 fn doctest_relative_import_counts_as_a_read_of_the_name() {
     let root = common::project(&[

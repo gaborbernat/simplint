@@ -1,14 +1,12 @@
-Flags dataclasses declared without `kw_only=True`, and the calls that pass their fields by position.
+Flags dataclasses whose decorator does not set `kw_only=True`. The diagnostic points to positional constructor calls
+that simplint can identify.
 
 ## Why is this bad?
 
-Positional construction ties callers to the field order, so reordering or inserting a field silently shifts values into
-the wrong fields when their types match. Keyword-only fields name each value at the call site, the same clarity that
-[too-many-positional-arguments](https://docs.astral.sh/ruff/rules/too-many-positional-arguments/) asks of functions.
-They also lift the
-[ordering rule](https://docs.python.org/3/library/dataclasses.html#re-ordering-of-keyword-only-parameters-in-init) for
-defaults: a field without a default may follow one with a default, in the same class or through a subclass, where
-positional fields raise [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError).
+With positional arguments, swapping two fields can silently put the caller's values in the wrong fields. Keyword
+arguments keep each value attached to its field name. Keyword-only fields can also put a required field after a field
+with a default, including defaults inherited from a base class.
+[Dataclass parameter ordering](https://docs.python.org/3/library/dataclasses.html#re-ordering-of-keyword-only-parameters-in-init)
 
 ## Example
 
@@ -65,11 +63,10 @@ Release(name="simplint", version="1.0.0")
 
 ### Active on
 
-- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator
-  spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such
-  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report
-  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those
-  arguments by keyword, but only when every such call is in the same module. The forms are:
+- **Dataclass decorators** include aliases that resolve to
+  [`dataclasses.dataclass`](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass). Simplint accepts
+  the decorator option only when its value is the literal `True`. This option sets the default for the class's own
+  fields. Individual fields can override it.
 
   - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.
 
@@ -83,9 +80,8 @@ Release(name="simplint", version="1.0.0")
         version: str
     ```
 
-  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
-    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other
-    dataclass rules.
+  - `@dataclass(**DC_KW)` can supply options from a dict literal or a `dict(...)` call with named arguments. Simplint
+    skips a class if it cannot read the keys of a `**` argument.
 
   - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.
 
@@ -111,13 +107,11 @@ Release(name="simplint", version="1.0.0")
         version: str
     ```
 
-  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by
-  position. A library's public dataclasses are not reported at all, as the exceptions below describe.
+  The fix is unsafe. Callers outside the checked files may still pass fields by position.
 
-- **Positional calls in other files**: each call in another file that passes the fields by position is a related
-  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message
-  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class
-  silences the report with its related locations.
+- **Positional calls in other files** appear as related locations on the class diagnostic. Any such call prevents the
+  fix because simplint can only edit one file at a time. A `# noqa: SMP703` on the class suppresses the diagnostic and
+  its related locations.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -159,7 +153,7 @@ Release(name="simplint", version="1.0.0")
 
 ### Exceptions
 
-- **`@dataclass(init=False)`**: no `__init__` is generated, so `kw_only` changes nothing.
+- **`@dataclass(init=False)`** skips the generated constructor.
 
   ```python ok
   from dataclasses import dataclass
@@ -173,11 +167,9 @@ Release(name="simplint", version="1.0.0")
           self.code = code
   ```
 
-- **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its
-  `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as
-  the base class of a listed class or a return annotation. Users of the library call it by position, so neither the
-  class nor its positional calls in other files are reported. A class a module with an `__all__` leaves out is still
-  reported, unless such a signature refers to it.
+- **Public library dataclasses** may have callers outside the project. Simplint skips a public class exported by a
+  public module, directly or through a re-export. An explicit `__all__` determines which names the module exports. A
+  class mentioned in an exported signature, for example as a base or return type, can also be part of the public API.
 
   ```toml config
   [build-system]
@@ -214,13 +206,14 @@ Release(name="simplint", version="1.0.0")
 
 ### Fix
 
-The fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in
-its classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call
-that unpacks `**kwargs` passes those fields by keyword, so it keeps working.
+The unsafe fix sets `kw_only=True` and adds keywords to positional constructor calls in the class's module. This
+includes calls through the first parameter of a classmethod, usually `cls`. A call that passes only keywords or
+`**kwargs` needs no edit.
 
-A call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it
-does not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of
-its calls is not rewritten, so its other calls keep their positional arguments.
+For a call with both positional arguments and `**kwargs`, simplint must be able to read the keys and rule out a
+duplicate keyword. If it cannot rewrite every positional call, it leaves the class and all calls alone. A comment inside
+the decorator also prevents the fix, as does a `**` argument that already supplies `kw_only=False` or another value
+besides `True`.
 
 ```python report
 from dataclasses import dataclass
@@ -248,7 +241,7 @@ class Release:
         return cls(name=name)
 ```
 
-The `cls` of an ordinary method is left alone:
+An ordinary method can take a separate `cls` argument. Simplint leaves calls through that argument alone.
 
 ```python report
 from dataclasses import dataclass
@@ -274,8 +267,8 @@ class Release:
         return cls(name)
 ```
 
-A positional call inside an annotation, as `Doc("...")` in `Annotated[str, Doc("...")]`, runs with the others, and a
-positional walrus becomes the value of its keyword in parentheses:
+Simplint also rewrites constructor calls in annotations. In the example, `Doc("where")` becomes `Doc(text="where")`. An
+assignment expression used as a keyword value needs parentheses.
 
 ```python report
 from dataclasses import dataclass
@@ -333,7 +326,7 @@ def build(raw: str) -> Release:
     return Release(name=(name := raw.strip()), version=raw)
 ```
 
-A call in a string annotation is rewritten like one in the code, as `Doc("where")` in `"Annotated[str, Doc('where')]"`:
+Simplint can also rewrite a call inside a single string annotation.
 
 ```python report
 from dataclasses import dataclass
@@ -363,7 +356,7 @@ def load(path: "Annotated[str, Doc(text='where')]") -> None:
     print(path)
 ```
 
-The keywords follow the field order of the generated `__init__`:
+Simplint uses the positional parameter order of the generated `__init__`.
 
 - inherited fields come first
 
@@ -384,12 +377,10 @@ The keywords follow the field order of the generated `__init__`:
   Release("simplint", "1.0.0")
   ```
 
-- `ClassVar` fields are left out, as are fields with `init=False` or `kw_only=True` and the fields after `KW_ONLY`
+- `ClassVar`, fields with `init=False` and keyword-only fields are excluded. `KW_ONLY` makes subsequent fields
+  keyword-only unless they explicitly set `kw_only=False`.
 
   ```python report
-  from dataclasses import dataclass
-
-
   from dataclasses import KW_ONLY, dataclass, field
   from typing import ClassVar
 
@@ -409,9 +400,6 @@ The keywords follow the field order of the generated `__init__`:
 - `InitVar` fields are included
 
   ```python report
-  from dataclasses import dataclass
-
-
   from dataclasses import InitVar, dataclass
 
 
@@ -424,9 +412,9 @@ The keywords follow the field order of the generated `__init__`:
   Release("simplint", "secret")
   ```
 
-No fix is offered while any use could still pass fields by position, or while a positional call is in another file:
+Simplint withholds the fix if any of the following applies.
 
-- a call that unpacks `*args`, or passes more arguments than the class has positional fields;
+- A call unpacks `*args` or passes more arguments than there are positional fields.
 
   ```python report
   from dataclasses import dataclass
@@ -441,10 +429,9 @@ No fix is offered while any use could still pass fields by position, or while a 
       return Release(*args)
   ```
 
-- the class used as a value, as in
-  [`functools.partial(Partition, topic)`](https://docs.python.org/3/library/functools.html#functools.partial), matched
-  by position in a `case` pattern, or named in the metadata of an `Annotated[...]` type, where a caller may call it by
-  position later;
+- Code passes the class as a value, for example to
+  [`functools.partial`](https://docs.python.org/3/library/functools.html#functools.partial) or in `Annotated` metadata,
+  or matches instances by position in a `case` pattern.
 
   ```python report
   from dataclasses import dataclass
@@ -474,8 +461,9 @@ No fix is offered while any use could still pass fields by position, or while a 
   make = partial(Release, "simplint")
   ```
 
-- the class read by [`getattr(module, "Name")`](https://docs.python.org/3/builtins/functions.html#getattr) from another
-  file, which calls it by position under a name no import shows;
+- Another file reads the class with
+  [`getattr(module, "Name")`](https://docs.python.org/3/builtins/functions.html#getattr), which can hide calls from
+  simplint.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -494,7 +482,7 @@ No fix is offered while any use could still pass fields by position, or while a 
   Release = getattr(app.models, "Release")("simplint", "1")
   ```
 
-- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;
+- The class has a subclass or contains a call such as `type(self)(...)` or `self.__class__(...)`.
 
   ```python report
   from dataclasses import dataclass
@@ -508,7 +496,7 @@ No fix is offered while any use could still pass fields by position, or while a 
           return type(self)(self.name)
   ```
 
-- a file that imports the module with `*`, or that imports the class and passes it on to other modules;
+- Another file uses a star import from the module or re-exports the class.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -527,9 +515,8 @@ No fix is offered while any use could still pass fields by position, or while a 
   Release("simplint", "1.0.0")
   ```
 
-- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an
-  attribute with the class's name on something no import binds, such as `module.Partition("a", 1)` on a module a test
-  loads from its file path;
+- Simplint cannot resolve a possible positional call, for example because a local parameter shadows the class name or a
+  test calls `module.Partition(...)` on a dynamically loaded module.
 
   ```python report
   from dataclasses import dataclass
@@ -545,8 +532,8 @@ No fix is offered while any use could still pass fields by position, or while a 
       return Release("simplint", "1.0.0")
   ```
 
-- a class one of the implicitly concatenated parts of a string annotation spells, as `"Annotated[str, " "Doc('x')]"`:
-  Ruff parses such a string without the positions a rewrite needs
+- An annotation containing the class name uses implicitly concatenated string literals. Simplint cannot map the call's
+  arguments back to source positions.
 
   ```python report
   from dataclasses import dataclass
@@ -562,9 +549,11 @@ No fix is offered while any use could still pass fields by position, or while a 
       print(path)
   ```
 
-- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;
+- A positional call in another file prevents the fix even if `# noqa: SMP703` hides that call from the diagnostic. A
+  suppression on a call in the class's own module leaves the fix available. To suppress the diagnostic there, put the
+  comment on the decorator.
 
-  ```python report
+  ```python report file=app/models.py
   from dataclasses import dataclass
 
 
@@ -572,7 +561,10 @@ No fix is offered while any use could still pass fields by position, or while a 
   class Release:
       name: str
       version: str
+  ```
 
+  ```python context file=app/use.py
+  from app.models import Release
 
   Release("simplint", "1.0.0")  # noqa: SMP703
   ```
@@ -607,7 +599,9 @@ No fix is offered while any use could still pass fields by position, or while a 
             self.name = name
     ```
 
-  - that has a base class that is not a dataclass of the same module.
+  - Its constructor fields cannot be resolved. Simplint can follow a previously defined dataclass in the same module and
+    allows bases named `object`, `Generic`, `ABC` or `Protocol`. An unknown base, a computed `init` or `kw_only` field
+    option, or a `**` argument to `field()` can prevent the fix.
 
     ```python report
     from dataclasses import dataclass
@@ -622,8 +616,7 @@ No fix is offered while any use could still pass fields by position, or while a 
         version: str
     ```
 
-A call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a
-plain field, so the output is the same once the call passes its fields by keyword.
+When a call appears in an f-string debug field (`=`), the fix preserves the original text shown before the value.
 
 ```python report
 from dataclasses import dataclass
@@ -658,4 +651,5 @@ decorator.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).
+- Ruff's open [#28777](https://github.com/astral-sh/ruff/issues/28777) proposes checking the number of positional
+  parameters in generated dataclass constructors.

@@ -14,8 +14,7 @@ use crate::semantic::future_import;
 use crate::syntax::statement_index;
 use crate::syntax::{alias_binding, alias_root_binding, is_type_checking_name};
 
-// The modules a normal start of CPython 3.15 has loaded before any user code runs, so a lazy import of one defers
-// nothing. Linted code can run on a different platform than the linter.
+// A normal CPython 3.15 startup already loads these modules. Use a fixed list independent of the linter's platform.
 const LOADED_AT_STARTUP: [&str; 16] = [
     "abc",
     "builtins",
@@ -58,8 +57,7 @@ impl Module {
         matches!(self, Self::Absolute(name) if LOADED_AT_STARTUP.contains(&name.as_str()))
     }
 
-    // The entry that names the module. A relative module keeps its form through `__spec__.parent`, the package the
-    // file runs in, so the entry follows the package when it is renamed or vendored.
+    // `__spec__.parent` keeps the entry valid if the enclosing package moves.
     pub(super) fn entry(&self, quote: char) -> String {
         let other = if quote == '"' { '\'' } else { '"' };
         match self {
@@ -112,8 +110,7 @@ pub(super) struct Item {
     pub(super) comment: Option<String>,
 }
 
-// The module-level `__lazy_modules__`, read only from a single assignment of literal entries, since any other mention
-// of the name may change what it holds.
+// Another reference to `__lazy_modules__` could mutate the collection.
 pub(super) fn declaration<'a>(checker: &Checker<'a>) -> Declaration<'a> {
     let mentions = checker.name_token_count("__lazy_modules__");
     if mentions == 0 {
@@ -185,8 +182,7 @@ fn spec_module(fstring: &ast::ExprFString) -> Option<Module> {
     Some(Module::Relative { level: spec_parent_level(&parent.expression)?, name: name.to_owned() })
 }
 
-// `__spec__.parent` is one package up; `__spec__.parent.rsplit(".", n)[0]`, also guarded as
-// `(__spec__.parent or "")`, walks `n` packages further.
+// `__spec__.parent` names the containing package. Splitting off `n` trailing components names an ancestor.
 fn spec_parent_level(expr: &Expr) -> Option<u32> {
     if is_spec_parent(expr) {
         return Some(1);
@@ -233,8 +229,7 @@ impl LazyList<'_> {
             .map_or_else(|| checker.stylist.quote().as_char(), |part| part.flags.quote_style().as_char())
     }
 
-    // The items with the comments that end their lines; none when a comment sits anywhere else in the list, where
-    // rewriting it would lose the comment.
+    // Only a trailing comment on an entry's own line can reliably move with it.
     pub(super) fn items(&self, checker: &Checker) -> Option<Vec<Item>> {
         let source = checker.source;
         let items: Vec<Item> = self
@@ -280,14 +275,12 @@ pub(super) struct Layout<'a> {
     pub(super) brackets: (&'a str, &'a str),
     pub(super) single_tuple: bool,
     pub(super) base: &'a str,
-    // The width the line holds besides the list.
     pub(super) used: usize,
     pub(super) spans_lines: bool,
 }
 
 impl Layout<'_> {
-    // The list holding `items`, laid out as `ruff format` keeps it: one item a line, each with its comment, when the
-    // list spans lines, carries a comment, or does not fit its line.
+    // Keep a multiline layout for long lists and comments so `ruff format` can preserve it.
     pub(super) fn text(&self, checker: &Checker, items: &[Item]) -> String {
         let (open, close) = self.brackets;
         let inline = format!(
@@ -324,15 +317,13 @@ pub(super) fn sort_key(text: &str) -> (bool, &str) {
 
 pub(super) struct ModuleImport<'a> {
     pub(super) stmt: &'a Stmt,
-    // Directly in the module body, rather than in a block.
     pub(super) top: bool,
-    // Whether `__lazy_modules__` defers it: CPython keeps an import in the body or a handler of a `try` eager.
+    // Imports in a `try` body or handler stay eager even when listed.
     pub(super) governed: bool,
-    // Under `if TYPE_CHECKING:`, which never runs.
     pub(super) dead: bool,
 }
 
-// The imports that run while the module loads, in source order; imports in a function or class body run later.
+// Python restricts lazy imports to module scope. Class bodies execute during class creation but cannot defer imports.
 pub(super) fn module_imports(body: &[Stmt]) -> Vec<ModuleImport<'_>> {
     let mut imports = Vec::new();
     collect_imports(body, true, true, false, &mut imports);
@@ -377,12 +368,11 @@ fn collect_imports<'a>(body: &'a [Stmt], top: bool, governed: bool, dead: bool, 
 pub(super) struct Imported<'a> {
     pub(super) module: Module,
     pub(super) binding: &'a str,
-    // Where a report on the import points: the alias of an `import`, the module of a `from` import.
     pub(super) range: TextRange,
     pub(super) from_import: bool,
 }
 
-// The module an import loads with each name it binds. A star import and a `__future__` import have no lazy form.
+// Star imports and future imports have no lazy form.
 pub(super) fn imported_modules(stmt: &Stmt) -> Vec<Imported<'_>> {
     match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) => names
@@ -414,15 +404,13 @@ pub(super) fn imported_modules(stmt: &Stmt) -> Vec<Imported<'_>> {
     }
 }
 
-// The edit that turns `lazy import x` back into `import x`. A lazy statement starts with the soft keyword, which only
-// whitespace and line continuations separate from `import` or `from`.
+// Line continuations and whitespace may separate `lazy` from the import keyword.
 pub(super) fn lazy_keyword_removal(checker: &Checker, stmt: &Stmt) -> Edit {
     let rest = checker.text(stmt)["lazy".len()..].trim_start_matches([' ', '\t', '\x0c', '\\', '\r', '\n']);
     Edit::deletion(stmt.start(), stmt.end() - TextSize::of(rest))
 }
 
-// Where a list goes above `first`: above the comments that lead into it, unless a statement before it shares that
-// line, as `from __future__ import annotations; import json` does.
+// Keep leading comments attached to the import. Inserting above a shared line could put the list before a future import.
 pub(super) fn list_position(checker: &Checker, first: &Stmt) -> Option<TextSize> {
     let position = above_comments(checker, first);
     let body = checker.body();
@@ -430,7 +418,7 @@ pub(super) fn list_position(checker: &Checker, first: &Stmt) -> Option<TextSize>
     index.checked_sub(1).is_none_or(|previous| body[previous].end() <= position).then_some(position)
 }
 
-// The modules a statement imports, each once, as `from x import a, b` names `x` for both names.
+// A single `from x import a, b` statement names the same module twice.
 pub(super) fn distinct_modules(stmt: &Stmt) -> Vec<Imported<'_>> {
     let mut modules: Vec<Imported> = Vec::new();
     for imported in imported_modules(stmt) {
@@ -441,7 +429,6 @@ pub(super) fn distinct_modules(stmt: &Stmt) -> Vec<Imported<'_>> {
     modules
 }
 
-// The packages that hold the file, which Python loads before it runs.
 pub(super) fn enclosing_packages(module_path: Option<&[String]>) -> Vec<Module> {
     let parts = module_path.map_or(&[][..], |path| &path[..path.len().saturating_sub(1)]);
     (1..=parts.len()).map(|end| Module::Absolute(parts[..end].join("."))).collect()

@@ -18,8 +18,7 @@ permissions:
   contents: read
 jobs:
   stage:
-    # SchemaStore's npm dependencies, formatter and checks run here, in a job that holds no secret, so none of that code
-    # can read the token the pull request needs. The job hands its result to the next one as a patch.
+    # Run SchemaStore's dependencies in a read-only job. Only the job that applies the patch gets the fork token.
     name: 🔍 Stage the schema for SchemaStore
     runs-on: ubuntu-26.04
     outputs:
@@ -42,7 +41,7 @@ jobs:
         run: npm ci
         working-directory: ${{ runner.temp }}/schemastore
       - name: ⚙️ Register or update simplint's schema
-        # A first run adds the partial and its references; once SchemaStore has them, only the partial changes.
+        # Reuse existing references and refresh both the schema and its sample options.
         run: uv run --no-project --python 3.15 python tasks/register_schemastore.py "$SCHEMA" "$STORE" tasks/schemastore_options.json
         env:
           SCHEMA: ${{ github.workspace }}/simplint.schema.json
@@ -74,8 +73,7 @@ jobs:
           path: ${{ runner.temp }}/simplint-schema.patch
           retention-days: 1
   update-schemastore:
-    # The token reaches only the fork: it can push there but cannot fork SchemaStore or open pull requests on it, so
-    # this job updates the branch and links the pull request for a maintainer to open when none is open.
+    # The token can push to the fork. A maintainer opens the upstream PR from the link this job prints.
     name: 🔀 Push to the SchemaStore fork
     needs: stage
     if: github.event_name != 'pull_request' && needs.stage.outputs.changed == 'true'

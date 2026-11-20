@@ -18,19 +18,13 @@ enum Folded {
     Other,
 }
 
-// The limits of CPython's constant folding, taken from the oldest version tox tests, 3.11: the constants at
-// Python/ast_opt.c:147-150, the guards in safe_multiply, safe_power, safe_lshift and safe_mod at lines 152-238, and the
-// binary operations that apply them at lines 478-493. The values and guards are the same in 3.12 and 3.13 (ast_opt.c)
-// and in 3.14 and 3.15 (Python/flowgraph.c:1713-1716 and 1789-1792), so one rule serves every version tox tests.
-// `safe_mod` refuses a string or bytes left operand, so `%` formatting is never folded here; 3.11.18 and 3.15.2 both
-// leave `'%s-%s' % (1, 2)` as a BINARY_OP.
+// These limits follow CPython's `safe_multiply`, `safe_power` and `safe_lshift` guards. String and bytes formatting
+// with `%` is excluded from this model.
 const MAX_INT_SIZE: u32 = 128;
 const MAX_COLLECTION_SIZE: usize = 256;
 const MAX_STR_SIZE: usize = 4096;
 const MAX_TOTAL_ITEMS: usize = 1024;
 
-// Whether the value is a constant the compiler stores with the code, so that writing it out in a function costs nothing
-// per call: a literal, a tuple of them, or a binary operation the compiler folds.
 pub(super) fn is_literal(value: &Expr) -> bool {
     folded(value).is_some()
 }
@@ -154,8 +148,7 @@ fn repeat_tuple(count: i128, len: usize, nested: usize) -> Option<Folded> {
     Some(Folded::Tuple { len: count * len, nested: count * nested })
 }
 
-// `const_folding_safe_power` and `safe_power` refuse an integer power whose base's bit length times the exponent exceeds
-// MAX_INT_SIZE, and a non-zero base to a positive exponent is the only case they check.
+// CPython bounds an integer power using the base's bit length and the exponent.
 fn int_binary(op: Operator, left: i128, right: i128) -> Option<Folded> {
     let int = |value: Option<i128>| value.map(Folded::Int);
     match op {

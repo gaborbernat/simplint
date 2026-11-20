@@ -4,8 +4,7 @@ use super::FileId;
 use super::classes::{ClassGraph, Reexports};
 use crate::project::facts::ImportBinding;
 
-// The enum classes a file names, its own or imported from another module of the run, so an annotation or default that
-// names one is a flag rather than a collaborator.
+// Parameter rules recognize enum annotations and defaults even when another module defines or re-exports the enum.
 pub(super) fn enum_classes(
     graph: &ClassGraph,
     reexports: &Reexports,

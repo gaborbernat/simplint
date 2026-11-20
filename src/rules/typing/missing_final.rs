@@ -20,8 +20,7 @@ use super::globals_writes::GlobalsWrites;
 use super::is_type_parameter_constructor;
 
 pub fn missing_final(checker: &Checker) {
-    // `typing.Final` arrived in Python 3.8.
-    // Sphinx reads the module variables of `conf.py` by name, so a `Final` there would change nothing.
+    // Sphinx extensions can override values in `conf.py`. The bare-Final check runs separately.
     if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) || is_sphinx_conf(checker) {
         return;
     }
@@ -104,7 +103,6 @@ fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<
     Some(Fix::unsafe_edit(edit))
 }
 
-// The type of a literal value, which is what `Final` infers from a bare assignment.
 fn literal_type(value: &Expr) -> Option<&'static str> {
     Some(match value {
         Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }) => "int",

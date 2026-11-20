@@ -23,8 +23,8 @@ pub(crate) fn lines(text: &str) -> Vec<Line<'_>> {
         .collect()
 }
 
-// The first line follows the opening quotes, so `inspect.cleandoc` gives it the indentation of the least indented line
-// after it.
+// Treat the line after the opening quotes as flush with the least-indented continuation. This matches the relative
+// indentation after `inspect.cleandoc` strips the docstring's margin.
 pub(crate) fn docstring_lines(text: &str) -> Vec<Line<'_>> {
     let mut doc: Vec<Line> = lines(text)
         .into_iter()
@@ -50,7 +50,6 @@ pub(crate) fn leading_whitespace(line: &str) -> &str {
     &line[..line.len() - line.trim_start().len()]
 }
 
-// The indentation of a line in columns, where a tab runs to the next multiple of `tab`.
 pub(crate) fn indent_columns(line: &str, tab: usize) -> usize {
     columns(leading_whitespace(line), tab)
 }

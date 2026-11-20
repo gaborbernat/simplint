@@ -12,7 +12,6 @@ pub fn config_schema() -> Schema {
     let mut schema = SchemaSettings::draft07().into_generator().into_root_schema_for::<SimplintOptions>();
     schema.insert(
         "$id".to_owned(),
-        // Where SchemaStore and editors find the schema, once the file is published on the default branch.
         "https://raw.githubusercontent.com/gaborbernat/simplint/main/simplint.schema.json".into(),
     );
     schema.insert("title".to_owned(), "simplint configuration".into());
@@ -25,9 +24,8 @@ pub fn config_schema() -> Schema {
     schema
 }
 
-// TOML has no null, so an option's absent key is its default, which the descriptions state; schemars makes every
-// option nullable with a `null` default. Its integer formats, such as `uint`, are not JSON Schema formats, which
-// SchemaStore's validator rejects, and `minimum` already states the range.
+// TOML represents a missing option by omitting the key, so strip schemars' nullable types and null defaults.
+// The schema already expresses unsigned integer bounds with `minimum`. Drop the nonstandard format names.
 fn portable(value: &mut Value) {
     match value {
         Value::Object(map) => {
@@ -46,8 +44,7 @@ fn portable(value: &mut Value) {
     }
 }
 
-// A selector as `RuleSet::from_selector` reads it: `ALL`, a rule's code or name, or a code prefix from the `SMP`
-// namespace down. Ruff's selectors are left out, as simplint rejects them.
+// Offer selectors in the `SMP` namespace to editors. The CLI also accepts the shorter prefixes `S` and `SM`.
 pub(super) struct RuleSelectorSchema;
 
 impl JsonSchema for RuleSelectorSchema {

@@ -1,6 +1,5 @@
 name: 🔗 links
-# External sites go down and move their pages on their own schedule, so the link check runs once a day outside the
-# required checks, where a broken link is caught within a day without failing anyone's pull request.
+# Check external links daily so a site outage cannot block a pull request.
 on:
   workflow_dispatch:
   schedule:

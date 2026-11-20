@@ -78,7 +78,6 @@ fn missing_pdm_build_hook_names_no_function() {
     assert!(check(root.path(), &["--select", "SMP402"]).1.contains("`pdm_build_initialize`"));
 }
 
-// Nothing outside an application imports its modules, so dropping an unused export is safe there.
 #[test]
 fn application_drops_unused_exports_safely() {
     let root = project(&[
@@ -90,7 +89,6 @@ fn application_drops_unused_exports_safely() {
     assert_eq!(common::read(root.path(), "tool/cli.py"), "def run() -> None: ...\n\n\n__all__ = []\n");
 }
 
-// A namespace package's API package is its dotted name, so its modules are public below the namespace.
 #[test_case("[tool.uv.build-backend]\nmodule-name = \"acme.widgets\"\n" ; "build_backend")]
 #[test_case("[tool.simplint]\napi-packages = [\"acme.widgets\"]\n" ; "setting")]
 fn namespace_package_is_public_api(settings: &str) {
@@ -112,7 +110,7 @@ fn namespace_package_is_public_api(settings: &str) {
     );
 }
 
-// `__main__` runs as a script, so it offers no API, while another dunder module, as `__about__`, does.
+// simplint treats `__main__.py` as a script. Other dunder modules, such as `__about__.py`, can expose library API.
 #[test]
 fn main_module_is_not_public_api() {
     let root = project(&[
@@ -135,8 +133,7 @@ fn main_module_is_not_public_api() {
 const BACKEND: &str = "[project]\nname = \"demo\"\n[build-system]\nbuild-backend = \"build_backend\"\n\
                        requires = []\nbackend-path = [\".\"]\n";
 
-// A build frontend calls the backend's hooks by name, so no import shows they are used: they are public names of the
-// backend, as entry points are.
+// A build frontend calls the configured backend's hooks without importing their names in project code.
 #[test]
 fn listed_build_hooks_are_not_unused_exports() {
     let root = project(&[
@@ -182,7 +179,6 @@ fn unlisted_build_hooks_are_listed_like_entry_points() {
     );
 }
 
-// The object `build-backend` names after the colon is the backend, so the run keeps its name.
 #[test]
 fn build_backend_object_is_used() {
     let root = project(&[
@@ -203,7 +199,6 @@ fn build_backend_object_is_used() {
     assert!(check(unexported.path(), &["--select", "SMP403,SMP409"]).1.contains("`helper`"));
 }
 
-// Only the backend's hooks count as used, so a helper the backend does not call is still reported.
 #[test]
 fn build_backend_in_backend_path_keeps_its_other_names_reported() {
     let root = project(&[
@@ -225,7 +220,6 @@ fn build_backend_in_backend_path_keeps_its_other_names_reported() {
     );
 }
 
-// A backend is found by its dotted name, as a module or as a package.
 #[test_case("pkg.backend", "pkg/backend/__init__.py" ; "package")]
 #[test_case("pkg.backend", "pkg/backend.py" ; "module")]
 fn build_backend_by_dotted_name(backend: &str, file: &str) {
@@ -262,8 +256,7 @@ const BUILD_HOOK: &str = "from hatchling.builders.hooks.plugin.interface import 
 const METADATA_HOOK: &str = "from hatchling.metadata.plugin.interface import MetadataHookInterface\n\n\n\
                              class _Hook(MetadataHookInterface):\n    pass\n";
 
-// hatchling loads the class that subclasses its hook interface from the `path` of a custom hook, which defaults to
-// `hatch_build.py`, so no import reaches the class.
+// Hatchling looks for a hook subclass in the configured file, which defaults to `hatch_build.py`.
 #[test_case("[tool.hatch]\nbuild.hooks.custom = {}\n", "hatch_build.py", BUILD_HOOK ; "build_default_path")]
 #[test_case(
     concat!(
@@ -317,7 +310,6 @@ fn unconfigured_hatch_hook_class_is_reported(hatch: &str) {
     );
 }
 
-// Only the hook class is read by hatchling, so another class of the file is still reported.
 #[test]
 fn configured_hatch_hook_file_keeps_its_other_classes_reported() {
     let root = project(&[
@@ -330,7 +322,7 @@ fn configured_hatch_hook_file_keeps_its_other_classes_reported() {
     );
 }
 
-// hatchling reads a `hatch.toml` next to the `pyproject.toml`, whose tables have no `tool.hatch` prefix.
+// In `hatch.toml`, Hatch tables omit the `tool.hatch` prefix.
 #[test_case("[build.hooks.custom]\n", "hatch_build.py", BUILD_HOOK ; "build_default_path")]
 #[test_case("[build.hooks.custom]\npath = \"build/hooks.py\"\n", "build/hooks.py", BUILD_HOOK ; "build_path")]
 #[test_case("[metadata.hooks.custom]\n", "hatch_build.py", METADATA_HOOK ; "metadata_default_path")]
@@ -347,7 +339,6 @@ fn hatch_toml_configures_the_hook(hatch: &str, file: &str, source: &str) {
     assert!(check(without_hatch_toml.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
-// A `hatch.toml` that cannot be parsed configures no hook, with a warning, rather than stopping the run.
 #[test]
 fn unparsable_hatch_toml_configures_nothing() {
     let root = project(&[
@@ -367,8 +358,7 @@ fn unparsable_hatch_toml_configures_nothing() {
     );
 }
 
-// A `hatch.toml` is merged over the `[tool.hatch]` table key by key, so a key it sets wins and one it leaves unset
-// keeps the pyproject's value.
+// A partial override in `hatch.toml` can leave a hook setting from `pyproject.toml` in effect.
 #[test_case(
     concat!(
         "[tool.hatch.build.hooks.custom]\n",
@@ -411,7 +401,6 @@ fn hatch_toml_is_merged_over_the_pyproject(pyproject: &str, hatch: &str, expecte
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, expected);
 }
 
-// hatchling joins a hook's `path` to the project's directory and normalizes it, so `..` names the directory above.
 #[test_case("build/../hooks/h.py" ; "parent_directory")]
 #[test_case("./hooks/./h.py" ; "current_directory")]
 fn hatch_hook_path_is_normalized(path: &str) {
@@ -435,8 +424,7 @@ fn hatch_hook_path_is_normalized(path: &str) {
     assert!(check(other_path.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
-// hatchling uses `issubclass` over the names of the hook file, so a class that subclasses a class of the run which
-// subclasses the hook interface is the hook, while a base of the run that does not is not.
+// Hatchling can discover a hook through an intermediate base class.
 #[test_case("class CommonHook(BuildHookInterface):\n    pass\n", common::PASSED ; "inherited_from_hook_class")]
 #[test_case(
     concat!(
@@ -458,8 +446,8 @@ fn class_inheriting_a_hook_through_the_run_is_used(shared: &str, expected: &str)
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, expected);
 }
 
-// The interpreter runs the `import` lines of a `.pth` file at startup, so a name they read is used outside the tests,
-// as an entry point's is. A bare import reads no name, and a path line or a line with no `import` is not run.
+// Startup code can reference a function even when only tests import it. Path entries in the same `.pth` file do not
+// call Python functions.
 #[test_case("import pkg.hook; pkg.hook._run()\n", common::PASSED ; "startup_read_keeps_the_name")]
 #[test_case("import sys; from pkg.hook import _run; _run()\n", common::PASSED ; "startup_from_import_keeps_the_name")]
 #[test_case("import\tpkg.hook; pkg.hook._run()\n", common::PASSED ; "tab_after_import_keeps_the_name")]

@@ -269,8 +269,8 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
       """
   ```
 
-- **Docstrings whose escapes make their text differ from the source**: positions in the source hold only for a docstring
-  whose text is its source, so the rule does not check them and offers no fix.
+- **Docstrings without reliable source positions.** The rule checks a single triple-quoted string whose decoded text
+  matches the source. It skips concatenated strings, single-quoted strings and escapes that change the text.
 
   ```toml config
   [tool.simplint]
@@ -284,7 +284,5 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
-  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.
-- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing
-  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.
+- [flake8-rst-docstrings RST214](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no
+  closing backticks.

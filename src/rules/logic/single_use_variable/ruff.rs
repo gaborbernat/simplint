@@ -82,9 +82,7 @@ pub(super) fn raises_with_name(next: &Stmt, name: &str) -> bool {
     exc.as_call_expr().is_some_and(|call| call.arguments.args.iter().any(|argument| is_name(argument, name)))
 }
 
-// `return name` is left to Ruff's RET504, which covers the return case of a function that does not yield. This rule
-// would also add an inferred return annotation to a literal value, which Ruff does not write. `yield name` is never
-// reported, as before.
+// RET504 skips generators, where simplint can still inline a returned name.
 pub(super) fn returns_or_yields(body: &[Stmt], next: &Stmt, name: &str) -> bool {
     let value = match next {
         Stmt::Return(ast::StmtReturn { value, .. }) if !is_generator(body) => value.as_deref(),

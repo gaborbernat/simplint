@@ -1,10 +1,10 @@
-Flags requirements in `[project] dependencies` that no file of the run outside the tests imports.
+Flags unconditional `project.dependencies` entries with no matching import outside the tests.
 
 ## Why is this bad?
 
-Every requirement is installed for every user of the project. One the code no longer imports costs them download time
-and disk space, and its version bounds can still conflict with what else they install. A requirement only the tests
-import belongs in a dependency group, where the tests' installs find it and users' installs skip it.
+Users install unconditional requirements even when the project never uses them. An unnecessary dependency costs download
+time and disk space, and its version bounds can conflict with other packages. Move test-only requirements to a
+dependency group for tests.
 
 ## Example
 
@@ -33,21 +33,22 @@ import requests
 ## What it does
 
 The rule collects every absolute import in the run's files outside the tests, in any scope, deferred and guarded ones
-included, and matches them to the requirements the way [`undeclared-dependency`](SMP312.html) does. The project has no
-Python file for `pyproject.toml`, so the reports sit at the start of the `__init__.py` of its first top-level package.
+included, and matches them to the requirements the way [`undeclared-dependency`](SMP312.html) does. Reports appear at
+the start of `__init__.py` in the first configured top-level package. Without that file in the run, there is nowhere to
+report the requirement.
 
-A requirement the code reaches without an import is reported too, such as a tool it runs as a command or a module a
-compiled extension loads. A suppression comment there says why it stays.
+Review each finding before removing the requirement. Distribution names can differ from import names, and a project
+might invoke a dependency as a command or load it from a compiled extension. A suppression at the report can record why
+the requirement stays.
 
 ### Exceptions
 
-- **Requirements with an environment marker**, such as `tomli; python_version < "3.11"`: they install only where the
-  marker holds, which an import behind a version check matches.
-- **Projects whose `[project]` leaves `dependencies` to the build backend** through `dynamic`, or that have no
-  `[project]` table.
+- **Requirements with an environment marker**, such as `tomli; python_version < "3.11"`: the rule skips these even if it
+  finds no matching import.
+- **Projects without `project.name` or with `dependencies` listed in `project.dynamic`**. The rule also skips nested
+  projects and dependencies that name the project itself.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** no rule.
-- [deptry](https://github.com/fpgmaas/deptry) reports the same requirements as DEP002, in `pyproject.toml` itself, with
-  its own name mapping read from the installed distributions.
+[deptry's DEP002](https://deptry.com/rules-violations/#unused-dependencies-dep002) reports unused dependencies in the
+dependency declaration. deptry uses the installed distributions to help map package names to import names.

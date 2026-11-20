@@ -11,8 +11,6 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::syntax::for_each_child_body;
 
-// The width test of inlining: a header of `header` characters, joined on one line at the indentation of `depth` blocks,
-// still fits the line width once the `name` in it becomes a value `wrapping` characters longer than the name's text.
 pub(crate) fn fits_line(
     checker: &Checker,
     depth: usize,
@@ -30,7 +28,6 @@ pub(crate) fn fits_line(
 // quote decides which quote the value may hold.
 pub(crate) fn joined(checker: &Checker, text: &str) -> Option<String> {
     let options = formatting_options(checker).with_quote_style(QuoteStyle::Preserve);
-    // The text is an expression's source, which parses again inside parentheses.
     let printed = format_module_source(&format!("_ = ({text})\n"), options).expect("a parenthesized expression parses");
     let line = printed.as_code().trim_end().strip_prefix("_ = ").expect("the formatter keeps the assignment target");
     (!line.contains('\n')).then(|| line.to_owned())
@@ -40,17 +37,15 @@ fn formatting_options(checker: &Checker) -> PyFormatOptions {
     let settings = &checker.settings.from_ruff;
     let trailing_comma =
         if settings.magic_trailing_comma { MagicTrailingComma::Respect } else { MagicTrailingComma::Ignore };
-    // The widest line the formatter lays out, as the largest line width `ruff_formatter` accepts.
+    // Use the maximum supported width to measure the header before applying the project's limit.
     PyFormatOptions::default()
         .with_target_version(settings.target_version)
         .with_magic_trailing_comma(trailing_comma)
         .with_line_width(LineWidth::try_from(320).expect("the widest line is a valid line width"))
 }
 
-// Whether `ruff format` keeps the statement's header on one line once the use is replaced. The formatter splits a
-// statement wider than its line width, and it writes spacing and parentheses its own way, such as hugging `**`, so
-// the header is formatted, at the widest line, with the replacement in it. Only the header counts: the block of a
-// compound statement is left out, and is a `pass` when formatted.
+// Measure the replacement after Ruff normalizes spacing and parentheses. A compound statement needs a dummy body
+// so the formatter can parse its header.
 pub(crate) fn fits(checker: &Checker, next: &Stmt, replace: &Edit, depth: usize) -> bool {
     let mut header_end = next.end();
     for_each_child_body(next, &mut |block| {
@@ -81,7 +76,6 @@ pub(crate) fn fits(checker: &Checker, next: &Stmt, replace: &Edit, depth: usize)
         .collect::<Vec<_>>()
         .join("\n");
     let statement = if compound { format!("{text}\n    pass\n") } else { format!("{text}\n") };
-    // The formatter would parse the statement the same way, so a statement that does not parse cannot be formatted.
     let Ok(parsed) = parse(&statement, ParseOptions::from(PySourceType::Python)) else {
         return false;
     };
@@ -96,27 +90,16 @@ pub(crate) fn fits(checker: &Checker, next: &Stmt, replace: &Edit, depth: usize)
     let trivia = TriviaRanges::from(parsed.tokens());
     let formatted = format_module_ast(&parsed, &trivia, &statement, formatting_options(checker));
     let printed = formatted.ok().and_then(|formatted| formatted.print().ok());
-    // Each decorator and the statement are lines of their own, and a line the formatter indents is a split within one
-    // of them, which the layout keeps, so every line must start at column zero and fit. A statement the formatter fails
-    // on has no lines, which fit nowhere.
+    // A decorator can occupy its own line. An indented continuation means the header itself split.
     let code = printed.as_ref().map_or("", |printed| printed.as_code().trim_end());
     let laid_out = if compound { code.rsplit_once('\n').map_or(code, |(head, _)| head) } else { code };
     !laid_out.is_empty()
         && laid_out.lines().all(|line| !line.starts_with(char::is_whitespace) && indent + line.chars().count() <= limit)
 }
 
-// The widest the formatter can print a one-line header, the first `header` bytes of `statement`, without formatting it.
-// `None` when it may split the line: a magic trailing comma, a comma before a closing bracket, splits it at any width.
-//
-// The formatter prints a header that fits its line width on one line, token after token, so the printed width is at
-// most the sum of what it prints for each token and each gap between two. A token keeps its width or shrinks, as a
-// string loses escapes, a prefix or the quotes between joined parts, or grows by what `grown` allows.
-//
-// A gap gets no space where `is_tight` says so and at most one elsewhere, besides two parentheses where it reads an
-// attribute off an integer, as `1 .real` becomes `(1).real`, unless it keeps the source's whitespace there, as in the
-// debug text of an f-string's `=` field. A bound within the line width, which is never wider than the formatter's
-// widest line, means the header prints on one line that fits, so the formatter need not run; the bound held for every
-// candidate of the corpus and of CPython's `Lib` when checked against the formatter.
+// Skip the formatter when an upper bound for the printed header fits. Count possible token growth, inserted
+// parentheses and spacing, including original whitespace that an f-string debug field can preserve.
+// A magic trailing comma can force a split even when the header fits.
 fn widest_format(parsed: &Parsed<Mod>, statement: &str, header: usize, respects_commas: bool) -> Option<usize> {
     let tokens: Vec<&Token> = parsed
         .tokens()

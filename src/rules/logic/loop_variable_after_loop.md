@@ -3,11 +3,9 @@ Flags a `for` loop's variable read after the loop ends, when nothing binds it be
 
 ## Why is this bad?
 
-After a loop that runs to the end, its variable holds the last item, which is rarely what the code after it means to
-read. When the iterable is empty the loop never binds the variable, and the read raises
-[`NameError`](https://docs.python.org/3/builtins/exceptions.html#NameError), or picks up a value an earlier loop left
-behind. Naming the value the code wants, such as `items[-1]` or a variable set in the loop, says what is meant and works
-for an empty iterable.
+A loop over an empty iterable never assigns its target. Reading that local afterwards raises
+[`UnboundLocalError`](https://docs.python.org/3/builtins/exceptions.html#UnboundLocalError) if it has no earlier value.
+If you want the last item of a sequence, access it explicitly and decide what to return when the sequence is empty.
 
 ## Example
 
@@ -21,10 +19,10 @@ def last_row(rows: list[str]) -> str:
 Use instead:
 
 ```python ok
-def last_row(rows: list[str]) -> str:
+def last_row(rows: list[str]) -> str | None:
     for row in rows:
         print(row)
-    return rows[-1]
+    return rows[-1] if rows else None
 ```
 
 ## What it does
@@ -49,7 +47,8 @@ reported, a new assignment ends the check.
       return value
   ```
 
-- **A name bound or read before the loop**: it keeps a value of its own when the loop runs zero times.
+- **A name bound or read before the loop.** The rule skips earlier mentions because the variable may already have a
+  value.
 
   ```python ok
   def last(values: list[int]) -> int | None:
@@ -59,10 +58,11 @@ reported, a new assignment ends the check.
       return value
   ```
 
-- **A name the loop's `else` binds**: the `else` runs whenever the loop ends without a `break`.
+- **A loop whose `else` mentions the name or exits the block.** The rule skips these loops. An `else` can set a fallback
+  value or return before the later read.
 
-- **A name a nested function, class or lambda mentions, one `global` or `nonlocal` declares, or a function that reads
-  its locals by name**.
+- **The placeholder `_`, names declared `global` or `nonlocal`, names captured by nested scopes, and functions that read
+  their locals by name.**
 
 - **A comprehension that binds the same name**: it has a variable of its own.
 
@@ -85,5 +85,6 @@ never reads. Neither looks at reads after the loop.
 - [pylint](https://github.com/pylint-dev/pylint) reports a loop variable that may be unbound after the loop as
   [undefined-loop-variable](https://pylint.readthedocs.io/en/stable/user_guide/messages/warning/undefined-loop-variable.html)
   (W0631).
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports a loop variable used
-  after its block as WPS441.
+- wemake-python-styleguide's
+  [WPS441](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.ControlVarUsedAfterBlockViolation)
+  covers variables from `for` and `with` blocks. It allows later reads in `assert` statements.

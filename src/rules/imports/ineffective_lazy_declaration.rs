@@ -92,8 +92,7 @@ fn list_entries(checker: &Checker, list: &LazyList, imports: &[ModuleImport], en
     }
 }
 
-// The list defers only the imports below it, so a listed module imported above it has loaded eagerly. The fix moves
-// the list above the first import.
+// Only imports executed after the assignment can see the list.
 fn late_list(checker: &Checker, list: &LazyList, imports: &[ModuleImport], listed: &FxHashSet<Module>) {
     let module_path = checker.module_path();
     let Some(early) = imports
@@ -141,7 +140,7 @@ fn lazy_keywords(checker: &Checker, imports: &[ModuleImport], enclosing: &[Modul
         .filter(|import| import.top && !is_lazy(import.stmt))
         .flat_map(|import| imported_modules(import.stmt))
         .map(|imported| imported.module.resolve(module_path))
-        // A package holding the file has loaded however it is imported, so its eager import loads nothing.
+        // The containing packages are already in `sys.modules` when the file runs.
         .filter(|key| !listed.contains(key) && !enclosing.contains(key))
         .collect();
     for import in imports.iter().filter(|import| !import.dead && is_lazy(import.stmt)) {

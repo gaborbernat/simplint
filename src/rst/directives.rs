@@ -9,24 +9,21 @@ pub(super) const BLANKS: [char; 2] = [' ', '\t'];
 // markdown-it lays out a line's indentation on tab stops four columns apart.
 const MYST_TAB: usize = 4;
 
-// A directive of a page with the argument and options under it: `.. name:: argument` with `:key: value` lines in
-// reStructuredText, or `{name} argument` behind a fence in MyST with `:key: value` lines or a `---` block under it. Each
-// line of the argument is a signature, as Sphinx reads them, so `.. data:: IDLE` followed by `SEND_RESPONSE` has two.
+// Each argument line can be a Sphinx object signature. For example, one `data` directive can name both `IDLE`
+// and `SEND_RESPONSE`.
 pub(crate) struct Directive {
     pub(crate) name: String,
     pub(crate) arguments: Vec<String>,
     pub(crate) options: Vec<(String, String)>,
 }
 
-// The directives of a page, and the targets of the object roles in its prose.
 #[derive(Default)]
 pub(crate) struct Markup {
     pub(crate) directives: Vec<Directive>,
     pub(crate) references: Vec<String>,
 }
 
-// The directives of a walk and the paragraphs of its prose, which a role is read from: a paragraph holds no code,
-// comment, option or raw content.
+// Role lookup uses prose paragraphs and skips code, comments, options and raw content.
 #[derive(Default)]
 pub(crate) struct Walked<'a> {
     markup: Markup,
@@ -43,8 +40,8 @@ impl Walked<'_> {
     }
 }
 
-// The lines of a page with the code the docstring classifier finds in them. A page has no opening quotes, so the
-// classifier reads its first line as the others: a blank line in front of the text leaves each line its own indent.
+// The docstring classifier handles the line after opening quotes specially. A leading blank preserves the
+// indentation of the page's first line.
 pub(crate) fn page_lines(text: &str) -> Vec<Classified<'_>> {
     let docstring = format!("\n{text}");
     let classified = classify_docstring(&docstring);
@@ -59,8 +56,7 @@ pub(crate) fn rst_markup(lines: &[Classified]) -> Markup {
     rst_walk(lines).finish(references)
 }
 
-// The spec of a directive is not known to the scanner, so the lines under any directive are its argument, and a
-// directive without arguments reads them as content, as docutils does. Either way they are prose a role can sit in.
+// Without the directive's schema, its indented lines could be arguments or body text. Both can contain roles.
 pub(crate) fn rst_walk<'a>(lines: &[Classified<'a>]) -> Walked<'a> {
     let mut walked = Walked::default();
     let mut walk = RstWalk::default();
@@ -91,15 +87,13 @@ struct RstWalk<'a> {
     simple_table: Option<SimpleTable>,
 }
 
-// The cells of a grid table's open rows, each walked on its own so a directive and its options can sit in one cell.
-// A cell is keyed by the column its text starts at, so a cell spanning rows keeps its walker across them.
+// Key cells by their starting column so a directive and its options can span rows.
 #[derive(Default)]
 struct Grid<'a> {
     cells: Vec<(usize, RstWalk<'a>)>,
 }
 
-// A simple table: where each column starts, in characters, as the runs of `=` on its top border give them, and how
-// many borders the table has passed. The second border ends it, as does a blank line.
+// The runs of `=` in a simple table's top border determine its column offsets in characters.
 struct SimpleTable {
     columns: Vec<usize>,
     borders: u8,
@@ -147,8 +141,8 @@ impl<'a> RstWalk<'a> {
         if self.substitution.as_ref().is_some_and(|(indent, _)| line.indent <= *indent) {
             self.substitution = None;
         }
-        // The docstring classifier reads explicit markup and its continuation as not prose, while this walk reads
-        // directives and substitution definitions from those lines itself.
+        // The docstring classifier excludes explicit markup from prose. This scanner still needs its directives and
+        // substitution definitions.
         let code =
             classified.code && self.substitution.is_none() && !(classified.opens && explicit(line.text).is_some());
         if let Some(argument) = self.argument.as_mut() {
@@ -553,8 +547,7 @@ struct Fence<'a> {
 }
 
 impl<'a> Fence<'a> {
-    // A fence of at least three backticks, tildes or colons, opened by at most three spaces; a backtick fence's info
-    // holds no backtick, as that would be inline code.
+    // CommonMark forbids backticks in the info string of a backtick fence.
     fn opening(text: &'a str, base: usize) -> Option<Self> {
         let body = indented(text, base)?;
         let marker = body.chars().next().filter(|char| matches!(char, '`' | '~' | ':'))?;
@@ -563,7 +556,6 @@ impl<'a> Fence<'a> {
         (length >= 3 && !(marker == '`' && info.contains('`'))).then_some(Self { marker, length, info })
     }
 
-    // The number of lines of the content before the closing fence, or of all of them when no fence closes it.
     fn content_length(self, content: &[Line], base: usize) -> usize {
         content.iter().position(|line| self.closes(line.text, base)).unwrap_or(content.len())
     }
@@ -577,7 +569,6 @@ impl<'a> Fence<'a> {
     }
 }
 
-// The indentation of a MyST line in columns, and the text after it.
 fn myst_indent(text: &str) -> (usize, &str) {
     let body = text.trim_start_matches(BLANKS);
     (columns(&text[..text.len() - body.len()], MYST_TAB), body)
@@ -600,7 +591,6 @@ fn is_thematic_break(body: &str) -> bool {
         && body.chars().all(|char| char == marker || char == ' ' || char == '\t')
 }
 
-// An ATX heading: one to six `#` followed by a blank or the end of the line.
 fn is_heading(body: &str) -> bool {
     let hashes = body.bytes().take_while(|&byte| byte == b'#').count();
     (1..=6).contains(&hashes) && (body.len() == hashes || body[hashes..].starts_with(BLANKS))
@@ -693,8 +683,7 @@ fn unquote(line: Line<'_>) -> Line<'_> {
     }
 }
 
-// The blocks of a MyST page, one per fence whose content is read as MyST: a block reads its lines in turn, and the
-// content of a fence is a block of its own, which the walk reads once the block of the fence's line is paused.
+// Each nested MyST fence gets a new block so its parent can resume after the closing fence.
 struct MystBlock<'b, 'a> {
     lines: &'b [Line<'a>],
     index: usize,
@@ -792,7 +781,7 @@ impl<'b, 'a> MystBlock<'b, 'a> {
     }
 }
 
-// The MyST blocks are read with an explicit stack, so a page nested deeper than the thread's stack reads all the same.
+// Use an explicit stack because pages can contain arbitrarily nested directive fences.
 fn myst_block<'a>(lines: &[Line<'a>], walked: &mut Walked<'a>) {
     let mut blocks = vec![MystBlock::new(lines)];
     while let Some(block) = blocks.last_mut() {
@@ -803,11 +792,10 @@ fn myst_block<'a>(lines: &[Line<'a>], walked: &mut Walked<'a>) {
     }
 }
 
-// A fence that names a directive, `{name} argument`, records it with the options at the start of its content. The rest
-// of the content is returned for the walk to read as MyST, unless the directive reads it as code; `eval-rst` holds
-// reStructuredText, which is read here as such.
+// Parse directive options before scanning the body. Most bodies contain MyST, but `eval-rst` contains
+// reStructuredText and verbatim directives contain no markup.
 fn myst_fence<'b, 'a>(fence: Fence<'_>, content: &'b [Line<'a>], walked: &mut Walked<'a>) -> Option<&'b [Line<'a>]> {
-    // The directives MyST reads the content of as code, so their lines hold no prose.
+    // These bodies can contain examples of directives that must stay literal.
     const CODE_DIRECTIVES: [&str; 11] = [
         "code-block",
         "code",

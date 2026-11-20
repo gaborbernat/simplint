@@ -2,7 +2,7 @@ use rustc_hash::FxHashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-// A run file by a number, so the index keys its maps by copies of it instead of hashing its path.
+// Small numeric keys avoid repeatedly hashing file paths.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct FileId(u32);
 
@@ -23,7 +23,7 @@ impl FileIds {
         &self.paths[id.0 as usize]
     }
 
-    // Copy on write, so a project that still holds the table keeps its ids; numbering only grows when a path is new.
+    // Keep existing snapshots valid when interning a new path.
     pub(super) fn intern(files: &mut Arc<Self>, path: &Path) -> FileId {
         if let Some(id) = files.ids.get(path) {
             return *id;

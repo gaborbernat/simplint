@@ -164,8 +164,6 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     );
 }
 
-// Each case checks the file once, edits the file named, and checks again: the cache must check it again, so the second
-// run reports what the first could not.
 #[test_case(
     &[("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"limit\"]\n"), ("module.py", "limit = 3\n")],
     "SMP102",
@@ -178,8 +176,7 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("pkg/__init__.py", ""),
     (0, 1) ; "directory_becomes_a_package"
 )]
-// With the directory a namespace package, a file's package root stays the same when `__init__.py` appears beside it, so
-// the cache must still notice: `absolute-sibling-import` reads that file.
+// Adding __init__.py changes absolute-sibling-import findings even when a namespace package keeps the same root.
 #[test_case(
     &[
         ("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"),
@@ -231,8 +228,7 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write(".pre-commit-config.yaml", "repos:\n  - repo: local\n    hooks:\n      - id: flake8-lazy\n"),
     (1, 0) ; "flake8_lazy_configured"
 )]
-// A `hatch.toml` that starts configuring the custom build hook makes its class used, so the cached report is checked
-// again.
+// Enabling the custom Hatch build hook makes its class reachable.
 #[test_case(
     &[
         ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"),
@@ -246,8 +242,7 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     Change::Write("hatch.toml", "[build.hooks.custom]\n"),
     (1, 0) ; "hatch_hook_configured"
 )]
-// A `pyproject.toml` that appears in a test directory makes it a nested project, which its duplicates are compared
-// within, so the cached duplicates of the run must not be reused.
+// A new nested project changes which files duplicate-code compares.
 #[test_case(
     &[("pkg/parser.py", REPEATED), ("roots/test-a/parser.py", REPEATED)],
     "SMP530",
@@ -270,8 +265,7 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     (0, 1)
     ; "clean_file_edited"
 )]
-// A name another file reads off a module counts as used; once it is a base class instead, the run's sets hold the same
-// names in another order, and the cached clean result of the constant's module no longer holds.
+// An attribute read and a base class can use the same name. The cache must distinguish how the other module uses it.
 #[test_case(
     &[
         ("module.py", COMPARED),
@@ -389,8 +383,7 @@ fn import_closing_a_cycle_in_another_file_withdraws_the_cached_fix() {
     assert_eq!((before, closed, fixable(root.path())), (true, false, true));
 }
 
-// Only a rule that reads other files of the run keys a file's result by the whole run, so an edit to another file keeps
-// the result of a file checked by per-file rules alone, and invalidates one checked by a cross-file rule.
+// An import in a different file changes cross-file findings while leaving per-file findings alone.
 #[test_case("SMP101", 0 ; "per_file_rule_keeps_the_cached_result")]
 #[test_case("SMP401", 1 ; "cross_file_rule_checks_the_file_again")]
 fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected: i32) {
@@ -400,8 +393,7 @@ fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected
     assert_eq!(check(root.path(), &["--select", select]).0, expected);
 }
 
-// A run without `duplicate-code` caches the facts without the statements it compares, so a later run that selects it
-// collects them again.
+// Enabling duplicate-code requires statement data that an earlier run did not collect.
 #[test]
 fn facts_cached_without_duplicate_code_are_collected_again_for_it() {
     let root = project(&[("first.py", REPEATED), ("second.py", REPEATED)]);
@@ -424,8 +416,7 @@ fn duplicate_code_checks_a_cached_module_when_pytest_stops_collecting_it() {
     assert_eq!(cached, check(root.path(), &["--select", "SMP530", "--no-cache"]));
 }
 
-// The fixture requests are a part of the facts only `unused-fixture` reads, so a run without it caches facts that lack
-// them, and a later run that selects it collects them again rather than report a requested fixture.
+// Enabling unused-fixture requires fixture requests that an earlier run did not collect.
 #[test]
 fn facts_cached_without_fixture_requests_are_collected_again_for_unused_fixture() {
     let root = project(&[
@@ -437,8 +428,7 @@ fn facts_cached_without_fixture_requests_are_collected_again_for_unused_fixture(
     assert_eq!((first, cached, check(root.path(), &["--select", "SMP815", "--no-cache"]).0), (0, 0, 0));
 }
 
-// Like the files' facts, the documentation is read once and kept while its pages keep their modification times and
-// sizes: an edit that keeps both goes unseen, which shows the run did not read the page again.
+// Preserve the size and modification time so the cache treats the edited documentation page as unchanged.
 #[test]
 fn documentation_is_reused_while_its_pages_are_unchanged() {
     let root = documented_project(&[("docs/api.rst", ":func:`app.core.helper`\n")]);
@@ -448,7 +438,7 @@ fn documentation_is_reused_while_its_pages_are_unchanged() {
     assert_eq!((first, cached, check(root.path(), &["--select", "SMP409", "--no-cache"]).0), (0, 0, 1));
 }
 
-// A project whose `helper` only its documentation names, which `unused-definition` reads.
+// The documentation is the only reference that makes helper reachable.
 fn documented_project(pages: &[(&'static str, &'static str)]) -> TempDir {
     let mut files = vec![
         ("pyproject.toml", "[project]\nname = \"app\"\n"),
@@ -516,8 +506,7 @@ fn copy_reported(root: &Path) -> &'static str {
     }
 }
 
-// A `conf.py` that appears, goes, or moves into or out of a Sphinx documentation directory changes the copy the rule
-// reports, though no page changed, and the warm cache must follow it.
+// Moving conf.py changes which copy of a parameter is reported, even when the documentation pages are unchanged.
 #[test_case(&[], Change::Write("docs/conf.py", "autoclass_content = \"init\"\n"), ("class", "init") ; "appears")]
 #[test_case(
     &[("docs/conf.py", "autoclass_content = \"init\"\n")],
@@ -560,7 +549,7 @@ fn conf_py_changes_are_seen_by_a_warm_cache(
     assert_eq!((first, copy_reported(root.path())), expected);
 }
 
-// Keeping the documentation is best effort, so a cache it cannot write is reported and the run goes on.
+// Failure to write the documentation cache must not stop linting.
 #[test]
 fn documentation_cache_that_cannot_be_written_is_reported() {
     let root = documented_project(&[("docs/api.rst", ":func:`app.core.helper`\n"), ("blocked", "")]);
@@ -700,8 +689,7 @@ fn empty_caches_of_other_builds_expire_by_their_own_age() {
     assert_eq!((stale.exists(), fresh.exists()), (false, true));
 }
 
-// A `cache-dir` from the repository's configuration stays inside the project, so a PR cannot make simplint write its
-// cache, or clean another directory, outside the run; the default location serves instead.
+// A repository-configured cache outside the project falls back to the default location.
 #[test]
 fn cache_dir_outside_the_project_falls_back_to_the_default() {
     let outside = empty_project();
@@ -729,8 +717,7 @@ fn cache_dir_through_a_link_outside_the_project_falls_back_to_the_default() {
     );
 }
 
-// A link committed in place of the default cache directory, or of simplint's directory in it, cannot point the cache
-// out of the project either; with no directory inside it left, the run does not cache.
+// A symlink at the fallback cache location can also lead outside the project. In that case caching is disabled.
 #[cfg(unix)]
 #[test_case(&[], ".ruff_cache" ; "default_without_configuration")]
 #[test_case(&[("pyproject.toml", "[tool.ruff]\n")], ".ruff_cache" ; "default")]
@@ -764,8 +751,7 @@ fn cache_dir_flag_may_point_outside_the_project() {
     assert_eq!((outside.path().join("simplint").is_dir(), root.path().join(".ruff_cache").exists()), (true, false));
 }
 
-// A stale build directory is removed only when it has the shape of one and holds nothing but cache files; anything
-// else in the `simplint` directory stays, however old.
+// Unrelated files in the cache directory must survive automatic cleanup, regardless of their age.
 #[test_case("notes", "notes.txt" ; "name_is_not_a_build")]
 #[test_case("0.0.1-00000000000000a1", "notes.txt" ; "holds_a_file_other_than_a_cache")]
 fn stale_directories_that_are_not_caches_of_other_builds_stay(name: &str, file: &str) {
@@ -793,8 +779,6 @@ fn link_in_the_cache_directory_is_kept_with_its_target() {
     assert_eq!((link.symlink_metadata().is_ok(), read(outside.path(), "1")), (true, "kept".to_owned()));
 }
 
-// Reports cached without fixes come back as a run without the cache reports them: with their fixes, help notes and
-// suppression comments applied as they are in a fresh run.
 #[test_case(&[] ; "concise")]
 #[test_case(&["--output-format", "full"] ; "full")]
 #[test_case(&["--output-format", "json"] ; "json")]
@@ -806,7 +790,7 @@ fn cached_findings_report_the_same_as_a_fresh_run(flags: &[&str]) {
     assert_eq!((&first, &cached), (&fresh, &fresh));
 }
 
-// Findings with fixes, help notes, a suppression comment and one without a fix, as a run without fixes reports them.
+// Include a suppressed finding and findings with and without fixes to exercise each output format.
 const FINDINGS: &str = "import os\n\nVALUE = 1\n\n\ndef f(x):\n    y = 2\n    return x\n\n\ndef \
                         g(n):\n    for i in range(n):\n        pass\n    z = 3  # noqa: \
                         SMP101\n    return \"a\" + \"b\"\n";
@@ -840,8 +824,7 @@ fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &
     );
 }
 
-// A file that does not parse is cached as having nothing to report, yet its warning shows on every run, cached or
-// not.
+// A cached syntax failure must still produce the parse warning on each run.
 #[test_case(&["--output-format", "concise"] ; "concise")]
 #[test_case(&["--output-format", "full"] ; "full")]
 #[test_case(&["--output-format", "json"] ; "json")]
@@ -853,8 +836,7 @@ fn warm_run_warns_again_about_a_file_that_does_not_parse(flags: &[&str]) {
     assert_eq!((&first, &warm, warm.2.as_str()), (&fresh, &fresh, UNPARSED));
 }
 
-// A file that does not parse is cached without facts, so a warm run that indexes again, as another file changed, finds
-// none for it and still warns about it.
+// Rebuilding the index after another file changes must preserve the parse warning.
 #[test]
 fn file_that_does_not_parse_has_no_cached_facts() {
     let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
@@ -885,12 +867,8 @@ fn unreadable_file_is_reported_again_on_a_warm_run(select: &str, expected: (bool
     assert_eq!((stdout.contains("E902"), stderr.contains("Failed to lint latin.py")), expected);
 }
 
-// The index a warm run reuses its reports from is built from the run's files and settings. Once any of those change,
-// the next warm run must answer as a run without the cache does, so each change to an index input is checked against
-// a fresh run.
-//
-// `helpers.py` is reported while nothing imports it, so each change to the importer flips its reports, and a warm run
-// that reused them from the first run would miss the flip.
+// Compare warm and uncached runs after each change to the index. Adding or removing the import changes whether
+// `helpers.py` is reported.
 #[test_case(
     &[("helpers.py", HELPER), ("client.py", CLEAN_MODULE)],
     Change::Write("client.py", CLIENT),
@@ -932,8 +910,7 @@ fn unreadable_file_is_reported_again_on_a_warm_run(select: &str, expected: (bool
     "SMP401",
     &["client.py"] ; "linted_file_removed"
 )]
-// A file outside the linted paths that the index resolves an import to: adding it changes the index though the run's
-// files stay the same.
+// Import resolution can change when a file appears outside the linted paths.
 #[test_case(
     &[("src/client.py", CLIENT), ("src/helpers.py", "")],
     Change::Write("src/helpers.py", HELPER),
@@ -975,8 +952,7 @@ fn warm_run_after_index_input_changes_matches_a_fresh_run(
     assert_eq!(check(root.path(), &args), fresh_run(root.path(), &args));
 }
 
-// A directory a link names resolves through the link, so a module removed behind it changes the index as one removed
-// in place does.
+// Removing a module behind a directory symlink must invalidate the same results as removing it directly.
 #[cfg(unix)]
 #[test]
 fn warm_run_after_a_module_behind_a_link_is_removed_matches_a_fresh_run() {
@@ -1125,8 +1101,7 @@ fn full_text_is_kept_when_another_file_joins_the_run() {
     assert_eq!(warm, full_report(root.path(), &["--no-cache"], &[]));
 }
 
-// A fix the read-only file cannot take leaves the file as it is, so the file keeps its reports, and a later run reports
-// them instead of reusing a clean result.
+// A failed write must not cache the result that applying the fix would have produced.
 #[test]
 fn unwritten_fix_is_not_cached_as_clean() {
     let source = "__all__ = (\"f\",)\n\n\ndef f() -> None:\n    \"\"\"Do.\"\"\"\n";
@@ -1170,9 +1145,8 @@ fn a_large_invalid_module_reports_the_same_parse_error_with_a_cold_cache() {
     assert_eq!(checked, fresh_run(root.path(), &args));
 }
 
-// A `--diff` run keeps its fixes in memory. A file linted after a fix in another file sees that fix, so its reports are
-// not the disk's and a later run must not reuse them: `writer.py` repeats `reader.py` only until `reader.py`'s fix
-// changes its statements.
+// In the in-memory diff, fixing reader.py removes the duplicate in writer.py. A later run still sees the duplicate
+// on disk and must report it.
 #[test]
 fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
     let body = r#"def parse_lines(text):
@@ -1206,7 +1180,6 @@ fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_d
     });
 }
 
-// Deletes the file `setup` writes, which the run's cache must not hide: the mirrored source the test reads is gone.
 fn checked_again_once_its_source_is_deleted(setup: impl FnOnce(&Path, &TempDir) -> PathBuf) {
     let outside = empty_project();
     let root = project(&[
@@ -1240,8 +1213,7 @@ fn private_import_is_checked_again_once_its_linked_source_is_deleted() {
     });
 }
 
-// Reports that name a path relative to the working directory are cached with the directory they were made in, so a run
-// from another directory names its paths as a run without the cache does.
+// Cached paths must display relative to the working directory of the current run.
 #[test_case(
     &[
         ("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\n"),
@@ -1279,8 +1251,7 @@ fn cached_report_names_the_paths_of_the_directory_it_runs_in(files: &[(&str, &st
     assert_eq!(warm, run(&app, &["--no-cache"]));
 }
 
-// A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
-// earlier run does not stand once that file is gone.
+// Deleting the source file a test mirrors can expose a private-import violation in the unchanged test.
 #[test]
 fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
     let root = project(&[
@@ -1312,8 +1283,7 @@ fn flattened_package_is_checked_again_once_a_sibling_is_added() {
     assert_eq!((cold, warm.0, warm.1.matches("SMP311").count(), warm == fresh), (0, 1, 3, true));
 }
 
-// An `__init__.py` written into a directory that already exists changes that directory alone, not the run's files, so
-// the cached reports are checked again only through the layout the disk check reads.
+// Adding __init__.py changes the package layout even when no linted file changes.
 #[test]
 fn flattened_package_is_checked_again_once_a_package_appears() {
     let root = project(&[
@@ -1349,8 +1319,7 @@ fn private_import_is_checked_again_once_its_submodule_appears() {
     );
 }
 
-// The cache file goes to a temporary file renamed over it, so a build directory that takes no new file, or a
-// directory where the cache file goes, fails the write.
+// Atomic replacement must report an error if it cannot create the temporary file or replace the destination.
 #[cfg(unix)]
 #[test_case(false ; "read_only_directory")]
 #[test_case(true ; "directory_in_place_of_the_file")]

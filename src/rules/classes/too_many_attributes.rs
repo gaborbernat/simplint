@@ -6,7 +6,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::syntax::{Declares, dataclass_decorator, dataclass_fields, instance_writes, is_classmethod};
 
-// A class holding many attributes mixes several responsibilities, which smaller classes it holds would each name.
 pub fn too_many_attributes(checker: &Checker) {
     let limit = checker.settings.project.knobs.max_instance_attributes;
     for class in checker.class_defs() {

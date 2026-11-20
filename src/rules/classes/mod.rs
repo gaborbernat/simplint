@@ -35,14 +35,13 @@ fn require_options(
     options: &[&'static str],
     offer: impl Fn(&Decorated, &[&'static str]) -> Option<Offer>,
 ) {
-    // `slots=` and `kw_only=` arrived in Python 3.10; an older target cannot use them. `frozen=` has no such limit.
+    // Dataclasses gained slots and keyword-only fields in Python 3.10.
     if options.iter().any(|option| matches!(*option, "slots" | "kw_only"))
         && checker.target_version() < dataclass_kw_only::SINCE
     {
         return;
     }
-    // A library's public dataclasses are left alone, since their users construct, subclass or call them by position,
-    // which these options change.
+    // Changing a library's public dataclass can break external constructors and subclasses.
     let exempt = library_api(checker);
     for class in checker.class_defs() {
         let Some(decorated) = Decorated::parse(checker, class) else {
@@ -61,8 +60,7 @@ fn require_options(
         if offer.as_ref().is_some_and(|offer| offer.unreported) {
             continue;
         }
-        // The fix cannot take a key out of a splat, so adding the option would repeat it. The offer still runs for its
-        // related locations and note.
+        // A `**` argument can already supply the missing option. Keep the diagnostic but avoid a duplicate keyword.
         let passed = missing.iter().any(|option| splat_value(&decorated.splat, option).is_some());
         let offered = offer.map(|offer| Offer { options: if passed { Vec::new() } else { offer.options }, ..offer });
         let (fix, title, related, note) = match offered {
@@ -98,14 +96,12 @@ struct Decorated<'a> {
     func: &'a Expr,
     keywords: &'a [ast::Keyword],
     splat: Vec<(&'a str, &'a Expr)>,
-    // A decorator below `@dataclass` runs first, and `slots=True` makes the dataclass return a new class, which the
-    // decorator below never saw.
+    // A decorator below @dataclass receives the original class before slots=True creates a replacement.
     wrapped: bool,
 }
 
 impl<'a> Decorated<'a> {
-    // `None` for a class without a `@dataclass` decorator, or whose `**` splat has keys that cannot be read, as such a
-    // splat may set any option.
+    // An unreadable `**` mapping could already supply the option.
     fn parse(checker: &'a Checker, class: &'a ast::StmtClassDef) -> Option<Self> {
         let is_dataclass = |func: &Expr| checker.semantic().resolves_to(func, &["dataclasses", "dataclass"]);
         let decorator = dataclass_decorator(class, &is_dataclass)?;
@@ -124,7 +120,6 @@ impl<'a> Decorated<'a> {
     }
 }
 
-// The options the `**` arguments among `keywords` pass with their values, or `None` when one of them cannot be read.
 fn splatted_options<'s>(checker: &'s Checker, keywords: &'s [ast::Keyword]) -> Option<Vec<(&'s str, &'s Expr)>> {
     let mut passed = Vec::new();
     for keyword in keywords.iter().filter(|keyword| keyword.arg.is_none()) {
@@ -135,13 +130,12 @@ fn splatted_options<'s>(checker: &'s Checker, keywords: &'s [ast::Keyword]) -> O
     passed.iter().all(|(option, _)| seen.insert(*option)).then_some(passed)
 }
 
-// The pairs of a splat of a module-level name bound once, to a dict literal or `dict(...)` call.
 fn splat_pairs<'s>(checker: &'s Checker, value: &'s Expr) -> Option<Vec<(&'s str, &'s Expr)>> {
     let Expr::Name(name) = value else {
         return literal_pairs(checker, value);
     };
     let id = name.id.as_str();
-    // A later store or dict method changes the keys the literal gives, which nothing here follows.
+    // Reading the initial literal after mutation or rebinding could give us stale keys.
     if checker.semantic().bindings(id).len() != 1 || is_mutated(checker, id) {
         return None;
     }
@@ -182,7 +176,6 @@ fn is_mutated(checker: &Checker, name: &str) -> bool {
 }
 
 impl<'a> Decorated<'a> {
-    // The value the decorator passes for `name`, by keyword or by a splat. A splat cannot repeat a keyword's name.
     fn option(&self, name: &str) -> Option<&'a Expr> {
         self.keywords
             .iter()
@@ -196,9 +189,7 @@ fn splat_value<'a>(splat: &[(&str, &'a Expr)], option: &str) -> Option<&'a Expr>
     splat.iter().find(|(name, _)| *name == option).map(|(_, value)| *value)
 }
 
-// The options a fix sets, any edits it makes beyond the decorator, and how safe it is. With no options the report has
-// no fix; it still points at `related` and adds `note` to its message. An `unreported` offer reports nothing: Ruff
-// reports the class, or the option would break it on the target version.
+// An empty options list preserves the diagnostic and related locations without offering an edit.
 struct Offer {
     options: Vec<&'static str>,
     edits: Vec<Edit>,
@@ -218,9 +209,7 @@ impl Offer {
     }
 }
 
-// The classes a library's users construct and subclass: its public classes and the public classes nested in them, as
-// the options a rule adds change what those users can do with an instance. A public name a module with `__all__` leaves
-// out is not one, unless a public name's signature refers to it.
+// A public class nested inside an exported class can also have callers outside the library.
 fn library_api<'a>(checker: &'a Checker) -> impl Fn(&ast::StmtClassDef) -> bool + 'a {
     let api: Vec<TextRange> = checker
         .body()
@@ -235,8 +224,7 @@ fn library_api<'a>(checker: &'a Checker) -> impl Fn(&ast::StmtClassDef) -> bool 
     }
 }
 
-// The decorator's arguments with `options` set, placed before a `slots` the decorator lists when `frozen` is added, so
-// `frozen=True` lands before `slots=True` whichever of the two fixes runs first.
+// Keep frozen before slots so applying the two fixes in either order produces the same decorator.
 fn decorator_arguments(checker: &Checker, keywords: &[ast::Keyword], options: &[&str]) -> Vec<String> {
     let kept: Vec<&ast::Keyword> = keywords
         .iter()
@@ -254,7 +242,6 @@ fn decorator_arguments(checker: &Checker, keywords: &[ast::Keyword], options: &[
     arguments
 }
 
-// `frozen` precedes `slots`; any other option has no rank and is appended.
 fn option_rank(option: &str) -> Option<usize> {
     ["frozen", "slots"].iter().position(|name| *name == option)
 }

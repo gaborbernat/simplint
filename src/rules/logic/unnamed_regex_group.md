@@ -1,13 +1,12 @@
-Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its
-number, so the groups are named with `(?P<name>...)`.
+Flags a regular expression with two or more unnamed captures, or one unnamed capture that the code reads by number.
 
 ## Why is this bad?
 
 A reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds.
 The [regex HOWTO](https://docs.python.org/3/howto/regex.html#non-capturing-and-named-groups) says group numbers become
 hard to track in a complex pattern. A name says what the part is where the pattern is written, and `match["text"]` says
-it again where the code reads it. Numbers also shift when a group is added or moved, while code that reads a name keeps
-working. A group nothing reads is clearer as `(?:...)`, which takes no number, so the groups around it keep theirs.
+it again where the code reads it. Adding or moving a capture can shift existing group numbers. Use a named capture for
+text callers need, or a non-capturing group `(?:...)` when callers need only the grouping.
 
 ## Example
 
@@ -35,27 +34,26 @@ def parse(line):
     return match["text"], match["tag"]
 ```
 
-Simplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no
-name to be read by, and the fix turns it into a non-capturing group instead, as described below.
+Choose a name for each capture the code reads. Simplint can remove unused captures automatically.
 
 ## What it does
 
 ### Active on
 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
-  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and
-  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,
-  reading the verbose flag from [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
-  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
-  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
+  concatenation. The rule reads the pattern argument of `compile`, `match`, `prefixmatch`, `search`, `fullmatch`,
+  `finditer`, `findall`, `split`, `sub` and `subn`. For a compiled pattern it also follows calls to its methods to find
+  out how the captures are used. The rule counts the unnamed groups of the pattern, reading the verbose flag from
+  [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. If simplint cannot resolve the flags, it
+  skips the pattern unless the pattern itself enables verbose mode globally.
 
   - **Two or more unnamed groups** are reported at the pattern, unless the call is `findall` or `split`.
   - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call
     with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound
     once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop
     variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number
-    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since
-    returning the group's text there is the normal use.
+    the code reads may belong to the named group. A single capture in `split`, `findall`, `sub` or `subn` is left alone.
 
   ```python report
   import re
@@ -73,16 +71,13 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
       return bool(re.match(r"(?:\d+)\.(?:\d+)", text))
   ```
 
-- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the
-  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from
-  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its
-  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is
-  unsafe.
+- **Unsafe fix.** Simplint changes unused unnamed captures from `(` to `(?:`. It follows uses such as truth tests,
+  comparisons to `None` and reads of the whole match. For `sub` and `subn`, the replacement must be a literal without
+  backslashes. A backreference in the pattern, an untracked use of the match, or a string escape that changes the source
+  offsets prevents the fix. Removing captures changes the compiled pattern's group count.
 
-  A `split` or `findall` call is left unfixed too, since its result holds the groups' text. A name bound more than once
-  in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a class body, a name
-  declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since the reads of those
-  can come from code the rule does not see.
+  Simplint also withholds the fix if the pattern is bound in a class body, its name has multiple bindings, or code
+  outside the scope may read the name. Examples follow.
 
   - **A pattern in a class body**: reported, with no fix.
 

@@ -1,4 +1,4 @@
-Flags rows of a literal `pytest.mark.parametrize` list that are not `pytest.param(..., id=...)`.
+Flags parametrized cases that lack a distinct, readable ID and separate lists of string IDs.
 
 ## Why is this bad?
 
@@ -94,8 +94,8 @@ An `ids=` list gets one that moves each id into its row.
       assert sum(values) == expected
   ```
 
-- **Rows whose id appears more than once in the list**: pytest suffixes the shared id, such as `select0` and `select1`,
-  so the ids say nothing about the cases. Numbers count by value, so `0x10` and `16` repeat each other.
+- **Rows with duplicate IDs inferred from their values**: by default, pytest suffixes the shared id, such as `select0`
+  and `select1`, so the ids say nothing about the cases. Numbers count by value, so `0x10` and `16` repeat each other.
 
   ```python report
   import pytest
@@ -182,19 +182,16 @@ An `ids=` list gets one that moves each id into its row.
       assert sum(values) == expected
   ```
 
-- **Calls to a helper whose last statement returns an id**: a function the module defines once carries the id when its
-  last statement is a `return` of
-  [`pytest.param(..., id=...)`](https://docs.pytest.org/en/stable/reference/reference.html#pytest-param) or a `raise`,
-  or an `if`, `match`, `try` or `with` whose branches all end that way, and every `return` in it gives a `pytest.param`
-  with an id. Loops don't count, and neither does a `with` around a manager that can swallow exceptions:
+- **Helpers that supply IDs.** The rule follows a synchronous function defined once in the module. Every `return` must
+  give a [`pytest.param(..., id=...)`](https://docs.pytest.org/en/stable/reference/reference.html#pytest-param). The
+  final statement must return or raise, either directly or on every branch of an `if`, `match`, `try` or `with`. A loop
+  may run zero times. A context manager such as
   [`contextlib.suppress`](https://docs.python.org/3/library/contextlib.html#contextlib.suppress), `pytest.raises`,
-  [`contextlib.ExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.ExitStack) and
-  [`contextlib.AsyncExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack), or any
-  manager that is not a call, such as a name. A helper that returns a tuple or a row without an id, an `async` helper,
-  one that yields, one whose last statement does not end that way, or a call to a function the module does not define is
-  reported where the call is written. Decorated helpers stay reported, except
-  [`functools.cache`](https://docs.python.org/3/library/functools.html#functools.cache) and
-  [`functools.lru_cache`](https://docs.python.org/3/library/functools.html#functools.lru_cache), and so do lambdas.
+  [`contextlib.ExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.ExitStack),
+  [`contextlib.AsyncExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack) or one
+  entered by name could suppress an exception and let the function reach the end. The rule reports calls to helpers it
+  cannot verify, including generators, lambdas and decorated functions. It accepts the
+  [`functools.cache` and `lru_cache` decorators](https://docs.python.org/3/library/functools.html#functools.lru_cache).
 
   ```python ok
   import pytest
@@ -224,7 +221,7 @@ An `ids=` list gets one that moves each id into its row.
   ```
 
 - **`ids=` that generates the ids**: a callable, such as a function or a lambda, or an expression that is not a list of
-  string literals, makes the ids from the values, so they cannot drift from the rows.
+  string literals, is outside the rule's checks.
 
   ```python ok
   import pytest
@@ -252,6 +249,7 @@ An `ids=` list gets one that moves each id into its row.
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open pull request
-  [#22136](https://github.com/astral-sh/ruff/pull/22136) would flag boolean-only parametrize lists without `ids=`, a
-  subset of this rule. Open issue [#14994](https://github.com/astral-sh/ruff/issues/14994) asks the opposite, replacing
-  `ids=` with `pytest.param(id=...)`.
+  [#22136](https://github.com/astral-sh/ruff/pull/22136) would require IDs for boolean-only lists such as
+  `[True, False]`. This rule accepts those distinct values as IDs. Issue
+  [#14994](https://github.com/astral-sh/ruff/issues/14994) proposes moving separate IDs into `pytest.param(id=...)`,
+  which this rule checks.

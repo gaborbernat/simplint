@@ -65,7 +65,6 @@ impl Visitor<'_, '_> {
         );
     }
 
-    // `x += x + y` adds `x` twice, where `x += y` was meant.
     fn repeated_target(&self, augmented: &ast::StmtAugAssign) {
         let op = augmented.op;
         // `x + y + z` parses as `(x + y) + z`, so the target sits at the bottom of the left operands.
@@ -96,7 +95,6 @@ impl Visitor<'_, '_> {
     }
 }
 
-// A single target and a value that are both plain names or attributes, which reading has no effect on.
 fn plain(stmt: &Stmt) -> Option<(&Expr, &Expr)> {
     let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
         return None;

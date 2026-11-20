@@ -1,12 +1,10 @@
-Flags a nested `for` clause that only unpacks its iterable, and moves the unpacking into the element, which Python 3.15
-allows.
+Flags two nested `for` clauses that Python 3.15 can express with unpacking in a comprehension.
 
 ## Why is this bad?
 
-A second `for` clause that only unpacks the outer item can move into the element.
-[PEP 798](https://peps.python.org/pep-0798/#rationale) lets the element unpack with `*` for lists, sets and generators,
-and with `**` for dicts, as `[*a, *b]` already does in a display. The PEP notes that students often reverse the two
-`for` clauses, a mistake one clause rules out.
+When the inner loop only yields the elements of each group, `[*group for group in groups]` expresses the same iteration
+in one clause. [PEP 798](https://peps.python.org/pep-0798/#rationale) also allows `*` in sets and generator expressions
+and `**` in dict comprehensions.
 
 ## Example
 
@@ -46,17 +44,14 @@ flat = [*group for group in groups]
 
 ## What it does
 
-Reports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner
-clause unpacks [`.items()`](https://docs.python.org/3/builtins/stdtypes.html#dict.items), when:
-
-- the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no
-  `async` in either.
-- the element is the inner clause's target, a name other than `group`. For a dict, the key and value are the two names
-  of the inner target.
+The rule checks comprehensions and generator expressions with exactly two synchronous `for` clauses and no filters. For
+a list, set or generator, the outer clause binds a name, the inner clause iterates that name, and the element is the
+inner target. For a dict, the inner clause must unpack `name.items()` into two distinct names and use them in order as
+the key and value.
 
 ### Active on
 
-The list, set and generator comprehensions, which unpack with `*`:
+Lists, sets and generator expressions unpack each group with `*`.
 
 ```toml config
 [project]
@@ -75,7 +70,7 @@ flat_set = {*group for group in groups}
 flat_gen = (*group for group in groups)
 ```
 
-The dict comprehensions, which unpack with `**`:
+Dict comprehensions unpack each mapping with `**`.
 
 ```toml config
 [project]
@@ -92,7 +87,7 @@ pairs = [{"a": 1}, {"b": 2}]
 merged = {**entry for entry in pairs}
 ```
 
-Parentheses around the key and the value go with them:
+The fix removes parentheses around the original key and value.
 
 ```toml config
 [project]
@@ -145,7 +140,7 @@ merged = {**entry for entry in pairs}
   ```
 
   ```python ok
-  pairs = [{"a": 1}, {"b": 2}]
+  pairs = [{("a", 1): True}, {("b", 2): True}]
   keys = {key: value for entry in pairs for key, value in entry.keys()}
   ```
 
@@ -164,10 +159,9 @@ merged = {**entry for entry in pairs}
 
 ### Fix
 
-The fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for
-a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real
-[`dict`](https://docs.python.org/3/builtins/stdtypes.html#dict). No fix is offered when a comment lies in the element or
-the inner `for` clause, since the rewrite would drop it. A comment between the clauses keeps the report without a fix:
+simplint marks list, set and generator rewrites as safe. The dict rewrite is unsafe because `**` uses the mapping
+interface. An object can provide `items()` without supporting unpacking, or return different values for key lookups. If
+a comment lies in the element or in the removed clause, simplint reports the comprehension without a fix.
 
 ```toml config
 [project]
@@ -194,6 +188,5 @@ flat = [
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing
-  [`sum(lists, [])`](https://docs.python.org/3/builtins/functions.html#sum).
+- On Python 3.15 and later, Ruff's [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) can use the
+  same list unpacking syntax to replace [`sum(lists, [])`](https://docs.python.org/3/builtins/functions.html#sum).

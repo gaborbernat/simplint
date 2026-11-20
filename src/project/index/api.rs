@@ -23,16 +23,15 @@ use crate::syntax::last_dotted_segment;
 pub struct ModuleUse {
     pub bound: String,
     pub module: String,
-    // A dotted string or a store reaches these, and an import of one would miss the patch or the write.
+    // Importing the value directly could bypass a later write or patch to the module attribute.
     pub patched: FxHashSet<String>,
     pub defined: FxHashSet<String>,
-    // A `global` statement rebinds these, and an import would keep the value from load time.
+    // A function can rebind a module global after an importer has taken its original value.
     pub rebound: FxHashSet<String>,
     // A write under a computed name may set the module's names, so an import would miss that write.
     pub computed_written: bool,
     pub top_level_package: bool,
-    // The importer and the module are in one cycle of runtime imports, where a from-import that reads a name at load
-    // time may run before the module defines it.
+    // A from-import in a cycle can read an attribute before the source module defines it.
     pub cyclic: bool,
 }
 
@@ -49,7 +48,7 @@ impl CacheKey for ModuleUse {
     }
 }
 
-// The docstring rules require docs only for the first two.
+// Docstring checks apply to offered and re-exported names. A type reachable only through a signature is exempt.
 #[derive(Clone, Copy)]
 pub enum Exposure<'a> {
     Offered,
@@ -77,8 +76,7 @@ pub struct FileIndex<'a> {
     pub(super) answers: FileAnswers<'a>,
 }
 
-// The members of the modules of the run a file binds. They compare and hash by content, so they are built only when
-// two answers are compared or hashed, which is far less often than the answers are read.
+// Build the alias-to-members map only when comparing or hashing. Ordinary lookups can use the file ids directly.
 #[derive(Clone, Copy)]
 pub(super) struct RunModules<'a> {
     pub(super) modules: &'a FxHashMap<String, FileId>,
@@ -97,9 +95,7 @@ impl<'a> RunModules<'a> {
     }
 }
 
-// The answers the index gives one file. Two indexes give a file the same answers when these match; the attribute and
-// base class names of the whole run are compared apart, by `RunWide::changed`. `reads` and `computed_reads` belong to
-// the run, and reach a file's answers through `project.digest` as well.
+// RunWide::changed checks shared facts separately. The project digest also covers reads and computed attribute names.
 #[derive(Clone, Copy, PartialEq)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag answers a question about the file")]
 pub(super) struct FileAnswers<'a> {
@@ -146,8 +142,8 @@ impl PartialEq for FileIndex<'_> {
     }
 }
 
-// The index slice a file's diagnostics depend on; a cached result stays valid while this is unchanged. The run's
-// `reads` and `computed_reads` are not hashed here: `project.digest` covers them.
+// Per-file cached diagnostics depend on these answers. The project digest already covers shared name and attribute
+// reads.
 impl CacheKey for FileIndex<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         let FileAnswers {
@@ -231,8 +227,7 @@ impl CacheKey for FileIndex<'_> {
 }
 
 impl<'a> FileIndex<'a> {
-    // Whether another module of the run imports the name, as opposed to only an entry point naming it, which the host
-    // loads without an import.
+    // An entry point alone does not count as an import from another module.
     pub fn is_imported_by_others(&self, name: &str) -> bool {
         self.is_imported(name) && !self.answers.entry_only.is_some_and(|names| names.contains(name))
     }
@@ -261,12 +256,10 @@ impl<'a> FileIndex<'a> {
         self.answers.modules
     }
 
-    // The other private modules of the run that share this module's name prefix, when a package would group them.
     pub fn prefix_siblings(&self) -> Option<PrefixSiblings> {
         self.answers.prefix_siblings.copied()
     }
 
-    // The file names of the run beside this test module.
     pub fn directory_modules(&self) -> &'a [String] {
         self.answers.directory_modules
     }
@@ -298,7 +291,6 @@ impl<'a> FileIndex<'a> {
         self.answers.run_imports.and_then(|names| names.get(name).copied())
     }
 
-    // The signature of a function of the run that the file imports under `name`.
     pub fn imported_signature(&self, name: &str) -> Option<&'a Signature> {
         self.answers.run_signatures.and_then(|signatures| signatures.get(name))
     }
@@ -317,17 +309,15 @@ impl<'a> FileIndex<'a> {
         self.answers.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
     }
 
-    // A class of the run up the class's bases defines the method too, so the class overrides it.
     pub fn is_override(&self, class: &str, method: &str) -> bool {
         self.answers.overridden.and_then(|classes| classes.get(class)).is_some_and(|methods| methods.contains(method))
     }
 
-    // Importing a top-level package of the run, or running an entry point, runs this file.
+    // An import from a top-level package initializer or a __main__.py can make this file a runtime dependency.
     pub fn is_package_loaded(&self) -> bool {
         self.answers.package_loaded
     }
 
-    // A runtime import of `module` reaches a file of the run.
     pub fn imports_run_file(&self, module: &str) -> bool {
         self.answers.resolved_imports.is_some_and(|modules| modules.contains(module))
     }
@@ -337,7 +327,6 @@ impl<'a> FileIndex<'a> {
         self.answers.imported_modules
     }
 
-    // A call through a value loaded from the file reaches its names, and no import shows that.
     pub fn is_loaded_as_value(&self) -> bool {
         self.answers.loaded_as_value
     }
@@ -361,8 +350,7 @@ impl<'a> FileIndex<'a> {
         self.answers.star_source
     }
 
-    // Whether a write under a computed name may set any name of the module, as `setattr(module, name, value)` does, so
-    // a rename or move of its variables breaks the write.
+    // A computed write such as setattr(module, name, value) can break if a variable moves or changes name.
     pub fn is_computed_written(&self) -> bool {
         self.answers.computed_written
     }
@@ -371,8 +359,7 @@ impl<'a> FileIndex<'a> {
         self.answers.written.is_some_and(|names| names.contains(name))
     }
 
-    // The cycle and duplicate ranges are offsets into the source the index read, so a changed source has none of them.
-    // A fix round lints the fixed file again, when it reports one.
+    // Cycle and duplicate reports store offsets. After a fix changes the source, those offsets must be rebuilt.
     pub fn at(self, source: &str) -> Self {
         if self.source == Some(source_digest(source)) {
             self
@@ -444,8 +431,7 @@ impl<'a> FileIndex<'a> {
         self.answers.computed_reads
     }
 
-    // Whether code the index cannot follow may read the name: a module that resolves to no file of the run imports it,
-    // or a doctest example spells it. Only a fix that would break such a read is withheld, never a report.
+    // A doctest or unresolved import can use the name outside the known call sites. Such a use can make a fix unsafe.
     pub fn is_read_opaquely(&self, name: &str) -> bool {
         self.project.wide.opaque_names.contains(name)
     }
@@ -481,7 +467,6 @@ impl<'a> FileIndex<'a> {
         self.project.wide.reads.reflected.contains(name)
     }
 
-    // A class renamed here may be read by its name off an object.
     pub fn reads_class_names(&self) -> bool {
         self.project.wide.reads.class_names
     }
@@ -507,7 +492,7 @@ impl<'a> FileIndex<'a> {
         self.project.wide.writes.dict_stores.contains(class)
     }
 
-    // An object of unknown class may have this attribute set; mocks do not count.
+    // Known mocks do not count as writes to real instances.
     pub fn is_attribute_written(&self, name: &str) -> bool {
         self.project.wide.writes.untyped.contains(name)
     }

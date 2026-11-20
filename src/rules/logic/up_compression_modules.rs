@@ -18,7 +18,7 @@ pub fn up_compression_modules(checker: &Checker) {
     // codec and name is checked once.
     let mut re_exported: FxHashMap<(&str, &str), bool> = FxHashMap::default();
     for_each_body(checker.body(), &mut |statements, owner| {
-        // A guarded import is a fallback for the Pythons that lack the new name, so it stays as written.
+        // Imports in a try statement may implement a compatibility fallback.
         if matches!(owner, Some(Stmt::Try(_))) {
             return;
         }
@@ -69,8 +69,7 @@ fn report(checker: &Checker, range: TextRange, codec: &str, fix: Option<Fix>) {
     );
 }
 
-// `compression.{codec}` runs `from {codec} import *`, so it lacks private names, the modules the codec imports, and for
-// `gzip` every name outside its short `__all__`. `*` stands for a star import, which takes the same names.
+// The wrappers import public names from the original modules. In particular, gzip.__all__ excludes gzip.READ.
 fn all_re_exported(codec: &str, names: &[&str]) -> bool {
     names.iter().all(|name| {
         *name == "*"

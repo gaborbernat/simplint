@@ -61,8 +61,7 @@ pub fn parametrize_without_id(checker: &Checker) {
     }
 }
 
-// The ids of an `ids=` list when every entry is a string literal. A callable generates its ids, so they cannot drift
-// from the rows.
+// Callable IDs can describe a case from its values.
 fn id_strings(ids: &Expr) -> Option<&[Expr]> {
     let (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) = ids else {
         return None;
@@ -70,8 +69,7 @@ fn id_strings(ids: &Expr) -> Option<&[Expr]> {
     elts.iter().all(Expr::is_string_literal_expr).then_some(elts.as_slice())
 }
 
-// A module-level name is read because its list is in the file the rule reads. A name bound elsewhere, imported or
-// rebound has its value out of reach, so it is left alone.
+// Only a single module-level binding gives the rule a local list to inspect here.
 fn is_module_id_strings(semantic: &Semantic, ids: &Expr) -> bool {
     let Expr::Name(name) = ids else {
         return false;
@@ -121,8 +119,8 @@ fn ids_fix(
     fix_of(edits, if commented { Applicability::Unsafe } else { Applicability::Safe })
 }
 
-// How pytest hands a row to the test: a row is taken whole only for a string naming one argument, without a trailing
-// comma, and is unpacked for every other argnames.
+// Keep a single argument's value intact. A sequence of argument names, or a trailing comma in the name string, asks
+// pytest to unpack the row.
 #[derive(Clone, Copy)]
 enum Argnames {
     Whole,
@@ -177,9 +175,7 @@ fn is_literal_row(row: &Expr) -> bool {
     }
 }
 
-// The text from the end of the argument before the keyword to its end, or, for a first argument, from its start to
-// the next one, so the other arguments keep their commas. The fix needs the argument names beside `ids=`, so one of
-// the two always exists.
+// Remove the adjacent comma with the keyword so the remaining argument list is valid.
 fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> TextRange {
     let before = arguments
         .args
@@ -202,9 +198,7 @@ fn keyword_removal(arguments: &ast::Arguments, keyword: &ast::Keyword) -> TextRa
     TextRange::new(keyword.start(), after)
 }
 
-// The rows a list holds: its elements, and the elements of a starred list or tuple, written inline or a name bound once
-// to one. Any other starred value, such as a generator, an imported name or a rebound one, has no rows this rule can
-// read, and neither has a starred element inside such a list.
+// Expand a starred list or tuple once if its elements are available in this file.
 fn rows<'e>(checker: &'e Checker, elements: &'e [Expr]) -> Vec<&'e Expr> {
     let mut rows = Vec::new();
     for element in elements {
@@ -224,10 +218,8 @@ fn rows<'e>(checker: &'e Checker, elements: &'e [Expr]) -> Vec<&'e Expr> {
     rows
 }
 
-// A name row is judged by every value its bindings give it. A row a binding gives an id, an import, or a value the rule
-// cannot read leaves to whoever knows it. A name bound once to a `pytest.param(...)` call without an id is checked by
-// that call, and any other name is reported where it is written. A call to a helper whose every path returns a row with
-// an id is a row with an id, and any other call is reported where it is written.
+// A named row can have several bindings. Any binding with an explicit ID can supply the case. For a single
+// pytest.param binding, report the call where the ID belongs.
 fn row<'e>(checker: &'e Checker, element: &'e Expr) -> Option<&'e Expr> {
     let semantic = checker.semantic();
     let Expr::Name(name) = element else {
@@ -250,9 +242,8 @@ fn row<'e>(checker: &'e Checker, element: &'e Expr) -> Option<&'e Expr> {
     }
 }
 
-// A helper returns its rows, so a call to a function the module defines once counts as a row with an id when every path
-// ends in a `return` of `pytest.param(..., id=...)`. A coroutine or a generator returns no row, and a decorator may
-// replace the function, so only the caches, which return the function's own result, keep the rule's view of it.
+// A local helper can already supply IDs. Coroutines and generators return other objects, and decorators other than the
+// supported caches may replace its result.
 fn is_helper_with_ids(semantic: &Semantic, element: &Expr) -> bool {
     let Expr::Call(ast::ExprCall { func, .. }) = element else {
         return false;
@@ -282,8 +273,7 @@ fn is_cache(semantic: &Semantic, decorator: &ast::Decorator) -> bool {
     semantic.is_decorator(decorator, &[&["functools", "cache"], &["functools", "lru_cache"]])
 }
 
-// Only the last statement decides. A loop never counts, as it may run no times, and a `with` whose manager may swallow
-// an exception may fall through after its body returns.
+// A loop may run zero times, and a context manager may suppress an exception before the return.
 fn always_returns(semantic: &Semantic, body: &[Stmt]) -> bool {
     let Some(last) = body.last() else {
         return false;
@@ -357,8 +347,7 @@ fn row_id<'e>(checker: &Checker, row: &'e Expr, names: Option<Argnames>) -> Opti
     Some(Cow::Owned(ids.join("-")))
 }
 
-// Pytest uses a scalar's value as its id, but escapes non-printable ASCII and backslashes in strings and bytes, prints
-// a number as Python does, so `0x10` and `16` share an id, and suffixes ids that several rows share.
+// Compare the IDs pytest would display so equal numeric values and duplicate rows count together.
 fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
     match element {
         Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
@@ -382,8 +371,7 @@ fn scalar_id<'e>(checker: &Checker, element: &'e Expr) -> Option<Cow<'e, str>> {
     }
 }
 
-// The id pytest gives a number: an integer in decimal, a float as Python's `repr` prints it, and a complex or an
-// integer too large for `u64` as its source text.
+// Use the source spelling as a fallback for complex numbers and integers larger than u64.
 fn number_id(checker: &Checker, number: &ast::ExprNumberLiteral) -> String {
     match &number.value {
         ast::Number::Int(int) => int.as_u64().map_or_else(|| checker.text(number).to_owned(), |v| v.to_string()),

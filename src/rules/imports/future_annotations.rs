@@ -21,8 +21,7 @@ pub fn future_annotations(checker: &Checker) {
         let Some(alias) = import.names.iter().find(|alias| alias.name.as_str() == "annotations") else {
             continue;
         };
-        // Lazy annotations of a class read its namespace, so a name the class binds changes what they refer to. Only
-        // the import keeps them resolving in the module globals.
+        // A class can bind `list` to a method, changing what a deferred `list[str]` resolves to.
         if class_shadows_annotation(body) {
             return;
         }
@@ -43,8 +42,7 @@ pub fn future_annotations(checker: &Checker) {
                 .then(|| statement_removal(checker, stmt.range(), body.len(), None, Blanks::Keep))
                 .flatten()
         };
-        // Lazy annotations still evaluate on access, so a name imported only for type checking raises there, and so
-        // does a quoted union or an import under an `if` that may be false.
+        // Reading deferred annotations can evaluate an invalid union or look up a name that was never imported.
         let applicability = if checker.name_token_count("TYPE_CHECKING") > 0
             || has_partly_quoted_union(body)
             || has_guarded_import(body)
@@ -90,7 +88,6 @@ fn shadows(body: &[Stmt]) -> bool {
     })
 }
 
-// An annotation without a value binds nothing.
 fn bound_names(stmt: &Stmt) -> Vec<&str> {
     match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
@@ -123,7 +120,7 @@ impl<'a> Visitor<'a> for Reads<'a> {
     }
 }
 
-// Evaluated, `"Node" | None` applies `|` to a str and raises, as `@dataclass` does when it reads the annotations.
+// Evaluating `"Node" | None` raises TypeError because the left operand is a string.
 fn has_partly_quoted_union(body: &[Stmt]) -> bool {
     let mut finder = QuotedUnion(false);
     finder.visit_body(body);
@@ -146,7 +143,7 @@ fn is_quoted_union(expr: &Expr) -> bool {
     )
 }
 
-// A module-level `if` such as `if MYPY:` may skip the import, so the annotations read a name that is never bound.
+// A conditional import may leave an annotation name unbound.
 fn has_guarded_import(body: &[Stmt]) -> bool {
     body.iter().filter(|stmt| stmt.is_if_stmt()).any(|guard| {
         module_statements(std::slice::from_ref(guard)).any(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)))

@@ -19,11 +19,10 @@ pub(crate) struct Statement {
     pub(crate) line: u32,
 }
 
-// A statement's tokens include those of the statements nested in it, so hashing each statement alone would hash every
-// nested token once per enclosing statement. One running polynomial hash over the file's tokens gives each statement's
-// hash from two prefix values.
+// Nested statements share tokens with their parents. A rolling hash gives each statement a hash without rereading the
+// same tokens for each enclosing block.
 pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statement> {
-    // Any odd multiplier works modulo 2^64; the windows that hash alike are compared by their texts after.
+    // An odd multiplier suffices modulo 2^64 because matches are checked against the token text.
     const BASE: u64 = 0x9E37_79B9_7F4A_7C15;
     let tokens: Vec<(TextSize, bool, u64)> = compared_tokens(parsed.tokens())
         .map(|token| {
@@ -64,16 +63,14 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     statements
 }
 
-// Indents and dedents stay, as they nest a statement under another. A dedent on a statement's first token closes the
-// block before it, so `statement_tokens` skips it.
+// Keep nesting significant. A dedent before a statement closes the previous block and belongs outside the comparison.
 fn compared_tokens(tokens: &[Token]) -> impl Iterator<Item = &Token> {
     tokens
         .iter()
         .filter(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
 }
 
-// An indent or a dedent compares by a marker, since its text is the width of the indentation, which must not decide a
-// match while the nesting it marks does.
+// Compare nesting independently of indentation width.
 fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
     match token.kind() {
         TokenKind::Indent => "<indent>",
@@ -82,7 +79,7 @@ fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
     }
 }
 
-// Imports and docstrings are left out, as pylint's duplicate check leaves them out.
+// Skip imports and standalone string statements when choosing the start of a match.
 fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stmt)) {
     let mut bodies = 0;
     for_each_body(body, &mut |statements, _| {
@@ -97,7 +94,6 @@ fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stm
     });
 }
 
-// None when the file no longer holds the statements `expected` records.
 pub(crate) fn statement_texts(
     path: &Path,
     wanted: &FxHashSet<usize>,

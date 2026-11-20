@@ -7,7 +7,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::syntax::from_imports;
 
-// Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(outer) = expr else {
         return;
@@ -34,9 +33,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         .find_argument_value("format", 1)
         .and_then(Expr::as_string_literal_expr)
         .map(|format| format.value.to_str());
-    // `time.strptime` keeps the zone that `.time()` drops and does not check the date that `datetime.strptime` checks,
-    // so only a format of time-of-day directives gives the same value. `date.strptime` and `time.strptime` accept the
-    // second 60 that `datetime.strptime` rejects, so a seconds directive changes the value of `.date()` too.
+    // A time can retain an offset that .time() drops. A date can discard a leap second that a datetime rejects.
     let safe = match member {
         "date" => format.is_some_and(|format| !has_seconds(format)),
         _ => format.is_some_and(time_of_day),

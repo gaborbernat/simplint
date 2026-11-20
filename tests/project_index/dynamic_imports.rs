@@ -2,8 +2,6 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// A module loaded by a string-named import call is the module the names read off its result belong to, whether the
-// call's result is read directly or through a variable it is assigned to.
 #[test_case(
     concat!(
         "import importlib\n",
@@ -47,8 +45,6 @@ fn attributes_of_statically_named_dynamic_imports_keep_their_names(test: &str) {
     );
 }
 
-// A variable a string-named import call loads a module into, and some other value binds too, reads the names of any
-// module, so a name read off it is not reported.
 #[test]
 fn variable_rebound_to_another_value_reads_names_of_any_module() {
     let root = project(&[
@@ -103,8 +99,7 @@ fn variable_reused_for_each_loaded_module_reads_each_module() {
     assert!(check(unread.path(), &["--select", "SMP404"]).1.contains("`client`"));
 }
 
-// `__import__` returns the top package of a dotted name, so the names read off its result are the package's, and a
-// submodule's are read off the submodule.
+// Without a `fromlist`, `__import__("pkg.mod")` returns `pkg`.
 #[test]
 fn dunder_import_reads_names_of_the_top_package() {
     let root = project(&[
@@ -123,8 +118,6 @@ fn dunder_import_reads_names_of_the_top_package() {
     );
 }
 
-// A name a function binds to a module reads the names of that module, and a second function's binding of the same name
-// to another module does not hide the second module's names from the reports.
 #[test]
 fn names_bound_to_a_module_in_one_function_do_not_clash_with_another() {
     let root = project(&[
@@ -148,8 +141,6 @@ fn names_bound_to_a_module_in_one_function_do_not_clash_with_another() {
     );
 }
 
-// A module-level name a function shadows with a local of the same name, as `proxy` is in a test, reads nothing: the
-// local's attributes are not the module's, so no other file's variable of that name counts as read.
 #[test]
 fn local_named_like_a_module_variable_reads_no_module() {
     let root = project(&[
@@ -164,8 +155,7 @@ fn local_named_like_a_module_variable_reads_no_module() {
     assert_eq!(check(root.path(), &["--select", "SMP102"]).1.matches("scripts/run.py").count(), 0);
 }
 
-// A name a function binds to several modules reads the names of each of them, and of no other module. Binding it to a
-// value that is no module too keeps those reads.
+// A local can refer to several modules on different branches.
 #[test_case(
     concat!(
         "    m = pytest.importorskip(\"pkg.cli\")\n",
@@ -199,8 +189,7 @@ fn name_bound_to_several_modules_reads_each_of_them(body: &str, other_reported: 
     );
 }
 
-// The attribute of an import call's result is a name of the module the call loads, not a module itself, so a name a
-// function binds to it reads nothing, and the names another function reads off a local of that name are reported.
+// A local bound to an imported module's attribute may hold an ordinary object.
 #[test]
 fn attribute_of_an_import_call_result_is_no_module() {
     let root = project(&[
@@ -223,9 +212,7 @@ fn attribute_of_an_import_call_result_is_no_module() {
     );
 }
 
-// `__import__` returns the package a dotted name starts with, unless its `fromlist` names something: an empty or absent
-// one, given by keyword or by position, names nothing, while a non-empty literal, or one that may hold names, returns
-// the module itself.
+// A nonempty `fromlist` makes `__import__("pkg.mod", ...)` return the submodule. An unknown list may be nonempty.
 #[test_case(
     "__import__(\"pkg.sub\", globals(), locals(), [], 0)",
     "pkg/sub.py:3:1: SMP404 `helper`",
@@ -260,7 +247,6 @@ fn dunder_import_fromlist_selects_the_module(call: &str, reported: &str, unrepor
     assert!(stdout.contains(&common::native(reported)) && !stdout.contains(&common::native(unreported)), "{stdout}");
 }
 
-// A module a spec loads from a path the project names reads the names read off it, whichever way the path is spelled.
 #[test_case("Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"" ; "parents_index")]
 #[test_case("Path(__file__).parent.parent / \"docs/tutorial.py\"" ; "parent_chain")]
 #[test_case("\"docs/tutorial.py\"" ; "string_literal")]
@@ -284,8 +270,6 @@ fn attributes_of_spec_loaded_modules_keep_their_names(path: &str) {
     );
 }
 
-// A spec whose path no static path names, or names outside the project, loads a module whose names are unknown, as a
-// computed import does.
 #[test_case("Path(os.environ[\"DOCS\"]) / \"tutorial.py\"" ; "computed_path")]
 #[test_case("DIRS[0] / \"tutorial.py\"" ; "subscript_of_name")]
 #[test_case("Path(__file__).name / \"tutorial.py\"" ; "attribute_other_than_parent")]
@@ -318,7 +302,6 @@ fn attributes_of_unresolved_spec_loaded_modules_keep_every_name(path: &str) {
     );
 }
 
-// The module a spec loads from a file the project names keeps the names it lists in `__all__` a read uses.
 #[test]
 fn spec_loaded_module_read_keeps_name_listed() {
     let root = project(&[
@@ -335,8 +318,6 @@ fn spec_loaded_module_read_keeps_name_listed() {
     assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`client` is in `__all__`"));
 }
 
-// A test module that loads `docs/tutorial.py` from `path` and reads its names off the module, once directly and once
-// through a variable.
 fn spec_loading_test(path: &str) -> String {
     format!(
         "import importlib.util\nimport os\nimport pathlib\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    \
@@ -347,7 +328,7 @@ fn spec_loading_test(path: &str) -> String {
     )
 }
 
-// A module `runpy` runs keeps the names a string key reads off its globals, however the call spells the module.
+// `runpy` returns a globals dictionary. A lookup by key can be the only use of a module-level name.
 #[test_case(
     concat!(
         "import runpy\n",
@@ -429,8 +410,7 @@ fn runpy_globals_keep_names_read_by_key(test: &str) {
     );
 }
 
-// A computed read a run cannot resolve may read any name of a module, so the names `__all__` lists keep their place
-// only when nothing reads them.
+// The path is unknown but the key is literal. Only `client` might be read.
 #[test]
 fn computed_run_globals_read_keeps_listed_names() {
     let root = project(&[
@@ -450,8 +430,6 @@ fn computed_run_globals_read_keeps_listed_names() {
     );
 }
 
-// A test that patches a module attribute by its dotted path, or through the module object, uses the name, so `__all__`
-// keeps it.
 #[test_case(
     concat!(
         "import unittest.mock\n",

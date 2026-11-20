@@ -1,15 +1,12 @@
-Flags [`time.sleep`](https://docs.python.org/3/library/time.html#time.sleep) and `await asyncio.sleep` calls in a test
-module whose argument is not the literal `0`.
+Flags [`time.sleep`](https://docs.python.org/3/library/time.html#time.sleep) and `asyncio.sleep` calls in a test module
+whose argument is not the literal `0`.
 
 ## Why is this bad?
 
-A test that sleeps waits a fixed time whether the code is ready or not. The wait is long enough to slow the suite, and
-too short on a loaded machine, where the test then fails for no real reason. Martin Fowler's
-[article on non-deterministic tests](https://martinfowler.com/articles/nonDeterminism.html#AsynchronousBehavior) names
-bare sleeps as a cause of both and asks for a callback or polling instead, and warns that flaky tests teach people to
-ignore failures. Waiting on an event the code sets, with
-[`Event.wait`](https://docs.python.org/3/library/threading.html#threading.Event.wait), returns as soon as the code is
-ready, and its timeout bounds the wait if it never is.
+A fixed sleep delays a test when the code is ready early and can expire too soon on a busy machine. For a threaded test,
+[`Event.wait(timeout)`](https://docs.python.org/3/library/threading.html#threading.Event.wait) returns as soon as the
+worker sets the event. Check its return value so the test fails if the timeout expires. Martin Fowler describes the same
+[timing problem in asynchronous tests](https://martinfowler.com/articles/nonDeterminism.html#AsynchronousBehavior).
 
 ## Example
 
@@ -41,8 +38,9 @@ def test_worker_finishes():
 
 - **`time.sleep` and [`asyncio.sleep`](https://docs.python.org/3/library/asyncio-task.html#asyncio.sleep) calls**: the
   call resolves through the module's imports, so `from time import sleep` and `await asyncio.sleep(...)` are reported
-  too. A call counts in the body of a test function, a fixture, or a unittest `setUp`, `tearDown`, `setUpClass` or
-  `tearDownClass`.
+  too. A call counts in the body of a test function, a fixture, or a setup or teardown method named `setUp`, `tearDown`,
+  `asyncSetUp`, `asyncTearDown`, `setUpClass` or `tearDownClass`. The rule recognizes `asyncio.sleep` even without an
+  `await`.
 
   ```python report file=tests/test_sleep.py
   import asyncio
@@ -72,7 +70,8 @@ def test_worker_finishes():
           return b"ok"
   ```
 
-- **A sleep for the literal `0`**: `sleep(0)` yields to other tasks without waiting, so it does not make a test slow.
+- **A sleep for the literal `0`**: the rule accepts the exact spelling `0` for either sleep function. For example,
+  `await asyncio.sleep(0)` gives other tasks a chance to run.
 
   ```python ok file=tests/test_zero.py
   import time

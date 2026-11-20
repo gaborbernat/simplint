@@ -6,9 +6,8 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::syntax::{ExprCollector, attribute_call};
 
-// A body reads names the program computes when it runs. `getattr(obj, name)`, `vars`, `dir` and `__dict__` may reach
-// any attribute, while a literal start such as `getattr(obj, "visit_" + kind)` reaches only the names with that prefix,
-// as a dispatch table does.
+// A dynamic lookup can reach any attribute. A literal prefix, as in `getattr(obj, "visit_" + kind)`, narrows the set of
+// possible names.
 #[derive(Clone, Default, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(crate) struct ComputedReads {
     pub(crate) any: bool,

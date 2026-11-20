@@ -31,7 +31,7 @@ the project's other declarations, which Ruff does not read: the ``python`` depen
 ``[tool.poetry.dependencies]``, and the ``python_requires`` of setuptools in ``setup.cfg`` or as a string literal in
 ``setup.py``. Without any of these, simplint's default is Python 3.11.
 
-Every rule and fix that depends on the language version follows it:
+Examples of checks that depend on the target version include the following.
 
 .. list-table::
     :header-rows: 1
@@ -46,11 +46,12 @@ Every rule and fix that depends on the language version follows it:
       - :doc:`single-use-variable </rules/SMP504>` inlines a value into a decorator that is not a dotted name only from
         here.
     * - 3.10
-      - :doc:`dataclass-frozen </rules/SMP701>`, :doc:`dataclass-slots </rules/SMP702>` and
+      - :doc:`dataclass-slots </rules/SMP702>` and
         :doc:`dataclass-kw-only </rules/SMP703>` need it. :doc:`up-backport-import </rules/SMP305>` reports
         ``importlib_metadata`` and ``importlib_resources`` imports from here. :doc:`up-traceback-exception-arguments
         </rules/SMP509>` takes the exception alone from here. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports
-        the camelCase ``threading`` names from here.
+        the deprecated camelCase ``threading`` names from here. :doc:`dataclass-frozen </rules/SMP701>` also works
+        on older targets where ``frozen=True`` is available.
     * - 3.11
       - ``except*`` clauses exist only from here, and ``ExceptionGroup.split`` or ``subgroup`` in a handler count as
         catches for :doc:`indistinct-error-class </rules/SMP704>`. :doc:`up-backport-import </rules/SMP305>` reports
@@ -92,9 +93,7 @@ Every rule and fix that depends on the language version follows it:
     * - any
       - :doc:`dependency-import-guard </rules/SMP303>` counts a module as standard library only when every version from
         the target onward ships it, so a submodule such as ``asyncio.taskgroups`` counts from the version that adds it.
-        :doc:`single-use-variable </rules/SMP504>` never inlines a conditional read, an annotation, a ``type`` value, or
-        a ``case`` or ``except`` clause. A fix that adds syntax the target version rejects is reverted and reported as a
-        bug.
+        simplint reverts fixes that introduce syntax the target version rejects and reports the faulty fix.
 
 Files to check
 --------------
@@ -104,7 +103,18 @@ Files to check
 <https://docs.astral.sh/ruff/settings/#lint_exclude>`__, `respect-gitignore
 <https://docs.astral.sh/ruff/settings/#respect-gitignore>`__ and `force-exclude
 <https://docs.astral.sh/ruff/settings/#force-exclude>`__ pick the files to check, Ruff's built-in excludes included. The
-command-line flags of the same names override them.
+``--exclude``, ``--extend-exclude``, ``--respect-gitignore`` and ``--force-exclude`` flags override their respective
+settings. Use ``--config "lint.exclude = ['generated']"`` to override ``lint.exclude``. Files found by discovery but
+excluded by ``lint.exclude`` still contribute to the project index.
+
+Test discovery
+--------------
+
+simplint reads ``python_files``, ``testpaths``, ``markers``, ``pythonpath`` and plugins loaded by ``addopts`` from
+pytest configuration. Within a directory, it checks ``pytest.ini``, ``.pytest.ini``, ``pyproject.toml``, ``tox.ini``
+and ``setup.cfg``, in that order. In ``pyproject.toml``, it accepts ``[tool.pytest]`` and ``[tool.pytest.ini_options]``.
+Projects using pytest's standalone ``pytest.toml`` or ``.pytest.toml`` need a supported configuration file for simplint
+to see those settings. See `pytest configuration <https://docs.pytest.org/en/stable/reference/customize.html>`__.
 
 .. _settings-read-from-project:
 
@@ -189,10 +199,10 @@ these sources that names any:
    ``packages`` and ``py-modules``, maturin's ``module-name``.
 2. The packages next to the ``pyproject.toml``, or in its ``src`` directory, that hold a ``py.typed`` marker.
 3. The package named after the project.
-4. When none is found, every module outside ``docs`` and the tests counts.
+4. When none is found, every importable module outside ``doc``, ``docs`` and the tests is a candidate.
 
-A module of an API package is **public unless a part of its path starts with** ``_``, as `PEP 8
-<https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes. So a layout that keeps its code in
-``my_package/_core.py`` and lists the public names in ``my_package/__init__.py`` exposes only those.
+A module in an API package is private if any part of its import path has a leading underscore, such as
+``my_package._core``. Double-underscore names such as ``__about__`` can be public. simplint treats ``__main__`` as a
+script. A package can expose names from a private module through its public ``__init__.py``.
 
 ``--show-settings`` prints the result as ``linter.project_kind`` and ``linter.api_packages``.

@@ -2,14 +2,11 @@ Flags type information in reStructuredText docstrings, which belongs in annotati
 
 ## Why is this bad?
 
-An annotation is the type a type checker verifies. A type written in the docstring repeats it and can drift from the
-code. Sphinx shows annotations itself, in the signature or, with
-[`autodoc_typehints = "description"`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_typehints),
-in the parameter list. The
-[Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a type in the
-description only where the code has no annotation. [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html)
-requires types in Returns and Yields, and [pydoclint](https://jsh9.github.io/pydoclint/config_options.html) requires
-argument types in docstrings by default.
+Writing a parameter type in both its annotation and its docstring means a signature change can leave the reference out
+of date. [Sphinx autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_typehints)
+can display annotations in the signature or in the description. Other conventions differ.
+[numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) requires types in Returns and Yields, and
+[pydoclint](https://jsh9.github.io/pydoclint/config_options.html) expects argument types in docstrings by default.
 
 ## Example
 
@@ -144,7 +141,8 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for type inf
       """
   ```
 
-- **`:vartype name:` fields and the type in `:ivar type name:`**: attribute types are reported but get no fix.
+- **Attribute types.** The rule reports `:vartype name:` and inline types in `:var:`, `:ivar:` or `:cvar:` fields. Add
+  the annotation where the attribute is defined.
 
   - A `:vartype name:` field, here for a class attribute
 
@@ -205,9 +203,11 @@ No fix is offered:
 
 - for attribute types
 
-- when escapes in the docstring make its text differ from the source
+- for a field beside the opening quotes, or a docstring other than a single triple-quoted string whose text matches the
+  source
+
+- for a deletion at the end of a docstring with a comment after its closing quotes
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)
-  and [#9070](https://github.com/astral-sh/ruff/issues/9070).
+- [Ruff issue #9070](https://github.com/astral-sh/ruff/issues/9070) proposes a fix to remove types from docstrings.

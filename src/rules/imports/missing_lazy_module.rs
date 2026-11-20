@@ -21,7 +21,7 @@ struct Missing {
 }
 
 pub fn missing_lazy_module(checker: &Checker) {
-    // From Python 3.15 the `lazy` keyword spells a lazy import, which Ruff's TID254 asks for.
+    // For Python 3.15 targets, prefer the explicit `lazy` syntax.
     if checker.target_version() >= PythonVersion::PY315 {
         return;
     }
@@ -57,8 +57,7 @@ pub fn missing_lazy_module(checker: &Checker) {
     // `import pkg` of a package holding the file binds what has already loaded, so it runs nothing a lazy import would
     // skip, while `from pkg import name` can still load a submodule on first use.
     let holds_file = |imported: &Imported, key: &Module| !imported.from_import && enclosing.contains(key);
-    // The list defers every import of the module, so each of them must wait for its first use. A name nothing reads
-    // and no other module imports was imported for what loading it does.
+    // Each entry affects all matching imports. An unread, unexported import may be needed for its side effects.
     let mut waits: FxHashMap<&Module, bool> = FxHashMap::default();
     for (_, deferrable, imported, key) in &deferred {
         let binding = imported.binding;
@@ -109,7 +108,6 @@ pub fn missing_lazy_module(checker: &Checker) {
     });
 }
 
-// A sorted list stays sorted; otherwise the new entries go last.
 fn extended(checker: &Checker, list: &LazyList, added: Vec<Item>) -> Option<Edit> {
     let mut items = list.items(checker)?;
     let sorted = items.is_sorted_by(|left, right| sort_key(&left.text) <= sort_key(&right.text));
@@ -124,7 +122,6 @@ fn extended(checker: &Checker, list: &LazyList, added: Vec<Item>) -> Option<Edit
     list.replacement(checker, &items)
 }
 
-// The list goes above the first import it defers, below the docstring and the `from __future__` imports.
 fn new_list(checker: &Checker, items: &[Item]) -> Option<Edit> {
     let first = checker
         .body()
@@ -137,9 +134,7 @@ fn new_list(checker: &Checker, items: &[Item]) -> Option<Edit> {
     Some(Edit::insertion(format!("{target}{}{eol}{eol}", layout.text(checker, items)), list_position(checker, first)?))
 }
 
-// The module-level names some code reads while the module loads, which a lazy import would resolve at once: code at
-// module level or in a class body, the functions and methods that code calls, and the annotations a decorator reads.
-// Code under `if __name__ == "__main__":` runs only as a script, and under `if TYPE_CHECKING:` never.
+// A call made during module loading can resolve an import inside its function body. Follow local calls transitively.
 fn load_time_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     let body = checker.body();
     let skipped: Vec<TextRange> = body
@@ -228,8 +223,6 @@ struct Class<'a> {
     bases: Vec<&'a str>,
 }
 
-// The module-level functions and classes, and what code runs when a name is called, subclassed or used as a
-// metaclass.
 struct Definitions<'a> {
     functions: FxHashMap<&'a str, TextRange>,
     classes: FxHashMap<&'a str, Class<'a>>,
@@ -261,8 +254,7 @@ impl<'a> Definitions<'a> {
         Self { functions, classes }
     }
 
-    // Creating an instance or a class may run any method of the class or of the classes it inherits from, while
-    // subclassing runs `__init_subclass__` only.
+    // Construction can call inherited methods. Subclass creation can invoke an inherited `__init_subclass__`.
     fn run_by(&self, name: &str, trigger: Trigger) -> Vec<TextRange> {
         if let (Trigger::Call, Some(function)) = (trigger, self.functions.get(name)) {
             return vec![*function];
@@ -287,8 +279,6 @@ impl<'a> Definitions<'a> {
     }
 }
 
-// The names that are called, directly or as a decorator, subclassed or named as a metaclass, and the lambdas outside
-// any function.
 #[derive(Default)]
 struct Calls {
     called: FxHashSet<TextRange>,

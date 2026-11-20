@@ -135,10 +135,8 @@ impl<'a> ClassOrder<'a> {
     }
 }
 
-// The one order of a class body that SMP201 and SMP203 both read, so a fix of either leaves the other with nothing to
-// report. Entry points are sorted into sections, and each helper follows its first caller. A statement that is not a
-// definition is an entry point of its own, in section 2. Two statements keep their order when one reads or binds a
-// name the other binds, so a constructor never moves past a statement that its defaults or decorators read.
+// SMP201 and SMP203 share helper ownership. Sorting sections must keep helpers with the same caller and preserve
+// the bindings needed while the class body executes.
 pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> ClassOrder<'a> {
     let body = &class.body;
     let reads: Vec<FxHashSet<&str>> = body.iter().map(|stmt| creation_reads(checker, class, stmt)).collect();

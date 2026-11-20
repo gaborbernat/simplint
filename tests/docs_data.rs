@@ -11,9 +11,8 @@ use test_case::test_case;
 
 use common::{empty_project, simplint};
 
-// Read the Docs builds the pages from these files rather than from a binary it would need minutes to compile, and
-// SchemaStore and editors check `[tool.simplint]` against the schema, so a change to a flag or an option fails here
-// until the files are regenerated; the failing run rewrites them to commit.
+// Read the Docs uses the checked-in CLI schema without compiling Rust. Editors use the config schema. Both must
+// match the binary, so a failing test regenerates the stale file for the author to commit.
 #[test_case(&["cli-schema"], "docs/_data/cli-schema.json" ; "cli_schema")]
 #[test_case(&["config-schema"], "simplint.schema.json" ; "config_schema")]
 fn docs_data_matches_the_binary(args: &[&str], file: &str) {
@@ -37,8 +36,7 @@ fn regenerate_if_stale(path: &Path, generated: &str) {
     }
 }
 
-// The rule pages read the rule list that `docs/rules_data.py` derives from the sources the binary is built from, so
-// the derivation must list every rule the binary lists, with the same fields.
+// The docs extract rule metadata from source. Compare the complete listing with the binary to catch parser drift.
 #[test]
 fn rules_data_matches_the_binary() {
     let root = empty_project();

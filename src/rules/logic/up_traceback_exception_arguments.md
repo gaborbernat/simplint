@@ -3,11 +3,10 @@ the exception itself.
 
 ## Why is this bad?
 
-Since Python 3.10 the `traceback` functions take the exception alone and read its type and traceback from it, as
-[bpo-26389](https://bugs.python.org/issue26389) proposed, because one exception object holds all three. The type
-argument has been ignored since Python 3.5, and the
-[docs](https://docs.python.org/3/library/traceback.html#traceback.print_exception) say the first argument is ignored
-when the value and traceback follow it. The three-argument form passes values nothing reads.
+Since Python 3.10,
+[`traceback.print_exception()`](https://docs.python.org/3/library/traceback.html#traceback.print_exception) and the
+corresponding formatting functions accept an exception directly. In the three-argument form, Python uses the supplied
+exception and traceback and ignores the type. Passing the exception alone uses its own traceback.
 
 ## Example
 
@@ -97,7 +96,8 @@ and passes:
       return traceback.format_exception(error, limit=2)
   ```
 
-- **Two positional arguments** to `format_exception_only`: `type(error)`, then `error`.
+- **Two positional arguments to `format_exception_only`.** The first is `type(error)` or `error.__class__`. The second
+  is `error`.
 
   ```toml config
   [project]
@@ -156,9 +156,8 @@ and passes:
 
 ### Fix
 
-The fix is safe. It replaces the first arguments with the exception and keeps the keyword arguments, such as `limit=`
-and `chain=`. No fix is offered when a comment lies in the arguments it replaces, since the rewrite would drop it. A
-comment between those arguments keeps the report without a fix:
+The safe fix keeps keyword arguments such as `limit=` and `chain=`. A comment in the replaced arguments prevents the
+fix.
 
 ```toml config
 [project]
@@ -189,7 +188,7 @@ def report(error):
     )
 ```
 
-Parentheses around the replaced arguments go with them, so the rewrite leaves valid code:
+The replacement includes any parentheses around the original arguments.
 
 ```toml config
 [project]
@@ -211,7 +210,3 @@ import traceback
 def report(error):
     return traceback.format_exception_only(error)
 ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

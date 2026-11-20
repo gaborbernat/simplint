@@ -32,7 +32,7 @@ use crate::syntax::{export_names, pattern_capture, signature_annotations, top_le
 pub(super) struct Model<'a> {
     pub(super) semantic: SemanticModel<'a>,
     pub(super) loads: Vec<(&'a ast::ExprName, Snapshot)>,
-    // The model at module level once every top-level statement ran.
+    // Save the module scope before walking deferred function bodies.
     pub(super) module: Snapshot,
     pub(super) annotations_are_lazy: bool,
     pub(super) django_reports: FxHashSet<TextRange>,
@@ -94,9 +94,8 @@ pub(super) fn build<'a>(
     }
 }
 
-// Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT), which reads the
-// bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
-// makes, which is the alias of its import.
+// Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT). Check module and
+// function imports after resolving their references.
 fn private_import_reports(
     semantic: &SemanticModel,
     body: &[Stmt],
@@ -149,8 +148,8 @@ fn is_private_import(
     if binding.references().any(|id| !is_typing_only(semantic.reference(id))) {
         return true;
     }
-    // Ruff resolves the names a string type expression spells as typing-only uses, which this model does not see, so
-    // an import that a string spells and nothing reads at runtime is not Ruff's.
+    // String type expressions have no resolved references in this model. A name used only there is a typing-only
+    // import.
     !words.contains(name) && binding.references().next().is_none()
 }
 
@@ -421,8 +420,8 @@ impl<'a> Builder<'a> {
         }
     }
 
-    // Python evaluates an annotation when it runs the statement, except inside a function body or when annotations are
-    // lazy. A class or decorator that Ruff's settings list as runtime-required or ambiguous makes it so regardless.
+    // Ruff's configured base classes and decorators can require annotations at runtime even when the target defers
+    // them.
     fn visit_annotation_as(&mut self, expr: &'a Expr, runtime: RuntimeSemantics) {
         let flags = self.semantic.flags;
         self.semantic.flags |= match runtime {
@@ -486,7 +485,7 @@ impl<'a> Builder<'a> {
     }
 
     fn visit_generators(&mut self, kind: GeneratorKind, range: TextRange, generators: &'a [Comprehension]) {
-        // The first iterable evaluates in the enclosing scope; everything after it in the comprehension's own scope.
+        // The first iterable evaluates in the enclosing scope. The rest of the comprehension has its own scope.
         self.comprehensions.push((range, generators[0].iter.range()));
         self.visit_expr(&generators[0].iter);
         let is_async = generators.iter().any(|generator| generator.is_async);
@@ -502,7 +501,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    // Function bodies and lambdas run after the code around them binds its names, so they are visited last.
+    // Defer function and lambda bodies so they can resolve names bound later in the enclosing scope.
     fn visit_deferred(&mut self) {
         while !self.functions.is_empty() || !self.lambdas.is_empty() {
             for (function_def, snapshot) in std::mem::take(&mut self.functions) {
@@ -512,7 +511,7 @@ impl<'a> Builder<'a> {
             }
             for (lambda, snapshot) in std::mem::take(&mut self.lambdas) {
                 self.semantic.restore(snapshot);
-                // A lambda in an annotation runs when called, not when the annotation is evaluated.
+                // A lambda body in an annotation runs when the lambda is called.
                 self.semantic.flags -= SemanticModelFlags::ANNOTATION;
                 if let Some(parameters) = &lambda.parameters {
                     self.visit_parameters(parameters);
@@ -534,7 +533,7 @@ impl<'a> Builder<'a> {
     }
 
     fn add_flagged_binding(&mut self, name: &'a str, range: TextRange, kind: BindingKind<'a>, flags: BindingFlags) {
-        // PEP 572: a named expression in a comprehension binds in the scope that contains the outermost comprehension.
+        // PEP 572 binds a comprehension's assignment expressions in the scope containing its outermost comprehension.
         let scope_id = if kind.is_named_expr_assignment() {
             self.semantic
                 .scopes
@@ -582,14 +581,14 @@ impl<'a> Builder<'a> {
         self.add_binding(&name.id, name.range, kind);
     }
 
-    // Unlike Ruff, a `del` in a conditional branch also unbinds the name: the rules count every `del` as a rebinding.
+    // Simplint counts a conditional deletion as a possible rebinding even though Ruff skips it.
     fn handle_node_delete(&mut self, name: &'a ast::ExprName) {
         self.semantic.resolve_del(&name.id, name.range);
         self.declare(&name.id, name.range, BindingKind::Deletion, BindingFlags::empty());
     }
 }
 
-// The flags Ruff gives an import: `ALIAS` for an `as` name, and `EXPLICIT_EXPORT` for a redundant one, as `x as x`.
+// A redundant import alias such as `x as x` is an explicit re-export.
 fn alias_flags(alias: &ast::Alias) -> BindingFlags {
     match &alias.asname {
         Some(asname) if asname.as_str() == alias.name.as_str() => BindingFlags::ALIAS | BindingFlags::EXPLICIT_EXPORT,

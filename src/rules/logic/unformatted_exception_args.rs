@@ -7,8 +7,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 
-// The builtin exceptions whose second positional argument is not part of the message: a syntax error's location and
-// an exception group's exceptions. Every other builtin exception shows its positional arguments as a tuple.
+// Syntax errors take a location and exception groups take nested exceptions as their second argument.
 const STRUCTURED: [&str; 5] = ["SyntaxError", "IndentationError", "TabError", "BaseExceptionGroup", "ExceptionGroup"];
 
 #[derive(Clone, Copy)]

@@ -9,8 +9,7 @@ use crate::syntax::single_assignment;
 pub(super) fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     const DB_API_GLOBALS: [&str; 3] = ["apilevel", "threadsafety", "paramstyle"];
 
-    // The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()`
-    // instead.
+    // Pyramid creates its WSGI app with a method on a configurator.
     const APPLICATIONS: &[&[&str]] = &[
         &["aiohttp", "web", "Application"],
         &["bottle", "Bottle"],
@@ -39,9 +38,8 @@ pub(super) fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     {
         names.extend(["revision", "down_revision", "branch_labels", "depends_on"]);
     }
-    // A gunicorn configuration file holds its settings as module variables. Any file can be one, so outside a file
-    // named after gunicorn it takes three settings, one of them a core server setting, to tell it from a module that
-    // happens to define a `timeout`.
+    // Outside files named for Gunicorn, a lone setting such as `timeout` could be an ordinary variable. Require three
+    // recognized settings, including `bind`, `workers` or `worker_class`.
     let settings: Vec<&str> = GUNICORN_SETTINGS.iter().copied().filter(|setting| bound(setting)).collect();
     if checker.file_name().contains("gunicorn")
         || settings.len() >= 3 && settings.iter().any(|setting| matches!(*setting, "bind" | "workers" | "worker_class"))
@@ -64,8 +62,7 @@ pub(super) fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     if uses_ply(checker) {
         names.extend(semantic.all_bindings().map(|(name, _)| name).filter(|name| is_ply_name(name)));
     }
-    // WSGI and ASGI servers, and the `typer` command, load the application by its module path and the name `app` or
-    // `application`.
+    // Servers and CLI tools can load the app by its module path and attribute name.
     for stmt in checker.body() {
         if let Some((target, _, value)) = single_assignment(stmt)
             && matches!(target.id.as_str(), "app" | "application")

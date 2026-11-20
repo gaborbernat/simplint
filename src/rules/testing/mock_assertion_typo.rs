@@ -14,7 +14,7 @@ pub fn mock_assertion_typo(checker: &Checker) {
     finder.visit_body(checker.body());
     let defined: FxHashSet<&str> = checker.function_defs().iter().map(|function| function.name.as_str()).collect();
     for (attr, intended) in finder.found {
-        // A name the file or the project defines is an attribute of some class, not a mock method.
+        // A definition or assignment can belong to a real attribute with the same spelling.
         let name = attr.as_str();
         if checker.project().is_attribute_assigned(name) || defined.contains(name) {
             continue;
@@ -45,10 +45,8 @@ pub fn mock_assertion_typo(checker: &Checker) {
 
 struct Typos<'a> {
     found: Vec<(&'a ast::Identifier, &'static str)>,
-    // The names called as a statement of their own, by their range, which the rename turns into a check. A call that is
-    // the whole test of an `assert` maps to the ranges to drop, the `assert ` prefix and the parentheses around the
-    // test, since an assertion method returns `None`. Renamed anywhere else, the name would be a bound method, which is
-    // always true, or a `None` the code goes on to use.
+    // A standalone call can become an assertion method call. An outer assert must also be removed because mock
+    // assertion methods return None.
     fixable: FxHashMap<TextRange, Vec<TextRange>>,
     // The names Ruff's PGH005 reports, by their range, which this rule leaves to it when it has no fix for them.
     ruff_reported: FxHashSet<TextRange>,
@@ -75,7 +73,7 @@ impl<'a> Visitor<'a> for Typos<'a> {
             _ => {}
         }
         match stmt {
-            // Code under `assertRaises` or `pytest.raises` expects the call to fail, so the misspelling is the point.
+            // The expected exception may be the error raised by the misspelled attribute.
             Stmt::With(ast::StmtWith { items, .. }) if items.iter().any(|item| expects_error(&item.context_expr)) => {}
             Stmt::Assert(ast::StmtAssert { test: expr, .. }) | Stmt::Expr(ast::StmtExpr { value: expr, .. }) => {
                 self.ruff_reported.extend(ruff_reported_name(expr).map(Ranged::range));
@@ -134,8 +132,7 @@ fn called_attribute(expr: &Expr) -> Option<&ast::Identifier> {
     func.as_attribute_expr().map(|attribute| &attribute.attr)
 }
 
-// The assertion a name is meant to be: the same name with the `assert_` prefix, or the nearest assertion when the
-// name is within reach of exactly one. `called` stays out, since every mock has that attribute.
+// Do not guess between equally close methods. `called` is a real mock attribute.
 fn intended_assertion(name: &str) -> Option<&'static str> {
     // The assertion methods of `unittest.mock`; a name is a typo of one of them, not of a mock attribute.
     const ASSERTIONS: &[&str] = &[
@@ -165,14 +162,12 @@ fn intended_assertion(name: &str) -> Option<&'static str> {
     if let Some(&intended) = ASSERTIONS.iter().find(|intended| intended.strip_prefix("assert_") == Some(name)) {
         return Some(intended);
     }
-    // A misspelled prefix still starts with the letters of `as`, which keeps the distances off the other names. A
-    // mock raises `AttributeError` for a name with one of the prefixes it guards, so that test fails without the
-    // lint, while other classes define such names, as `assert_failed` shows.
+    // Limit fuzzy matching to likely assertion names. Mock already rejects the guarded prefixes, which other classes
+    // may legitimately use.
     if !name.starts_with("as") || GUARDED_PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
         return None;
     }
-    // Names differ by at least as many edits as their lengths do, so an assertion further off than that is out of reach
-    // and cannot tie with one in reach either; most names, such as numpy's `astype`, are measured against none.
+    // The difference in length is a lower bound on edit distance, so longer gaps cannot change the closest match.
     let length = name.chars().count();
     let mut candidates: Vec<(usize, &'static str)> = ASSERTIONS
         .iter()

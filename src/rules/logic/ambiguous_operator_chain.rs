@@ -12,8 +12,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         return;
     }
     let checker = walker.checker;
-    // A bitwise operator binds tighter than a comparison, so `a > 1 & b < 2` is `a > (1 & b) < 2`, not the
-    // `(a > 1) & (b < 2)` a mask written without parentheses means.
+    // Parentheses around the bitwise operand make the intended comparison explicit.
     if let Some(operand) =
         compare.operands[1..compare.operands.len() - 1].iter().find(|operand| is_bare_bitwise(walker, compare, operand))
     {
@@ -43,9 +42,7 @@ fn is_bare_bitwise(walker: &Walker, compare: &ast::ExprCompare, operand: &Expr) 
         && walker.checker.parenthesized_range(operand, compare.into()) == operand.range()
 }
 
-// `a < b <= c`, `a == b == c`, `a == b != c` and `a is b is None` read as written. A chain that turns around, such as
-// `a < b > c`, that holds `in`, or that mixes kinds, such as `0 < x is None`, does not, and neither does `a != b != c`,
-// which does not compare `a` with `c`.
+// A single inequality can mark the endpoint of an equality chain. Two inequalities never compare the outer values.
 fn is_plain_chain(ops: &[CmpOp]) -> bool {
     let all = |allowed: &[CmpOp]| ops.iter().all(|op| allowed.contains(op));
     all(&[CmpOp::Lt, CmpOp::LtE])
