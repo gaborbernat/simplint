@@ -182,6 +182,7 @@ pub(super) fn file_facts(
     overlay: &Overlay,
 ) -> Option<FileFacts> {
     let (module_path, importable) = (file.module_path.as_deref(), file.importable.as_deref());
+    let parts = parts.for_file(file.settings.is_test);
     let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
     let parts = match cached {
         Some(facts) if facts.covers(parts, module_path, importable) => return Some(facts),

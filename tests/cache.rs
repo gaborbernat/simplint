@@ -409,6 +409,21 @@ fn facts_cached_without_duplicate_code_are_collected_again_for_it() {
     assert_eq!((first, check(root.path(), &["--select", "SMP530"]).0), (0, 1));
 }
 
+#[test]
+fn duplicate_code_checks_a_cached_module_when_pytest_stops_collecting_it() {
+    let root = project(&[
+        ("first.py", REPEATED),
+        ("second.py", REPEATED),
+        ("pyproject.toml", "[tool.pytest.ini_options]\npython_files = ['first.py']\n"),
+    ]);
+    let args = ["--select", "SMP530"];
+    assert_eq!(check(root.path(), &args).0, 0);
+    write_file(root.path(), "pyproject.toml", "[tool.pytest.ini_options]\npython_files = ['test_*.py']\n");
+    let cached = check(root.path(), &args);
+    assert_eq!(cached.0, 1);
+    assert_eq!(cached, check(root.path(), &["--select", "SMP530", "--no-cache"]));
+}
+
 // The fixture requests are a part of the facts only `unused-fixture` reads, so a run without it caches facts that lack
 // them, and a later run that selects it collects them again rather than report a requested fixture.
 #[test]
