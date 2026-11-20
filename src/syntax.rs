@@ -288,8 +288,8 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
 
 // Each statement of `module_statements` with the one after it in its own block, where a docstring for it would sit.
 pub fn module_statements_with_next(body: &[Stmt]) -> impl Iterator<Item = (&Stmt, Option<&Stmt>)> {
-    body.iter().enumerate().flat_map(|(index, stmt)| -> Box<dyn Iterator<Item = (&Stmt, Option<&Stmt>)> + '_> {
-        match stmt {
+    body.iter().enumerate().flat_map(|(index, stmt)| {
+        let nested: Box<dyn Iterator<Item = (&Stmt, Option<&Stmt>)>> = match stmt {
             Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
                 module_statements_with_next(body)
                     .chain(elif_else_clauses.iter().flat_map(|clause| module_statements_with_next(&clause.body))),
@@ -305,8 +305,9 @@ pub fn module_statements_with_next(body: &[Stmt]) -> impl Iterator<Item = (&Stmt
                     .chain(module_statements_with_next(orelse))
                     .chain(module_statements_with_next(finalbody)),
             ),
-            _ => Box::new(std::iter::once((stmt, body.get(index + 1)))),
-        }
+            _ => return itertools::Either::Left(std::iter::once((stmt, body.get(index + 1)))),
+        };
+        itertools::Either::Right(nested)
     })
 }
 
