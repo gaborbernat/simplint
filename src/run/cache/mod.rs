@@ -545,15 +545,17 @@ mod tests {
             |directory| {
                 let root = directory.path();
                 let stored = Stored { path: root.join("cache"), bytes: None, rendered: root.join("rendered") };
-                let mut cache = Cache::new(root, &stored, 0);
-                let facts = FileFacts::collect(&root.join("module.py"), "VALUE = 1\n", None, None, Parts::default())
-                    .expect("the source parses");
-                cache.set_facts(&root.join("module.py"), FileKey { hash: 7, length: 10 }, &facts);
-                let error = cache.write().expect_err("the cache cannot grow");
-                assert_eq!(
-                    (error.to_string(), stored.path.exists()),
-                    ("Failed to write serialized cache to temporary file.".to_owned(), false)
-                );
+                let path = root.join("module.py");
+                // The small archive fails on flush. The large one fills the buffer during serialization.
+                for size in [1, 128 * 1024] {
+                    let mut cache = Cache::new(root, &stored, 0);
+                    let source = format!("{} = 1\n", "V".repeat(size));
+                    let facts = FileFacts::collect(&path, &source, None, None, Parts::default()).expect("valid source");
+                    cache.set_facts(&path, FileKey { hash: 7, length: source.len() as u64 }, &facts);
+                    let error = cache.write().expect_err("the cache cannot grow");
+                    assert_eq!(error.to_string(), "Failed to write serialized cache to temporary file.");
+                    assert!(!stored.path.exists());
+                }
             },
         );
     }
