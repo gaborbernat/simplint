@@ -1,4 +1,4 @@
-name: Compare ARM64 function ordering
+name: Compare ARM64 branch encodings
 on:
   workflow_dispatch:
 permissions:
@@ -17,7 +17,7 @@ jobs:
           enable-cache: false
           activate-environment: true
           python-version: "3.15"
-      - name: Order functions from the same profile
+      - name: Compare branch encodings on the same executable
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -28,9 +28,9 @@ jobs:
           binary=("$RUNNER_TEMP"/wheel/*/*.data/scripts/simplint)
           cp "${binary[0]}" "$RUNNER_TEMP/original"
           for variant in control dist; do
-            order=cdsort
-            if [[ "$variant" == dist ]]; then order=hfsort; fi
-            llvm-bolt-22 "$RUNNER_TEMP/original" -data=inputs/profile -reorder-blocks=ext-tsp -reorder-functions="$order" \
+            flags=()
+            if [[ "$variant" == dist ]]; then flags=(-compact-code-model); fi
+            llvm-bolt-22 "$RUNNER_TEMP/original" -data=inputs/profile -reorder-blocks=ext-tsp -reorder-functions=cdsort "${flags[@]}" \
               -split-functions -split-all-cold -o "$RUNNER_TEMP/optimized"
             strip --strip-all --remove-section=.note.bolt_info -o "${binary[0]}" "$RUNNER_TEMP/optimized"
             chmod +x "${binary[0]}"
