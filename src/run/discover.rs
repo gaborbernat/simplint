@@ -26,7 +26,14 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     let mut python = Vec::new();
     let mut unlinted = Vec::new();
     let mut missing = Vec::new();
-    for file in found {
+    #[cfg(all(windows, target_arch = "aarch64"))]
+    let found = with_symlinks(found);
+    #[cfg(not(all(windows, target_arch = "aarch64")))]
+    let found = found.into_iter().map(|file| {
+        let link = is_symlink(&file);
+        (file, link)
+    });
+    for (file, link) in found {
         let file = match file {
             Ok(file) => file,
             Err(error) => {
@@ -38,7 +45,7 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
             }
         };
         let path = file.path();
-        if escapes_roots(path, &roots) {
+        if link && escapes_roots(path, &roots) {
             warn!("{} {}: its target lies outside the linted paths", "Skipped symlink".bold(), path.display());
             continue;
         }
@@ -59,6 +66,9 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
             unlinted.push(path.to_path_buf());
             continue;
         }
+        #[cfg(all(windows, target_arch = "aarch64"))]
+        python.push((link, path.to_path_buf()));
+        #[cfg(not(all(windows, target_arch = "aarch64")))]
         python.push(path.to_path_buf());
     }
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
@@ -91,21 +101,59 @@ fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
     Some((path.clone(), io.to_string()))
 }
 
+fn is_symlink(file: &Result<ResolvedFile, WalkError>) -> bool {
+    file.as_ref().is_ok_and(|file| file.path().is_symlink())
+}
+
+#[cfg(any(all(test, any(unix, windows)), all(windows, target_arch = "aarch64")))]
+fn with_symlinks(
+    files: Vec<Result<ResolvedFile, WalkError>>,
+) -> impl Iterator<Item = (Result<ResolvedFile, WalkError>, bool)> {
+    use rayon::prelude::*;
+
+    let links: Vec<_> = files.par_iter().map(is_symlink).collect();
+    files.into_iter().zip(links)
+}
+
 // Whether a symlink points at a file outside the paths the run lints, which the run neither reads nor writes.
 fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
-    path.is_symlink()
-        && path.is_file()
-        && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
+    path.is_file() && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
 }
 
 // Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
 // twice. File IDs also identify hard links on filesystems that provide them.
+#[cfg(not(all(windows, target_arch = "aarch64")))]
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
     python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
     python.sort();
     python
+}
+
+#[cfg(all(windows, target_arch = "aarch64"))]
+use distinct_parallel as distinct;
+
+#[cfg(any(all(test, any(unix, windows)), all(windows, target_arch = "aarch64")))]
+fn distinct_parallel(python: Vec<(bool, PathBuf)>) -> Vec<PathBuf> {
+    use rayon::prelude::*;
+
+    let mut files: Vec<_> = python
+        .into_par_iter()
+        .map(|(link, path)| {
+            let id = identity(&path);
+            ((link, path), id)
+        })
+        .collect();
+    files.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+    let has_links = files.last().is_some_and(|((link, _), _)| *link);
+    let mut seen = FxHashSet::default();
+    let mut paths: Vec<_> =
+        files.into_iter().filter_map(|((_, path), id)| id.is_none_or(|id| seen.insert(id)).then_some(path)).collect();
+    if has_links {
+        paths.sort_unstable();
+    }
+    paths
 }
 
 #[cfg(unix)]
@@ -207,6 +255,43 @@ mod tests {
     use anyhow::anyhow;
 
     use super::redact_extended;
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn parallel_discovery_keeps_the_first_hard_link_and_missing_paths() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let first = dir.path().join("a.py");
+        let alias = dir.path().join("z.py");
+        let missing = dir.path().join("missing.py");
+        std::fs::write(&first, "").expect("write file");
+        std::fs::hard_link(&first, &alias).expect("hard link");
+        let paths = discover_parallel(vec![alias, missing.clone(), first.clone()]);
+        assert_eq!(paths, [first, missing]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parallel_discovery_sorts_retained_symlinks_with_regular_files() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let original = dir.path().join("z.py");
+        let target = dir.path().join("target.py");
+        let alias = dir.path().join("a.py");
+        let only_link = dir.path().join("b.py");
+        std::fs::write(&original, "").expect("write original");
+        std::fs::write(&target, "").expect("write target");
+        std::os::unix::fs::symlink(&original, &alias).expect("symlink original");
+        std::os::unix::fs::symlink(&target, &only_link).expect("symlink target");
+        let paths = discover_parallel(vec![alias, original.clone(), only_link.clone()]);
+        assert_eq!(paths, [only_link, original]);
+    }
+
+    #[cfg(any(unix, windows))]
+    fn discover_parallel(paths: Vec<std::path::PathBuf>) -> Vec<std::path::PathBuf> {
+        let files = paths.into_iter().map(|path| Ok(super::ResolvedFile::Nested(path))).collect();
+        let checked =
+            super::with_symlinks(files).map(|(file, link)| (link, file.expect("resolved file").into_path())).collect();
+        super::distinct_parallel(checked)
+    }
 
     // A message that names no complete path is not one about an extended file, so it stays as Ruff wrote it.
     #[test]

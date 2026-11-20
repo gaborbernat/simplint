@@ -160,13 +160,13 @@ impl<'a> RunFile<'a> {
         ruff_config: Option<&'a Path>,
         package: Option<PackageRoot<'a>>,
         roots: &SearchRoots,
+        initializers: Option<&mut FxHashMap<&'a Path, bool>>,
     ) -> Self {
         let module_path = package.and_then(|package| to_module_path(package.path(), path));
         let importable = if module_path.is_none() { roots.module_path(path) } else { None };
         let settings = FileSettings::new(settings, ruff, path);
         // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
-        let sibling_init =
-            settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
+        let sibling_init = settings.rules.overlaps(RuleSet::sibling_init()) && has_sibling_init(path, initializers);
         let nested = settings.project.nested.then(|| settings.project.root.clone());
         Self {
             path,
@@ -184,6 +184,14 @@ impl<'a> RunFile<'a> {
             linted: true,
             nested,
         }
+    }
+}
+
+fn has_sibling_init<'a>(path: &'a Path, initializers: Option<&mut FxHashMap<&'a Path, bool>>) -> bool {
+    let probe = || path.with_file_name("__init__.py").is_file();
+    match initializers {
+        Some(directories) => *directories.entry(path.parent().unwrap_or(path)).or_insert_with(probe),
+        None => probe(),
     }
 }
 
@@ -249,4 +257,25 @@ pub(super) fn documentation(
             (project, DocReferences::collect(roots, main, cache_dir))
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use rustc_hash::FxHashMap;
+
+    use super::has_sibling_init;
+
+    #[test]
+    fn siblings_share_package_status_only_within_their_directory() {
+        let root = tempfile::tempdir().expect("temporary directory");
+        let package = root.path().join("package");
+        std::fs::create_dir(&package).expect("create package");
+        std::fs::write(package.join("__init__.py"), "").expect("write initializer");
+        let files = [package.join("a.py"), root.path().join("a.py"), package.join("b.py"), root.path().join("b.py")];
+        let mut directories = FxHashMap::default();
+        assert_eq!(
+            files.each_ref().map(|path| has_sibling_init(path, Some(&mut directories))),
+            [true, false, true, false]
+        );
+    }
 }
