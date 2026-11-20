@@ -4,17 +4,15 @@ use super::lines::{Line, TAB_WIDTH, columns, docstring_lines};
 
 pub(crate) struct Classified<'a> {
     pub(crate) line: Line<'a>,
-    // Whether the line is not prose: literal or doctest code, a comment, a hyperlink target, a section underline, a
-    // transition, or the content of a `raw` or `math` directive.
+    // Non-prose includes code and structural markup such as targets, transitions and section underlines.
     pub(crate) code: bool,
     // Whether the line starts a block of its own, so an inline literal left open above it closes there.
     pub(crate) opens: bool,
-    // Whether the text is not read as markup at all: a literal block, doctest, comment or target, or the content of a
-    // verbatim directive. A Markdown fence in other code, such as a `~~~` underline, is still a fence.
+    // Ignore all markup in verbatim content. Other non-prose lines can still resemble Markdown fences, such as
+    // an RST `~~~` section underline.
     pub(crate) verbatim: bool,
 }
 
-// How a line reads: as prose, as code, or as text that is not read as markup at all.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(super) enum Shown {
     #[default]
@@ -46,8 +44,8 @@ pub(crate) fn classify_docstring(text: &str) -> Vec<Classified<'_>> {
         .collect()
 }
 
-// A block's body is a range of the one line vector, and a list item or field body replaces only the text of its first
-// line. Nesting therefore costs no copies, and memory stays linear in the number of lines however deep they nest.
+// Nested blocks share the input line vector so memory grows linearly with the input. A field or list item needs
+// a replacement for its first line to skip the marker.
 pub(super) fn marks(lines: &[Line<'_>]) -> Vec<Mark> {
     let base = lines.iter().filter(|line| !line.text.is_empty()).map(|line| line.indent).min().unwrap_or_default();
     let mut out = vec![Mark::default(); lines.len()];
@@ -66,7 +64,7 @@ struct Body<'a> {
     base: usize,
     // The line the body starts with, when a list item or field replaces its marker's text with the text after it.
     first: Option<Line<'a>>,
-    // Whether the body is the docstring itself, the only level where section titles are read.
+    // Only the outermost body recognizes section titles.
     top: bool,
 }
 
@@ -119,7 +117,6 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
         }
     }
 
-    // The line at `index`, with the replaced text when it is the body's first line.
     fn line(&self, index: usize) -> Line<'a> {
         match self.body.first {
             Some(first) if index == self.body.start => first,
@@ -127,7 +124,6 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
         }
     }
 
-    // Classifies the block that starts at `index` and returns where the next block starts.
     fn block(&mut self, index: usize) -> usize {
         let line = self.line(index);
         if line.text.is_empty() {
@@ -441,7 +437,6 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
             .unwrap_or_default()
     }
 
-    // The first line from `from` that is not indented past the base, so a block's lines end before the next block.
     fn region_end(&self, from: usize) -> usize {
         (from..self.body.end)
             .find(|&index| {
@@ -451,7 +446,6 @@ impl<'s, 'l, 'a> Scan<'s, 'l, 'a> {
             .unwrap_or(self.body.end)
     }
 
-    // The first non-blank line from `from` that is indented less than `column`, where a list item's body ends.
     fn body_end(&self, from: usize, column: usize) -> usize {
         (from..self.body.end)
             .find(|&index| {

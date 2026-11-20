@@ -18,14 +18,11 @@ pub(crate) enum Owner<'a> {
     Class(&'a ast::StmtClassDef),
 }
 
-// A docstring the reStructuredText rules check, with what it documents. A library's public API must document all of its
-// parameters, return value and exceptions; any other docstring must only be accurate.
 pub(crate) struct Target<'a> {
     pub(crate) owner: Owner<'a>,
     pub(crate) docstring: Rc<Docstring<'a>>,
-    // For a class, the docstring of its `__init__`, where some projects document the constructor's parameters instead.
+    // Constructor parameter descriptions can appear in either docstring.
     pub(crate) constructor: Option<Rc<Docstring<'a>>>,
-    // For a class, its attributes, found when a rule first asks for them.
     attributes: OnceCell<Vec<Attribute<'a>>>,
 }
 
@@ -42,8 +39,7 @@ impl<'a> Target<'a> {
         }
     }
 
-    // The parameters the docstring may document: a function's, or the constructor's for a class, `None` when the class
-    // takes them from elsewhere, such as a base class.
+    // Inherited and otherwise unknown constructor signatures have no parameter list here.
     pub(crate) fn parameters(&self) -> Option<Vec<Parameter<'a>>> {
         match self.owner {
             Owner::Function { def, class } => Some(parameters(def, class.is_some())),
@@ -51,8 +47,7 @@ impl<'a> Target<'a> {
         }
     }
 
-    // Whether the definition is part of the library's public API. Only the rules that ask for it pay for the public
-    // API, which reads the index of the whole run.
+    // The project index is needed only for rules that require public API documentation.
     pub(crate) fn public(&self, checker: &Checker) -> bool {
         checker.state().public_api(checker).is_public(self.definition(), Need::Docs)
     }
@@ -89,7 +84,6 @@ impl<'a> Target<'a> {
     }
 }
 
-// Built once per file; rules read them through `Checker::rst_targets`.
 pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
     if checker.settings.project.docstring_style != Some(DocstringStyle::Rst) {
         return Vec::new();
@@ -113,7 +107,7 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
             })
         })
         .collect();
-    // By the range of the docstring, so the class shares the one its `__init__` target holds.
+    // Reuse the parsed constructor docstring when checking the class.
     let parsed: FxHashMap<TextRange, Rc<Docstring>> =
         targets.iter().map(|target| (target.docstring.range(), Rc::clone(&target.docstring))).collect();
     targets.extend(checker.class_defs().iter().filter_map(|class| {
@@ -132,8 +126,7 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
     targets
 }
 
-// A function's parameters in order, without the instance or class a method receives first. Names made of underscores
-// only are left out, as they take a value nobody reads.
+// A method receiver is implicit, and underscore-only names conventionally mark ignored arguments.
 fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>> {
     let received = if is_method { receiver(def) } else { None };
     let parameters = &def.parameters;
@@ -155,14 +148,12 @@ fn underscores_only(name: &str) -> bool {
     name.chars().all(|char| char == '_')
 }
 
-// A dataclass or attrs class takes its constructor parameters from the fields it turns into them: those annotated in
-// its body and those an `attr.ib()` or `field()` call declares, without `ClassVar`s, the `KW_ONLY` marker and fields
-// that set `init=False`. `None` when they come from elsewhere: a base class, or a class that is not generated.
+// Inherited fields can change a generated constructor's signature.
 fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     if let Some(init) = constructor(class) {
         return Some(parameters(init, true));
     }
-    // A generator called with `init=False` writes no constructor, so the class keeps `object`'s.
+    // With `init=False` the decorator leaves constructor selection to Python.
     let generator = class.decorator_list.iter().find_map(|decorator| {
         let call = decorator.expression.as_call_expr();
         let name = last_segment(call.map_or(&decorator.expression, |call| &call.func))?;
@@ -201,9 +192,8 @@ fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
         .last()
 }
 
-// The name of a field's constructor parameter: attrs takes it from the field's `alias`, or from the field's name
-// without its leading underscores; a dataclass keeps the field's name. An alias that is not a string literal names the
-// parameter in a way the class does not show, so the class's parameters are unknown.
+// attrs strips leading underscores unless the field supplies an alias. A computed alias leaves the parameter name
+// unknown.
 fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) -> Option<&'a str> {
     if !attrs {
         return Some(name.id.as_str());
@@ -215,8 +205,7 @@ fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) 
     }
 }
 
-// Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder such as
-// `__wrapped__`, and not a parameter named with two underscores, which marks it positional-only, as in typeshed.
+// Historical typing conventions use two leading underscores for positional-only parameters.
 pub(crate) fn is_internal(name: &str, parameter: bool) -> bool {
     Visibility::of(name) == Visibility::Private && !(parameter && name.starts_with("__"))
 }

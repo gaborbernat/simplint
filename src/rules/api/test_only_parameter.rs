@@ -13,7 +13,6 @@ pub fn test_only_parameter(checker: &Checker) {
     if !judges_call_sites(checker) {
         return;
     }
-    // Built once per module: building it walks the module, and every function's lookup reuses it.
     let own = OwnCalls::of(checker);
     for function in candidate_functions(checker) {
         let sites = own.function(checker, function.name.as_str());
@@ -56,10 +55,8 @@ fn report_parameters(checker: &Checker, function: &ast::StmtFunctionDef, sites: 
     }
 }
 
-// A defaulted parameter that passes in a collaborator is a seam, not test plumbing, so the rule leaves it alone. A
-// collaborator is a function, a class, a module, or an instance built by calling a class. A `None` default names none,
-// so it is exempt only when the body calls the parameter, or when the annotation names a class and the body uses it.
-// Flags, literals, data and enums stay reported.
+// Tests can supply a fake dependency through a parameter. A None default gives no clue to its purpose,
+// so use its annotation and how the body accesses it. Enum values remain ordinary data.
 fn is_injected_dependency(
     checker: &Checker,
     function: &ast::StmtFunctionDef,
@@ -77,7 +74,7 @@ fn is_injected_dependency(
         return is_used(function, name, ParameterUse::Called)
             || (by_annotation && is_used(function, name, ParameterUse::CalledOrRead));
     }
-    // A name may be bound to another name, so a chain of assignments is followed this many steps before it is unresolved.
+    // Limit alias resolution so cycles terminate.
     is_collaborator(checker, default, 8) && is_used(function, name, ParameterUse::CalledOrRead)
 }
 
@@ -117,8 +114,7 @@ fn is_enum_default(checker: &Checker, default: &Expr) -> bool {
     }
 }
 
-// The class an annotation names, unwrapped from `Optional[...]` and `... | None`. A builtin or collection type is data,
-// and `Literal[...]` is a value, so neither is a class.
+// Use annotations to recognize a dependency when the default is None. Common data types and Literal do not qualify.
 fn is_class_annotation(checker: &Checker, annotation: &Expr) -> bool {
     match annotation {
         Expr::BinOp(ast::ExprBinOp { left, right, op: Operator::BitOr, .. }) => [left.as_ref(), right.as_ref()]
@@ -274,7 +270,6 @@ fn constructs_class(checker: &Checker, func: &Expr) -> bool {
     }
 }
 
-// The uses a parameter's body makes of it: a call of it, and, for a reference default, an attribute read on it too.
 #[derive(Clone, Copy, PartialEq)]
 enum ParameterUse {
     Called,

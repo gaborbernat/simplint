@@ -1,16 +1,11 @@
-Flags [`re.match()`](https://docs.python.org/3/library/re.html#re.match) references, which
-[`re.prefixmatch()`](https://docs.python.org/3/library/re.html#re.prefixmatch) names from Python 3.15.
+Flags reads of [`re.match`](https://docs.python.org/3/library/re.html#re.match) on Python 3.15 and later.
 
 ## Why is this bad?
 
-Python 3.15 [soft deprecates](https://docs.python.org/3/glossary.html#term-soft-deprecated) `re.match()` in favor of
-`re.prefixmatch()`, whose name says what the function does: it tries the pattern only at the start of the string. Most
-other regular expression libraries use *match* for the unanchored search that Python calls
-[`re.search()`](https://docs.python.org/3/library/re.html#re.search), so the
-[`re` docs](https://docs.python.org/3/library/re.html#prefixmatch-vs-match) call `match()` a gotcha for readers who come
-from them. `re.match()` keeps working and is not planned for removal. Tim Peters and Serhiy Storchaka argued against the
-change in the [discussion](https://discuss.python.org/t/add-re-prefixmatch-deprecate-re-match/105927), but simplint
-reports `re.match()` from 3.15 because the docs say new code should prefer `prefixmatch()`.
+[`re.prefixmatch()`](https://docs.python.org/3/library/re.html#re.prefixmatch) checks for a match at the beginning of
+the string. [`re.search()`](https://docs.python.org/3/library/re.html#re.search) can find a match anywhere. Python 3.15
+[soft-deprecated the name `re.match()`](https://docs.python.org/3/library/re.html#prefixmatch-vs-match). It remains an
+alias for `re.prefixmatch()`.
 
 ## Example
 
@@ -154,11 +149,9 @@ def parse_version(text):
       return match(r"\d+\.\d+", text)
   ```
 
-- **Truth tests with a plain-text pattern Ruff rewrites**:
-  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) rewrites a `re.match` call whose pattern
-  has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
-  [`str.startswith`](https://docs.python.org/3/builtins/stdtypes.html#str.startswith), so this rule leaves that call to
-  Ruff.
+- **Plain-text truth tests.** simplint leaves two-argument calls with a plain string or bytes pattern to Ruff's
+  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) when the result is tested for truth or
+  compared with `is None` or `is not None`. This exception also applies when RUF055 is disabled.
 
   ```toml config
   [project]
@@ -198,9 +191,8 @@ def parse_version(text):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
-  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/), which rewrites `re.match` with a
-  plain-string pattern to `str.startswith` and which this rule leaves to it; the rename for other patterns is open issue
-  [#24545](https://github.com/astral-sh/ruff/issues/24545).
+- Ruff's preview rule [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) can replace a
+  plain-text prefix test with `startswith()`. [Ruff issue #24545](https://github.com/astral-sh/ruff/issues/24545)
+  proposes renaming other calls to `prefixmatch()`.
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same `re.match` calls as
   [FTP149](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp149), with no fix.

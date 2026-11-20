@@ -5,7 +5,7 @@ use super::classes::Reexports;
 use super::resolve::{ClassKey, ModuleFacts};
 use crate::project::facts::{ImportBinding, Signature};
 
-// A name the file only imports, assigns or leaves to a module `__getattr__` is absent, so nothing tells what it is.
+// A resolved class maps to true and a function to false, including re-exports. Other names have no entry.
 pub(super) type Members = FxHashMap<String, bool>;
 
 #[derive(Default)]
@@ -13,7 +13,6 @@ pub(super) struct RunImports {
     pub(super) names: FxHashMap<FileId, Members>,
     pub(super) modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
     pub(super) members: FxHashMap<FileId, Members>,
-    // The functions of the run each file imports by name, with their signatures, under the names the file binds.
     pub(super) signatures: FxHashMap<FileId, FxHashMap<String, Signature>>,
 }
 
@@ -40,7 +39,8 @@ pub(super) fn run_import_kinds(
         };
         let is_class = classes.contains(&key);
         names.entry(*importer).or_default().insert(binding.bound.clone(), is_class);
-        // A module that defines the name twice, as on both sides of a version check, gives no single signature.
+        // Several definitions may share a signature, for example in alternative version branches. Conflicting
+        // signatures leave the call ambiguous.
         let mut shapes = modules
             .get(&key.0)
             .into_iter()

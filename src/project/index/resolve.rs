@@ -24,8 +24,7 @@ use crate::syntax::{is_stdlib_root, last_dotted_segment};
 use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
 
-// Kept for the whole run so a fix round resolves only the files it rewrote: fixes never add or remove a file, so the
-// rest stay current.
+// Fixes keep the file list intact, so only rewritten files need their imports resolved again.
 pub struct ImportResolver {
     pub(super) search: SearchRoots,
     pub(super) db: ModuleDb,
@@ -121,9 +120,8 @@ impl ImportResolver {
             }
         }
         let ids: Vec<FileId> = files.iter().map(|(path, _)| FileIds::intern(&mut self.files, path)).collect();
-        // The files of one directory share the resolution of each module name: a name the search paths do not hold
-        // resolves from the directories above the importing file, which files of one directory have in common. Large
-        // directories are split, so one of them does not run as a single job.
+        // Files in one directory share the same ancestors for import resolution. Split large directories into several
+        // jobs so one worker does not handle the whole directory.
         let mut directories: FxHashMap<&Path, Vec<usize>> = FxHashMap::default();
         for (index, (path, _)) in files.iter().enumerate() {
             if !self.modules.contains_key(&ids[index]) {
@@ -445,10 +443,8 @@ fn unreached_names<'f>(
     modules
         .iter()
         .filter_map(|(module, names)| {
-            // A module named like a file of the run that resolves outside the run, such as the standard library's
-            // `typing_extensions` for a `typing_extensions.py` of the run, may be that file, imported from anywhere.
-            // A file that imports a module of its own name from outside the run, as a `tomllib` backport does, is not
-            // that module, so the import is no import of the file's own names.
+            // A top-level import resolved outside the run can share a name with a project module. Exclude the importer's
+            // own name because a backport can import the installed module it replaces.
             let Some((top, rest)) = module.split_once('.') else {
                 let shadows = run.names.contains(module.as_str())
                     && !resolved(module).is_some_and(|file| run.paths.contains(&file))
@@ -487,9 +483,8 @@ fn star_targets<'f>(
     (stars, unresolved)
 }
 
-// A module that resolves to no file, such as `distutils.log` where the standard library has no `distutils` and the
-// run shims its own `log`, may be the run's file of the same last name, so its calls read that file. A call that drops
-// its value counts too: the rules that judge a function by the arguments of its calls would otherwise miss it.
+// An unresolved module can still refer to a local file with the same last path component, as in a distutils shim. Keep
+// calls whose results are discarded because their arguments still count.
 fn constructor_reads<'f>(
     module: &'f str,
     uses: &[NameUse],

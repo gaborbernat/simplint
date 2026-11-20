@@ -1,12 +1,12 @@
 Pair simplint with Ruff
 #######################
 
-simplint leaves the cases a `Ruff <https://docs.astral.sh/ruff/>`__ rule reports to Ruff, even when your configuration
-does not select that rule (see :doc:`/explanation/design-principles`). Each simplint rule page names any Ruff overlap.
-To have those cases reported:
+Rule pages list the cases simplint leaves to `Ruff <https://docs.astral.sh/ruff/>`__. Enable the corresponding Ruff
+rules to get those reports. The :doc:`design principles </explanation/design-principles>` explain when both tools
+report a case.
 
-- Run Ruff with every rule selected (``select = ["ALL"]``) and preview enabled, but the undocumented-* rules
-  (``D1``), which ask for the docstrings simplint removes (see :ref:`resolve-ruff-conflicts`):
+- Enable Ruff's preview rules and select ``ALL``. Ignore the ``D1`` rules that ask for docstrings simplint removes
+  (see :ref:`resolve-ruff-conflicts`):
   `undocumented-public-module <https://docs.astral.sh/ruff/rules/undocumented-public-module/>`__,
   `undocumented-public-package <https://docs.astral.sh/ruff/rules/undocumented-public-package/>`__,
   `undocumented-public-class <https://docs.astral.sh/ruff/rules/undocumented-public-class/>`__,
@@ -25,6 +25,7 @@ To have those cases reported:
     [tool.ruff.lint]
     select = ["ALL"]
     ignore = ["D1"]
+    external = ["SMP"]
 
     [tool.ruff.lint.flake8-tidy-imports]
     ban-relative-imports = "parents"
@@ -32,6 +33,9 @@ To have those cases reported:
     [tool.ruff.lint.flake8-tidy-imports.banned-api]
     "typing.Any".msg = "use the precise type"
     "typing.cast".msg = "narrow with isinstance or TypeIs instead"
+
+For projects targeting Python 3.15 or later, ignore Ruff's ``PLW1514`` or simplint's ``SMP521`` to resolve their
+:ref:`encoding conflict <resolve-ruff-conflicts>`.
 
 With ``docstring-style = "rst"`` in ``[tool.simplint]``, also ignore the Ruff rules that read the ``:returns:``,
 ``:yields:`` and ``:raises:`` fields as missing sections:

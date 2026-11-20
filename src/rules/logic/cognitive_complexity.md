@@ -1,17 +1,13 @@
-Flags a function whose cognitive complexity is over the limit, which is 20 by default. The score follows SonarSource's
-definition: it counts the branches, loops and handlers a reader must follow, and counts each one more the deeper it is
-nested.
+Flags functions with a cognitive complexity score above the configured limit (20 by default). Nested branches, loops and
+exception handlers add more to the score than top-level ones.
 
 ## Why is this bad?
 
-Length says little about how hard a function is to read: branches nested in a loop are harder to follow than a longer
-straight-line function, because the reader holds each condition in mind. McCabe's count weighs every branch the same;
-[SonarSource's white paper](https://www.sonarsource.com/docs/CognitiveComplexity.pdf) shows two functions with the same
-McCabe count where one is far harder to follow, and adds more for each level of nesting. A
-[meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found the score correlates with comprehension time and
-subjective ratings, while [Lavazza et al. (2023)](https://doi.org/10.1016/j.jss.2022.111561) found it predicts
-understandability no better than older measures; the rule keeps it for its nesting term. Moving a deep branch into a
-named helper lowers the score of the function it leaves.
+A reader following an `if` inside two loops has to keep track of both loops and the condition.
+[SonarSource's cognitive complexity metric](https://www.sonarsource.com/docs/CognitiveComplexity.pdf) gives such a
+branch more weight. A [meta-analysis of 427 snippets](https://arxiv.org/abs/2007.12520) found that the score correlates
+with comprehension time and subjective ratings. [Lavazza et al.](https://irinsubria.uninsubria.it/handle/11383/2144151)
+found that adding it to traditional metrics did little to improve predictions of understandability.
 
 ## Example
 
@@ -34,23 +30,18 @@ def sign(values: list[int]) -> list[str]:
 Use instead:
 
 ```python ok
-def sign(value: int) -> str:
-    if value > 0:
-        return "+"
-    if value < 0:
-        return "-"
-    return "0"
+def sign(values: list[int]) -> list[str]:
+    return [nonzero_sign(value) for value in values if value]
 
 
-def signs(values: list[int]) -> list[str]:
-    return [sign(value) for value in values]
+def nonzero_sign(value: int) -> str:
+    return "+" if value > 0 else "-"
 ```
 
 ## Configuration
 
 - [`logic.max-cognitive-complexity`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)
-  in `[tool.simplint]`: the highest score a function may have. A function scoring more is reported, such as
-  `max-cognitive-complexity = 30` under `[tool.simplint.logic]`
+  sets the highest allowed score. The example raises it to 30.
 
   ```toml config
   [tool.simplint.logic]
@@ -70,23 +61,23 @@ def signs(values: list[int]) -> list[str]:
 
 ## What it does
 
-The score of a function adds these, where the nesting is the number of bodies of branches, loops, handlers, `case`
-clauses, conditional expressions and lambdas the structure sits in:
+Nesting depth starts at zero. Branch bodies, loop bodies, handlers, `case` clauses, conditional expressions and lambdas
+increase it.
 
-- one for each `if`, `for`, `while`, `match`, `except` and conditional expression, plus its nesting
-- one for each `elif` and `else`, the `else` of a loop or a `try` included, without the nesting
-- one for each run of one boolean operator: `a and b or c` adds two, `a and b and c` adds one
+- One plus the current depth for each `if`, `for`, `while`, `match`, `except` and conditional expression.
+- One for each `elif` and `else`, including the `else` of a loop or a `try`.
+- One for each run of the same boolean operator. For example, `a and b or c` adds two and `a and b and c` adds one.
 
-As in SonarSource's Python analyzer, a condition counts at the nesting of its statement, `try`, `finally` and `with`
-bodies do not nest, and comprehensions add nothing. Two choices differ from SonarSource: a nested `def` or `class` is
-scored on its own, so its statements do not count for the function around it, and recursion is not counted.
+An `if` or `while` condition uses the nesting depth of its statement. The bodies of `try`, `finally` and `with` add no
+nesting. Comprehension clauses add no points of their own, but expressions inside them can count. Nested definitions do
+not contribute to the enclosing function's score. Each function gets its own score, and recursive calls add no points.
 
 ### Active on
 
-Every function of the module, nested functions included, is reported at its name when its score is over the limit.
+simplint reports a function at its name when its score exceeds the limit.
 
-- **A function with several nested branches**: the score counts the nested ones more. The limit is lowered here so that
-  the function is over it.
+- **Two loops and an `if`.** The outer loop adds one, the inner loop adds two and the `if` adds three. The total exceeds
+  the configured limit of five.
 
   ```toml config
   [tool.simplint.logic]
@@ -114,7 +105,7 @@ Every function of the module, nested functions included, is reported at its name
       return "-"
   ```
 
-- **A comprehension**: its `for` and `if` clauses add nothing, so even a limit of zero keeps it.
+- **A comprehension with one comparison.** Its loop and filter add no points.
 
   ```toml config
   [tool.simplint.logic]
@@ -144,17 +135,15 @@ No fix is offered: splitting a function is a decision about its design.
 
 ## Ruff overlap
 
-Ruff's [complex-structure](https://docs.astral.sh/ruff/rules/complex-structure/) (C901) counts McCabe's cyclomatic
-complexity, which adds one per branch and does not grow with nesting. The two scores disagree, and this rule reads the
-nesting that McCabe's score ignores.
+Ruff's [complex-structure (C901)](https://docs.astral.sh/ruff/rules/complex-structure/) measures McCabe complexity. A
+branch contributes equally at any depth. [Ruff issue #2418](https://github.com/astral-sh/ruff/issues/2418) tracks the
+request for cognitive complexity.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [C901](https://docs.astral.sh/ruff/rules/complex-structure/), which measures McCabe complexity rather than cognitive
-  complexity; open issue [#2418](https://github.com/astral-sh/ruff/issues/2418).
 - [flake8-cognitive-complexity](https://github.com/Melevir/flake8-cognitive-complexity) reports functions over a
   cognitive complexity limit as [CCR001](https://github.com/Melevir/flake8-cognitive-complexity), with no fix.
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports the same score as
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports functions over its
+  cognitive complexity limit as
   [WPS231](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.CognitiveComplexityViolation),
   with no fix.

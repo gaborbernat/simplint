@@ -5,7 +5,7 @@ its target, such as `total += total + delta`.
 
 After `a = b`, `b = a` stores `b` back into itself, so both names hold the old `b` and the old `a` is lost. Python swaps
 in one statement, `a, b = b, a`, which evaluates the right side first. `total += total + delta` adds `total` twice,
-where `total += delta` was meant. Tests miss both when the values happen to be equal.
+which can double a running total by mistake. A swap test with two equal values misses the lost value.
 
 ## Example
 
@@ -27,8 +27,8 @@ def flip(node):
 ### Active on
 
 - **`a = b` directly followed by `b = a`**, where both sides are names or attributes. **Unsafe fix:** the two statements
-  become one tuple assignment, which swaps the values. The fix changes what the code does, which is the point, so it is
-  unsafe. It is left out when a comment sits between the two statements.
+  become one tuple assignment, which swaps the values. The replacement changes the result. A comment between the two
+  statements prevents the fix.
 
   ```python report
   def flip(first, second):
@@ -66,4 +66,7 @@ def flip(node):
 - **[Ruff](https://github.com/astral-sh/ruff):**
   [swap-with-temporary-variable](https://docs.astral.sh/ruff/rules/swap-with-temporary-variable/) (PLR1712) rewrites a
   swap through a temporary; it does not report the two-statement form.
-- **[wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide):** WPS523 and WPS524.
+- wemake-python-styleguide reports failed swaps as
+  [WPS523](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/refactoring.html#wemake_python_styleguide.violations.refactoring.AlmostSwappedViolation)
+  and repeated operands in augmented assignments as
+  [WPS524](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/refactoring.html#wemake_python_styleguide.violations.refactoring.MisrefactoredAssignmentViolation).

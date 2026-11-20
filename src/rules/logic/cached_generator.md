@@ -5,9 +5,9 @@ that yields.
 
 ## Why is this bad?
 
-Calling a generator function returns a generator object, and the cache stores that object. The first caller iterates it
-to the end; every later call with the same arguments gets the same exhausted object back, which yields nothing. The code
-looks like it caches the values, and the second call silently returns an empty result.
+A cache hit returns the same generator at its current position. If one caller consumes a few values, the next caller
+starts partway through. Once a caller exhausts the generator, further hits yield nothing. Cache a tuple when callers
+need to iterate over the values independently.
 
 ## Example
 
@@ -36,8 +36,8 @@ def squares(limit: int) -> tuple[int, ...]:
 
 ### Active on
 
-- **Functions and static or class methods** decorated with `cache` or `lru_cache`, called or bare, spelled through
-  `functools`, an alias or a `from functools import`. An `async def` that yields counts too.
+- **Functions, static methods and class methods** decorated with `cache` or `lru_cache`, including `@lru_cache(...)`.
+  The rule resolves aliases and direct imports from `functools`. It also checks async generator functions.
 
 - **Methods decorated with `cached_property`**, whose generator the instance keeps after the first access.
 
@@ -57,10 +57,6 @@ def squares(limit: int) -> tuple[int, ...]:
 
 ## Ruff overlap
 
-Ruff's [cached-instance-method (B019)](https://docs.astral.sh/ruff/rules/cached-instance-method/) reports `cache` and
-`lru_cache` on any instance method, generator or not, because the cache keeps `self` alive. This rule skips those and
-reports the rest, which Ruff does not.
-
-## Other tools
-
-No Ruff, Pylint or flake8 rule reports a cached generator.
+Ruff's [cached-instance-method (B019)](https://docs.astral.sh/ruff/rules/cached-instance-method/) checks instance
+methods decorated with `cache` or `lru_cache`. The cache can keep `self` alive because the instance is part of the cache
+key. simplint skips those decorators on instance methods.

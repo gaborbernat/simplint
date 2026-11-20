@@ -4,9 +4,9 @@ Getting started
 Install
 =======
 
-simplint ships as a single binary inside a Python wheel, like `Ruff <https://docs.astral.sh/ruff/>`__, so it needs no
-Python at runtime. Install it as a tool with `uv <https://docs.astral.sh/uv/concepts/tools/>`__ or `pipx
-<https://pipx.pypa.io/stable/>`__, which keeps it apart from the project it lints.
+The Python wheel requires Python 3.11 or later. It contains a standalone binary, so the Python version you install it
+with is independent of the version your project targets. Install it in an isolated tool environment with
+`uv <https://docs.astral.sh/uv/concepts/tools/>`__ or `pipx <https://pipx.pypa.io/stable/how-to/install-pipx.html>`__.
 
 .. tab:: uv
 
@@ -19,7 +19,6 @@ Python at runtime. Install it as a tool with `uv <https://docs.astral.sh/uv/conc
 
     .. code-block:: bash
 
-        python -m pip install pipx-in-pipx --user
         pipx install simplint
         simplint --help
 
@@ -48,26 +47,23 @@ Run simplint from the project root:
 
     Check the **whole project, tests included**. Several rules need to know which names other modules import.
 
-``simplint check`` works like `ruff check <https://docs.astral.sh/ruff/linter/>`__:
+simplint uses Ruff's file discovery and honors its exclusions and
+`.gitignore <https://git-scm.com/docs/gitignore>`__ settings. Under a directory it lints ``.py`` files and indexes
+``.pyi`` stubs. It skips notebooks, Markdown and TOML files. With no paths, it checks the current directory.
+Use ``-`` as the only path to check standard input.
 
-- It finds the same files and honors the same ``exclude`` settings and
-  `.gitignore <https://git-scm.com/docs/gitignore>`__.
-- It lints every ``.py`` file under the paths you give it, the current directory by default. ``-`` reads one file from
-  standard input.
-- It prints in the same formats. By default each report shows the offending code, as ``ruff check`` does.
-  ``--output-format concise`` prints one line per report, and ``[*]`` marks a report with a safe fix.
-- It exits the same way: status 1 while any report remains, and status 2 when it cannot run, such as on invalid
-  configuration.
+By default each report shows the offending code. Use ``--output-format concise`` for one line per report.
+A normal check exits with 0 when it finds nothing, 1 when reports remain, or 2 when it cannot run.
 
 Read a report
 =============
 
-Each report names the file, the line and column, the rule and what to change. This is one report from the run on
-the home page, in the concise format:
+Each report gives the file, line, column, rule and suggested change. For example, a file named ``module.py`` containing
+``x = 1`` produces this report with ``--select SMP101 --output-format concise``:
 
 .. code-block:: console
 
-    src/tox/util/path.py:16:1: SMP601 `_CACHEDIR_TAG` is never reassigned; annotate it `Final`
+    module.py:1:1: SMP101 Single-letter name `x`; use a descriptive name
 
 The rule's page in the :doc:`rules reference </rules>` explains the check and its fix.
 
@@ -83,11 +79,8 @@ and its `formatter <https://docs.astral.sh/ruff/formatter/>`__:
     simplint check --fix .
     ruff format .
 
-**One round is final**: running the three again changes nothing. simplint leaves layout to ``ruff format``, so its
-output need not be formatted, only something one ``ruff format`` run finishes.
-
-A simplint fix can give one of the project's Ruff rules something to report that the file was clean for. simplint
-then makes sure ``ruff check`` has no new work:
+simplint leaves formatting to Ruff. If a simplint fix introduces a report from an enabled Ruff rule, simplint tries
+Ruff's fix. When it cannot clear the new report, it withdraws the simplint fix.
 
 .. mermaid::
 
@@ -112,13 +105,13 @@ An import a fix leaves unused is the typical case: Ruff's own fix removes it.
 Turn a rule off
 ===============
 
-Every rule runs by default. To turn one off, list it in the ``[tool.simplint]`` table of ``pyproject.toml``. This
-example turns off :doc:`missing-final </rules/SMP601>`, the rule behind the ``Final`` report above:
+To turn a rule off, list it under ``ignore`` in the ``[tool.simplint]`` table of ``pyproject.toml``. This example
+turns off :doc:`single-letter-name </rules/SMP101>`, the rule behind the report above:
 
 .. code-block:: toml
 
     [tool.simplint]
-    ignore = ["missing-final"]
+    ignore = ["single-letter-name"]
 
 Run ``simplint check .`` again. The reports of that rule are gone, and the others stay.
 

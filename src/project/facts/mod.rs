@@ -70,16 +70,14 @@ pub struct FileFacts {
     pub(super) reflected_names: Vec<String>,
     pub(super) caught: Vec<(String, String)>,
     pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
-    // Parameters and imports request fixtures, and so does a string that spells a name, as `usefixtures("db")` does.
+    // A string such as "db" can request a fixture through usefixtures or getfixturevalue.
     pub(super) fixture_requests: Vec<String>,
-    // The parameters of the file's `test*` functions and fixtures, which request fixtures wherever pytest collects the
-    // file from, a module its `python_files` setting names as much as a test module.
+    // Tests and fixtures can request these parameters even in files outside the recognized test paths.
     pub(super) pytest_requests: Vec<String>,
     pub(super) doctest_names: Vec<String>,
     pub(super) classes: Vec<ClassBases>,
     // An import of one of these names may bind a function rather than a class.
     pub(super) functions: Vec<String>,
-    // The shape of each module-level function, which a call from another module checks its arguments against.
     pub(super) signatures: Vec<Signature>,
     pub(super) plain_modules: Vec<String>,
     pub(super) imported_modules: Vec<String>,
@@ -87,7 +85,7 @@ pub struct FileFacts {
     pub(super) runtime_imports: Vec<ImportSite>,
     pub(super) statements: Vec<Statement>,
     pub(super) parts: Parts,
-    // A file holds thousands of words, which as one string the cache reads back in one allocation.
+    // Store words together so the cache can read them back in one allocation.
     pub(super) string_words: String,
     pub(super) global_names: Vec<String>,
     pub(super) bound_marks: Vec<String>,
@@ -97,7 +95,7 @@ pub struct FileFacts {
 }
 
 impl FileFacts {
-    // A cache file may hold facts that no longer match their source, when damaged or edited by hand.
+    // Check cached source offsets before using them. A damaged archive can contain out-of-range values.
     pub fn fits(&self, length: u64) -> bool {
         let sites = self.runtime_imports.iter().map(|site| (site.start, site.end));
         let statements = self.statements.iter().map(|statement| (statement.start, statement.end));
@@ -315,8 +313,7 @@ fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
         .collect()
 }
 
-// A function's name, whether calling it makes a coroutine (an `async def` that does not yield), the names of its
-// positional parameters in order, and whether a decorator stands between its definition and what the name binds.
+// Store the signature details callers need without keeping the syntax tree.
 #[derive(Clone, PartialEq, Eq, Hash, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Signature {
     pub name: String,
@@ -427,8 +424,8 @@ pub(super) fn source_digest(source: &str) -> u64 {
     hasher.finish()
 }
 
-// The facts only some rules read, each collected only for a run with one of those rules on, as collecting them costs
-// a walk of the file or allocations for every name. Facts cached without a part a later run reads are collected again.
+// Some rules need another tree walk or extra allocations. Reuse cached facts only if they include every part requested
+// this time.
 #[derive(Clone, Copy, Default, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Parts(u16);
 
@@ -439,36 +436,25 @@ impl CacheKey for Parts {
 }
 
 impl Parts {
-    // The statements `duplicate-code` compares.
     pub const STATEMENTS: Self = Self(1);
-    // The attributes read under computed names, which keep a definition `unused-definition` would report.
     pub const COMPUTED_READS: Self = Self(1 << 1);
-    // Whether each call drops its value or runs the module as a program, which `test-only-parameter` and
-    // `unused-return-value` tell production calls by.
+    // Production-call checks need to distinguish command-line calls and discarded results.
     pub const CALL_CONTEXTS: Self = Self(1 << 2);
-    // The names the file may request as fixtures, which `unused-fixture` reads.
     pub const FIXTURES: Self = Self(1 << 3);
-    // The names doctest examples use, which hide a definition or a call from the rules that judge them by their uses.
+    // Doctests may use a definition or call it outside the indexed Python statements.
     pub const DOCTESTS: Self = Self(1 << 4);
-    // The classes the handlers catch, which `indistinct-error-class` reads.
     pub const CAUGHT: Self = Self(1 << 5);
-    // The imports that run when the module loads, whose cycles `import-cycle` reports.
     pub const RUNTIME_IMPORTS: Self = Self(1 << 6);
-    // The words of the file's string literals, which a rename of a module variable must leave to the strings naming it.
+    // A string can refer to a module variable by name even when no Python expression reads it.
     pub const STRING_WORDS: Self = Self(1 << 8);
-    // The names a `global` statement declares, which a function may rebind while the module runs.
     pub const GLOBAL_NAMES: Self = Self(1 << 9);
-    // The names whose `__name__` or `__qualname__` the file reads, and whether it reads a class's name off an object,
-    // which renaming a function or class changes.
+    // A rename changes the value of __name__ and __qualname__.
     pub const REFLECTED_NAMES: Self = Self(1 << 10);
-    // The modules a write under a computed name may set any name of, which a rename or move of their variables breaks.
+    // A write with a computed name can still target a renamed or moved variable.
     pub const COMPUTED_WRITES: Self = Self(1 << 11);
-    // The modules the file imports, which `unused-dependency` matches to the project's requirements.
     pub const IMPORTED_MODULES: Self = Self(1 << 12);
-    // The positional parameters of the module's functions, which the rules that judge a call by its callee read.
     pub const SIGNATURES: Self = Self(1 << 13);
-    // The marks bound to a name, as `C_EXT = pytest.mark.c_extension`, which a conftest may register through the name,
-    // so `unregistered-marker` leaves them alone.
+    // A conftest can register a mark indirectly through an alias such as `C_EXT = pytest.mark.c_extension`.
     pub const BOUND_MARKS: Self = Self(1 << 14);
 
     #[must_use]

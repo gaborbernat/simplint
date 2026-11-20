@@ -1,4 +1,4 @@
-"""Draw the diagrams of the documentation once per build with mermaid-cli, and inline the drawings into the pages."""
+"""Mermaid SVG generation for the documentation."""
 
 from __future__ import annotations
 
@@ -22,13 +22,12 @@ if TYPE_CHECKING:
     from sphinx.builders import Builder
 
 _DIAGRAMS: Final[Path] = Path(__file__).parents[1] / "_derived" / "mermaid"
-# the labels use a face every viewer has, or one with its widths, so the text fits the boxes drawn around it
+# Keep label metrics similar across fonts so text fits its box.
 _DIAGRAM_FONT: Final[dict[str, str]] = {
     "fontFamily": "Arial, 'Liberation Sans', Helvetica, sans-serif",
     "fontSize": "18px",
 }
-# each diagram colors its nodes from the brand palette, which reads on both Furo themes, so it starts from neutral;
-# mermaid sizes each box to its label in the plain weight, so a bold label would wrap
+# Each diagram sets its own node colors. Keep the same font weight Mermaid used to measure the labels.
 _DIAGRAM_CONFIG: Final[str] = json.dumps({
     "theme": "base",
     "fontFamily": _DIAGRAM_FONT["fontFamily"],
@@ -36,17 +35,13 @@ _DIAGRAM_CONFIG: Final[str] = json.dumps({
     "themeCSS": ".edgeLabel { font-size: 0.85em; }",
 })
 
-# The extension passes this file as the mermaid configuration and names each drawing after its path, and reuses a
-# drawing it finds under that name; a path that holds the content's hash redraws every diagram when the configuration
-# changes.
+# The extension uses the configuration path in its cache key. Including a content hash invalidates old drawings.
 _CONFIG_PATH: Final[Path] = _DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
 _PUPPETEER_PATH: Final[Path] = _DIAGRAMS / "puppeteer.json"
 
 
 def write_settings() -> tuple[Path, Path]:
-    # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
-    # it. Read the Docs builds in a small container: its /dev/shm is too small for Chrome, and a slow start there can
-    # outlast puppeteer's default 30 s wait.
+    # Hosted build containers can lack a Chrome sandbox and have little shared memory. Allow extra startup time.
     _DIAGRAMS.mkdir(parents=True, exist_ok=True)
     write_if_changed(_CONFIG_PATH, _DIAGRAM_CONFIG)
     puppeteer = {"args": ["--no-sandbox", "--disable-dev-shm-usage"], "timeout": 180_000}
@@ -62,9 +57,8 @@ def setup(app: Sphinx) -> dict[str, bool]:
 
 
 def _draw_diagrams(app: Sphinx, builder: Builder) -> None:
-    # The extension starts a browser for each diagram it writes, and parallel writers start several at once, more than a
-    # small container can launch in time. One mermaid-cli run draws the diagrams before the pages are written, under the
-    # names the extension looks for, so the extension reuses them and starts no browser.
+    # Render missing diagrams in one browser run. Parallel Sphinx writers can otherwise launch enough browsers to
+    # delay startup past the container timeout. Use the filenames the extension expects so it reuses the SVGs.
     if builder.format != "html":
         return
     images = Path(builder.outdir) / builder.imagedir
@@ -108,8 +102,7 @@ def _inline_diagrams(
 
 
 def _inline_diagram(diagrams: Path, match: re.Match[str]) -> str:
-    # In the page, rather than behind an object element, a diagram takes its size from its viewBox as the page lays out,
-    # and the stylesheet colors its edges and labels for the theme. Each keeps ids of its own, as a page may hold two.
+    # Inlining lets the page size the SVG and apply theme colors. Unique IDs keep diagrams on the same page separate.
     svg = (diagrams / match["name"]).read_text(encoding="utf-8").replace("my-svg", match["name"].removesuffix(".svg"))
     return f'<div class="mermaid">{svg}</div>'
 

@@ -19,7 +19,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) = expr else {
         return;
     };
-    // `read() or read()` calls twice and can differ; a walrus rebinds what a later operand reads.
+    // Repeated calls can return different values, and an assignment expression can change a later operand.
     if values.iter().any(|value| any_over_expr(value, &has_effect)) {
         return;
     }
@@ -42,8 +42,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
 }
 
-// A test the chain already tried is false whenever its branch is reached, so the branch never runs. Ruff's SIM114
-// reports a branch whose body repeats the one right before it, and offers to merge the two, so that pair is left to it.
+// Ruff's SIM114 can merge adjacent branches with identical bodies.
 fn repeated_tests(walker: &Walker, if_stmt: &ast::StmtIf) {
     let mut branches = vec![(&*if_stmt.test, if_stmt.body.as_slice())];
     branches.extend(
@@ -55,7 +54,6 @@ fn repeated_tests(walker: &Walker, if_stmt: &ast::StmtIf) {
     if branches.iter().any(|(test, _)| any_over_expr(test, &has_effect)) {
         return;
     }
-    // The first branch of each test, which a later branch repeating the test is compared with.
     let mut first: FxHashMap<ComparableExpr, usize> = FxHashMap::default();
     for (index, (test, body)) in branches.iter().enumerate() {
         let earlier = *first.entry(ComparableExpr::from(*test)).or_insert(index);
@@ -78,8 +76,7 @@ fn same_body(first: &[Stmt], second: &[Stmt]) -> bool {
         && first.iter().zip(second).all(|(left, right)| ComparableStmt::from(left) == ComparableStmt::from(right))
 }
 
-// A case matches whenever an earlier unguarded case with the same pattern would, so it never runs. An earlier case with
-// the same guard hides it too, unless the guard calls something that could answer differently the second time.
+// A guarded case leaves its pattern available to a later case when the guard fails.
 fn repeated_patterns(walker: &Walker, match_stmt: &ast::StmtMatch) {
     let mut earlier_cases: FxHashMap<ComparablePattern, Vec<&ast::MatchCase>> = FxHashMap::default();
     for case in &match_stmt.cases {

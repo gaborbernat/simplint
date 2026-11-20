@@ -1,41 +1,28 @@
 Design principles
 #################
 
-These are the rules simplint's own rules follow. They decide what a new rule may report, when it may fix, and how it
-shares a project with `Ruff <https://docs.astral.sh/ruff/>`__.
+Rule selection
+==============
 
-Opinionated, but objective where it can be
-==========================================
+The rules reflect the maintainer's preferences about reading and reviewing Python code.
+:doc:`/how-to/select-rules` explains how to choose which ones your project uses.
 
-The rules reflect the maintainer's preferences for code that is easy to read and review, while aiming to be as objective
-as possible. Select the rules that fit your project; :doc:`/how-to/select-rules` shows how.
+Fixes
+=====
 
-Fix what is mechanical
-======================
+Rules offer fixes when they can identify a replacement. By default, ``--fix`` applies only fixes classified as safe.
+Use ``--unsafe-fixes`` to include fixes that may change behavior. Rules that rename or move definitions can check
+where other files use them. :doc:`/explanation/how-it-works` describes what the index covers.
 
-When the fix for a report is mechanical, the rule offers it. A fix that could change behavior is marked unsafe and runs
-only with ``--unsafe-fixes``. A fix never renames or moves a name another module uses: cross-file rules ask the project
-index first, as :doc:`/explanation/how-it-works` describes.
+Overlap with Ruff
+=================
 
-A companion to Ruff, never a second copy of it
-==============================================
+simplint usually leaves a case to `Ruff <https://docs.astral.sh/ruff/>`__ when both tools detect the same problem.
+This includes Ruff's preview rules and usually applies even if your project disables the Ruff rule. To see those
+findings, select the corresponding rules in Ruff. The :doc:`pairing guide </how-to/pair-with-ruff>` shows an example.
 
-simplint runs next to Ruff, not instead of it. A report both tools give is noise, so **simplint does not report what a
-Ruff rule reports**. Where a Ruff rule covers part of what a simplint rule checks, the simplint rule leaves that part
-out and reports only the rest. It replicates the Ruff rule's conditions, so Ruff and simplint together still report
-everything the simplint rule would report alone.
-
-This holds whatever your Ruff configuration selects:
-
-- **Preview rules count.** A Ruff rule still in preview covers its cases just as a stable rule does, and where a Ruff
-  rule reports more in preview, simplint leaves the preview cases to it too.
-- **Selection does not matter.** simplint drops the overlap even when your project leaves the Ruff rule out. To have
-  those cases reported, select the Ruff rule; :doc:`/how-to/pair-with-ruff` gives a configuration that does.
-- **Ruff's settings do.** Where a Ruff rule's settings change what it reports, such as pep8-naming's ``ignore-names``
-  or flake8-tidy-imports' ``banned-api``, simplint reads them from the same ``pyproject.toml`` and leaves exactly the
-  cases Ruff reports under them.
-
-A rule page's **Ruff overlap** section names the Ruff rules that take part of its cases.
+Where Ruff's settings change which cases it reports, simplint reads those settings too. Examples include pep8-naming's
+``ignore-names`` and flake8-tidy-imports' ``banned-api``. Rule pages describe these cases under **Ruff overlap**.
 
 When simplint keeps an overlapping case
 ---------------------------------------
@@ -60,15 +47,14 @@ Four exceptions keep a case in simplint although a Ruff rule reports it too:
   an import, since only a check across files sees that importer, and its fix lists the name in ``__all__`` instead. The
   rule page names how to keep Ruff's fix from running first.
 
-What is not an overlap
-----------------------
+Separate findings and conflicts
+-------------------------------
 
-A Ruff rule that reports the same code for a different problem does not overlap: both reports stand, and the rule page
-says how they relate. When a simplint fix and a Ruff fix undo each other, the pair is a conflict, not an overlap;
-:doc:`/how-to/resolve-ruff-conflicts` lists those pairs and the setting that settles each.
+Both tools can flag the same line for different problems. If their fixes undo each other, see
+:doc:`/how-to/resolve-ruff-conflicts` for the settings that resolve the conflict.
 
 Syntax errors are Ruff's
 ------------------------
 
-Ruff reports every syntax error whatever its configuration selects, so simplint does not. A file that does not parse
-gets a warning that simplint skipped it, and does not change the exit status.
+simplint warns when it skips a file that fails to parse. That warning leaves the exit status unchanged.
+Run Ruff to see the syntax error.

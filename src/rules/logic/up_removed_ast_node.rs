@@ -5,7 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 
-// The `ast` classes Python 3.14 removed, which were aliases of `ast.Constant` since Python 3.8.
+// From Python 3.8 to 3.13 these compatibility classes constructed Constant nodes.
 const REMOVED: [&str; 5] = ["Num", "Str", "Bytes", "NameConstant", "Ellipsis"];
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -49,7 +49,7 @@ fn fix(walker: &Walker, expr: &Expr, attribute: &ast::ExprAttribute, class: &str
         let replacement = format!("{head}.Constant(value={})", checker.text(keyword.value.range()));
         return Some(Fix::safe_edit(Edit::range_replacement(replacement, call.range())));
     }
-    // Only a name is repeated in the rewrite, so only a name is rewritten.
+    // Repeating an expression could evaluate a call or attribute twice.
     let subject = call.arguments.args.first()?.as_name_expr()?;
     let kind = match class {
         "Str" => "str",

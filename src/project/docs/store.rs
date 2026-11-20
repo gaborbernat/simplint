@@ -22,7 +22,6 @@ struct CachedRoot {
 }
 
 impl DocReferences {
-    // Any read failure or key mismatch is a miss: the pages are read again and the cache is written anew.
     pub(super) fn cached(path: &Path, key: u64) -> Option<Self> {
         let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&cache::read_aligned(path).ok()?).ok()?;
         (cached.key == key).then(|| Self {
@@ -44,7 +43,7 @@ impl DocReferences {
         })
     }
 
-    // Keeping the cache is best effort: a run that cannot write it reads the pages again next time.
+    // A write failure only costs another scan on the next run.
     pub(super) fn store(&self, path: &Path, key: u64) {
         let cached = CachedDocs {
             key,

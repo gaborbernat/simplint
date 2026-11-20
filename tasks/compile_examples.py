@@ -28,10 +28,6 @@ class _Options(argparse.Namespace):
 
 
 def main(arguments: list[str]) -> int:
-    # Compile every rule-page example under each interpreter and report the blocks that fail where they must compile.
-    #
-    # :param arguments: the command line, without the program name
-    # :returns: the exit status, 1 when a block fails under an interpreter at or above its floor
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--simplint", default="simplint", help="the simplint executable whose rule pages are compiled")
     parser.add_argument(
@@ -41,7 +37,7 @@ def main(arguments: list[str]) -> int:
         required=True,
         type=minor_version,
         metavar="3.X",
-        help="a CPython minor version to compile under, found with uv; repeat for each",
+        help="CPython version to locate with uv (repeat for each version)",
     )
     options = parser.parse_args(arguments, namespace=_Options())
     listing = subprocess.run(
@@ -70,11 +66,7 @@ _BLOCK_FLOOR_PATTERN: Final[re.Pattern[str]] = re.compile(r">=\s*3\.(\d+)")
 
 
 def block_floor(config: dict[str, str] | None) -> int:
-    # Read the oldest minor release a group supports from its config: the target version, else the lower bound.
-    #
-    # :param config: the group's config, as its ``source`` text, or None when it has none
-    # :returns: the minor number, the default when the config names neither
-    # The oldest release a block compiles under when its group names no lower bound.
+    # Look for Ruff's target version first, then a requires-python value starting with >=3.X.
     default_floor: int = 11
     if config is None:
         return default_floor
@@ -87,13 +79,7 @@ def block_floor(config: dict[str, str] | None) -> int:
 
 
 def _check(blocks: list[Block], interpreters: list[Interpreter]) -> list[str]:
-    # Compile each block under the interpreters at or above its floor, one subprocess per interpreter.
-    #
-    # :param blocks: the example blocks
-    # :param interpreters: the CPythons to compile under
-    # :returns: one line per failure, naming the block and the release that rejects it
-    # Reads the sources as a JSON list and prints, for each, its syntax error or null. Warnings are dropped: some
-    # examples show invalid code on purpose, and a syntax warning is not a failure.
+    # Some examples deliberately show code that emits syntax warnings. Only compilation errors fail the check.
     compile_sources = """\
 import json
 import sys

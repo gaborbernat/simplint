@@ -76,8 +76,7 @@ def run_tools(mocker: MockerFixture) -> Callable[[_Behavior], MockType]:
 
 
 def _tools(behavior: _Behavior) -> _Run:
-    # The uv and interpreter calls run for real, through the function bound before the tests patch `subprocess.run`;
-    # the tools that act on a tree are the fake's.
+    # Keep uv and the Python interpreter real so the test checks how the target version parses each file.
     def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
         if command[0] == "uv" or command[1:2] == ["-I"]:
             return real_run(
@@ -93,7 +92,7 @@ def _tools(behavior: _Behavior) -> _Run:
     return run
 
 
-# The simulated Ruff answers by the markers the fix left in the files; the runs a test varies go to `behavior`.
+# File markers determine Ruff diagnostics. Each test supplies the remaining command behavior.
 def _fake(behavior: _Behavior, command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     if command[0] != "ruff" or (command[:2] == ["ruff", "check"] and "concise" in command):
         outcome = behavior(command, cwd)
@@ -139,7 +138,7 @@ def pinned(mocker: MockerFixture, package: Package) -> None:
 
 @pytest.fixture
 def in_threads(mocker: MockerFixture) -> None:
-    # Threads share the fake tools the test patches in, where processes would not.
+    # Threads can use the patched subprocess runner in this process.
     mocker.patch("tasks.ecosystem.ProcessPoolExecutor", ThreadPoolExecutor)
 
 
@@ -208,7 +207,6 @@ def _cannot_read_like_ruff(command: list[str], cwd: Path) -> _Outcome:
     return _Outcome(code=1, stdout="mod.py:1:1: io-error: unreadable\n")
 
 
-# The fix leaves `source` in the module; the simulated Ruff reacts to the markers in it.
 def _writes(source: str) -> _Behavior:
     def behavior(command: list[str], cwd: Path) -> _Outcome:
         if "--fix-only" in command:
@@ -223,8 +221,8 @@ def _keeps_fixing(command: list[str], cwd: Path) -> _Outcome:
     return _Outcome(code=1, stdout="--- mod.py\n+++ mod.py\n") if "--diff" in command else _Outcome()
 
 
-# Ruff's own fixes in `mod.py` are withdrawn before simplint runs, in both trees, so a second round of either tool is
-# not counted there; simplint's second round still counts in the files Ruff settles.
+# Ruff still proposes a diff in mod.py on its second pass in the baseline. A second simplint diff counts only in
+# a file where the baseline has settled.
 def _keeps_fixing_where_ruff_never_settles(fixing: str) -> _Behavior:
     def behavior(command: list[str], cwd: Path) -> _Outcome:
         if command[0] == "ruff" and "concise" in command:

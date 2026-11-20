@@ -3,13 +3,13 @@ Flags a lazy import directly inside a module-level
 
 ## Why is this bad?
 
-`suppress(ImportError)` around an import makes a missing optional module harmless: the block ends and the module goes
-on. A lazy import does not load the module when the statement runs, so the block catches nothing, and a missing module
-raises [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) at the first use of its name, far
-from the guard ([PEP 810](https://peps.python.org/pep-0810/#what-happens-when-lazy-imports-encounter-errors)). The same
-holds for [`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError),
-[`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception) and
-[`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException), which cover it.
+An eager import raises inside `suppress(ImportError)`, where the guard can catch it. With a lazy import, the error can
+surface after the guard has exited, when code first reads the imported name. A guard that catches
+[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError),
+[`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception) or
+[`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException) can have the same problem.
+[PEP 810](https://peps.python.org/pep-0810/#what-happens-when-lazy-imports-encounter-errors) describes when lazy imports
+raise.
 
 ## Example
 
@@ -42,7 +42,8 @@ with suppress(ImportError):
 - **An import directly in the block whose module
   [`__lazy_modules__`](https://docs.python.org/3.15/reference/simple_stmts.html#compatibility-via-lazy-modules) lists**:
   on Python 3.15 the list defers it the same way, while older versions ignore the list and run the guard as written. The
-  fix removes the entry when this import is the only one the entry defers.
+  fix removes a unique entry when there is no other eligible import of that module. The check matches the declaration by
+  name even if it comes after the block and could not affect that import.
 
   ```python report
   from contextlib import suppress
@@ -84,11 +85,11 @@ with suppress(ImportError):
 
 ### Fix
 
-The fix is unsafe: the module then loads when the block runs, so its import cost and anything its import does move to
-the module's load.
+The unsafe fix makes the import eager. Its cost and any side effects then occur inside the guard when the containing
+module loads.
 
 ## Other tools
 
 - **[flake8-lazy](https://github.com/henryiii/flake8-lazy):** `LZY301`, for the `lazy` keyword only and without a fix.
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. `lazy` is a syntax error in a `try` body, so a
-  `try`/`except ImportError` guard needs no rule.
+
+Python already rejects `lazy` inside a `try` body.

@@ -28,7 +28,7 @@ use crate::syntax::{
     statement_index,
 };
 
-// The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
+// Collect each Ruff check only when an enabled simplint rule needs its results.
 #[derive(Clone, Copy, Default)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag asks for one Ruff rule's matches")]
 pub struct RuffMatches {
@@ -46,20 +46,16 @@ pub struct Semantic<'a> {
     model: SemanticModel<'a>,
     annotations_are_lazy: bool,
     index: Index<'a>,
-    // The statements of Django models that Ruff's DJ012 reports, which the layout rules leave to it.
     django_reports: FxHashSet<TextRange>,
-    // The statements that are appends on a list, which Ruff's FURB113 counts in a run of consecutive appends.
     list_appends: FxHashSet<TextRange>,
-    // The annotations alone, without a value, that `if TYPE_CHECKING:` declares, which a module's `__getattr__` serves.
+    // A module can annotate lazy exports under `if TYPE_CHECKING:` and supply their values through `__getattr__`.
     type_checking_stubs: FxHashSet<TextRange>,
-    // The names a module-scope store binds, which Ruff's N816 checks: an assignment, loop, `with`, walrus or `match`
-    // target.
+    // N816 checks names bound by module-level assignments, loops, with statements, assignment expressions and match
+    // patterns.
     module_stores: FxHashSet<TextRange>,
     // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
     comprehensions: Vec<(TextRange, TextRange)>,
-    // The import bindings that Ruff's PLC2701 reports, by the range of the name each binds.
     private_imports: FxHashSet<TextRange>,
-    // The module-scope imports Ruff's F401 finds unused, by the range of the name each binds.
     unused_imports: FxHashSet<TextRange>,
 }
 
@@ -114,42 +110,31 @@ impl<'a> Semantic<'a> {
         }
     }
 
-    // Whether Ruff's F401 finds the import binding its name at `range` unused.
     pub fn is_unused_import(&self, range: TextRange) -> bool {
         self.unused_imports.contains(&range)
     }
 
-    // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body; only answered when
-    // `RuffMatches::django_reports` asked for it.
     pub fn reported_by_dj012(&self, range: TextRange) -> bool {
         self.django_reports.contains(&range)
     }
 
-    // Whether Ruff's PLC2701 reports the import binding at `range`, the name the import binds; only answered when
-    // `RuffMatches::private_imports` asked for it.
     pub fn reported_by_plc2701(&self, range: TextRange) -> bool {
         self.private_imports.contains(&range)
     }
 
-    // Whether the statement at `range` is an append on a list, as FURB113 matches it; only answered when
-    // `RuffMatches::list_appends` asked for it.
     pub fn is_list_append(&self, range: TextRange) -> bool {
         self.list_appends.contains(&range)
     }
 
-    // Whether the binding at `range` is an annotation without a value under `if TYPE_CHECKING:`, which only types a
-    // name.
     pub fn is_type_checking_stub(&self, range: TextRange) -> bool {
         self.type_checking_stubs.contains(&range)
     }
 
-    // Whether the name at `range` is stored in the module scope, where Ruff's N816 reads it.
     pub fn is_module_store(&self, range: TextRange) -> bool {
         self.module_stores.contains(&range)
     }
 
-    // How many bindings of `name` the class body at `class` makes in the body's own scope; a method's locals and nested
-    // classes or comprehensions have scopes of their own.
+    // A method body or nested class has its own bindings.
     pub fn class_body_bindings(&self, class: TextRange, name: &str) -> usize {
         self.model
             .scopes
@@ -158,9 +143,8 @@ impl<'a> Semantic<'a> {
             .map_or(0, |scope| scope.get_all(name).count())
     }
 
-    // Whether every binding of the name `value` reads in its scope imports `module`, so a name also bound to another
-    // module, as in `try: import regex as re` beside `import re`, does not read as the module. A `del` or a bare
-    // annotation binds nothing, so it does not count.
+    // Conditional imports can bind the same alias to different modules. Deletions and bare annotations supply no
+    // competing value.
     pub fn is_only_import_of(&self, value: &Expr, module: &[&str]) -> bool {
         value.as_name_expr().is_some_and(|name| {
             self.resolved_bindings(name)
@@ -175,13 +159,11 @@ impl<'a> Semantic<'a> {
         })
     }
 
-    // Whether `expr` is the builtin `name`, not something the file binds the name to in the scope it is read in.
     pub fn is_builtin(&self, expr: &Expr, name: &str) -> bool {
         self.resolves_to(expr, &["", name])
     }
 
-    // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
-    // after `from unittest import mock` names `unittest.mock.patch`.
+    // Resolve import aliases, so `mock.patch` after `from unittest import mock` matches `unittest.mock.patch`.
     pub fn resolves_to(&self, expr: &Expr, segments: &[&str]) -> bool {
         // An attribute resolves to a name ending in the attribute itself, so any other last segment rules it out.
         if let Expr::Attribute(attribute) = expr
@@ -194,8 +176,7 @@ impl<'a> Semantic<'a> {
 
     pub const PROPERTY: &[&[&str]] = &[&["", "property"], &["functools", "cached_property"]];
 
-    // Decorators that never evaluate the annotations of what they wrap, including every `pytest.mark` one; `dataclass`
-    // reads its fields' as strings or forward references, and pytest reads a fixture's signature only once it collects.
+    // The annotation check allows these decorators on a definition with deferred annotations.
     const KEEPS_ANNOTATIONS_LAZY: &[&[&str]] = &[
         &["", "classmethod"],
         &["", "property"],
@@ -230,8 +211,7 @@ impl<'a> Semantic<'a> {
         &["warnings", "deprecated"],
     ];
 
-    // Whether a decorator may read the annotations of what it decorates while the module loads, as FastAPI routes,
-    // pydantic's `validate_call` or `functools.singledispatch` do, even when Python defers them.
+    // An unknown decorator may inspect annotations as soon as the module loads.
     pub fn reads_annotations(&self, decorators: &[ast::Decorator]) -> bool {
         decorators.iter().any(|decorator| {
             !is_property_accessor(&decorator.expression)
@@ -242,7 +222,6 @@ impl<'a> Semantic<'a> {
         })
     }
 
-    // Whether a decorator, or the factory a called decorator comes from, resolves to one of `names`.
     pub fn is_decorator(&self, decorator: &ast::Decorator, names: &[&[&str]]) -> bool {
         let callee = decorator_callee(decorator);
         names.iter().any(|segments| self.resolves_to(callee, segments))
@@ -252,13 +231,13 @@ impl<'a> Semantic<'a> {
         decorators.iter().any(|decorator| self.is_decorator(decorator, names))
     }
 
-    // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.
+    // Ruff uses an empty first segment for builtins.
     pub fn qualified_name<'e>(&'e self, expr: &'e Expr) -> Option<QualifiedName<'e>> {
         self.model.resolve_qualified_name(expr)
     }
 
-    // The name Ruff gives `expr` in a module it knows the dotted path of: there a relative import and a definition in
-    // the module resolve too. The model stays without that path, as the rules read those names through the project.
+    // A known module path lets Ruff qualify relative imports and local definitions. The project index supplies that
+    // path separately from the semantic model.
     pub fn ruff_qualified_name<'e>(
         &'e self,
         expr: &'e Expr,
@@ -282,8 +261,8 @@ impl<'a> Semantic<'a> {
         }
     }
 
-    // Whether Ruff's B008 reports a call to `func` in a parameter default. It leaves alone a mutable or immutable
-    // callee, and a `NewType` of an immutable type.
+    // B008 exempts known immutable calls and leaves mutable calls to B006. A NewType over an immutable type is also
+    // exempt.
     pub fn is_b008_call(&self, func: &Expr, extend_immutable_calls: &[QualifiedName]) -> bool {
         !is_mutable_func(func, &self.model)
             && !is_immutable_func(func, &self.model, extend_immutable_calls)
@@ -292,30 +271,25 @@ impl<'a> Semantic<'a> {
                 .is_some_and(|name| is_immutable_newtype_call(name, &self.model, extend_immutable_calls))
     }
 
-    // Whether Ruff's B008 skips a parameter with this annotation, as the annotation names an immutable type.
     pub fn has_immutable_annotation(&self, annotation: &Expr, extend_immutable_calls: &[QualifiedName]) -> bool {
         is_immutable_annotation(annotation, &self.model, extend_immutable_calls)
     }
 
-    // Whether `expr` is a mutable display, comprehension, or a call of a mutable builtin or collection.
     pub fn is_mutable_value(&self, expr: &Expr) -> bool {
         is_mutable_expr(expr, &self.model)
     }
 
-    // Whether `expr` names `typing.{member}`, or its `typing_extensions` backport.
     pub fn match_typing_expr(&self, expr: &Expr, member: &str) -> bool {
         self.model.match_typing_expr(expr, member)
     }
 
-    // The value a load of `name` reads, when it resolves to the first binding of the name in its scope, as Ruff's rules
-    // that follow a variable to its literal resolve it.
+    // Follow the resolved binding only if it shadows no earlier binding in the same scope.
     pub fn only_binding_value(&self, name: &ast::ExprName) -> Option<&Expr> {
         let binding = self.model.binding(self.model.only_binding(name)?);
         find_binding_value(binding, &self.model)
     }
 
-    // Whether a scope of the file binds the name, which shadows a builtin of that name. Ruff adds a builtin's binding
-    // on its first lookup, which is not a binding of the file.
+    // Ruff adds builtin bindings on lookup. Those do not count as definitions in this file.
     pub fn is_bound_in_file(&self, name: &str) -> bool {
         self.model.scopes.iter().filter_map(|scope| scope.get(name)).any(|id| !self.model.binding(id).kind.is_builtin())
     }
@@ -332,8 +306,8 @@ impl<'a> Semantic<'a> {
         )
     }
 
-    // Whether `expr` holds a class object: a class the file defines, `type(x)`, `x.__class__`, a parameter annotated
-    // `type` or `type[...]`, or the receiver of a class method.
+    // A class parameter can name a class through an annotation, a classmethod receiver or the first argument of
+    // `__new__`.
     pub fn is_class_object(&self, expr: &Expr) -> bool {
         match expr {
             Expr::Call(call) => self.is_builtin(&call.func, "type") && call.arguments.len() == 1,
@@ -377,7 +351,6 @@ impl<'a> Semantic<'a> {
         function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
     }
 
-    // The `def` at module level a load of `name` reads, when no statement of the file rebinds the name.
     pub fn module_function(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
         if self.is_rebound(name.id.as_str()) {
             return None;
@@ -385,7 +358,6 @@ impl<'a> Semantic<'a> {
         self.function_binding(name).filter(|(_, global)| *global).map(|(function, _)| function)
     }
 
-    // The `def` a load of `name` reads, when its scope binds the name once, and to that `def`.
     pub fn function_of(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
         self.function_binding(name).map(|(function, _)| function)
     }
@@ -405,7 +377,6 @@ impl<'a> Semantic<'a> {
         Some((function, binding.scope.is_global()))
     }
 
-    // Whether a load of `name` reads a `from ... import`, the only binding of the name in its scope.
     pub fn reads_from_import(&self, name: &ast::ExprName) -> bool {
         let bindings = self.resolved_bindings(name);
         matches!(bindings.as_slice(), [binding] if matches!(binding.kind, RuffBindingKind::FromImport(_)))
@@ -415,7 +386,7 @@ impl<'a> Semantic<'a> {
         self.bindings(name).len() > 1
     }
 
-    // Every binding of `name` in the scope a load of it resolves to, the shadowed ones too; empty when none resolves.
+    // Include shadowed bindings in the scope where the name resolves.
     pub fn resolved_bindings(&self, name: &ast::ExprName) -> Vec<&RuffBinding<'a>> {
         let Some(id) = self.model.resolve_name(name) else {
             return Vec::new();
@@ -424,8 +395,7 @@ impl<'a> Semantic<'a> {
         self.model.scopes[scope].get_all(name.id.as_str()).map(|id| self.model.binding(id)).collect()
     }
 
-    // The values a binding gives its name, as far as the rules read them: the value an assignment gives, or each item
-    // of a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
+    // A loop over a literal list or tuple can give its target several known values.
     pub fn binding_values(&self, binding: &RuffBinding<'a>) -> Option<Vec<&Expr>> {
         match binding.kind {
             RuffBindingKind::LoopVar => match binding.statement(&self.model).expect("a loop variable has its loop") {
@@ -447,14 +417,10 @@ impl<'a> Semantic<'a> {
         }
     }
 
-    // Whether `func` is a method of a logger that Ruff's logging rules check: the `logging` module, a logger it
-    // creates, or one of the `logger-objects`.
     pub fn is_logger_candidate(&self, func: &Expr, logger_objects: &[String]) -> bool {
         logging::is_logger_candidate(func, &self.model, logger_objects)
     }
 
-    // Whether annotations wait until something reads them: from `from __future__ import annotations` or a target
-    // version that defers them.
     pub fn annotations_are_lazy(&self) -> bool {
         self.annotations_are_lazy
     }
@@ -475,7 +441,6 @@ impl<'a> Semantic<'a> {
         self.index.local_bindings.get(name).map_or(&[], Vec::as_slice)
     }
 
-    // Whether `name` is bound nowhere a read at `at` could see, so a builtin of that name is what `at` reads.
     pub fn is_free_at(&self, name: &str, at: TextRange) -> bool {
         !self.is_bound(name) && !self.is_bound_around(name, at)
     }
@@ -484,9 +449,7 @@ impl<'a> Semantic<'a> {
         self.index.bindings.contains_key(name)
     }
 
-    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or
-    // lambda body, a class body that no function inside it encloses, or a comprehension past its first iterable, which
-    // the enclosing scope evaluates.
+    // Function bodies skip enclosing class namespaces. A comprehension evaluates its first iterable in the outer scope.
     pub fn is_bound_around(&self, name: &str, at: TextRange) -> bool {
         let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
         let nested_in_class = |class: TextRange| {
@@ -534,8 +497,8 @@ impl<'a> Semantic<'a> {
     }
 }
 
-// The body is the part of a scope's node after its header, since a header's defaults, decorators and bases run in the
-// enclosing scope. Rules only see files that parse, where a `def` or `class` body holds a statement.
+// Defaults, decorators and base classes use the enclosing scope. A parsed function or class always has a body
+// statement.
 fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     match kind {
         ScopeKind::Function(function) => {
@@ -547,7 +510,6 @@ fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     }
 }
 
-// What a binding names, as the rules that follow a name into the project read it.
 pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     match binding.kind {
         RuffBindingKind::FunctionDefinition(_) => Referent::Function,
@@ -560,13 +522,12 @@ pub fn binding_referent(binding: &RuffBinding<'_>) -> Referent {
     }
 }
 
-// A `from __future__` import statement; a relative import of a `__future__` module of the package is not one.
+// A relative import can refer to an ordinary project module named `__future__`.
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
     stmt.as_import_from_stmt()
         .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))
 }
 
-// The module-level names of `Semantic`, by name, so rules look them up instead of scanning.
 #[derive(Default)]
 struct Index<'a> {
     bindings: FxHashMap<&'a str, Vec<Binding>>,
@@ -711,12 +672,10 @@ fn function_range(kind: ScopeKind) -> Option<TextRange> {
     }
 }
 
-// The receiver of the method a load runs in, and its class. A function nested in the method runs in it too, so the
-// innermost function directly in a class body is the one whose receiver the load reads. A lambda in a class body, as
-// `property(lambda self: ...)`, is a method too.
+// A nested function can still use the method's receiver. Include lambdas used as methods, such as `property(lambda
+// self: ...)`.
 fn enclosing_method<'a>(model: &SemanticModel<'a>) -> Option<(Option<&'a str>, &'a ast::StmtClassDef)> {
-    // Ruff's scopes between a method and its class, such as the type parameter and `__class__` cell scopes, do not
-    // count.
+    // Skip the type-parameter and implicit __class__ scopes between a method and its class.
     let mut method = None;
     for scope in model.current_scopes() {
         match scope.kind {
@@ -733,9 +692,7 @@ fn enclosing_method<'a>(model: &SemanticModel<'a>) -> Option<(Option<&'a str>, &
     None
 }
 
-// The attribute a load of `name` reads off an instance or the class inside a method of `class` with `receiver`:
-// `name.attr` where `name` is the receiver, the class or a local the method assigns from a call of the receiver, and
-// `name().attr` where `name` is called, as `klass().attr` for the receiver `klass`.
+// A classmethod can read an instance attribute through its receiver, as in `klass().attr`.
 fn member_read<'a>(
     model: &SemanticModel<'a>,
     name: &ast::ExprName,
@@ -796,8 +753,6 @@ pub struct Binding {
     pub module_scope: bool,
 }
 
-// What a name is bound to: a function, a class, a module, a name imported from a module, a builtin, or a value that an
-// assignment gives, which the rules follow to its value.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Referent {
     Function,

@@ -11,8 +11,8 @@ pub(crate) struct Scan {
     pub(crate) verbose: bool,
 }
 
-// Walks the pattern the way `re` parses it, so a `(` in a character class, an escape, or a verbose comment does not
-// count. `None` for a pattern `re` rejects, or whose verbose mode the flags leave unknown, which is left alone.
+// Skip parentheses in escapes, character classes and verbose comments when counting groups. An incomplete escape,
+// class or group header can prevent the scan. Full pattern validation belongs to the regex engine.
 pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
     let verbose = has_verbose_flag(pattern) || verbose?;
     let mut scan = Scan { groups: Vec::new(), refers: false, named: false, constructs: 0, comments: 0, verbose };
@@ -28,7 +28,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
                 scan.refers |= (b'1'..=b'9').contains(escaped);
                 2
             }
-            // A class and the repeat after it are one construct, as a reader takes in `[ \t]*` at once.
+            // Count `[ \t]*` as a single construct.
             [b'[', ..] => {
                 scan.constructs += 1;
                 class_length(rest)?
@@ -58,7 +58,7 @@ pub(crate) fn scan(pattern: &[u8], verbose: Option<bool>) -> Option<Scan> {
                 outer.push(inside);
                 2
             }
-            // `(?i)` sets flags for the whole pattern, which is not a group; `(?i:...)` and `(?:...)` are.
+            // `(?i)` sets flags globally. Scoped flags and noncapturing groups need a matching closing parenthesis.
             [b'(', b'?', ..] => {
                 let flags = rest[2..].iter().take_while(|byte| INLINE_FLAGS.contains(byte)).count();
                 if rest.get(2 + flags) == Some(&b')') {

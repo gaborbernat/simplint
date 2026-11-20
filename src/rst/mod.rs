@@ -1,4 +1,4 @@
-// The reStructuredText scanning shared by the docstring and documentation rules, so the syntax is read in one place.
+// Shared reStructuredText scanner for docstring and documentation rules.
 mod blocks;
 mod directives;
 mod fields;

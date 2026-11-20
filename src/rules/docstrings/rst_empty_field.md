@@ -3,11 +3,9 @@ after their name, such as `:param path:` with no description.
 
 ## Why is this bad?
 
-A field with no description names what it documents and says nothing about it, which the signature already shows. Sphinx
-renders the entry with a blank description, so the reference lists the parameter without saying what it is for.
-[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) has a function's docstring document its arguments,
-and the [Google style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) puts a
-description after each name.
+An empty entry such as `:param timeout:` leaves readers guessing the units and what happens when the timeout expires.
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) calls for documenting arguments, return values and
+exceptions where applicable.
 
 ## Example
 
@@ -63,7 +61,7 @@ their name. No fix is offered, since only the author knows what the field should
 ### Active on
 
 - **Fields with no description**: a `:param:`, `:raises:`, `:returns:`, `:yields:` or `:var:` field with nothing after
-  the name.
+  the name or on any indented continuation line.
 
   ```toml config
   [tool.simplint]
@@ -100,7 +98,6 @@ their name. No fix is offered, since only the author knows what the field should
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/), which reads Google and NumPy sections only, not reST
-  fields; open issues [#458](https://github.com/astral-sh/ruff/issues/458) and
-  [#14494](https://github.com/astral-sh/ruff/issues/14494).
+- [Ruff D417](https://docs.astral.sh/ruff/rules/undocumented-param/) checks for undocumented parameters in argument
+  sections. [Ruff issue #14494](https://github.com/astral-sh/ruff/issues/14494) asks for a check on empty exception
+  descriptions.

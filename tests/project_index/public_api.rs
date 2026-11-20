@@ -2,7 +2,6 @@ use super::*;
 use crate::common::{check, check_with_stdin, native, project};
 use test_case::test_case;
 
-// An application has no Python API, so a function other modules import is internal, its docstring included.
 #[test]
 fn application_has_no_public_api() {
     let root = project(&[
@@ -22,7 +21,6 @@ fn application_has_no_public_api() {
     );
 }
 
-// Without an API package to go by, every module counts but those of the documentation.
 #[test]
 fn documentation_is_not_public_api() {
     let root = project(&[
@@ -62,8 +60,7 @@ fn reexports_in_top_level_blocks_count() {
     assert_eq!(reports.lines().count(), 6, "{reports}");
 }
 
-// A public class a library re-exports from a private module passes its inherited public methods on to its users, so the
-// docstring rules judge them as the class's API.
+// Users can call inherited methods through the re-exported subclass.
 #[test]
 fn inherited_methods_of_reexported_class_are_public_api() {
     let root = project(&[
@@ -78,8 +75,7 @@ fn inherited_methods_of_reexported_class_are_public_api() {
     assert_eq!(reports.matches("Public method `_Mixin.run`").count(), 1, "{reports}");
 }
 
-// A private class another public signature returns reaches its users, who call the methods it inherits from a base the
-// module defines, so the docstring rules judge them as the API too.
+// A public function can return a private class whose inherited methods are available to callers.
 #[test]
 fn inherited_methods_of_signature_reached_class_are_public_api() {
     let root = project(&[
@@ -95,8 +91,6 @@ fn inherited_methods_of_signature_reached_class_are_public_api() {
     assert_eq!(reports.matches("Public method `_Base.run`").count(), 1, "{reports}");
 }
 
-// A public module with an `__all__` offers what the list names, so a name another module imports from it without
-// listing it is not part of its API, and its docstring is not required.
 #[test]
 fn imported_name_all_omits_is_not_public_api() {
     let root = project(&[
@@ -111,8 +105,6 @@ fn imported_name_all_omits_is_not_public_api() {
     assert_eq!((reports.matches("`undocumented`").count(), reports.contains("`helper`")), (1, false), "{reports}");
 }
 
-// A module whose `__getattr__` supplies names lazily offers what it defines, not a name it imports from a private
-// module and another file reads off it, as the re-exports of such a module are not offered either.
 #[test]
 fn name_read_off_lazy_module_is_not_public_api() {
     let root = project(&[
@@ -130,8 +122,8 @@ fn name_read_off_lazy_module_is_not_public_api() {
     assert!(reports.contains("`local`") && !reports.contains("`f`"), "{reports}");
 }
 
-// A class a public name's signature refers to, such as a base class, is part of the API its users reach, so the methods
-// its listed subclass inherits from it are documented, while the class itself needs no docstring.
+// An inherited method is visible through the public subclass even when the base class needs no documentation of its
+// own.
 #[test]
 fn signature_reached_base_needs_no_docstring_but_its_inherited_methods_do() {
     let root = project(&[
@@ -153,8 +145,6 @@ fn signature_reached_base_needs_no_docstring_but_its_inherited_methods_do() {
     );
 }
 
-// A stub-free module in a library reads the same whether its file is on disk or on standard input: its exposed names
-// are the API, and a helper it does not expose is internal.
 #[test]
 fn standard_input_module_has_the_api_of_its_file() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
@@ -171,8 +161,7 @@ fn standard_input_module_has_the_api_of_its_file() {
     );
 }
 
-// A standard-input module that a library exposes keeps its public functions' default, since outside code may leave it
-// out, and a helper it does not expose is still judged.
+// An external caller may rely on an optional argument even when every call in the project supplies it.
 #[test]
 fn standard_input_module_keeps_the_defaults_of_its_public_api() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
@@ -190,8 +179,6 @@ fn standard_input_module_keeps_the_defaults_of_its_public_api() {
     );
 }
 
-// A standard-input module's fix leaves the docstring of a public function alone, and rewrites the docstring of an
-// internal one.
 #[test]
 fn standard_input_fix_keeps_the_docstring_of_public_api() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
@@ -209,8 +196,6 @@ fn standard_input_fix_keeps_the_docstring_of_public_api() {
     );
 }
 
-// Signature reach follows the names a module exposes, so a class a re-exporting package exposes with a base class
-// behaves the same as when the module itself exposes it.
 #[test]
 fn signature_reach_is_the_same_through_a_reexport() {
     let child = "class _Base:\n    def run(self) -> None: ...\n\n\nclass Child(_Base):\n    \
@@ -227,8 +212,6 @@ fn signature_reach_is_the_same_through_a_reexport() {
     assert_eq!(reexported_reports.matches("Public method `_Base.run`").count(), 1, "{reexported_reports}");
 }
 
-// A public signature reaches a class that is not listed in `__all__`, and the library's users get the base class of a
-// dataclass it returns, so the dataclass keeps its options in both layouts.
 #[test_case(false ; "defined_in_public_module")]
 #[test_case(true ; "re-exported_from_private_module")]
 fn signature_reached_dataclass_base_keeps_its_options_in_both_layouts(reexported: bool) {
@@ -248,7 +231,7 @@ fn signature_reached_dataclass_base_keeps_its_options_in_both_layouts(reexported
     assert_eq!(stdout.matches("Dataclass is missing").count(), 1, "{stdout}");
 }
 
-// A package `__init__.py` Ruff's `lint.exclude` leaves out still presents the API of the modules behind it.
+// An excluded package initializer can still re-export definitions from files that simplint checks.
 #[test]
 fn excluded_init_module_still_reexports() {
     let root = project(&[
@@ -264,8 +247,7 @@ fn excluded_init_module_still_reexports() {
     );
 }
 
-// A module read from standard input has no index, so its own `__all__` tells what it offers. Ruff's D103 reports the
-// undocumented `run` of such a module, so SMP903 leaves it to Ruff while Ruff runs it.
+// With no project index, the stdin check can still read the module's own `__all__`.
 #[test_case("\"D103\"", common::PASSED ; "left_to_d103")]
 #[test_case(
     "",
@@ -286,8 +268,6 @@ fn standard_input_reads_its_own_exports(select: &str, expected: &str) {
     assert_eq!(stdout, expected);
 }
 
-// A class a listed function returns is library API, so its docstring and its method's docstring stay when SMP901's
-// unsafe fix runs, while an internal helper's docstring is still turned into a comment.
 #[test]
 fn signature_reached_class_keeps_its_docstrings() {
     let root = project(&[
@@ -308,8 +288,7 @@ fn signature_reached_class_keeps_its_docstrings() {
     );
 }
 
-// A module-level `__getattr__` supplies names the index cannot list, so its re-exports do not count, while a plain
-// module's do. The names a module defines itself are Ruff's to report.
+// A module-level `__getattr__` can supply names dynamically, so the index cannot enumerate its re-exports.
 #[test]
 fn lazy_module_offers_what_it_defines() {
     let root = project(&[
@@ -331,8 +310,7 @@ fn lazy_module_offers_what_it_defines() {
     );
 }
 
-// A test that reads `__all__` by its name, off a module it imports at run time as a test of every module does, may
-// check that it is a tuple, so the tuple is reported without a fix.
+// Changing `__all__` from a tuple to a list can break a test that checks its type.
 #[test_case("tests/test_all.py", false ; "read_by_a_test")]
 #[test_case("tools/all.py", true ; "read_outside_the_tests")]
 fn tuple_all_a_test_reads_keeps_its_type(reader: &str, fixed: bool) {
@@ -353,8 +331,7 @@ fn tuple_all_a_test_reads_keeps_its_type(reader: &str, fixed: bool) {
     );
 }
 
-// Rust built beside the package, as maturin and setuptools-rust build it, can import a name by its spelling, which no
-// Python file shows, so the rename is left to the author.
+// A native extension can look up a Python name without a reference in Python source.
 #[test_case("[build-system]\nrequires = [\"maturin>=1,<2\"]\nbuild-backend = \"maturin\"\n", false ; "maturin")]
 #[test_case("[build-system]\nrequires = [\"setuptools\", \"setuptools_rust\"]\n", false ; "setuptools_rust")]
 #[test_case("[build-system]\nrequires = [\"setuptools\"]\n", true ; "python_only")]

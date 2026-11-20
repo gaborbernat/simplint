@@ -31,8 +31,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             (name != *parameter && filled.contains(&name)).then_some((name, *parameter))
         })
         .collect();
-    // Arguments that only trade places among themselves are a deliberate swap, as a test of a symmetric function or a
-    // call that flips roles does.
+    // A permutation may be intentional, for example when testing that a function is symmetric.
     let given: FxHashSet<&str> = misplaced.iter().map(|(argument, _)| *argument).collect();
     if misplaced.len() < 2 || misplaced.iter().all(|(_, parameter)| given.contains(parameter)) {
         return;

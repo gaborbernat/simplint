@@ -54,7 +54,7 @@ use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
 use self::run_reads::{RunReads, RunWide, run_names};
 
-// Module names resolve with ty's resolver, the one Ruff's import graph uses, so a module is named as Python imports it.
+// Resolve modules with the same ty resolver Ruff uses for its import graph.
 pub struct Project {
     pub(super) imported: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) entry_only: FxHashMap<FileId, FxHashSet<String>>,
@@ -80,7 +80,6 @@ pub struct Project {
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
-    // The files that run when a top-level package of the run is imported or one of its entry points runs.
     pub(super) package_loaded: FxHashSet<FileId>,
     // The modules whose runtime import in each file reaches a file of the run.
     pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<String>>,
@@ -201,8 +200,8 @@ impl Project {
             .filter(|(_, module)| !module.runtime_modules.is_empty())
             .map(|(file, module)| (*file, module.runtime_modules.iter().cloned().collect()))
             .collect();
-        // The cycle and repeated statement reports and what the run reads take nothing from the reach and re-export
-        // steps, so they are worked out alongside them.
+        // Cycle detection, duplicate detection and read collection can run before reachability and re-export analysis
+        // finish.
         let ((cycle_reports, duplicate_reports, reads), ()) = rayon::join(
             || {
                 let (cycles, duplicates) = rayon::join(
@@ -426,9 +425,8 @@ fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHas
     importers
 }
 
-// The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
-// calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
-// import, and a module with a `__main__` guard runs as a program, so none of them is one.
+// A helper imported only by tests or other test helpers counts as test code even outside the test tree. Entry points,
+// startup modules and modules with a main guard can run independently.
 fn test_support(
     importers: &FxHashMap<FileId, FxHashSet<FileId>>,
     test_modules: &FxHashSet<FileId>,
@@ -586,9 +584,8 @@ fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHas
         .collect()
 }
 
-// The files a top-level package's `__init__.py` or `__main__.py` runs through runtime imports, itself included: the
-// modules an install loads on its own, apart from the plugins other tools load, the integrations users import by choice
-// and the scripts a checkout runs.
+// Start from top-level package initializers and every non-test __main__.py, including those in nested packages. Their
+// runtime imports can load modules that no project code calls directly.
 fn package_loaded(
     runtime: &RuntimeGraph,
     indexed: &[(FileId, &FileFacts)],
@@ -623,17 +620,15 @@ fn package_loaded(
     loaded
 }
 
-// The cycles of the runtime imports outside test modules, which import each other as fixtures and deliberately close
-// cycles when they test the import system.
+// Leave test modules out of import-cycle reports. Fixtures and tests of the import system can introduce intentional
+// cycles.
 fn runtime_cycles(mut runtime: RuntimeGraph, test_modules: &FxHashSet<FileId>) -> FxHashMap<FileId, Cycle> {
     runtime.retain(|file, _| !test_modules.contains(file));
     cycles::cycles(runtime)
 }
 
-// The statements each file shares with another, which `duplicate-code` reports. Stubs repeat each other's signatures by
-// design, and tests repeat their setup and checks so each reads on its own, or copy the code they test to compare
-// against it, so neither is compared. Nor is a module unasync generates from its `_async` twin, which repeats that twin
-// by design.
+// Compare production code within each distribution. Tests often repeat setup, stubs repeat signatures, and unasync
+// output repeats its async source.
 fn duplicate_reports(
     sources: &FxHashMap<FileId, &FileFacts>,
     test_modules: &FxHashSet<FileId>,

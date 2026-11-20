@@ -3,16 +3,10 @@ the test with `:=`, keeps the value next to the check that uses it.
 
 ## Why is this bad?
 
-A name that exists only to feed the next test splits one decision over two statements, and the reader has to check that
-nothing else reads it. When the test is the only use, the value can take the name's place. When the body needs the value
-too, an [assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) (`:=`, from
-[PEP 572](https://peps.python.org/pep-0572/)) binds it in the test, the use the PEP shows under
-[capturing condition values](https://peps.python.org/pep-0572/#capturing-condition-values).
-
-Tim Peters' [review of real code](https://peps.python.org/pep-0572/#appendix-a-tim-peters-s-findings) found that form
-clearer and a frequent small win. PEP 572's [style guide](https://peps.python.org/pep-0572/#style-guide-recommendations)
-prefers an assignment statement when either form works, but simplint reports the `:=` form because binding in an `if`
-header is the PEP's lead use case.
+When a value is used only in a test, inlining it shows what the condition checks. If the body also needs the value, an
+[assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) binds the result in
+the test and avoids evaluating it twice. [PEP 572](https://peps.python.org/pep-0572/#capturing-condition-values) shows
+this pattern with a regular expression match.
 
 ## Example
 
@@ -372,9 +366,9 @@ The fix is safe. It deletes the assignment, then:
       return ""
   ```
 
-When the assignment and the `if` it leads to are the only statements of an `if` whose header holds a comment, and that
-`if` has no `else` or `elif` branch, Ruff would merge the two `if` statements only past the comment. The fix would leave
-that work behind, so the finding is reported without a fix.
+Simplint can report a candidate without a fix inside another `if`. This happens when the assignment and inner `if` are
+the only two statements, neither `if` has an `elif` or `else`, and a comment between the two headers prevents Ruff from
+merging them.
 
 ```python report
 def run(text: str, flag: bool) -> str:
@@ -385,13 +379,12 @@ def run(text: str, flag: bool) -> str:
     return ""
 ```
 
-The search for other reads looks only at names in code. It misses importers outside the run and references held in
-strings, such as an `__all__` entry.
+Simplint checks module exports, including `__all__`, but cannot see callers outside the files it analyzes.
 
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),
   [#11060](https://github.com/astral-sh/ruff/issues/11060) and [#10108](https://github.com/astral-sh/ruff/issues/10108).
-- [pylint](https://github.com/pylint-dev/pylint) reports the same assignment and `if` pairs as
-  [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html),
-  for targets that allow `:=`, with no fix.
+- Pylint's optional `pylint.extensions.code_style` checker suggests an assignment expression for eligible
+  assignment-and-test pairs. See
+  [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html).

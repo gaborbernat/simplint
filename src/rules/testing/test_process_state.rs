@@ -16,8 +16,6 @@ pub fn test_process_state(checker: &Checker) {
         return;
     }
     for function in functions(checker) {
-        // A fixture that yields, a function with a `finally`, or one that registers a cleanup may put the state back
-        // itself.
         if restores_itself(function) {
             continue;
         }
@@ -42,8 +40,6 @@ pub fn test_process_state(checker: &Checker) {
     }
 }
 
-// The tests, fixtures and methods of test classes, which run as part of a test. A class or module with a teardown hook,
-// or a `usefixtures` mark, may restore the state, so its functions are left out.
 fn functions<'a>(checker: &Checker<'a>) -> Vec<&'a ast::StmtFunctionDef> {
     let body = checker.body();
     if defines_teardown(body) || body.iter().any(is_pytestmark_usefixtures) || body.iter().any(is_restoring_autouse) {
@@ -220,8 +216,7 @@ impl<'a> Visitor<'a> for Changes<'_, '_> {
 }
 
 impl Changes<'_, '_> {
-    // A context manager, such as `patch.dict`, `monkeypatch.context()` or a project's own `fresh_env()`, may put the
-    // state back on exit; only `open` is known not to.
+    // A called context manager may restore state on exit. Opening a file does not.
     fn restores(&self, context: &Expr) -> bool {
         context.as_call_expr().is_some_and(|call| !self.checker.semantic().is_builtin(&call.func, "open"))
     }
@@ -276,13 +271,13 @@ impl Changes<'_, '_> {
     }
 }
 
-// A name every binding of which imports a module, as `import json` does; `from x import y` may bind anything.
+// A from-import may bind any object. Only plain module imports establish module identity here.
 fn binds_module(checker: &Checker, name: &ast::ExprName) -> bool {
     let bindings = checker.semantic().resolved_bindings(name);
     !bindings.is_empty() && bindings.iter().all(|binding| matches!(binding_referent(binding), Referent::Module))
 }
 
-// What the function copies before changing it, as `old = os.getcwd()` or `saved = sys.path[:]` do, to put back later.
+// A saved value may be used by teardown. Its position and eventual use are not checked.
 struct Saves<'a, 'b> {
     checker: &'a Checker<'b>,
     saved: FxHashSet<State>,
@@ -317,9 +312,8 @@ impl<'a> Visitor<'a> for Saves<'_, '_> {
 }
 
 impl Saves<'_, '_> {
-    // The state a patcher or the monkeypatch fixture puts back once the test ends: `patch.dict(os.environ)` restores
-    // the whole mapping, and `monkeypatch.setenv`, `delenv`, `syspath_prepend` and `chdir` record the value they
-    // replace.
+    // An explicit patch or monkeypatch call can restore this kind of state. The index tracks the kind, not individual
+    // keys.
     fn restored_by(&self, call: &ast::ExprCall) -> Option<State> {
         let name = UnqualifiedName::from_expr(&call.func)?;
         match name.segments() {
@@ -349,7 +343,6 @@ impl Saves<'_, '_> {
     }
 }
 
-// The state of the test process a test changes for the tests that run after it.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum State {
     Environment,

@@ -1,15 +1,11 @@
-Flags suppression comments that name no error code, except the forms Ruff's PGH003, PGH004 and RUF103 report, such as a
-bare `# noqa`, `# type: ignore` or `# ruff: ignore`. It covers the rest, such as `# ty: ignore`.
+Flags suppression comments that omit error codes, such as `# ty: ignore`. simplint skips forms covered by Ruff's PGH003,
+PGH004 and RUF103.
 
 ## Why is this bad?
 
-A blanket suppression hides every error its checker reports on the line or in the file, including a real bug that lands
-there later, and the comment does not say which error it was meant for. Naming the code keeps the other errors visible.
-mypy and ty give the same reason for
-[codes in `type: ignore`](https://mypy.readthedocs.io/en/stable/error_codes.html#silencing-errors-based-on-error-codes)
-and [rule names in `ty: ignore`](https://docs.astral.sh/ty/suppression/#ty-suppression-comments). Ruff's
-[blanket-type-ignore](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) also finds such a comment harder to read
-and maintain.
+A blanket suppression can hide a new error on the same line or in the same file. Naming the code keeps unrelated errors
+visible. Both [mypy](https://mypy.readthedocs.io/en/stable/error_codes.html#silencing-errors-based-on-error-codes) and
+[ty](https://docs.astral.sh/ty/suppression/#ty-suppression-comments) support selective ignores.
 
 ## Example
 
@@ -25,12 +21,12 @@ VALUE = compute()  # ty: ignore[invalid-assignment]
 
 ## What it does
 
-No fix is offered: the comment does not say which codes it should name.
+Choose the codes by checking which diagnostics the comment suppresses.
 
 ### Active on
 
 - **`noqa` after an earlier one**: Ruff reads only the first `noqa` of a comment, and a `noqa` it rejects still counts
-  as that first one. A later bare `noqa` is therefore not reported by PGH004, and it is reported here.
+  as that first one. A later bare `noqa` is reported by simplint.
 
   ```python report
   import os  # noqa: F401 # noqa
@@ -44,7 +40,8 @@ No fix is offered: the comment does not say which codes it should name.
   import os
   ```
 
-- **`simplint: ignore` without codes**: each directive whose brackets are missing or empty.
+- **`simplint: ignore` without codes**. Missing or empty brackets trigger this rule. To suppress a simplint report, put
+  its selector inside the brackets.
 
   ```python report
   OTHER = 2  # simplint: ignore
@@ -72,7 +69,7 @@ No fix is offered: the comment does not say which codes it should name.
   FOURTH = 4  # type: ignore[]
   ```
 
-- **Each directive of a comment**: a comment can hold several directives, and each one without codes is reported.
+- **Each directive of a comment**: a comment can hold several directives, and simplint checks each one separately.
 
   ```python report
   TENTH = 10  # ty: ignore[unresolved-import] # pyrefly: ignore
@@ -139,8 +136,7 @@ No fix is offered: the comment does not say which codes it should name.
       VALUE = 1
   ```
 
-- **Words that only start with a directive**: a directive must be a whole word, so `ignored` after `ty: ignore` is
-  ordinary text.
+- **Words that only start with a directive**: a directive must be a whole word, so `# ty: ignored` is ordinary text.
 
   ```python ok
   ELEVENTH = 11  # ty: ignored later
@@ -154,20 +150,7 @@ No fix is offered: the comment does not say which codes it should name.
 
 ## Ruff overlap
 
-Ruff's [blanket-noqa](https://docs.astral.sh/ruff/rules/blanket-noqa/) (PGH004) and
-[blanket-type-ignore](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) (PGH003) own the forms that name no code
-and that Ruff reads as blanket: the first `noqa` of a comment and the first file-level `ruff: noqa` or `flake8: noqa`,
-and a `type: ignore` or `pyright: ignore` with nothing after `ignore`. Ruff's
-[invalid-suppression-comment](https://docs.astral.sh/ruff/rules/invalid-suppression-comment/) (RUF103) owns a
-`ruff: ignore` or `ruff: file-ignore` whose brackets name no code. This rule leaves those forms to Ruff whether or not
-the project's Ruff configuration selects the rule that reports them. It keeps the rest, including the `noqa` that
-follows an earlier one in the same comment, and the `ty`, `pyrefly` and `simplint` forms.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [PGH003](https://docs.astral.sh/ruff/rules/blanket-type-ignore/),
-  [PGH004](https://docs.astral.sh/ruff/rules/blanket-noqa/) and
-  [RUF103](https://docs.astral.sh/ruff/rules/invalid-suppression-comment/), which report a bare `type: ignore`, the
-  first `noqa` of a comment, and `ruff: ignore` without codes; this rule leaves those to them and covers the `ty`,
-  `pyright`, `pyrefly` and `simplint` directives and the rest.
+[PGH004](https://docs.astral.sh/ruff/rules/blanket-noqa/) checks the first `noqa` and the first file-level `noqa` in a
+comment. [PGH003](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) checks bare `type: ignore` and
+`pyright: ignore`. [RUF103](https://docs.astral.sh/ruff/rules/invalid-suppression-comment/) checks `ruff: ignore` and
+`ruff: file-ignore` without codes. simplint skips those cases even when the Ruff rules are disabled.

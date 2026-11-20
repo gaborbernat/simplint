@@ -1,4 +1,3 @@
-// What inlining or moving a value takes, shared by the rules that do so.
 mod fstring;
 mod literals;
 mod names;
@@ -33,7 +32,7 @@ pub(super) fn for_each_scoped_body<'a, S: Copy>(
     }
 }
 
-// The value's range is the one its parentheses sit in, so the source text is compared with the bare value.
+// The wider range may already include parentheses. Add a pair only if it contains the bare expression.
 pub(super) fn inlined_text(checker: &Checker, value: &Expr, value_range: TextRange, parenthesize: bool) -> String {
     let text = checker.text(value_range);
     if parenthesize && text == checker.text(value.range()) { format!("({text})") } else { text.to_owned() }

@@ -19,18 +19,17 @@ pub(in crate::project) struct RunWide {
     pub(super) assigned_attributes: FxHashSet<String>,
     pub(super) module_reads: FxHashSet<String>,
     pub(super) base_classes: FxHashSet<String>,
-    // The classes some class of the run lists beside another base, whose methods the other bases may call.
+    // A base in a multiple-inheritance hierarchy may call methods provided by another base.
     pub(super) mixins: FxHashSet<String>,
     pub(super) fixture_requests: FxHashSet<String>,
-    // Names the index cannot follow: those read from a module that resolves to no file of the run, and doctest uses.
+    // Doctests and unresolved module names can hide the exact definition a reference uses.
     pub(super) opaque_names: FxHashSet<String>,
     // The dotted names a string or store of the run reaches, such as `requests.get` in `mock.patch("requests.get")`,
     // whether or not their module is a file of the run.
     pub(super) referenced_paths: FxHashSet<String>,
     pub(super) computed_reads: ComputedReads,
     pub(super) writes: Writes,
-    // The class names more than one module-level class of the run defines, which a documentation reference by simple
-    // name cannot tell apart.
+    // An unqualified documentation reference is ambiguous when several classes share its name.
     pub(super) class_namesakes: FxHashSet<String>,
     pub(super) bound_marks: FxHashSet<String>,
 }
@@ -57,7 +56,7 @@ pub(super) fn run_names(
             )
         },
     );
-    // A store to the name in another project still makes it assigned here, as a store in this one does.
+    // An assignment in another project can still change this attribute.
     let assigned_attributes: FxHashSet<String> =
         assigned_attributes.into_iter().chain(outer_assigned.iter().cloned()).collect();
     let referenced_paths = indexed
@@ -117,11 +116,9 @@ pub(super) struct RunReads {
 
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(super) struct AllReads {
-    // Whether a test reads `__all__`, by its name in a string as `getattr(module, "__all__")` does or as an attribute,
-    // which may check what type it is.
+    // A test that mentions __all__ can depend on its type as well as its contents.
     pub(super) in_tests: bool,
-    // Whether code outside the tests reads an `__all__` off a module it imports by a computed name, so removing or
-    // adding a listed name changes what it loads.
+    // Reading __all__ from a dynamically loaded module can expose its names to production code.
     pub(super) dynamic_in_production: bool,
 }
 
@@ -146,8 +143,7 @@ impl RunReads {
     }
 }
 
-// The number of files each word appears in. The files are counted in parallel by borrowed word, so each distinct word
-// is copied once rather than once per file that holds it.
+// Count files using borrowed words. Allocate a string only once per distinct word.
 fn string_word_counts(indexed: &[(FileId, &FileFacts)]) -> FxHashMap<String, u32> {
     let counts = indexed
         .par_iter()
@@ -202,8 +198,8 @@ impl RunWide {
         hasher.finish()
     }
 
-    // Low protocol pickling, and writes or storage reached on objects of unknown class, concern every dataclass, so
-    // their change names `dataclass`.
+    // Low pickle protocols and writes on unknown receivers can affect any dataclass, so invalidate dataclass results
+    // when either changes.
     pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -252,8 +248,7 @@ impl RunWide {
     }
 }
 
-// A digest of the word counts that does not depend on the map's order, so the many words need no sorting: each word
-// and its count hash on their own, and the hashes add up.
+// Adding the individual hashes makes the digest independent of map iteration order.
 fn string_words_key(words: &FxHashMap<String, u32>) -> (usize, u64) {
     let sum = words.par_iter().map(|entry| {
         let mut hasher = CacheKeyHasher::new();

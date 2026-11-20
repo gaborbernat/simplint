@@ -344,7 +344,6 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-// Ruff's cleanup merges the `if` the fix leaves alone in an outer `if`, whatever the layout and line length.
 #[test_case("if flag:", "        size = len(text)", "if flag and len(text) > 3:" ; "fits")]
 #[test_case(
     "if flag:", "        size = len(text                )", "if flag and len(text                ) > 3:" ; "spaced"
@@ -394,8 +393,7 @@ fn walrus_candidate_keeping_if_branches_is_fixed(body: &str, fixed: &str) {
     );
 }
 
-// Ruff does not merge an `if` into an outer `if` whose header holds a comment, so the fix would leave work the fix
-// loop withdraws. The finding stays, without its fix, and the other candidates of the file are still fixed.
+// A comment on the outer header prevents Ruff from merging the conditions after inlining.
 #[test]
 fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() {
     let source = "def run(text, flag):\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\
@@ -404,7 +402,8 @@ fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() 
     let root = collapsible_if_project(source);
     let report = "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 1 error.\n";
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502"]);
-    assert_eq!((code, stdout.as_str()), (1, report));
+    let rule: serde_json::Value = common::json(root.path(), &["rule", "SMP502", "--output-format", "json"]);
+    assert_eq!((code, stdout.as_str(), rule["fix_availability"].as_str()), (1, report, Some("Sometimes")));
     common::assert_fix_keeps_report(root.path(), "SMP502", &["--fix", "--unsafe-fixes"], "module.py", report);
 }
 
@@ -430,9 +429,7 @@ fn walrus_candidate_under_a_comment_leaves_the_other_candidates_fixed() {
     );
 }
 
-// Ruff collapses the nested `if` the walrus leaves only when the first line of the result fits the line length, so the
-// unformatted line would decide what a second run, over the formatted one, does. At 84 columns the `if` the walrus
-// writes fits, and the merged one does not.
+// The constant fix changes the width of the condition. Its final layout must be stable on a second run.
 #[test]
 fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
     let root = common::project(&[
@@ -482,7 +479,7 @@ fn collapsible_if_project(source: &str) -> TempDir {
     common::project(&[("pyproject.toml", ruff), ("module.py", source)])
 }
 
-// Before Python 3.9 a decorator is a dotted name, optionally called, so a value that is not one stays where it is.
+// Before Python 3.9, decorators were limited to dotted names and calls on them.
 #[test_case("py38", "registry[0]", "@decorate", None ; "subscript_before_python39")]
 #[test_case("py38", "registry.get", "@decorate", Some("@registry.get") ; "dotted_before_python39")]
 #[test_case("py38", "registry[0]", "@decorate(1)", None ; "called_before_python39")]
@@ -501,7 +498,6 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
     assert_eq!(read(root.path(), "module.py"), expected);
 }
 
-// Before Python 3.12 a replacement field cannot hold a backslash or the f-string's own quote (PEP 701).
 #[test_case(
     "py311",
     "def quote(value):\n    quoted = value.replace(b\"'\", b\"''\")\n    return f\"'{quoted}'\"\n",
@@ -526,8 +522,7 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
     Some("def join(items):\n    return f\"{b\"\\n\".join(items)}\"\n")
     ; "backslash_from_python312"
 )]
-// A replacement field before Python 3.12 cannot hold a line break, so a value the source spreads over lines goes in on
-// one line, as the formatter joins it.
+// The replacement must fit inside this single-line f-string on Python 3.11.
 #[test_case(
     "py311",
     "def join(items):\n    joined = (\n        b', '.join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(\
@@ -542,8 +537,6 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
     Some("def size(items):\n    return f\"{len(items)}\"\n")
     ; "other_value_before_python312"
 )]
-// An f-string value in a bare field is spliced into the f-string around it, so its strings keep their quote before
-// Python 3.12 too, and the fixes it does not block still apply.
 #[test_case(
     "py311",
     "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\
@@ -570,8 +563,6 @@ fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
     assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
 }
 
-// `yield name` is never reported. Ruff's RUF070 covers a `yield from` of the assigned name, so SMP504 leaves that pair
-// to it whether or not the project selects the rule. The other next statements are inlined.
 #[test_case(
     "def run(items):\n    count = len(items)\n    yield count\n",
     "def run(items):\n    count = len(items)\n    yield count\n" ;
@@ -608,8 +599,7 @@ fn single_use_variable_leaves_ruff_yield_froms_to_ruff(source: &str, fixed: &str
     assert_eq!(read(root.path(), "module.py"), fixed);
 }
 
-// `ruff format` closes the gap a removed statement leaves, but a `# fmt: off` file keeps it, so the fix takes one of
-// the two blank lines with it.
+// Formatting is disabled in this fixture, so the edit itself must remove the surplus blank line.
 #[test]
 fn single_use_variable_keeps_one_blank_line_under_fmt_off() {
     let source = "# fmt: off\ndef make(flags, kwargs):\n    configure(kwargs)\n\n    cli_kwargs = to_args(kwargs)\n\
@@ -622,8 +612,7 @@ fn single_use_variable_keeps_one_blank_line_under_fmt_off() {
     );
 }
 
-// The layout a value has in the source does not decide whether it is inlined: `ruff format` joins it, so a second run
-// would inline it, and the fix does the same on the first.
+// The original line breaks can disappear during formatting. Use the formatted width on the first pass.
 #[test]
 fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
     let source = "def f(conn):\n    request = (\n        b\"POST / HTTP/1.1\\r\\n\"\n        b\"Host: example.com\\r\\n\
@@ -636,8 +625,7 @@ fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
     );
 }
 
-// Before Python 3.12 a value spread over lines goes into a replacement field as `ruff format` joins it, which a magic
-// trailing comma stops unless the formatter skips it.
+// A magic trailing comma can keep an argument list multiline even when it would fit inside the f-string.
 #[test_case(
     "",
     "def pair(first, second):\n    items = (\n        first,\n        second,\n    )\n    return f\"{items}\"\n" ;
@@ -657,8 +645,7 @@ fn single_use_fstring_value_follows_magic_trailing_comma(format: &str, fixed: &s
     assert_eq!(read(root.path(), "module.py"), fixed);
 }
 
-// A function another module defines on both sides of a version check is the same function when both definitions
-// agree, and has no single signature when they do not.
+// Two alternative definitions with the same signature can describe the same call shape.
 #[test_case("def ready() -> bool:\n        return True", true ; "same_shape")]
 #[test_case("def ready(strict: bool) -> bool:\n        return strict", false ; "other_shape")]
 fn function_as_condition_reads_a_twice_defined_import(other: &str, reported: bool) {
@@ -674,8 +661,7 @@ fn function_as_condition_reads_a_twice_defined_import(other: &str, reported: boo
     assert_eq!(stdout.contains("main.py:3:4"), reported, "{stdout}");
 }
 
-// A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
-// naming an undefined name.
+// Inlining the value would leave the type expression referring to the old name.
 #[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
 #[test_case("box = Generic[T]\n    ref = ForwardRef(\"list[T]\")\n    return box, ref" ; "forward_ref")]
 #[test_case("box = Generic[T]\n    refs = ForwardRef(str(box)), ForwardRef(\"list[T]\")\n    return refs" ; "forward_ref_among_other_arguments")]
@@ -689,7 +675,6 @@ fn single_use_string_annotation_is_a_read(body: &str) {
     assert!(read(root.path(), "module.py").contains("    T = TypeVar(\"T\")\n"));
 }
 
-// A string annotation that does not parse spells no name, so the name it cannot read is inlined as usual.
 #[test]
 fn single_use_unparsable_string_annotation_reads_nothing() {
     let root = single_use_project(
@@ -706,7 +691,6 @@ fn single_use_project(target: &str, source: &str) -> TempDir {
     common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)])
 }
 
-// The calls of a function in other files count toward whether each of its defaults is ever left out.
 #[test]
 fn unused_default_counts_calls_from_other_files() {
     let root = common::project(&[
@@ -724,7 +708,7 @@ fn unused_default_counts_calls_from_other_files() {
     );
 }
 
-// A call that suppresses `dataclass-kw-only` still passes its arguments, so it counts like any other call.
+// Suppressing a diagnostic on the call does not remove the call from the project.
 #[test_case("connect(\"a\", 1)  # noqa: SMP703\n" ; "noqa")]
 #[test_case("connect(\"a\", 1)  # simplint: ignore[dataclass-kw-only] positional on purpose\n" ; "ignore")]
 fn unused_default_counts_calls_that_suppress_dataclass_kw_only(call: &str) {
@@ -737,8 +721,7 @@ fn unused_default_counts_calls_that_suppress_dataclass_kw_only(call: &str) {
     assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
 }
 
-// `getattr(module, name)()` may call any function of a module it reads by a computed name or through `__all__`, with no
-// arguments at all.
+// A caller that retrieves a function dynamically can omit an argument supplied by every visible call.
 #[test_case("import core\n\nconnect(\"a\", 1)\nprint([getattr(core, name) for name in names])\n" ; "getattr")]
 #[test_case("import core\n\nconnect(\"a\", 1)\nprint(core.__all__)\n" ; "all")]
 #[test_case("import pkg.core\n\nconnect(\"a\", 1)\nprint(hasattr(pkg.core, names[0]))\n" ; "dotted_hasattr")]
@@ -753,7 +736,6 @@ fn unused_default_leaves_a_module_read_dynamically_alone(reader: &str) {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// A literal attribute name reads one function, so the others keep their judgment.
 #[test]
 fn unused_default_judges_a_module_read_by_a_literal_name() {
     let root = common::project(&[
@@ -768,7 +750,6 @@ fn unused_default_judges_a_module_read_by_a_literal_name() {
     assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
 }
 
-// A library's public functions may be called by outside code that omits the argument.
 #[test]
 fn unused_default_leaves_the_public_api_alone() {
     let root = common::project(&[
@@ -780,8 +761,6 @@ fn unused_default_leaves_the_public_api_alone() {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// Outside code calls the public methods of a public class, not its private ones, so a private method keeps its
-// judgment.
 #[test]
 fn unused_default_judges_private_methods_of_public_classes() {
     let root = common::project(&[
@@ -796,8 +775,7 @@ fn unused_default_judges_private_methods_of_public_classes() {
     assert_eq!((code, stdout.contains("SMP506 Every call to `_verify` passes `timeout`")), (1, true), "{stdout}");
 }
 
-// A private function a public module re-exports is part of the API its users call, so outside code may leave out the
-// default the run's calls all pass. A private function nothing re-exports is still judged.
+// Re-exports can expose a private function to external callers who rely on its defaults.
 #[test]
 fn unused_default_leaves_reexported_functions_alone() {
     let root = common::project(&[
@@ -817,8 +795,6 @@ fn unused_default_leaves_reexported_functions_alone() {
     );
 }
 
-// A package with a dynamic `__all__` still offers the names other files import from it, so the default they pass is the
-// library's, and a helper nothing imports is judged.
 #[test]
 fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
     let root = common::project(&[
@@ -839,8 +815,6 @@ fn unused_default_keeps_names_imported_from_a_package_with_dynamic_all() {
     );
 }
 
-// The `__all__` of a library's public module declares its interface, so a public function it leaves out is judged like
-// a private one, as the other API rules judge it.
 #[test]
 fn unused_default_judges_public_functions_all_omits() {
     let root = common::project(&[
@@ -859,7 +833,6 @@ fn unused_default_judges_public_functions_all_omits() {
     );
 }
 
-// A star import hands the module's names to code that the calls of the run do not show.
 #[test]
 fn unused_default_leaves_star_imported_modules_alone() {
     let root = common::project(&[
@@ -870,8 +843,7 @@ fn unused_default_leaves_star_imported_modules_alone() {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// PT028 reports every default of a pytest test function, with a display-only fix, so a default this rule cannot fix is
-// left to it there. A default it can fix is reported in a test as anywhere else.
+// PT028 can report the default on a collected test even when simplint has no applicable fix.
 #[test_case(
     "def test_connect(host, timeout=30):\n    return host, timeout\n\n\ntest_connect(\"db\", 5)\n",
     1 ;
@@ -911,8 +883,6 @@ fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &st
     assert_eq!(stdout.matches("Every call to").count(), reports, "{stdout}");
 }
 
-// Ruff's PT017 reports an `assert` naming the exception, at any depth in the handler, so SMP507 leaves it to Ruff
-// whether or not the project selects PT017. An `if` is not an `assert`, so its comparison stays with the rule.
 #[test_case("assert \"gone\" in str(exc)", 0 ; "assert_left_to_ruff")]
 #[test_case("if flag:\n            assert \"gone\" in str(exc)", 0 ; "nested_assert_left_to_ruff")]
 #[test_case("if \"gone\" in str(exc):\n            pass", 1 ; "if_reported")]
@@ -922,8 +892,8 @@ fn error_message_matching_leaves_asserts_to_pt017(body: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// The text of two exceptions tells them apart by their wording alone, so only the text of one against a literal or a
-// plain variable is reported.
+// Comparing two exception messages can be intentional, for example when checking whether a replay produced the same
+// error.
 #[test_case("return exc.args == other.args", 0 ; "args_of_two_exceptions")]
 #[test_case("return str(exc) == str(other)", 0 ; "text_of_two_exceptions")]
 #[test_case("return str(exc) == \"boom\"", 1 ; "text_against_literal")]
@@ -951,7 +921,6 @@ fn error_message_matching_leaves_text_pairs_alone(body: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// The parameters of a method, reached through its class, are read the same way as those of a function.
 #[test_case("return replay_error.args == error.args", 0 ; "args_of_a_parameter")]
 #[test_case("return replay_error.args == expected", 1 ; "args_against_variable")]
 fn error_message_matching_reads_parameters_of_methods(body: &str, reports: usize) {
@@ -963,8 +932,6 @@ fn error_message_matching_reads_parameters_of_methods(body: &str, reports: usize
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A name the file does not bind is not the handler's exception, even when its text is the same as the handler's name
-// would be; a name a star import brings in is not the exception either.
 #[test_case("return str(undefined_name) == \"boom\"", 0 ; "unresolved_name")]
 #[test_case("return str(sep) == \"/\"", 0 ; "name_from_star_import")]
 #[test_case("return str(exc) == \"boom\"", 1 ; "handler_name_still_reported")]
@@ -976,7 +943,7 @@ fn error_message_matching_leaves_unresolved_names_alone(body: &str, reports: usi
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A string annotation names the class the file binds under that name, which shadows the builtin of the same name.
+// Quoting the annotation does not change which class the name refers to.
 #[test_case("\"ValueError\"", 1 ; "string_names_shadowed_builtin_without_exception")]
 #[test_case("\"OSError\"", 0 ; "string_names_builtin_exception")]
 #[test_case("\"int\"", 1 ; "string_names_builtin_without_exception")]
@@ -989,8 +956,6 @@ fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str,
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A parameter counts as an exception through its annotation: a class of the file, an exception in a union with `None`,
-// in `Optional`, or in a string annotation. An annotation that names no exception leaves the comparison reported.
 #[test_case("Deep", 0 ; "two_level_local_subclass")]
 #[test_case("Exception | None", 0 ; "union_with_none")]
 #[test_case("Optional[Deep]", 0 ; "optional")]
@@ -1007,7 +972,6 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// An exception class the parameter's annotation imports from another file of the run.
 #[test_case("class MyError(Exception):\n    pass\n", 0 ; "imported_exception_class")]
 #[test_case("class MyError:\n    pass\n", 1 ; "imported_class_is_not_an_exception")]
 fn error_message_matching_reads_imported_exceptions(definition: &str, reports: usize) {
@@ -1017,7 +981,6 @@ fn error_message_matching_reads_imported_exceptions(definition: &str, reports: u
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// A class nested in a function is an exception class of the file, whether the annotation names it or a string does.
 #[test_case("Local", 0 ; "nested_class_name")]
 #[test_case("\"Local\"", 0 ; "nested_class_string")]
 #[test_case("int", 1 ; "nested_control_without_exception")]
@@ -1031,9 +994,7 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// Test modules may assert on the messages their code raises. An exception class of the file counts as an exception type
-// for a parameter annotation. A class whose base name is rebound to a class deriving from it is followed through both
-// bindings, and stops at the cycle, so the first binding still shows the exception.
+// The second `B` inherits from the first through `A`. Following the spelling alone would create a cycle.
 #[test_case(
     "test_errors.py",
     "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n" ;
@@ -1058,7 +1019,6 @@ fn error_message_matching_leaves_alone(file: &str, source: &str) {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// A class the run defines that a star import brings into the module, which the annotation then names.
 #[test_case("class AppError(Exception):\n    pass\n", 0 ; "star_imported_exception_class")]
 #[test_case("class AppError:\n    pass\n", 1 ; "star_imported_class_is_not_an_exception")]
 fn error_message_matching_reads_star_imported_exceptions(definition: &str, reports: usize) {
@@ -1068,7 +1028,6 @@ fn error_message_matching_reads_star_imported_exceptions(definition: &str, repor
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
-// The tuple length and the complexity a project allows before the rules report, read from `[tool.simplint.logic]`.
 #[test_case("", 2 ; "default_limit_reports_triples")]
 #[test_case("[tool.simplint.logic]\nmax-tuple-elements = 3\n", 1 ; "limit_three_reports_quadruples")]
 #[test_case("[tool.simplint.logic]\nmax-tuple-elements = 4\n", 0 ; "limit_four_reports_nothing")]
@@ -1095,7 +1054,6 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
     common::assert_report_count(root.path(), "SMP528", reports + 1);
 }
 
-// A base outside the run sets no shape the rule can see, so only the codec state method is exempt.
 #[test]
 fn long_tuple_return_override_of_an_outside_base() {
     let root = common::project(&[(
@@ -1179,8 +1137,6 @@ fn single_caller_helper_reports_when_ruff_limits_hold(rule: &str, option: &str, 
     assert!(stdout.contains("`_helper` is called only"), "{stdout}");
 }
 
-// A function scoring 18 is reported above a limit of 17 and left alone at 18, since the limit is the highest score
-// kept.
 #[test_case("", 1 ; "default_limit_of_twenty_reports_twenty_one")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 18\n", 1 ; "limit_eighteen_keeps_eighteen")]
@@ -1191,7 +1147,7 @@ fn cognitive_complexity_limit(settings: &str, reports: usize) {
     assert_eq!(stdout.matches("SMP529").count(), reports);
 }
 
-// Each function in the fixture ends its name with the score SonarSource gives it, which a limit of zero reports.
+// The suffix is the expected complexity. A limit of zero makes every positive score observable.
 #[test]
 fn cognitive_complexity_scores() {
     let source = common::fixture_source("logic/cognitive_complexity/cognitive_complexity_scores.py");
@@ -1215,8 +1171,6 @@ fn cognitive_complexity_scores() {
     assert_eq!(scores, expected);
 }
 
-// Ruff's RET504 reports `return name` after an assignment, and RUF070 reports a `yield from` of one, so SMP504 leaves
-// those pairs to them whether or not the project selects them. RET504 skips a generator, so the return in one is kept.
 #[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", false ; "return")]
 #[test_case("def f():\n    values = make()\n    yield from values\n", false ; "yield_from")]
 #[test_case("def f():\n    yield 0\n    total = 1 + 2\n    return total\n", true ; "return_in_generator")]
@@ -1253,8 +1207,7 @@ fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reporte
     );
 }
 
-// Ruff's B006 and B008 report a value that becomes a parameter's default, so SMP504 keeps a variable whose value would
-// become one while the project's Ruff configuration runs the rule, and still inlines what they leave alone.
+// Inlining a value into a default can introduce a new B006 or B008 diagnostic.
 #[test_case("B008", "", "make()", "held", true, false ; "call_with_b008")]
 #[test_case("B008", "", "make()", "held", false, true ; "call_without_b008")]
 #[test_case("B008", "", "tuple()", "held", true, true ; "immutable_call")]
@@ -1309,11 +1262,10 @@ fn single_use_variable_follows_ruff_defaults(
     assert_eq!(stdout.contains("`lock` is used once"), reported, "{stdout}");
 }
 
-// B006 reports a generator and a tuple holding a mutable value only in preview.
 const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 
-// Ruff's G003 reports a `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines, so SMP503 leaves those to Ruff whether or not the project selects them.
+// G003 covers concatenation in logging messages. The ISC003 cases also depend on the lint settings and the layout of
+// the literals.
 #[test_case(
     "",
     "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n",
@@ -1386,13 +1338,11 @@ fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) 
     assert_eq!(stdout.contains("Build text with an f-string"), reported, "{stdout}");
 }
 
-// `ruff format` joins a pair ISC003 reports onto one line, where ISC003 no longer reports it, so SMP503 leaves the pair
-// to Ruff only while Ruff runs ISC003.
+// Formatting can collapse a multiline pair onto one line, changing whether ISC003 reports it.
 const ISC003: &str = "extend-select = [\"ISC003\"]\n";
 
-// A class of the project is skipped under any name, and a function of the project is reported even when its name is
-// CapWords, since the project's own definitions tell the two apart. An import from outside the project is a class only
-// when its name is CapWords.
+// A project definition distinguishes a class from a function regardless of capitalization. For external imports the
+// rule can only infer this from the name.
 #[test_case("Badge(\"x\")", 0 ; "project_class")]
 #[test_case("badge(\"x\")", 0 ; "project_class_lowercase")]
 #[test_case("Label(\"x\")", 1 ; "project_function_capwords")]
@@ -1417,8 +1367,6 @@ fn string_concatenation_imported_callee(call: &str, reported: usize) {
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// A file checked alone is read against the rest of the project only as far as the run goes, so an import of a file
-// the run does not read is told apart by its name alone.
 #[test_case("Badge(\"x\")", 0 ; "unread_capwords")]
 #[test_case("badge(\"x\")", 1 ; "unread_lowercase")]
 fn string_concatenation_unread_import(call: &str, reported: usize) {
@@ -1429,8 +1377,6 @@ fn string_concatenation_unread_import(call: &str, reported: usize) {
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// An import the project re-exports from outside it binds a class by its name alone, while one the project re-exports
-// from its own module binds what that module defines: a function is reported even when its name is CapWords.
 #[test_case("from markupsafe import Markup\n", "Markup(\"x\")", 0 ; "reexported_from_outside")]
 #[test_case("from pkg.funcs import Wrap\n", "Wrap(\"x\")", 1 ; "reexported_function")]
 fn string_concatenation_reexported_import(init: &str, call: &str, reported: usize) {
@@ -1441,8 +1387,6 @@ fn string_concatenation_reexported_import(init: &str, call: &str, reported: usiz
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// A parameter annotated with an imported class is an instance of it, whether the run defines the class or the name is
-// spelled as one, and an annotation naming a class through a module the code imports is spelled as one too.
 #[test]
 fn string_concatenation_annotated_import() {
     let shapes = "class Badge(str):\n    pass\n";
@@ -1453,8 +1397,6 @@ fn string_concatenation_annotated_import() {
     assert_eq!(stdout.matches("Build text with an f-string").count(), 0, "{stdout}");
 }
 
-// An import inside a function binds its name as the import at module level does, so the class it names is told apart
-// in the same way.
 #[test_case("from markupsafe import Markup as Local", "Local(\"x\")", 0 ; "function_import_capwords")]
 #[test_case("from tags import thing as Local", "Local(\"x\")", 1 ; "function_import_lowercase")]
 fn string_concatenation_function_import(import: &str, call: &str, reported: usize) {
@@ -1464,9 +1406,8 @@ fn string_concatenation_function_import(import: &str, call: &str, reported: usiz
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// Before Python 3.12 a replacement field cannot hold a backslash inside a string, so a chain whose expression has one
-// has no f-string for that target and is not reported. A line continuation outside any string is not such a backslash,
-// and a quote conflict only declines the fix, since a triple-quoted f-string holds both quote characters.
+// The Python 3.11 f-string grammar forbids backslashes in expressions. Triple quotes can resolve some quote conflicts
+// without changing the target version.
 #[test_case(
     "py311",
     "def render(tail: str, names: list[str]) -> str:\n    return \"<p>\" + tail + \"</p>\" + '\", \"'.join(names) + \"'\
@@ -1520,9 +1461,7 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
     assert_eq!(stdout.matches("Build text with an f-string").count(), reported, "{stdout}");
 }
 
-// FURB113 fixes two or more appends to a list only while they run one after another with no comment between them. The
-// run leaves a list that Ruff fixes to Ruff, and keeps the rest. No Ruff rule is selected here, so the skip does not
-// depend on the selection.
+// A comment between appends can prevent Ruff's FURB113 fix. The tests exercise that boundary with Ruff rules disabled.
 #[test_case("xs = []\nxs.append(1)\nxs.append(2)\n", 0 ; "repeated_appends_left_to_ruff")]
 #[test_case("xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
 #[test_case("ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 1 ; "append_to_other_list_between")]
@@ -1547,8 +1486,8 @@ fn collection_built_by_statements_leaves_repeated_appends_to_ruff(source: &str, 
     assert_eq!(stdout.matches("\"code\": \"SMP531\"").count(), reported, "{stdout}");
 }
 
-// RUF055 rewrites a `re.match` call with a plain-text pattern that is only tested for truth into `str.startswith`, so
-// SMP522 leaves those calls to Ruff whether or not the project selects it, and keeps the rest.
+// RUF055 can replace the whole truth test with `startswith`. An expression that uses the match object itself needs a
+// different edit.
 #[test_case("if re.match(\"ab\", text):\n        pass", 0 ; "if_test")]
 #[test_case("while re.match(\"ab\", text):\n        break", 0 ; "while_test")]
 #[test_case("if text:\n        pass\n    elif re.match(\"ab\", text):\n        pass", 0 ; "elif_test")]
@@ -1591,8 +1530,6 @@ fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(body: &str, reported: usize) {
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
 }
 
-// SMP550 turns an end-anchored `re.match` into `re.fullmatch`, so with both rules selected SMP522 leaves it to SMP550
-// and renames only the other calls.
 #[test_case("return re.match(r\"a.$\", text)", 0, 1 ; "anchored")]
 #[test_case("return re.match(r\"a.\", text)", 1, 0 ; "open_end")]
 fn up_re_prefixmatch_leaves_anchored_calls_to_smp550(body: &str, renamed: usize, anchored: usize) {
@@ -1607,8 +1544,6 @@ fn up_re_prefixmatch_leaves_anchored_calls_to_smp550(body: &str, renamed: usize,
     assert_eq!(counts, (renamed, anchored), "{stdout}");
 }
 
-// Code outside a library may call the public functions and classes of its public modules without the argument, even
-// when every call in the run passes it. A private function there is still judged.
 #[test]
 fn unused_default_leaves_public_functions_of_library_modules_alone() {
     let root = common::project(&[
@@ -1624,7 +1559,6 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     );
 }
 
-// A pattern another module imports may be read by number there, so its groups keep their numbers.
 #[test]
 fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
     let root = common::project(&[
@@ -1642,8 +1576,6 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
     );
 }
 
-// Constants come out in source order, each above the statement its call sits in, and a later pass adds below the
-// ones an earlier pass added.
 #[test]
 fn inline_regex_fix_keeps_the_constants_in_source_order() {
     let root = common::project(&[(
@@ -1667,8 +1599,6 @@ fn inline_regex_fix_keeps_the_constants_in_source_order() {
     );
 }
 
-// A loop variable is a `ContextVar` when the loop walks a literal list of `ContextVar` calls; a starred item or an
-// unpacked target leaves its values unknown.
 #[test_case("variable in [contextvars.ContextVar(\"a\"), contextvars.ContextVar(\"b\")]", 1 ; "literal_list")]
 #[test_case("variable in [contextvars.ContextVar(\"a\"), *OTHERS]", 0 ; "starred_item")]
 #[test_case("variable, _ in [(contextvars.ContextVar(\"a\"), 1)]", 0 ; "unpacked_target")]
@@ -1684,7 +1614,6 @@ fn context_var_token_reset_reads_loop_values(header: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP512", reports);
 }
 
-// A parameter annotated `list` is a list, while a name bound to a `def` has no parameter of its own to read.
 #[test]
 fn in_place_result_reads_parameter_annotations_only() {
     let root = common::project(&[(
@@ -1695,7 +1624,6 @@ fn in_place_result_reads_parameter_annotations_only() {
     common::assert_report_count(root.path(), "SMP543", 1);
 }
 
-// The module constant an inline-regex fix writes is one the constant rules leave alone.
 #[test]
 fn inline_regex_fix_leaves_the_constant_clean_of_the_constant_rules() {
     let root = common::project(&[(
@@ -1708,8 +1636,6 @@ fn inline_regex_fix_leaves_the_constant_clean_of_the_constant_rules() {
     assert_eq!((fix_code, fix_stdout.as_str(), code, stdout.as_str()), (0, common::ONE_FIXED, 0, common::PASSED));
 }
 
-// A module-level name another module imports, or `__all__` lists, keeps its report, and the fix that removes it is
-// withheld.
 #[test_case(
     "SMP512",
     "py314",
@@ -1775,7 +1701,6 @@ fn module_name_another_module_uses_keeps_report_without_fix(
     common::assert_fix_keeps_report(root.path(), select, &["--fix"], "state.py", report);
 }
 
-// A name in a function is not the module's, so another module importing the same name does not withhold its fix.
 #[test]
 fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
     let root = common::project(&[
@@ -1802,15 +1727,13 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
 
 const PY311: &str = "[tool.ruff]\ntarget-version = \"py311\"\n";
 
-// A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before
-// it.
+// Replacing the assignment would put a compound `with` statement on the same logical line as the preceding statement.
 #[test_case(
     "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.\
         chdir(old)\n",
     "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ;
     "backslash_joined_line"
 )]
-// A parameter named like the module hides it in the function, even when the module imports it too.
 #[test_case(
     "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\
         \n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
@@ -1822,7 +1745,7 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
     common::assert_fix_keeps_report(root.path(), "SMP513", &["--fix"], "mod.py", report);
 }
 
-// A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
+// A backslash in a comment does not continue the line.
 #[test_case(
     "mod.py",
     "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\
@@ -1831,7 +1754,6 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
         started)\n" ;
     "comment_ending_in_backslash"
 )]
-// The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
 #[test_case(
     "block.py",
     "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = \
@@ -1841,8 +1763,7 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
         target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ;
     "import_above_comment"
 )]
-// A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the
-// docstring and not into the docstring.
+// A line starting with `#` inside a module docstring is part of the string.
 #[test_case(
     "h.py",
     "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\
@@ -1851,7 +1772,6 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
         \n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
     "docstring_line_starting_with_hash"
 )]
-// A comment on the first line is a header of the file, which the import stays below.
 #[test_case(
     "first.py",
     "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.\
@@ -1860,7 +1780,7 @@ fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
         os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ;
     "header_comment_on_first_line"
 )]
-// A class attribute named like the module is not seen by the methods of the class, so their fix stays.
+// A class attribute does not shadow a module global in a method body.
 #[test_case(
     "mod.py",
     "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\
@@ -1876,8 +1796,7 @@ fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
     assert_eq!((code, stdout.as_str(), read(root.path(), file)), (0, common::ONE_FIXED, expected.to_owned()));
 }
 
-// An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
-// stays off. A comment after the import is no code, so the import takes the fix.
+// A later statement on the same line could run before the inserted import. A trailing comment cannot.
 #[test_case(
     "SMP516",
     "py314",

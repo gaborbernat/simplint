@@ -78,8 +78,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             }
             _ => continue,
         };
-        // Python answers `False` for `==` and raises `TypeError` for the others once both operands return
-        // `NotImplemented`, but the other operand's method may now answer instead, so the fix is unsafe.
+        // Returning NotImplemented lets the other operand supply a different result.
         let fix = (!checker.has_comment_in(rejection.range()))
             .then(|| Fix::unsafe_edit(Edit::range_replacement("return NotImplemented".to_owned(), rejection.range())));
         checker.report_fix(

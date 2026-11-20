@@ -2,16 +2,14 @@ Flags a runtime import that closes a cycle of modules which import each other wh
 
 ## Why is this bad?
 
-A module runs its imports before its own body, and Python adds it to
-[`sys.modules`](https://docs.python.org/3/reference/import.html#loading) before running it. When two modules import each
-other at load time, the one that loads second finds the first half-built: a name it imports from the first may not exist
-yet, and which import fails depends on which module the program imports first. The
-[Python FAQ](https://docs.python.org/3/faq/programming.html#how-can-i-have-modules-that-mutually-import-each-other)
-walks through this failure. It also quotes McMillan that `import module` cycles work when attributes are read only
-inside functions; simplint reports those too, since the modules stay coupled. The cycle also ties the two modules
-together, so neither can be read, tested or moved on its own.
+Python adds a module to [`sys.modules`](https://docs.python.org/3/reference/import.html#loading) before executing its
+body. If `orders` imports `cart` and `cart` immediately imports a name from `orders`, that name may not exist yet. Which
+import fails can depend on which module loads first.
 
-In the example below, `orders.py` and `cart.py` import each other at the top of their files.
+A cycle can also work if the modules read each other's attributes only inside functions. simplint reports these cycles
+too because each module depends on the other. The
+[Python FAQ](https://docs.python.org/3/faq/programming.html#how-can-i-have-modules-that-mutually-import-each-other)
+illustrates both cases.
 
 ## Example
 
@@ -58,10 +56,9 @@ def checkout(items):
 
 ## What it does
 
-simplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its
-first import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in
-each module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its
-first eight, then how many it leaves out, before the module it closes on.
+simplint checks imports between files in the run. Each module in a cycle gets one report, on its first import that leads
+back to it. The message shows the chain of files. For cycles longer than eight modules it shows the first eight, the
+number omitted and the file where the cycle closes.
 
 ### Active on
 
@@ -198,8 +195,8 @@ first eight, then how many it leaves out, before the module it closes on.
   ```
 
   A `from module import *` rebinds the public module-level names, so it makes every such public constant an ordinary
-  flag. A name starting with an underscore is never treated as rebound, even when the star-imported module's `__all__`
-  lists it, so it stays a constant:
+  flag. A star import alone does not mark an underscore-prefixed name as rebound, even when the imported module's
+  `__all__` lists it, so it stays a constant:
 
   ```python context file=a.py
   import b
@@ -291,7 +288,7 @@ first eight, then how many it leaves out, before the module it closes on.
   import tests.helpers
   ```
 
-- **`lazy` imports**, which Python 3.15 binds on first use.
+- **`lazy` imports**. Python 3.15 can defer loading the imported module until a bound name is first used.
 
   ```toml config
   [project]
@@ -318,5 +315,5 @@ the graph, and neither is the import of a package's `__init__.py` that Python ru
 - **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and
   [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request
   [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.
-- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as
-  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.
+- Pylint also checks for circular imports with
+  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html).

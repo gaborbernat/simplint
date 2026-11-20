@@ -47,7 +47,7 @@ impl Runs {
     }
 }
 
-// The full `sys.version_info` is longer than the tuple it is compared with, so it never equals that tuple.
+// A full `sys.version_info` sorts after a matching one- or two-item tuple.
 fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
     let ast::ExprCompare { ops, operands, .. } = test.as_compare_expr()?;
     let ([op], [left, right]) = (&**ops, &**operands) else {
@@ -75,7 +75,7 @@ fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
         }
         ((number(right)?, 0), true)
     };
-    // The version a check of the first item names with `<=` or `==`, as `== 2`, holds below the next major version.
+    // A major-version check such as `major <= 2` stays true below the next major version.
     let next = (bound.0.checked_add(1)?, 0);
     let (below, holds_below) = match op {
         ast::CmpOp::LtE | ast::CmpOp::Eq if inclusive => (next, true),
@@ -85,8 +85,7 @@ fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
         _ => return None,
     };
     let gate = Runs::Below(below.0, below.1);
-    // A major-only check that holds on Python 3, the only major a supported Python has, leaves its else branch
-    // unreachable.
+    // The supported targets all use Python 3.
     let three_holds = match op {
         ast::CmpOp::Eq => bound.0 == 3,
         ast::CmpOp::LtE => 3 <= bound.0,
@@ -120,8 +119,7 @@ pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     bindings.visit_body(body);
     let mut globals = GlobalNames::default();
     globals.visit_body(body);
-    // A `global` declaration rebinds a name while the module runs, and a star import binds the public names, so
-    // neither leaves a name a constant.
+    // A function can assign to a declared global, and a star import can replace a public name.
     for name in globals.names {
         bindings.bind(name, None);
     }
@@ -174,7 +172,6 @@ impl<'a> Visitor<'a> for Bindings<'a> {
                     self.visit_expr(value);
                 }
             }
-            // A function or a class binds its own name only; what its body binds is local to it.
             Stmt::FunctionDef(function) => self.bind(function.name.as_str(), None),
             Stmt::ClassDef(class) => self.bind(class.name.as_str(), None),
             Stmt::Import(ast::StmtImport { names, .. }) => {

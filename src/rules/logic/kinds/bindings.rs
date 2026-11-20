@@ -33,7 +33,7 @@ pub(super) fn bindings_in<'a>(checker: &Checker<'a>, scope: Option<Scope<'a>>, n
 #[derive(Clone, Copy)]
 pub(super) enum Value<'a> {
     Expr(&'a Expr),
-    // An item of what iterating the expression gives, as a loop target or an unpacked name holds.
+    // Loop and unpacking targets receive an item from the iterable.
     Item(&'a Expr),
     // What entering the context manager gives a `with` target.
     Entered(&'a Expr),
@@ -46,7 +46,7 @@ pub(super) struct Bindings<'a> {
     pub(super) functions: Vec<&'a ast::StmtFunctionDef>,
     pub(super) classes: Vec<&'a ast::StmtClassDef>,
     pub(super) imported: bool,
-    // The name a `from` import binds the name as, which is the class or function it names in its module.
+    // Original class or function name before a `from` import renames it.
     pub(super) original: Option<&'a str>,
     pub(super) opaque: bool,
 }
@@ -85,7 +85,7 @@ impl<'a> Bindings<'a> {
 
 pub(super) struct ScopeBindings<'a> {
     names: FxHashMap<&'a str, Rc<Bindings<'a>>>,
-    // A `from` import of `*` in the scope binds every name to a value the code does not show.
+    // A star import can introduce names whose definitions this file does not show.
     star: bool,
 }
 
@@ -177,7 +177,7 @@ struct Collector<'c, 'a, 'b> {
 impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            // A nested def binds its own names; only its `global` or `nonlocal` reaches back here.
+            // A nested function can rebind an outer name through `global` or `nonlocal`.
             Stmt::FunctionDef(function) => {
                 self.scope.of(function.name.as_str()).functions.push(function);
                 self.declared_in(&function.body);
@@ -286,7 +286,7 @@ impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
                 }
             }
             Expr::Lambda(_) => {}
-            // A comprehension binds its targets in a scope of its own; only a `:=` inside reaches this one.
+            // A comprehension's loop targets are local to it. A walrus target binds in the enclosing scope.
             Expr::ListComp(ast::ExprListComp { elt, generators, .. })
             | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
             | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {

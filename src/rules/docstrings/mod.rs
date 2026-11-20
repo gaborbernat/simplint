@@ -51,7 +51,6 @@ use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, statement_deletion};
 
-// Ruff's pydocstyle rules skip these functions, so this rule does too.
 fn ruff_ignores_function(checker: &Checker, decorators: &[Decorator]) -> bool {
     let ignored = &checker.settings.from_ruff.ignore_decorators;
     decorators.iter().any(|decorator| {
@@ -92,7 +91,7 @@ fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
     }
 }
 
-// Such a comment covers only the docstring's line, so it goes with the docstring.
+// Removing a docstring should also remove a directive attached to its line.
 fn is_directive_comment(checker: &Checker, comment: TextRange) -> bool {
     let text = checker.text(comment);
     text.match_indices('#').any(|(start, _)| is_tool_directive(&text[start..]))

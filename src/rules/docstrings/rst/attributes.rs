@@ -7,15 +7,11 @@ use crate::rules::docstrings::is_documented_variable;
 use crate::syntax::module_statements_with_next;
 use crate::syntax::{annotation_name, instance_writes, is_classmethod, is_name, last_segment, target_names};
 
-// An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {
     pub(crate) name: &'a str,
-    // Whether it belongs to the class rather than its instances: a `ClassVar`, or a name the body assigns without an
-    // annotation; and whether instances hold it, as an annotated field or a name a method sets on `self`, which a class
-    // default may be too.
+    // A class default also assigned on the instance can have both flags.
     pub(crate) class_var: bool,
     pub(crate) on_instance: bool,
-    // Whether a `#:` comment or a string right after it documents it, as autodoc reads.
     pub(crate) documented: bool,
 }
 
@@ -36,8 +32,7 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         let documented = is_documented_variable(checker, stmt, next);
         match stmt {
             Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
-                // A `Final` with a value in a class body is a class variable, as PEP 591 says; without one it is an
-                // instance attribute set in `__init__`.
+                // For an ordinary class, PEP 591 treats an initialized Final in the class body as a class variable.
                 let qualifier = annotation_name(annotation);
                 let class_var = (value.is_some() && qualifier == Some("Final")) || qualifier == Some("ClassVar");
                 for name in std::iter::once(target.as_ref()).filter_map(Expr::as_name_expr) {
@@ -50,11 +45,11 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                 }
             }
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
-                // An attrs or dataclass field declared by a call holds a value per instance.
+                // An attrs field can be declared without an annotation.
                 for name in targets.iter().flat_map(target_names) {
                     add(name, !is_field_call(value), documented);
                 }
-                // A slot is an instance attribute, which the body does not document by itself.
+                // Declaring a slot supplies a name but no description.
                 if targets.iter().any(|target| is_name(target, "__slots__")) {
                     for name in slot_names(value) {
                         add(name, false, false);
@@ -66,7 +61,6 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                     add(name, true, documented);
                 }
             }
-            // A loop variable of the class body is a class variable, as an assignment to it is.
             Stmt::For(ast::StmtFor { target, .. }) => {
                 for name in target_names(target) {
                     add(name, true, documented);
@@ -76,7 +70,7 @@ pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         }
     }
     for write in instance_writes(class) {
-        // A `del` leaves the attribute undocumented, as the body does not set it.
+        // Deleting an attribute does not establish that this class created it.
         if matches!(write.stmt, Stmt::Delete(_)) {
             continue;
         }
@@ -100,7 +94,7 @@ pub(super) fn is_field_call(value: &Expr) -> bool {
     value.as_call_expr().is_some_and(|call| matches!(last_segment(&call.func), Some("ib" | "attrib" | "field")))
 }
 
-// Whether the class takes attributes from a base that may define them, as a field list cannot tell.
+// Unknown bases may supply attributes or constructor parameters.
 pub(crate) fn has_attribute_bases(class: &ast::StmtClassDef) -> bool {
     class.bases().iter().any(|base| {
         !matches!(

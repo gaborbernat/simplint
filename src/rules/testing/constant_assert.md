@@ -3,9 +3,9 @@ Flags `assert` statements whose test is a truthy constant.
 ## Why is this bad?
 
 An assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than
-it does. Two other forms are always true. A parenthesized `assert (check, "message")` is a non-empty tuple, which
-CPython's compiler [warns about](https://mail.python.org/pipermail/python-checkins/2021-March/169383.html). An
-`assert (value for value in values)` tests a generator object, which is true even when it yields nothing;
+it does. Two common mistakes also produce truthy objects. In `assert (check, "message")`, the condition is a non-empty
+tuple, which CPython's compiler [warns about](https://mail.python.org/pipermail/python-checkins/2021-March/169383.html).
+An `assert (value for value in values)` tests a generator object, which is true even when it yields nothing;
 [`all(...)`](https://docs.python.org/3/builtins/functions.html#all) is the check it likely meant. flake8-bugbear reports
 the generator form as [B044](https://github.com/PyCQA/flake8-bugbear#list-of-warnings), but not the tuple form.
 
@@ -31,7 +31,7 @@ def test_save(tmp_path: Path) -> None:
 
 [`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a
 [truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.
-Truthiness is judged the way Ruff judges it. These are truthy constants:
+The rule uses Ruff's truthiness checks and recognizes the following expressions.
 
 - **`True`**: truthy by definition.
 
@@ -91,10 +91,10 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   assert "state: %s" % state
   ```
 
-- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`
-  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python
-  does, so `1 + 1 == 2` and `"a" * 3` are constant, while a computation on integers past 64 bits, or a repetition or
-  concatenation that builds a string longer than 4096 bytes, is left alone.
+- **A computation on literals**: integer addition, subtraction, multiplication and negation, string concatenation and
+  repetition, equality and ordering comparisons, and `not`, `and` and `or`. For example, `1 + 1 == 2` and `"a" * 3` are
+  both truthy. The evaluator handles signed 64-bit integers, booleans, strings and `None`. It skips integer overflow and
+  string operations that would produce more than 4096 bytes.
 
   ```python report
   assert 1 + 1 == 2
@@ -144,7 +144,7 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   assert "%s" % value
   ```
 
-- **An f-string made only of fields**, such as `f"{value}"`: it is empty when `value` is.
+- **An f-string made only of fields**, such as `f"{value}"`: it can format to an empty string.
 
   ```python ok
   value = ""
@@ -153,7 +153,7 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 
 - **A non-empty tuple test without a fix of its own**: Ruff's
   [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports every non-empty tuple. This rule keeps a
-  two-element tuple without a message, which it can fix, and leaves the others to Ruff.
+  two-element tuple without a message when neither element is starred and the rule can restore the check.
 
   ```python ok
   assert (1, 2, 3)
@@ -269,7 +269,7 @@ The fix depends on the constant:
         pass
     ```
 
-For a constant that is not a tuple, no fix is offered when:
+For fixes that delete the assertion, the rule also checks for these cases.
 
 - the assertion shares a line with another statement;
 
@@ -301,10 +301,10 @@ flowchart TD
     starred -->|no| unwrap["unsafe: assert check, message"]
     pair -->|no| left
     tuple -->|no| generator{"a generator?"}
-    generator -->|yes| asynchronous{"asynchronous, or<br/>all rebound?"}
+    generator -->|yes| asynchronous{"asynchronous, comment,<br/>or all rebound?"}
     asynchronous -->|yes| none
     asynchronous -->|no| wrap["unsafe: assert all(...)"]
-    generator -->|no| blocked{"shares a line or<br/>calls something?"}
+    generator -->|no| blocked{"shares a line, has a comment<br/>or an effect?"}
     blocked -->|yes| literal{"a string, bytes or<br/>f-string literal?"}
     literal -->|yes| left
     literal -->|no| none

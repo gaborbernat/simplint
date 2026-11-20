@@ -1,11 +1,12 @@
-Flags a test that an earlier branch of the same `if` chain already tried, an operand repeated in one `and` or `or`, and
-a `case` pattern an earlier case already matches.
+Flags a repeated test in an `if` chain, a repeated operand in one `and` or `or` expression, or a repeated `case` pattern
+when the earlier case has no guard or has the same guard.
 
 ## Why is this bad?
 
-A repeated test is a copy-paste slip. An `elif` whose test an earlier branch already tried only runs when that test was
-false, so the branch never runs, and the check that was meant, such as `kind == "b"`, is missing. A repeated operand of
-`and` or `or` never changes the result, and a `case` after an identical unguarded one never matches.
+If a test gives the same answer twice, an `elif` that repeats it cannot run. Check whether the second test should
+compare a different value, such as `"b"` below. A repeated operand in a boolean expression or a duplicate `case` pattern
+can hide the same mistake. The rule compares syntax, so it can flag expressions that change value between evaluations,
+such as a property with a side effect.
 
 ## Example
 
@@ -69,15 +70,16 @@ def label(kind):
 
 ### Exceptions
 
-- **Tests and operands with a call, `await`, `yield` or walrus**: `read() or read()` reads twice and can differ.
+- **An `if` chain or boolean expression with a call, `await`, `yield` or assignment expression in any test or operand.**
+  The rule skips the whole chain or expression because evaluation can change a later result.
 
   ```python ok
   def first_line(stream):
       return stream.readline() or stream.readline()
   ```
 
-- **Two adjacent branches with the same body**: Ruff's
-  [if-with-same-arms](https://docs.astral.sh/ruff/rules/if-with-same-arms/) (SIM114) reports them and merges them.
+- **A test repeated immediately after its first occurrence, with the same body.** Ruff's
+  [if-with-same-arms](https://docs.astral.sh/ruff/rules/if-with-same-arms/) (SIM114) can merge the branches.
 
   ```python ok
   def label(kind):
@@ -88,7 +90,8 @@ def label(kind):
       return 0
   ```
 
-- **A `case` after a guarded one with the same pattern**: the guard can fail, so the later case can match.
+- **A repeated pattern with a different guard or no guard after a guarded case.** The first guard can fail. Identical
+  guards are also exempt if they contain a call, `await`, `yield` or assignment expression.
 
   ```python ok
   def describe(value, strict):
@@ -102,10 +105,10 @@ def label(kind):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):**
-  [if-with-same-arms](https://docs.astral.sh/ruff/rules/if-with-same-arms/) (SIM114) merges adjacent branches with the
-  same body, and [repeated-equality-comparison](https://docs.astral.sh/ruff/rules/repeated-equality-comparison/)
-  (PLR1714) turns `x == 1 or x == 2` into a membership test; neither reports a repeated test.
-  [Ruff issue #21690](https://github.com/astral-sh/ruff/issues/21690) asks for this rule.
-- **[wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide):** WPS533, WPS408 and
-  WPS535.
+- Ruff's [SIM114](https://docs.astral.sh/ruff/rules/if-with-same-arms/) checks identical branch bodies.
+  [PLR1714](https://docs.astral.sh/ruff/rules/repeated-equality-comparison/) recommends a membership test for
+  expressions such as `x == 1 or x == 2`. [Ruff issue #21690](https://github.com/astral-sh/ruff/issues/21690) requests
+  detection of repeated branch conditions.
+
+- **[wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide):** WPS533 checks repeated
+  branch conditions, WPS408 checks repeated boolean operands, and WPS535 checks repeated case patterns.

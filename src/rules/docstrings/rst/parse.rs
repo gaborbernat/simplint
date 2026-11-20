@@ -4,8 +4,6 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rst::{docstring_lines, field_list, field_marker, indent_width};
 
-// What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields`
-// and `ytype` fields documentation tools accept for generators.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FieldKind {
     Param,
@@ -21,30 +19,24 @@ pub(crate) enum FieldKind {
     Unknown,
 }
 
-// One field of a field list, as `:param int count: How many.` with the lines that continue it.
 pub(crate) struct Field {
     pub(crate) kind: FieldKind,
-    // The words between the colons: `param`, `int` and `count` above.
+    // For `:param int count:` these are `param`, `int` and `count`.
     pub(crate) words: Vec<String>,
-    // The name an alias of the field stands for, such as `param` for `:arg:`.
     pub(crate) primary: Option<&'static str>,
-    // Where the field and its continuation lines sit in the source, whole lines with their line break, and where the
-    // text between its colons sits; `None` when escapes make the docstring's text differ from its source, or the field
-    // shares the line of the opening quotes.
+    // A field on the opening line has no full line to edit. Both ranges also require a source-mapped docstring.
     pub(crate) lines: Option<TextRange>,
     pub(crate) marker: Option<TextRange>,
-    // Whether text other than fields separates the field from an earlier one.
     pub(crate) after_text: bool,
-    // Whether the field says anything after its name, on its line or on the lines that continue it, and what.
+    // Indented continuation lines can supply the entire description.
     pub(crate) described: bool,
     pub(crate) description: String,
-    // Whether the field starts a field list right under a line of text, which reStructuredText then reads as part of
-    // that paragraph rather than as a field.
+    // Without a blank line after a paragraph, docutils treats the first field as prose.
     pub(crate) joins_text: bool,
 }
 
 impl Field {
-    // The problem with the field's name or arguments, as Sphinx reads them; rst-empty-field skips a field that has one.
+    // Skip the empty-description check until the field has valid syntax.
     pub(crate) fn problem(&self) -> Option<String> {
         let text = self.text();
         let word = &self.words[0];
@@ -72,8 +64,7 @@ impl Field {
         format!(":{}:", self.words.join(" "))
     }
 
-    // The name a field documents, its last word without the `*` or `\*` of `*args` and the backticks of interpreted
-    // text, which Sphinx renders without them; `None` for a field of one word.
+    // Normalize variadic argument stars and reST backticks before comparing names with the signature.
     pub(crate) fn subject(&self) -> Option<&str> {
         match self.words.as_slice() {
             [_, .., last] => Some(last.trim_start_matches(['\\', '*']).trim_matches('`')),
@@ -86,7 +77,6 @@ impl Field {
     }
 }
 
-// A section heading in the Google or numpydoc layout, such as `Args:` or `Parameters` over a line of dashes.
 pub(crate) struct Section {
     pub(crate) heading: String,
     pub(crate) numpy: bool,
@@ -96,19 +86,17 @@ pub(crate) struct Docstring<'a> {
     pub(crate) literal: &'a ast::ExprStringLiteral,
     pub(crate) fields: Vec<Field>,
     pub(crate) sections: Vec<Section>,
-    // Where the text between the quotes sits in the source; `None` when escapes make the text differ from its source.
+    // Available when the decoded text maps directly to one triple-quoted literal.
     pub(crate) content: Option<TextRange>,
-    // Whether a comment follows the closing quotes, such as a `# noqa` for the docstring's line, which a fix moving the
-    // quotes to another line would strand.
+    // Moving the closing quotes can strand a trailing directive on a different line.
     pub(super) commented: bool,
 }
 
 impl<'a> Docstring<'a> {
     pub(super) fn parse(checker: &Checker, literal: &'a ast::ExprStringLiteral) -> Self {
         let text = literal.value.to_str();
-        // Offsets into the source hold only while the text is the source as written, one part without escapes.
         let content = match literal.value.as_slice() {
-            // A single-quoted string cannot take the line breaks a fix writes.
+            // Line-based edits require triple quotes and offsets that match the decoded text.
             [part] if part.flags.is_triple_quoted() && checker.text(part.content_range()) == text => {
                 Some(part.content_range())
             }
@@ -130,8 +118,7 @@ impl<'a> Docstring<'a> {
         let fields = scanned
             .into_iter()
             .map(|listed| {
-                // The first line shares the line of the opening quotes, so its field has no whole line of its own to
-                // edit.
+                // A field on the opening line shares that line with the quotes.
                 let in_source = start.filter(|_| listed.span.start() > TextSize::default());
                 let (kind, primary) = field_name(listed.words[0]);
                 Field {
@@ -167,9 +154,7 @@ impl<'a> Docstring<'a> {
     }
 }
 
-// The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and
-// `cvar` have no name of their own: Sphinx renders them alike, yet `rst-attribute-kind` tells instance attributes from
-// class variables by them.
+// Keep the original variable field spelling for rst-attribute-kind, even though Sphinx groups the fields together.
 fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
     match word {
         "param" => (FieldKind::Param, None),
@@ -191,7 +176,6 @@ fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
     }
 }
 
-// A Google section is `Args:` over indented lines; a numpydoc one is `Parameters` over a line of dashes.
 fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
     let next = next.filter(|next| !next.is_empty())?;
     let next_level = indent_width(next);
@@ -209,7 +193,6 @@ fn is_section(heading: &str) -> bool {
     heading == "Attributes" || SIGNATURE_SECTIONS.contains(&heading)
 }
 
-// The Google and numpydoc sections documenting a function's parameters and results.
 pub(crate) const SIGNATURE_SECTIONS: &[&str] = &[
     "Args",
     "Arguments",

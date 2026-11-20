@@ -80,8 +80,7 @@ fn in_place_call(checker: &Checker, call: &ast::ExprCall) -> Option<String> {
     in_place.contains(&attr.as_str()).then(|| format!("{}.{attr}()", checker.text(value.as_ref())))
 }
 
-// What the receiver provably is: a display, a comprehension, a builtin constructor call, a name whose only binding is
-// one of those, or a parameter annotated with the builtin type.
+// A method name alone is ambiguous. Infer the receiver from a literal, constructor, single binding or parameter type.
 fn container(checker: &Checker, value: &Expr) -> Option<Container> {
     let semantic = checker.semantic();
     match value {

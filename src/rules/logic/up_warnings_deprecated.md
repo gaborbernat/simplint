@@ -1,19 +1,13 @@
-Flags functions and classes that open with a
-[`warnings.warn()`](https://docs.python.org/3/library/warnings.html#warnings.warn) call of
-[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning), which
-[`@warnings.deprecated`](https://docs.python.org/3/library/warnings.html#warnings.deprecated)
-([PEP 702](https://peps.python.org/pep-0702/)) replaces from Python 3.13.
+Flags functions and classes whose first statement after an optional docstring calls
+[`warnings.warn()`](https://docs.python.org/3/library/warnings.html#warnings.warn) with
+[`DeprecationWarning`](https://docs.python.org/3/builtins/exceptions.html#DeprecationWarning).
 
 ## Why is this bad?
 
-[`warnings.deprecated()`](https://docs.python.org/3/library/warnings.html#warnings.deprecated) marks a function or class
-as deprecated where both the runtime and the tools see it. [PEP 702](https://peps.python.org/pep-0702/) argues that
-runtime warnings are often insufficient: they get silenced, and a call on an untested path never warns. With the
-decorator, [type checkers](https://typing.python.org/en/latest/spec/directives.html#deprecated) report each use, and
-editors show it as the code is written.
-
-The decorator still emits the `DeprecationWarning` on call, instantiation or subclassing. It points the warning at the
-caller itself, where a `warnings.warn()` call needs a `stacklevel` that each project has to get right.
+Since Python 3.13, [`@warnings.deprecated`](https://docs.python.org/3/library/warnings.html#warnings.deprecated) marks
+the object for [type checkers](https://typing.python.org/en/latest/spec/directives.html#deprecated) as well as warning
+at runtime. A type checker can flag a deprecated call on a path that tests never execute. By default, the decorator
+emits `DeprecationWarning` when a function is called or a class is instantiated or subclassed.
 
 ## Example
 
@@ -106,19 +100,16 @@ def connect(host):
 
 ### Fix
 
-The fix is unsafe, because the decorator does not warn where the call did:
+The fix is unsafe because the decorator can change when and where the warning appears.
 
-- A class body warns when the class is defined. `@warnings.deprecated` on a class warns when an instance is created or a
-  subclass is defined, so the warning moves from import time to those uses.
-- A `stacklevel` of 2 points the warning at the caller in both forms. The default of 1 points it inside the function,
-  which the decorator no longer does, since it always reports the caller.
-- The decorator has its own `stacklevel`, so the call's `stacklevel` argument is dropped.
+- A warning in a class body runs when Python defines the class. The decorator warns on instantiation or subclassing.
+- The fix drops the arguments after the message, including `stacklevel`. In a regular function,
+  `warnings.warn(..., stacklevel=2)` and the default decorator both point at the caller. Other levels can point
+  elsewhere.
 
-No fix is offered when the message is not a string literal on one line, since the decorator evaluates it where the
-function is defined, where an f-string could read a parameter that does not exist yet. None either when the warning has
-a comment, or when `warn` is imported by name, since the decorator needs the `warnings` module.
-
-A comment on the line of the call counts as well, since the fix would remove that line with it:
+The fix requires a one-line string literal because Python evaluates the decorator at definition time. An f-string could
+refer to a parameter that has no value yet. The warning must also occupy its own lines, without comments, and must be
+called through the module, for example `warnings.warn(...)` or `w.warn(...)` after `import warnings as w`.
 
 ```toml config
 [project]
@@ -201,9 +192,8 @@ def connect(host):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule
-  [B028](https://docs.astral.sh/ruff/rules/no-explicit-stacklevel/) reports the same call when it lacks `stacklevel` and
-  adds one; this rule replaces the call with the decorator.
+- Ruff's [B028](https://docs.astral.sh/ruff/rules/no-explicit-stacklevel/) reports a `warnings.warn()` call without an
+  explicit `stacklevel`.
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports functions that call `warnings.warn` where
   `warnings.deprecated` fits, as [FTP118](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp118), with no
   fix.

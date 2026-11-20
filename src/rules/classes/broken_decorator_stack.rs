@@ -43,7 +43,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Stmt::FunctionDef(function) = stmt else {
         return;
     };
-    // Outside a class a descriptor is often built on purpose and set on a class later, so only class bodies count.
+    // Module-level descriptors can be assigned to a class elsewhere.
     if !matches!(walker.scopes().last(), Some(Scope::Class(_))) {
         return;
     }
@@ -51,7 +51,6 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let kinds: Vec<(Option<Kind>, &ast::Decorator)> =
         function.decorator_list.iter().map(|decorator| (Kind::of(checker, &decorator.expression), decorator)).collect();
     let name = function.name.as_str();
-    // Decorators apply bottom up, so each pair is the outer decorator above the one it wraps.
     for pair in kinds.windows(2) {
         let [(Some(outer), decorator), (Some(inner), _)] = pair else {
             continue;

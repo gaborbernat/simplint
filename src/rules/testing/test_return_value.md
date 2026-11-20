@@ -2,10 +2,9 @@ Flags a `return` with a value in a test function pytest collects.
 
 ## Why is this bad?
 
-pytest ignores what a test returns: a test that returns `False` passes. A comparison returned from a test is almost
-always an `assert` the author meant to write, so the test checks nothing. pytest only emits a
-[`PytestReturnNotNoneWarning`](https://docs.pytest.org/en/stable/reference/reference.html#pytest.PytestReturnNotNoneWarning),
-which scrolls past in the warnings summary.
+A plain pytest test that returns `False` can pass even when the comparison it returned is false. pytest emits a
+[`PytestReturnNotNoneWarning`](https://docs.pytest.org/en/stable/how-to/assert.html#return-not-none) by default. Use
+`assert` to make the comparison determine the test result.
 
 ## Example
 
@@ -25,10 +24,12 @@ def test_total():
 
 ### Active on
 
-- **Collected tests**: `test*` functions at module level and in test classes, other than fixtures, in a module whose
-  name pytest's [`python_files`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_files)
-  collects. Every `return` with a value is reported, including one inside a branch; a nested function or class is
-  skipped, as its `return` is its own.
+- **Test functions and methods.** The filename must match
+  [`python_files`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_files). The rule looks for
+  non-fixture `test*` functions at module level, in `Test*` classes and in direct
+  [`unittest.TestCase`](https://docs.python.org/3/library/unittest.html#unittest.TestCase) subclasses. It uses these
+  prefixes even if pytest has custom class or function naming patterns. The rule also checks returns inside branches. It
+  skips nested functions and classes.
 
   ```python report file=tests/test_branch.py
   def test_branch():
@@ -41,8 +42,8 @@ def test_total():
 
 - **`return None` and a bare `return`**: pytest reads them as no value.
 
-- **A returned call or `await`**: a test that returns `check_total()` delegates to a helper, which asserts and returns
-  `None`.
+- **A returned call or `await`**: a helper such as `check_total()` may assert and return `None`. The rule skips any
+  returned call or `await` without inferring its result.
 
   ```python ok file=tests/test_delegates.py
   def test_total():
@@ -51,7 +52,7 @@ def test_total():
 
 - **Generators**: a test that yields is not run as a plain test, and its `return` ends the iteration.
 
-- **`test_suite`**: the function a unittest runner calls to build the suite returns it on purpose.
+- **`test_suite`**: some unittest suites use this name for a factory that returns the suite.
 
 ### Fix
 
@@ -69,7 +70,3 @@ def test_total():
 ```
 
 Any other value is reported without a fix, as it may not be what the test should check.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -66,8 +66,7 @@ impl<'a> Visitor<'a> for Asserts {
     }
 }
 
-// A comparison is left alone when each of its other operands is the text of an exception too, since two exceptions
-// differ by wording only.
+// Comparing two exceptions' messages does not hard-code the wording of either one.
 fn by_text(checker: &Checker, bound: &Identifier, expr: &Expr) -> Option<TextRange> {
     let found = match expr {
         Expr::Compare(ast::ExprCompare { operands, .. }) => {

@@ -8,7 +8,6 @@ pub(in crate::rules::logic) fn is_constant(expr: &Expr) -> bool {
         | Expr::BooleanLiteral(_)
         | Expr::NoneLiteral(_)
         | Expr::EllipsisLiteral(_) => true,
-        // `-` and `+` take a number, so the operand must be one.
         Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::Not, operand, .. }) => is_constant(operand),
         Expr::UnaryOp(ast::ExprUnaryOp { op: UnaryOp::UAdd | UnaryOp::USub, operand, .. }) => {
             operand.is_number_literal_expr()

@@ -1,12 +1,12 @@
 version: 2
 build:
   os: ubuntu-lts-latest
-  # uv brings the Python 3.15 the docs environment runs on; Node.js runs mermaid-cli, which draws the diagrams.
+  # uv installs the Python version pinned by the docs environment. Node.js runs mermaid-cli.
   tools:
     python: "latest"
     nodejs: "24"
-  # The headless browser that mermaid-cli's puppeteer downloads needs these libraries, and Liberation Sans gives the
-  # diagram labels the widths of the Arial readers see them in.
+  # Chrome's headless shell needs these libraries to render the diagrams. Liberation Sans supplies Arial-compatible
+  # metrics for the labels.
   apt_packages:
     - fonts-liberation
     - libasound2t64
@@ -23,7 +23,6 @@ build:
   commands:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python
-    # Read the Docs strips the quotes from a command, so the setup that runs mermaid-cli's install beside tox's is a
-    # task rather than a shell line.
+    # Install the diagram renderer while tox prepares the Sphinx environment.
     - NO_COLOR=1 ~/.local/bin/uv run --no-project -p 3.15 python -m tasks.prepare_docs docs/conf.py ~/.local/bin/tox
     - NO_COLOR=1 ~/.local/bin/tox run --skip-pkg-install -e docs

@@ -3,10 +3,9 @@ not take.
 
 ## Why is this bad?
 
-A field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works:
-passing that keyword [raises `TypeError`](https://docs.python.org/3/reference/expressions.html#calls). Neither Sphinx
-nor a type checker compares the fields with the signature, so the field stays until a reader relies on it.
-[PEP 8](https://peps.python.org/pep-0008/#comments) says comments that contradict the code are worse than no comments.
+A field left behind after a parameter is renamed tells readers they can still pass the old keyword. Python
+[raises `TypeError`](https://docs.python.org/3/reference/expressions.html#calls) for an unexpected keyword unless the
+function accepts extra keywords.
 
 ## Example
 
@@ -106,8 +105,8 @@ parameter the signature does not take.
           return ""
   ```
 
-- **Class docstrings**: a class's docstring documents the parameters of its `__init__`, or of the fields a dataclass or
-  attrs class turns into them.
+- **Class docstrings.** The rule checks an explicit `__init__` signature or parameters inferred from dataclass, attrs or
+  named tuple fields.
 
   ```toml config
   [tool.simplint]
@@ -164,8 +163,8 @@ parameter the signature does not take.
 
 ### Exceptions
 
-- **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters
-  are not known.
+- **A class without an explicit or recognized generated constructor**: the rule cannot determine its parameters. It also
+  skips generated constructors whose bases may supply more fields.
 
   ```toml config
   [tool.simplint]
@@ -300,14 +299,14 @@ def split(text: str) -> list[str]:
     return text.split()
 ```
 
-No fix is offered when escapes in the docstring make its text differ from the source.
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source. If the
+field ends the docstring, a comment after the closing quotes also prevents the fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
-  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections
-  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.
-- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as
-  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
-- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as
-  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.
+- [Ruff DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/) checks for extraneous parameters in
+  Google and NumPy docstrings. [Ruff PR #13286](https://github.com/astral-sh/ruff/pull/13286) proposes support for
+  Sphinx fields.
+- [pydoclint DOC102](https://jsh9.github.io/pydoclint/violation_codes.html) checks for more parameters in the docstring
+  than in the signature. [darglint DAR102](https://github.com/terrencepreilly/darglint) reports a documented parameter
+  missing from the signature.

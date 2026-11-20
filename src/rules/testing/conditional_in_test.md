@@ -37,7 +37,7 @@ def test_parse(text: str, negative: bool) -> None:
 
 ## What it does
 
-No fix is offered: splitting a test into cases needs knowledge of what each branch tests.
+There is no automatic fix. Choose the cases and expected results for each branch by hand.
 
 ### Active on
 
@@ -69,8 +69,7 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
 
 ### Exceptions
 
-- **Branches inside nested functions, classes and lambdas**: they run only when that code is called, not as part of the
-  test's own path.
+- **Nested scopes.** When checking a test, the rule skips branches inside a nested function, class or lambda.
 
   ```python ok file=tests/test_nested.py
   def test_callbacks() -> None:
@@ -93,9 +92,9 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
   [`sys.implementation`](https://docs.python.org/3/library/sys.html#sys.implementation),
   [`os.name`](https://docs.python.org/3/library/os.html#os.name),
   [`os.environ`](https://docs.python.org/3/library/os.html#os.environ),
-  [`os.getenv`](https://docs.python.org/3/library/os.html#os.getenv), the `platform` module, literals, or a constant
-  that names such a check, such as `IS_WINDOWS` or `ON_PYPY`. The branch follows the machine running the test, so it
-  cannot become a parameter.
+  [`os.getenv`](https://docs.python.org/3/library/os.html#os.getenv), the `platform` module or a recognized constant
+  name such as `IS_WINDOWS` or `ON_PYPY`. A condition can compare these values with literals. A literal alone still
+  triggers the rule.
 
   ```python ok file=tests/test_exe.py
   import sys

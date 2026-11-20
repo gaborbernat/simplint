@@ -100,12 +100,14 @@ check every module, and its fix then adds the list where a module has none:
 Logic
 =====
 
-:doc:`single-caller-helper </rules/SMP505>` suggests inlining a private helper that one function calls, when the helper
-is short and its caller stays short. Two limits set how short. :doc:`duplicate-code </rules/SMP530>` reports statements
-another module repeats, once the copy is long enough. Statements count as the top-level statements of a body, each
-nested block counting as one, and a docstring does not count. :doc:`long-tuple-return </rules/SMP528>` reports a
-returned tuple with more elements than its limit, :doc:`cognitive-complexity </rules/SMP529>` a function whose score
-is over its limit, and :doc:`expression-complexity </rules/SMP561>` an expression nested deeper than its limit:
+:doc:`single-caller-helper </rules/SMP505>` considers inlining a private helper only when it has **fewer than**
+``max-helper-statements`` statements and the caller and helper together have **at most** ``max-caller-statements``.
+The defaults allow a one- or two-statement helper and a combined count of 20. These counts exclude a leading docstring
+and count a nested block as one statement in its enclosing body.
+
+:doc:`duplicate-code </rules/SMP530>` reports at least ``min-duplicate-statements`` consecutive statements repeated
+across modules. :doc:`long-tuple-return </rules/SMP528>`, :doc:`cognitive-complexity </rules/SMP529>` and
+:doc:`expression-complexity </rules/SMP561>` report a tuple length, function score or expression depth above its limit.
 
 .. code-block:: toml
 
@@ -166,10 +168,12 @@ A docstring of the public API also has to be **complete**:
 
 - a ``:param:`` for each parameter
 - ``:returns:`` or ``:yields:`` when the function hands back a value
-- ``:raises:`` for each exception it raises itself
+- ``:raises:`` for each exception it explicitly raises and does not catch. :doc:`rst-unraised-exception </rules/SMP925>`
+  also checks for documented exceptions it cannot trace through the function
 - an ``:ivar:`` or ``:cvar:`` for each attribute of a class
 
-The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you to fill in.
+Write descriptions for missing fields yourself. Some rules can correct existing fields, such as changing
+``:returns:`` to ``:yields:`` on a generator.
 
 .. note::
 

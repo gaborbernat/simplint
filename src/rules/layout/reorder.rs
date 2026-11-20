@@ -20,7 +20,6 @@ pub(super) struct Read {
     pub(super) at: TextSize,
 }
 
-// Each root in turn, followed by the children it owns depth first, each child in the order its list gives.
 pub(super) fn depth_first(roots: impl Iterator<Item = usize>, children: &[Vec<usize>], mut emit: impl FnMut(usize)) {
     for root in roots {
         let mut stack = vec![root];
@@ -37,9 +36,8 @@ pub(super) fn moved_span(expected: &[usize]) -> Option<RangeInclusive<usize>> {
     Some(low..=high)
 }
 
-// The fix that puts the statements at `expected` in the span's place, with blank lines between them. Two statements
-// that stay adjacent in the same order keep the blank lines they had. Each statement keeps its decorators and the
-// comment lines above it. `shifts_unsafely` tells the statements whose move is unsafe.
+// Keep adjacent statements' original spacing when they move together. Classify safety only for statements whose
+// positions change.
 pub(super) fn reorder_fix(
     checker: &Checker,
     suite: &Suite,
@@ -89,12 +87,9 @@ pub(super) fn reorder_fix(
     Some(Fix::applicable_edit(edit, if moved_unsafe { Applicability::Unsafe } else { Applicability::Safe }))
 }
 
-// Whether moving a definition is unsafe, `None` for a statement that is not one. A function moves safely when its
-// decorators are all pure, such as `@property`, and its defaults call nothing; a class never does. A call decorator
-// such as `@cache()` has no last name here, so it counts as impure.
+// Class creation, decorator evaluation and calls in defaults can expose a change in execution order.
 pub(super) fn moves_definition_unsafely(stmt: &Stmt) -> Option<bool> {
-    // Decorators with no effect of their own, so moving a decorated method past another only changes the order of
-    // evaluations that cannot be observed.
+    // Recognize these decorators by their last name. A decorator call does not match.
     const PURE_DECORATORS: [&str; 8] =
         ["property", "cached_property", "classmethod", "staticmethod", "overload", "setter", "getter", "deleter"];
     match stmt {

@@ -1,13 +1,12 @@
-Flags references to the `ast` node aliases that Python 3.14 removed, and to `visit_` methods that no longer run.
+Flags references to five `ast` node classes that Python 3.14 removed and visitor methods named for those classes.
 
 ## Why is this bad?
 
-`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis` have been aliases of
-[`ast.Constant`](https://docs.python.org/3/library/ast.html#ast.Constant) since Python 3.8, and Python 3.14 removes
-them, so code that names them fails there with
-[`AttributeError`](https://docs.python.org/3/builtins/exceptions.html#AttributeError). A visitor method named after one
-of them is no longer called, because [`ast.NodeVisitor`](https://docs.python.org/3/library/ast.html#ast.NodeVisitor)
-hands a constant only to `visit_Constant`.
+Since Python 3.8, the parser represents strings, bytes, numbers, booleans, `None` and ellipses with
+[`ast.Constant`](https://docs.python.org/3/library/ast.html#ast.Constant). Python 3.14 removed the compatibility classes
+`ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis`. From that version,
+[`ast.NodeVisitor`](https://docs.python.org/3/library/ast.html#ast.NodeVisitor) dispatches these literals to
+`visit_Constant` without falling back to the older method names.
 
 ## Example
 
@@ -44,8 +43,8 @@ def make_number():
 
 ## Configuration
 
-No setting changes the report. The aliases are gone from Python 3.14 and deprecated in each version simplint supports,
-so the rule reports them on all target versions.
+The rule reports on every target version. Python 3.7 still parses literals as distinct node types, so code supporting
+3.7 may need the older visitor methods and type checks.
 
 ## What it does
 
@@ -152,10 +151,13 @@ so the rule reports them on all target versions.
 
 ### Fix
 
-No fix is offered when:
+simplint marks the two rewrites above as safe. The `isinstance` rewrite assumes that `str` and `bytes` refer to the
+builtins and that each `Constant` has a `value` field. A shadowed name or an incomplete node constructed by hand can
+change the result.
 
-- the `isinstance` test names `Num`, `NameConstant` or `Ellipsis`, whose checks go beyond the value's type: `Num` leaves
-  out `bool`;
+simplint withholds the fix in these cases.
+
+- The `isinstance` test names `Num`, `NameConstant` or `Ellipsis`. For example, the numerical check excludes `bool`.
 
   ```toml config
   [project]
@@ -170,7 +172,7 @@ No fix is offered when:
       return isinstance(node, ast.Num)
   ```
 
-- the subject of the `isinstance` test is not a name, because the rewrite repeats it;
+- The subject of the `isinstance` test is more than a name, so evaluating it twice could change the result.
 
   ```toml config
   [project]
@@ -185,8 +187,7 @@ No fix is offered when:
       return isinstance(nodes[0], ast.Str)
   ```
 
-- `isinstance` is bound in the module, or by a parameter, local or loop variable of a function, lambda, class body or
-  comprehension that encloses the test, so the rewrite would not call the builtin;
+- A binding hides the builtin `isinstance`.
 
   ```toml config
   [project]
@@ -209,10 +210,6 @@ No fix is offered when:
       return isinstance(node, ast.Str)
   ```
 
-- the constructor takes positional arguments or more than one keyword, or the keyword is not the value's name;
+- The constructor has positional arguments or anything other than the single expected keyword.
 
-- the call has a comment, which the rewrite would drop.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- The call contains a comment.

@@ -4,10 +4,9 @@ Flags durations measured as `time.time() - start`, where `start` also came from
 
 ## Why is this bad?
 
-`time.time()` follows the system clock, which NTP, a user or a virtual machine resume can step backward or forward. A
-duration taken across such a step comes out negative or far too long, which breaks timeouts, retries and benchmarks.
-[PEP 418](https://peps.python.org/pep-0418/) added monotonic clocks for this: `time.perf_counter()` never goes backward
-and has the highest resolution, and only the difference between two of its readings has a meaning.
+If the system clock changes between two calls to `time.time()`, subtracting them can give a negative or inflated
+duration. [PEP 418](https://peps.python.org/pep-0418/) introduced `time.perf_counter()` for measuring elapsed time. Its
+starting point is unspecified, so use the difference between two readings.
 
 ## Example
 
@@ -38,9 +37,10 @@ def timed(work):
 ### Active on
 
 - **Subtractions between `time.time()` readings**, where at least one side is a local bound once to `time.time()` and
-  the other is a call to it or another such local. **Fix:** every `time.time()` call of the measurement becomes
-  `time.perf_counter()`. It is offered when the locals are read only in such subtractions, since a `perf_counter()`
-  reading is not a date.
+  the other is a call to it or another such local. The fix changes the calls to `time.perf_counter()` together within
+  the function. It requires every affected local to be read only in these subtractions and every clock call to use a
+  module attribute such as `time.time()`. A directly imported function such as `from time import time as now` gets a
+  diagnostic without a fix.
 
   ```python report
   import time

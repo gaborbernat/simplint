@@ -12,13 +12,11 @@ use crate::syntax::{is_type_checking_name, top_level};
 pub fn undeclared_dependency(checker: &Checker) {
     let settings = &checker.settings.project;
     let metadata = &settings.metadata;
-    // Only the shipped packages run where the requirements alone are installed; tests and tools run beside the
-    // development dependencies.
+    // Tests and tools may rely on development dependencies that users do not install.
     let (Some(packages), Some(module_path)) = (&settings.api.packages, checker.module_path()) else {
         return;
     };
-    // A module the package never imports itself, such as a plugin for another tool or an optional integration, runs
-    // only where its user installed what it imports.
+    // An optional integration can require extra packages only when its user imports it.
     if !metadata.lists_dependencies
         || checker.is_test_module()
         || !checker.project().is_package_loaded()
@@ -49,9 +47,6 @@ pub fn undeclared_dependency(checker: &Checker) {
     }
 }
 
-// The absolute imports Python runs unguarded when it loads the module: an import under `if TYPE_CHECKING:` never runs,
-// one in a `try` that handles `ImportError` is optional by design, and one under a check of the Python version or the
-// platform runs only where that environment provides it.
 #[derive(Default)]
 struct Imports<'a> {
     found: Vec<(&'a str, TextRange)>,
@@ -66,14 +61,14 @@ impl<'a> Visitor<'a> for Imports<'a> {
             Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
                 self.found.push((module.as_str(), module.range()));
             }
-            // A function imports when it runs, which an optional integration relies on to import only when used.
+            // A function can import its optional integration only when called.
             Stmt::FunctionDef(_) => {}
             Stmt::If(ast::StmtIf { test, elif_else_clauses, .. }) if is_type_checking_name(test) => {
                 for clause in elif_else_clauses {
                     self.visit_body(&clause.body);
                 }
             }
-            // The handlers hold the fallback the optional import falls back to.
+            // Optional fallback imports may occur in the handlers as well as the guarded body.
             Stmt::Try(ast::StmtTry { handlers, orelse, finalbody, .. }) if handles_import_error(handlers) => {
                 self.visit_body(orelse);
                 self.visit_body(finalbody);

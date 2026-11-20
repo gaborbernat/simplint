@@ -23,16 +23,14 @@ use crate::syntax::{
     identifier_words, instance_attributes, keyword_is_true, last_segment, module_statements,
 };
 
-// What `dataclass-kw-only` needs to rewrite positional calls of a dataclass: the dataclasses declared without
-// `kw_only=True`, their positional fields, and how the file uses names from other modules. `unused-default` reads the
-// same uses for function calls, and the methods a class defines, matched against the attribute names the module loads.
+// The dataclass rewrite needs positional field names and call sites across files. Function and method checks reuse the
+// same call data.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) struct Constructors {
     pub(super) dataclasses: Vec<(String, Option<Vec<String>>)>,
     pub(super) uses: Vec<(String, Vec<NameUse>)>,
-    // Capitalized names called with positional arguments as attributes of something no import binds, such as
-    // `module.Ranked(issue, score)` on a module a test loads from its file path, plus the capitalized names a
-    // `getattr(object, "Name")` reads: any dataclass so named may be the one.
+    // A call such as `module.Ranked(issue, score)` on a dynamically loaded module can refer to any dataclass named
+    // Ranked. A `getattr` lookup with a capitalized string has the same ambiguity.
     pub(super) dynamic: Vec<String>,
     pub(super) methods: Vec<String>,
     // Plain `name = value` class attributes, which `attribute_loads` counts like methods.
@@ -46,7 +44,7 @@ pub(super) struct NameUse {
     pub(super) kind: UseKind,
     pub(super) discarded: bool,
     pub(super) entry: bool,
-    // The byte range of the call, which a dataclass report points at; `(0, 0)` for a name that is not a call.
+    // Use (0, 0) when there is no call site to report.
     pub(super) span: (u32, u32),
     pub(super) comments: Vec<String>,
 }
@@ -54,8 +52,8 @@ pub(super) struct NameUse {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) enum UseKind {
     Call(CallShape),
-    // A use no rewrite can follow: a call unpacking `*args`, a class pattern matching by position, or the name passed
-    // around as a value.
+    // Positional patterns, unpacked positional arguments and passing the class elsewhere can all hide which fields a
+    // call uses.
     Opaque,
     Imported,
 }
@@ -193,8 +191,7 @@ impl Constructors {
     }
 }
 
-// Calls whose value a statement drops, and the blocks that run the module as a program. Only the production-call rules
-// read them, so other runs leave them empty.
+// Only rules that distinguish production calls need discarded values and command-line entry blocks.
 #[derive(Default)]
 pub(crate) struct CallContexts {
     discarded: FxHashSet<TextRange>,
@@ -239,7 +236,7 @@ pub(super) fn discarded_call(stmt: &Stmt) -> Option<TextRange> {
     Some(call.range())
 }
 
-// A `__main__.py` runs whole as a program; elsewhere only its `if __name__ == "__main__":` blocks do.
+// Treat the whole of __main__.py and top-level main guards in other modules as command-line entry blocks.
 fn entry_blocks(body: &[Stmt], is_main: bool) -> Vec<TextRange> {
     if is_main {
         return body.iter().map(Ranged::range).collect();
@@ -247,10 +244,8 @@ fn entry_blocks(body: &[Stmt], is_main: bool) -> Vec<TextRange> {
     body.iter().filter(|stmt| is_main_guard(stmt)).map(Ranged::range).collect()
 }
 
-// Every use of the names `matches` recognizes, keyed by what it returns. Annotations, `isinstance` and `issubclass`
-// checks, base classes, and attribute reads such as `Name.method` neither call the class nor hand it to code that
-// might, so they are not uses. A call in an annotation is a use, and so is one in a string annotation, which is parsed
-// when the walk has the source it is in.
+// A bare class name in a type annotation, type check, base list or attribute lookup does not call its constructor.
+// Calls inside annotations still count, including string annotations when source text is available.
 pub(crate) struct Uses<'a, K, F> {
     matches: F,
     annotated: bool,
@@ -282,8 +277,8 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Uses<'a, K, F> {
         self
     }
 
-    // A string annotation is code the checker reads as an expression. Its ranges are the file's, since parsing starts
-    // at the string's contents, but the expression it parses is dropped with the walk, so its calls are owned.
+    // Parse from the start of the string contents to preserve file offsets. Copy calls before dropping the temporary
+    // syntax tree.
     fn visit_string_annotation(&mut self, literal: &ast::ExprStringLiteral) {
         let (Some(source), Some(string)) = (self.source, literal.as_single_part_string()) else {
             return;
@@ -334,7 +329,7 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Visitor<'a> for Uses<'a, K, F> {
             }
             return;
         }
-        // A call in an annotation, as in `Annotated[str, Doc("...")]`, runs code, so its arguments are values.
+        // Arguments to calls in annotations are ordinary values, as in `Annotated[str, Doc("...")]`.
         if self.annotated
             && let Expr::Call(_) = expr
         {
@@ -348,7 +343,7 @@ impl<'a, K, F: Fn(&Expr) -> Option<K>> Visitor<'a> for Uses<'a, K, F> {
                 self.found.push((key, Use::Call(Cow::Borrowed(call))));
                 self.visit_arguments(&call.arguments);
             }
-            // The metadata of `Annotated[int, ...]` is values, which a class can be passed as and called by position.
+            // Annotated metadata can pass a class to code that calls it positionally.
             Expr::Subscript(ast::ExprSubscript { value, slice, .. })
                 if self.annotated && last_segment(value) == Some("Annotated") =>
             {
@@ -401,7 +396,7 @@ pub(crate) enum CallKind {
 }
 
 impl CallKind {
-    // `**kwargs` passes by keyword, which `kw_only=True` leaves working; only `*args` can carry a field by position.
+    // Only `*args` can hide positional fields. A keyword-only constructor still accepts `**kwargs`.
     pub(crate) fn of(call: &ast::ExprCall) -> Self {
         let arguments = &call.arguments;
         if arguments.args.iter().any(Expr::is_starred_expr) {
@@ -414,7 +409,7 @@ impl CallKind {
     }
 }
 
-// The capitalized names a `getattr(object, "Name")` reads: a class read this way may be called by position anywhere.
+// A class retrieved by name can be called elsewhere with positional arguments.
 fn getattr_names(body: &[Stmt]) -> Vec<String> {
     let mut reached = ExprCollector::new(|expr: &Expr| {
         let (_, attribute) = attribute_call(expr, &["getattr"])?;
@@ -425,8 +420,8 @@ fn getattr_names(body: &[Stmt]) -> Vec<String> {
     reached.found
 }
 
-// The words of the implicitly concatenated string annotations of the module. Ruff parses such a string without the
-// offsets a rewrite of its calls needs, so a class one of the words spells is taken as used in no rewritable way.
+// Ruff does not provide usable edit offsets in implicitly concatenated annotations. Keep any class name they mention
+// out of positional rewrites.
 fn unparsed_annotation_names(body: &[Stmt]) -> Vec<String> {
     let mut strings = Unparsed(Vec::new());
     strings.visit_body(body);
@@ -461,9 +456,8 @@ fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
-// The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
-// class writes its own `__init__` or inherits from a class it does not know. A base dataclass of the same module,
-// whose fields `base_fields` gives, comes first, as dataclasses order inherited fields.
+// Inherited fields come before local fields in a generated dataclass constructor. A custom initializer or unresolved
+// base can make positional field order unknown.
 pub(crate) fn init_fields(
     class: &ast::StmtClassDef,
     decorator: &Expr,
@@ -573,9 +567,8 @@ pub(super) struct FileUses<'f> {
 }
 
 impl RunCalls {
-    // `defined` tells a re-export from a definition. `hidden` lists the names some file reads off a module under a
-    // computed name, so any function so named may be called. A library's public dataclasses are left out, so no call to
-    // them is rewritten or reported.
+    // A re-export or a computed attribute can hide a call. Library users can also call public dataclasses outside the
+    // project.
     pub(super) fn index<'f>(
         declared: impl Iterator<Item = (FileId, Declared<'f>)>,
         uses: &[FileUses],
@@ -629,8 +622,7 @@ impl RunCalls {
                     else {
                         continue;
                     };
-                    // A call passing fields by position is a site the dataclass's report names; one that passes more
-                    // than the class takes is not one a rewrite could follow.
+                    // Only calls that fit the known fields can be rewritten by position.
                     let opaque = match kind {
                         UseKind::Imported => imported.get(caller).is_some_and(|names| names.contains(written)),
                         UseKind::Call(shape) => {
@@ -656,8 +648,7 @@ impl RunCalls {
                 }
             }
         }
-        // A function another module reaches through a name this file does not define, as `pkg.helper` through a
-        // package that re-exports it, may be called under any file's name for it.
+        // A re-export such as `pkg.helper` can hide the module that defined the function.
         for (file, names) in defined {
             for name in names.iter().filter(|name| reexported.contains(**name) || hidden.contains(**name)) {
                 calls.mark_opaque(*file, (*name).to_owned());
@@ -691,16 +682,14 @@ impl RunCalls {
     }
 }
 
-// Every call of a function the run makes, and whether some use of it hides its arguments. Production calls are kept
-// apart, as the test-only rules compare them with the calls of tests.
+// Rules that compare test and production usage need a separate set of production calls.
 #[derive(Clone, Default, PartialEq)]
 pub(crate) struct CallSites {
     pub(crate) opaque: bool,
     pub(crate) shapes: BTreeSet<CallShape>,
     pub(crate) production: BTreeSet<CallShape>,
     pub(crate) production_reads: bool,
-    // Whether code running the module as a program calls it: its arguments and value belong to the command line, not
-    // to the run.
+    // Command-line code can supply arguments and consume results outside the indexed calls.
     pub(crate) entry: bool,
 }
 
@@ -746,8 +735,7 @@ impl CacheKey for CallSites {
     }
 }
 
-// A call that passes fields by position to a dataclass of another file: the file it is in, its byte range, and the
-// digest of that file's source, so a report that names it is kept only while the file is unchanged.
+// A report in the dataclass definition points into this other file, so its cached offsets depend on that file's digest.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct CallSite {
     pub(crate) caller: PathBuf,
@@ -818,7 +806,6 @@ mod tests {
 
     use super::init_fields;
 
-    // A flag that is not a literal leaves open whether `__init__` takes the field, and by position.
     #[test_case("field(init=flag)", None ; "computed_init")]
     #[test_case("field(kw_only=flag)", None ; "computed_kw_only")]
     #[test_case("field(init=True)", Some(&["x"]) ; "literal_init")]

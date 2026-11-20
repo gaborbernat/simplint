@@ -3,12 +3,9 @@ Flags a regular expression with a nested repeat that can take exponential time o
 
 ## Why is this bad?
 
-Python's `re` engine backtracks. When a repeated group holds a repeat that can match the same text, as `(a+)+` does, a
-run of `a`s splits between the outer and the inner repeat in exponentially many ways. On a string that fails to match
-near its end, the engine tries every split before giving up: `(a+)+$` takes about a second on 24 `a`s followed by a `b`,
-and doubles with each further `a`. A pattern that runs on user input this way lets a short request hang a worker, a
-denial of service known as
-[ReDoS](https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS).
+Python's `re` engine can try many ways of splitting the same text between an inner and outer repeat. If a later part of
+the pattern fails, the number of splits it tries can grow exponentially with the input length. This is a form of
+[regular expression denial of service (ReDoS)](https://owasp.org/www-community/attacks/Regular_expression_Denial_of_Service_-_ReDoS).
 
 ## Example
 
@@ -18,12 +15,13 @@ import re
 WORDS = re.compile(r"^(\w+\s?)*$")
 ```
 
-Use instead:
+For validation that uses only the success or failure of the match, make whitespace the required separator between words.
+The optional outer group preserves the empty match.
 
 ```python ok
 import re
 
-WORDS = re.compile(r"^\w+(?:\s\w+)*\s?$")
+WORDS = re.compile(r"^(?:\w+(?:\s\w+)*\s?)?$")
 ```
 
 ## What it does
@@ -31,8 +29,9 @@ WORDS = re.compile(r"^\w+(?:\s\w+)*\s?$")
 ### Active on
 
 - **Patterns passed to `re` and `regex` functions**, as string or bytes literals, verbose ones included. The rule
-  reports an unbounded repeat, `*`, `+` or `{n,}`, lazy or greedy, of a group where one alternative is a single
-  unbounded repeat with everything else in it optional, as `(a+)+`, `(\w+\s?)*` and `(x|y+)+` are.
+  reports an unbounded repeat, `*`, `+` or `{n,}`, lazy or greedy, of a group where one alternative contains an
+  unbounded repeat and all the other parts of that alternative are optional. Examples include `(a+)+`, `(\w+\s?)*` and
+  `(x|y+)+`.
 
 ### Exceptions
 
@@ -47,10 +46,9 @@ WORDS = re.compile(r"^\w+(?:\s\w+)*\s?$")
   WORDS = re.compile(r"^(?>\w+\s?)*$")
   ```
 
-- **A repeat followed only by parts that can match nothing**, in a call other than `fullmatch` or `compile`: the first
-  way the repeat matches lets the rest match too, so nothing makes the engine backtrack into it. An anchor such as `$`
-  or a lookaround after the repeat can fail, and `fullmatch` or a compiled pattern may have to reach the end, so those
-  stay reported.
+- **A repeat whose remaining pattern always succeeds.** In a prefix match or search, the engine can stop at the first
+  match. A trailing anchor or lookaround can still fail. The rule also checks repeats at the end of patterns passed to
+  `fullmatch` or `compile`, since those patterns may have to consume the whole string.
 
   ```python ok
   import re
@@ -63,10 +61,6 @@ WORDS = re.compile(r"^\w+(?:\s\w+)*\s?$")
 - **Bounded repeats**, as `(a+){3}`, whose backtracking stays polynomial.
 
 - **Patterns the rule does not read**, with a conditional group `(?(1)...)` or a scoped verbose flag `(?x:...)`.
-
-## Ruff overlap
-
-Ruff has no rule for exponential backtracking.
 
 ## Other tools
 

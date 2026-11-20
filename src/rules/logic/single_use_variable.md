@@ -3,8 +3,7 @@ value removes the name and keeps the value next to the code that uses it.
 
 ## Why is this bad?
 
-A name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find
-the assignment, remember the value, and then reach the line that uses it. Inlining removes that step.
+When the name adds no meaning, inlining the value lets the reader understand the next statement in one place.
 [Fowler's Extract Variable](https://refactoring.com/catalog/extractVariable.html) gives a name to part of an expression,
 and [Sourcery](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/) warns that inlining can hurt
 readability. A name that explains and one that adds nothing look the same to the rule.
@@ -51,7 +50,7 @@ def total_price(prices: list[float]) -> str:
 
 - [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in
   `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of
-  them is inlined into a default; see the read in a parameter's default above
+  them is inlined into a default; see the parameter-default exception below
 
   ```toml config
   [tool.ruff.lint]
@@ -194,8 +193,8 @@ def total_price(prices: list[float]) -> str:
   ```
 
 - **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
-  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field
-  cannot hold a line break either.
+  which the field can hold. A value spread over lines goes in on one line, so it fits inside a single-quoted or
+  double-quoted f-string.
 
   ```python report
   def wrap(value: str) -> str:
@@ -337,6 +336,12 @@ def total_price(prices: list[float]) -> str:
       show()
   ```
 
+- **A list comprehension used by [`all()`](https://docs.python.org/3/builtins/functions.html#all) or
+  [`any()`](https://docs.python.org/3/builtins/functions.html#any)** when it contains a call, lookup or other possible
+  side effect. Inlining would expose the comprehension to Ruff's
+  [C419](https://docs.astral.sh/ruff/rules/unnecessary-comprehension-in-call/), whose generator fix can skip later
+  elements.
+
 - **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once
   per pass instead of once.
 
@@ -401,8 +406,9 @@ def total_price(prices: list[float]) -> str:
           print("empty")
   ```
 
-- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never
-  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.
+- **A read in an annotation, a `type` statement or a type parameter**: local variable annotations inside functions are
+  unevaluated. Other annotations can run at definition time or later, depending on the target Python version. Inlining
+  here could change when the value is computed.
 
   ```python ok
   def run(items: list[str]) -> None:
@@ -469,8 +475,7 @@ def total_price(prices: list[float]) -> str:
           print(found)
   ```
 
-- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not
-  the only one.
+- **A name read or bound elsewhere in the function**, including a reference in a quoted type annotation or `ForwardRef`.
 
   ```python ok
   def run(items: list[str]) -> None:
@@ -540,9 +545,8 @@ def total_price(prices: list[float]) -> str:
 The fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires
 them.
 
-**Unsafe fix:** the value only reads names, and the next statement calls something, awaits, or reads an attribute or a
-subscript before the read, so the names would be read after that instead of before. It differs only when that step
-rebinds or mutates what they name.
+**Unsafe fix.** In `size = limit` followed by `log.write(size)`, Python reads `limit` before looking up `log.write`.
+Inlining changes that order. The rule marks the fix unsafe because a lookup can run user code that rebinds the name.
 
 ```python report
 def run(limit: int, log: Log) -> None:
@@ -555,16 +559,16 @@ def run(limit: int, log: Log) -> None:
     log.write(limit)
 ```
 
-**No fix:** the value calls, awaits or looks something up, and inlining would run it after a step it used to precede,
-swapping their effects:
+**No fix.** Simplint keeps the assignment when moving its value could reorder side effects or shorten the lifetime of a
+temporary object. It checks for these cases.
 
-- the next statement calls something, awaits, or reads an attribute or a subscript before the read
-- the next statement reads a name before the read that sees what the value changes: in an f-string field, unpacked with
-  `*` or `**`, in an operator such as `not queue`, as the target of an augmented assignment, or a name some function
-  declares `global` or `nonlocal`
-- the next statement reads an attribute or a subscript of the name, such as `tmp.name`, so the value's object is dropped
-  right after that read and its finalizer runs early
-- the value holds a walrus that rebinds a name the next statement reads before the read
+- A call, `await`, attribute access or subscript would run before an operation it previously followed.
+- The next statement observes a value the assignment might change. This includes formatting a name in an f-string,
+  unpacking it with `*` or `**`, using it in an operator or augmented assignment, and reading a name that another
+  function declares `global` or `nonlocal`.
+- The assigned value contains a call, and the next statement extracts an attribute or item from the result. Inlining can
+  release the object immediately after the lookup and run its finalizer earlier.
+- A `:=` inside the assigned value would rebind a name after the next statement had already read it.
 
 ```python report
 def evaluate(stack: list[str]) -> float:
@@ -573,7 +577,8 @@ def evaluate(stack: list[str]) -> float:
     return left / right
 ```
 
-Inlined, `right` would pop its operand after `left` does, swapping the two.
+Inlining `left` keeps the two calls in order. Also inlining `right` would produce `operand(stack) / operand(stack)`,
+which pops the numerator first. The original pops the denominator first.
 
 A read in a t-string is reported without a fix, because a t-string keeps the source text of each field, which the
 inlined value would change.
@@ -619,9 +624,8 @@ def render(value: object) -> str:
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
   [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview rule
-  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded
-  on the next line and which this rule leaves to them, except the return of a generator; every other single read is open
-  issue [#10108](https://github.com/astral-sh/ruff/issues/10108).
-- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
-  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
-  value read on the line right below its assignment.
+  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), for assignments before `return` and
+  `yield from`. A broader single-use check is tracked in [#10108](https://github.com/astral-sh/ruff/issues/10108).
+- Sourcery's [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/) inlines a single
+  use when doing so enables a further refactoring, such as replacing a loop with a comprehension. Simplint requires the
+  read to occur in the next statement.

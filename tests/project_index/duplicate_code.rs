@@ -25,8 +25,7 @@ const DUP_BLOCK: &str = "def run(items):\n    total = 0\n    for item in items:\
 const DUP_EXTRA: &str = "    extra = label.upper()\n    more = extra.lower()\n    again = more.title()\n    final = \
     again.strip()\n    return final\n";
 
-// Each file names the first three other files in sorted order, one place each, and counts the rest. A later statement
-// that only two files share does not make a file a partner of the whole block, nor name it at that later line.
+// The reported locations must repeat the entire block. Sharing a later statement does not qualify a file.
 #[test]
 fn repeated_block_names_three_files_one_place_each() {
     let repeated = (1..=4)
@@ -80,8 +79,7 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
     );
 }
 
-// Test directories of a project are projects of their own, each repeating the code of the others by design, so their
-// copies are not compared with one another, nor with the main project, and neither are separate distributions.
+// Fixture projects can contain intentional copies of production code and of each other.
 #[test_case(
     &[
         ("roots/test-a/conf.py", ""),
@@ -167,14 +165,14 @@ fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {
     common::report_paths(&check(root.path(), &["--select", "SMP530"]).1, "SMP530")
 }
 
-// The same statements under a different `if` are no repeat: the nesting of the code differs, though its text does not.
+// Only the indentation of `b += 10` differs.
 const NESTED_FIRST: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if \
     y:\n            b += 1\n        b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
 
 const NESTED_SECOND: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if \
     y:\n            b += 1\n            b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
 
-// Six repeated statements, one copy right after the end of an `if` block, whose dedent is not part of the repeat.
+// The dedent precedes the six repeated statements.
 const AFTER_BLOCK: &str = "def run(x, y):\n    if x:\n        log(x)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * \
     2\n    log(d)\n    return d\n";
 
@@ -196,8 +194,6 @@ fn unmarked_test_directory_is_the_main_project() {
     );
 }
 
-// A nested project rooted at a `test` directory is test input, as the directory is one, so its repeated statements are
-// not compared with the rest of the run; a directory of the same layout that no test directory names is compared.
 #[test_case("tools/swig/test", false ; "test_directory_is_not_compared")]
 #[test_case("tools/swig/checks", true ; "other_directory_is_compared")]
 fn nested_test_directory_repeats_are_not_compared(directory: &str, reported: bool) {
@@ -214,8 +210,6 @@ fn nested_test_directory_repeats_are_not_compared(directory: &str, reported: boo
     assert_eq!(stdout.contains(" SMP530 "), reported, "{stdout}");
 }
 
-// A nested project is indexed on its own: a name `widget.helper()` in one nested project uses is not a use of another
-// nested project's `helper`, while the same layout outside a test-named directory shares one index.
 #[test_case(
     "roots/test-a",
     "roots/test-b",

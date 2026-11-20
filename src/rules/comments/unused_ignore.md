@@ -3,9 +3,8 @@ Enable it with `--extend-select SMP009` when checking for obsolete ignores.
 
 ## Why is this bad?
 
-An obsolete ignore makes it harder to tell which exceptions still matter. It can also hide a new report if the same rule
-starts applying to that line later. Other checkers report obsolete ignores too: Ruff's
-[unused-noqa](https://docs.astral.sh/ruff/rules/unused-noqa/), mypy's
+An obsolete ignore can hide a future report from the same rule on that line. Other checkers offer similar checks,
+including Ruff's [unused-noqa](https://docs.astral.sh/ruff/rules/unused-noqa/), mypy's
 [`--warn-unused-ignores`](https://mypy.readthedocs.io/en/stable/command_line.html#cmdoption-mypy-warn-unused-ignores)
 and pyright's
 [`reportUnnecessaryTypeIgnoreComment`](https://microsoft.github.io/pyright/#/configuration?id=reportUnnecessaryTypeIgnoreComment).
@@ -24,11 +23,12 @@ value = 1
 
 ## What it does
 
-The rule tests removals one selector at a time, then offers one safe fix for the file.
+simplint rechecks the file with candidate selectors removed. If a new report appears, it tries smaller groups. It offers
+one safe fix for the removals that expose no new report.
 
 ### Active on
 
-- **Selectors no report needs**: a selector whose removal exposes no report is reported, and the fix removes it.
+- **Unused selectors**. A selector can be removed when the same reports remain visible.
 
   ```python report
   total = sum(values)  # simplint: ignore[single-letter-name]
@@ -38,7 +38,7 @@ The rule tests removals one selector at a time, then offers one safe fix for the
   total = sum(values)
   ```
 
-- **Several selectors**: each selector is tested on its own, and the fix keeps those that still suppress reports.
+- **Several selectors**. The fix can remove an unused selector while keeping another in the same comment.
 
   ```python report select=SMP101
   x = sum(values)  # simplint: ignore[single-letter-name, meaningless-name]
@@ -70,8 +70,8 @@ The rule tests removals one selector at a time, then offers one safe fix for the
 
 ### Exceptions
 
-- **Selectors whose removal exposes a report**: each proposed removal is re-linted, and the selector stays when removing
-  it exposes any report, including one from a different rule.
+- **Selectors that still suppress a report**. A removal must leave every previously hidden report suppressed, including
+  reports from other rules.
 
   ```python ok select=SMP101
   def scale(values: list[float]) -> list[float]:

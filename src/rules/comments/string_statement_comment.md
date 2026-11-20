@@ -1,15 +1,10 @@
-Flags triple-quoted string statements used as comments: strings that are neither the docstring of a module, class or
-function nor an attribute docstring.
+Flags standalone triple-quoted strings used as comments.
 
 ## Why is this bad?
 
-A string that is not a docstring is kept nowhere: [PEP 257](https://peps.python.org/pep-0257/#what-is-a-docstring) notes
-the compiler ignores it and it does not reach `__doc__`, so it documents nothing the way a docstring does. Linters do
-not read it as a comment either; pylint reports it as a
-[pointless string statement](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/pointless-string-statement.html).
-Guido van Rossum endorsed such strings as comments in a 2011 tweet, as a
-[python-ideas thread](https://mail.python.org/pipermail/python-ideas/2012-June/015552.html) cites, but simplint reports
-them because a `#` comment gives the same information where a reader looks for it.
+Python stores the leading string of a module, class or function in `__doc__`. Documentation tools can also extract
+[attribute docstrings](https://peps.python.org/pep-0257/#what-is-a-docstring) after assignments. For an ordinary note
+between statements, `#` makes its purpose clear.
 
 ## Example
 
@@ -33,8 +28,8 @@ AREA = math.pi
 
 ### Active on
 
-- **Strings between statements**: a triple-quoted string that is not the first statement of its body, and does not
-  follow an assignment, is a comment in disguise.
+- **Standalone triple-quoted strings** are checked in any statement block. A string at the start of an `if` or loop body
+  can qualify.
 
   ```python report
   def run() -> None:
@@ -45,7 +40,7 @@ AREA = math.pi
 
 ### Exceptions
 
-- **Docstrings**: the first statement of a module, class or function body is its docstring.
+- **Docstrings**. A string literal at the start of a module, class or function body is its docstring.
 
   ```python ok
   def run() -> None:
@@ -53,7 +48,8 @@ AREA = math.pi
       start()
   ```
 
-- **Attribute docstrings**: a string right after an assignment documents the attribute it assigns, as Sphinx reads it.
+- **Attribute docstrings**: simplint skips strings immediately after a plain or annotated assignment, including local
+  assignments.
 
   ```python ok
   class Config:
@@ -76,13 +72,12 @@ AREA = math.pi
 The fix writes each line of the string as a `#` comment at the statement's indentation, so the code after it keeps its
 line numbers. It is safe for the program: a string statement does nothing when it runs. The fix does not apply when:
 
-- every statement of its body is a string, since the body would be left empty
+- every statement in the block is a string
 - the string shares its line with other code or a trailing comment, or is an implicit concatenation of several strings
 - the text holds a backslash, since the compiler reads escapes and may warn or fail on them
 - the module has a `from __future__` import, which the compiler checks against the statements before it
 - a line of the text would start a tool directive, such as `# fmt: off`, or start with `!`
-- a comment line would run past the comment width, which [Ruff E501](https://docs.astral.sh/ruff/rules/line-too-long/)
-  then reports
+- a comment line would run past the comment width, used for the fix
 
 Tools that read the source text, such as
 [`inspect.getsource`](https://docs.python.org/3/library/inspect.html#inspect.getsource), see the comments where the

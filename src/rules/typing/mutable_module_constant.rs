@@ -18,8 +18,8 @@ use super::globals_writes::GlobalsWrites;
 
 pub fn mutable_module_constant(checker: &Checker) {
     let project = checker.project();
-    // A star import or a computed read hands the module's names to code this rule cannot follow, and Sphinx hands a
-    // configuration's to extensions that change them.
+    // A star import exposes every name, and a computed attribute write can replace any of them. Sphinx extensions
+    // can change values in `conf.py`.
     if project.is_star_imported() || project.is_computed_written() || is_sphinx_conf(checker) {
         return;
     }
@@ -68,7 +68,6 @@ pub fn mutable_module_constant(checker: &Checker) {
     }
 }
 
-// An `UPPER_CASE` name, with any leading underscores, which reads as a constant.
 fn is_constant_name(name: &str) -> bool {
     let bare = name.trim_start_matches('_');
     bare.chars().any(char::is_uppercase) && !bare.chars().any(char::is_lowercase)
@@ -104,7 +103,7 @@ impl Kind {
         }
     }
 
-    // Python 3.15 added the built-in `frozendict`; before it, a read-only view of the dict stands in.
+    // Earlier versions of Python need a read-only proxy for dictionaries.
     fn immutable(self, target: PythonVersion) -> &'static str {
         match self {
             Self::List => "tuple",
@@ -210,13 +209,9 @@ fn annotation_edit(checker: &Checker, kind: Kind, declared: &Expr, immutable: &s
     }))
 }
 
-// Which of the names have a load in the module that does more than read the value. A read subscripts it, calls a method
-// that leaves it as it is, iterates it, tests it, compares it, or passes it to a built-in that copies or reads it.
-// Anything else, such as passing it to another function or returning it, may hand it to code that changes it.
-//
-// Some reads see the type itself, so the immutable value would change what they do: a list compares unequal to a tuple,
-// `+` mixes them only by raising, a `tuple` has no `copy`, an operator on a `frozenset` or a mapping view returns
-// another type than before, and `isinstance`, `type`, `repr`, `str` and `print` show the new type.
+// A collection passed to unknown code might be mutated, so suppress the report. A read that can observe the
+// collection's type still gets a report, but no fix. For example, a list and tuple compare unequal even when
+// their elements match.
 struct Reads<'a> {
     names: FxHashMap<&'a str, Kind>,
     reading: FxHashSet<TextRange>,
@@ -240,7 +235,6 @@ impl<'a> Reads<'a> {
         }
     }
 
-    // A read whose result depends on the type, for a constant of one of the kinds.
     fn typed_read(&mut self, expr: &'a Expr, kinds: &[Kind]) {
         self.read(expr);
         if let Expr::Name(name) = expr

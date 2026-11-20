@@ -3,14 +3,10 @@ keeps the caller short.
 
 ## Why is this bad?
 
-A helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn
-what the caller does, and the helper's name adds little when only one place uses it.
-[John Ousterhout](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) argues that many short functions
-are harder to read: each split adds an interface to learn while hiding little, and functions that only make sense
-together read better combined. Inlining the helper's statements keeps the work in one function, as long as the caller
-stays short enough to read at once. [Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) and
-[Robert Martin](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) favor small functions named by
-intent, which is why the rule skips a caller that inlining would make long.
+A short helper can make its caller harder to follow when you need both bodies to understand either one.
+[John Ousterhout](https://github.com/johnousterhout/aposd-vs-clean-code#method-length) describes that cost. A helper
+whose name explains a distinct task can still earn its place, as
+[Martin Fowler](https://martinfowler.com/bliki/FunctionLength.html) argues.
 
 ## Example
 
@@ -37,8 +33,8 @@ def load(text: str) -> dict[str, str]:
 ## Configuration
 
 - [`logic.max-helper-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in
-  `[tool.simplint]`: the most statements a helper may have to be suggested for inlining, such as
-  `max-helper-statements = 2` under `[tool.simplint.logic]`
+  `[tool.simplint]`: a helper must contain fewer than this many statements. With `max-helper-statements = 2`, a
+  two-statement helper stays
 
   ```toml config
   [tool.simplint.logic]
@@ -56,8 +52,7 @@ def load(text: str) -> dict[str, str]:
   ```
 
 - [`logic.max-caller-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in
-  `[tool.simplint]`: the most statements the caller may have once the helper's are added, such as
-  `max-caller-statements = 30` under `[tool.simplint.logic]`
+  `[tool.simplint]`: the largest allowed sum of the caller's and helper's statement counts
 
   ```toml config
   [tool.simplint.logic]
@@ -222,7 +217,8 @@ estimates, so a caller they might report is left as it is.
       return 0 if depth == 0 else _count(depth - 1)
   ```
 
-- **Calls inside a loop, a comprehension or a lambda**: inlining would run the helper's statements once per pass.
+- **Calls inside a loop, a comprehension or a lambda.** Simplint skips these even when the source contains only one call
+  site.
 
   ```python ok
   def load(texts: list[str]) -> list[str]:
@@ -379,9 +375,8 @@ estimates, so a caller they might report is left as it is.
 
 ### Fix
 
-The rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not
-attempt.
+Inline the helper manually, substituting the caller's arguments and preserving the order in which they are evaluated.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+The [Ruff rule list](https://docs.astral.sh/ruff/rules/) has no equivalent for a private helper with a single call site.

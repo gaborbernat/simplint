@@ -18,15 +18,14 @@ pub fn all_not_last(checker: &Checker) {
         return;
     };
     let end = body.len() - usize::from(body.last().is_some_and(is_main_guard));
-    // Calls on `__all__` such as `__all__.extend(...)` change the list the binding made, so they stay with it.
+    // A module can finish building its export list with a series of method calls.
     if body[last + 1..end].iter().all(|stmt| all_mutation(stmt).is_some()) {
         return;
     }
     let stmt = &body[last];
     let semantic = checker.semantic();
-    // A module that reads `__all__` at run time, by attribute, string or `globals()`, needs the list bound above
-    // it, and so does a function or lambda that reads it, by name or at run time, wherever it is defined. A later
-    // `__all__ += [...]` inside a block extends the list, so it must still find it bound above.
+    // Moving the binding past a read or a conditional update changes what that code sees.
+    // A function defined earlier may still read the list when called during module initialization.
     let referenced_later = semantic
         .references_to("__all__")
         .iter()
@@ -123,7 +122,7 @@ impl<'a> Visitor<'a> for ScopeReads {
     }
 }
 
-// A list or tuple of names, which keeps its value when moved; a computed value may depend on where it runs.
+// A computed value may change if its assignment moves past another definition.
 fn is_string_list(stmt: &Stmt) -> bool {
     match all_binding(stmt).and_then(|binding| binding.value) {
         Some(Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) => {

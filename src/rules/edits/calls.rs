@@ -3,9 +3,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 
-// The argument at `range`, a keyword or a parenthesized positional argument, with the comma that separates it from a
-// neighbor, so the rest of the call keeps its layout. A sole argument goes with its trailing comma, up to the closing
-// parenthesis.
+// Removing an adjacent comma keeps the other arguments in place. A sole argument can also have a trailing comma.
 pub(crate) fn argument_removal(checker: &Checker, call: &ast::ExprCall, range: TextRange) -> Option<TextRange> {
     if checker.has_comment_in(call.range()) {
         return None;

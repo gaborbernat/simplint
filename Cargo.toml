@@ -81,8 +81,7 @@ tikv-jemallocator = { version = "0.6.1", default-features = false, features = ["
 mimalloc = { version = "0.1.52", default-features = false, features = ["v2"] }
 windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem", "Win32_System_IO", "Win32_System_Ioctl"] }
 
-# Ruff's release profile: fat LTO, and a single codegen unit for the crates that gain most from the costlier
-# optimization.
+# Reserve single-codegen-unit optimization for the parser, AST and salsa crates.
 [profile.release]
 lto = "fat"
 codegen-units = 16
@@ -98,7 +97,7 @@ codegen-units = 1
 [profile.release.package.salsa]
 codegen-units = 1
 
-# The release build without link-time optimization, for CI jobs that need a fast binary but not the fastest one.
+# CI uses more codegen units and skips LTO to reduce build time.
 [profile.ci]
 inherits = "release"
 lto = false

@@ -66,15 +66,11 @@ impl<'l, 'a> Fixer<'l, 'a> {
         }
     }
 
-    // Fixes run after `ruff check --fix --unsafe-fixes`, so their result must not give it new work: a Ruff finding the
-    // original file did not have gets Ruff's own fix when Ruff has one, and otherwise the fixes that caused it are
-    // withdrawn, one report at a time, keeping the other fixes of their rule and the reports. `ruff format`, which runs
-    // last, keeps the syntax tree, so it cannot undo this.
+    // Compare Ruff's findings before and after applying simplint fixes. Let Ruff fix new findings first. If any
+    // remain, withdraw the responsible simplint fixes and keep reporting their violations.
     //
-    // A run can withdraw a fix that is only bad next to another rule's pending fixes, yet once those apply, a run over
-    // the result can offer the withdrawn fixes again. The single fixes withdrawn carry over to the later runs, which
-    // then do not try them again; whole rules do not, as a rule may cover reports that only appear once other fixes
-    // apply. Running until a run changes nothing, or returns to a source seen before, makes a single run final.
+    // Later passes can expose new violations of a rule. Carry individual withdrawals forward and reconsider rules
+    // that were withdrawn as a group. Stop once no fix applies or a pass reproduces an earlier source.
     pub fn fix(&self, source: &str) -> Result<(FixerResult, Withdrawn)> {
         Ok(self.runs(source).inspect_err(|bug| bug.report(self.path))?)
     }
@@ -88,9 +84,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             let (result, run_withdrawn) = self.run(&current, std::mem::take(&mut withdrawn.fixes))?;
             withdrawn = run_withdrawn;
             add_fixes(&mut fixed, &result.fixed);
-            // A later run only finds work in fixes of a rule an earlier run withdrew whole. Such a fix that gives Ruff
-            // work again has its rule withdrawn again, which leaves the source as it was, so the runs end without a
-            // bound of their own; each run's fix and cleanup loops have theirs.
+            // A whole-rule withdrawal can leave a fix to reconsider once other rules have changed the source.
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
                 break result;
             }
@@ -107,10 +101,8 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let linted = Linted { source, lint: self.lint(source) };
         let mut settled = self.settle(&linted, &withdrawn)?;
         while settled.left > 0 {
-            // Rules are tried in code order, so the same file always yields the same fixes. Among withdrawals that
-            // leave as little for Ruff, one whose result a second run leaves alone wins, so a single run is final. The
-            // candidates run in parallel and are compared in that order, which keeps the choice the same. A candidate
-            // whose fixes hit a bug is dropped, as another may still give a valid result.
+            // Prefer the candidate with the fewest remaining Ruff rules. At zero, prefer a result that stays fixed on a
+            // second run. Rule order breaks ties so parallel execution cannot change the result.
             let applied: BTreeSet<Rule> = Self::fixing_rules(&settled.result.fixed).collect();
             let fewest = applied
                 .par_iter()
@@ -761,8 +753,8 @@ mod tests {
         ]
     }
 
-    // Both rules give Ruff work, so withdrawing the first, which ties with the second and comes first, leaves less, and
-    // its fixes are withheld one by one; that lets its later fix, which breaks the syntax, apply.
+    // Withdrawing the first rule wins the tie. Trying its fixes separately then exposes its later syntax-breaking
+    // fix.
     fn broken_once_withheld() -> Reports {
         let second = "l = 2\nx = 1\n";
         vec![

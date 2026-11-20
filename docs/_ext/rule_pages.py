@@ -1,4 +1,4 @@
-"""Write the rule and group pages of the documentation from the rule list, before Sphinx reads the sources."""
+"""Sphinx pages generated from the rule registry."""
 
 from __future__ import annotations
 
@@ -15,11 +15,9 @@ if TYPE_CHECKING:
 
 
 def generate(docs: Path) -> dict[str, str]:
-    # the rule list is derived from the sources the binary is built from, and `tests/docs_data.rs` holds it to the
-    # binary's own listing, so the pages and `simplint rule` cannot drift
+    # The registry and Markdown sources are available even when the docs builder has no simplint binary.
     rules = rule_entries()
-    # groups are keyed by family, the directory of their rules, since titles have spaces; the binary lists rules by
-    # code, so each group appears where its first rule does
+    # The registry is in code order. Keying groups by directory keeps them in the order of their first rule.
     groups = {rule["family"]: (rule["group"], rule["short_group"]) for rule in rules}
     rules_dir, groups_dir = docs / "rules", docs / "groups"
     rules_dir.mkdir(exist_ok=True)
@@ -69,21 +67,20 @@ def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> 
         '<select id="rule-scope" aria-label="Files read"><option value="">All rules</option>'
         '<option value="cross-file">Cross-file only</option>'
         '<option value="single-file">Single-file only</option></select>'
-        '<select id="rule-default" aria-label="Default"><option value="">On or off by default</option>'
-        '<option value="on">On by default</option><option value="opt-in">Opt-in only</option></select>'
-        # the count, like the rows, is final in the markup, so a page without filters needs no script to settle
+        '<select id="rule-default" aria-label="Selection"><option value="">Any selection</option>'
+        '<option value="on">Included by ALL</option><option value="opt-in">Opt-in only</option></select>'
+        # Render the initial count for readers with JavaScript disabled.
         f'<span id="rule-count" class="rule-count">{len(rules)} rules</span></div>'
         '<table class="rules"><thead><tr><th class="rule-code">Code</th><th class="rule-name">Name</th>'
         '<th class="rule-summary">Checks</th><th class="rule-fix">Fix</th>'
         '<th class="rule-scope"><a href="explanation/how-it-works.html#cross-file-rules"'
         ' title="Other files of the run can change what the rule reports">Cross-file</a></th>'
         '<th class="rule-default"><a href="how-to/select-rules.html#opt-in-rules"'
-        ' title="Runs without being selected by its code or name">Default</a></th>'
+        ' title="Included when ALL is selected">ALL</a></th>'
         f"</tr></thead><tbody>\n{body}\n</tbody></table>"
         '<p id="rule-empty" class="rule-empty" hidden>No rule matches these filters.</p>'
     )
-    # the sidebar shows this hidden tree, so a rule page lists its siblings for switching between rules; it has room
-    # for one line per entry, so each group shows its short title there
+    # Furo uses this tree for sidebar navigation. Short group titles fit on one line.
     groups_tree = "\n".join(f"   {short} <groups/{family}>" for family, (_, short) in groups.items())
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
@@ -146,8 +143,7 @@ def _rule_page(rule: RuleEntry) -> str:
         '<a class="badge" href="../rules.html">All rules</a></div>'
     )
     explanation = _RULE_CODE_LINK_PATTERN.sub(r"](\1.md)", rule["explanation"])
-    # links to the settings and how-to pages stay absolute in the binary, for `simplint rule`; built, they resolve to
-    # the labels on those pages, so each version of these docs links its own
+    # The CLI needs absolute documentation links. Resolve them locally in Sphinx so each version links to its own pages.
     explanation = _ABSOLUTE_PAGE_LINK_PATTERN.sub("](#", explanation)
     if _SIMPLINT_DOCS_URL_PATTERN.search(explanation):
         msg = f"{rule['code']} links to a simplint.readthedocs.io page that has no label to link to"
@@ -172,8 +168,7 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
     if (marker := next((index for index in range(start, stop) if lines[index] == "Use instead:"), None)) is not None:
         flagged, preferred = _numbered(lines, start, marker, by_line), _numbered(lines, marker + 1, stop, by_line)
     else:
-        # without a "Use instead:" line, the fixed code of a reported example and whatever follows the last reported
-        # example show what to write instead
+        # Without a divider, show fixed blocks and everything after the last reported case as preferred examples.
         reported = [
             example
             for line, example in by_line.items()
@@ -196,10 +191,8 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
 
 
 def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], heading: str) -> str:
-    # Examples with no prose between them form a run, rendered together so a reported one can sit beside its accepted
-    # one. Only the Active on cases pair a reported example with its accepted one.
+    # Only the Active on section pairs adjacent reported and accepted examples.
     settings = heading == "Configuration"
-    # only the cases under What it does fold away; the examples of every other section stay open
     folds = heading == "What it does"
     out: list[str] = []
     run: list[Example] = []
@@ -319,7 +312,7 @@ def _dropdown(example: Example, lines: list[str], *, settings: bool, folds: bool
     else:
         title = "not reported"
     indent = _indent(lines, example)
-    # the role class lets the stylesheet and rules.js find each example and tell its kind apart
+    # The stylesheet and rules.js use the role class to distinguish the controls.
     kind = title.replace(" ", "-")
     out = [f"{indent}::::{{dropdown}} Example: {title}", *_dropdown_options(indent, kind, folds=folds)]
     if config is not None:
@@ -356,8 +349,7 @@ def _numbered(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
     return "\n".join(out).strip()
 
 
-# A context file only sets up its example for the test, so the card leaves it out with the blank lines after it. The
-# returned flag says whether the blank lines after the example still belong to such a file.
+# Context files set up the executable example. Omit their trailing space along with their code.
 def _cards(lines: list[str], example: Example, *, skip_blank: bool, hidden: str) -> tuple[list[str], bool]:
     out: list[str] = []
     previous = example["line"] - 1
@@ -397,7 +389,7 @@ def _body(lines: list[str], fence: Fence) -> list[str]:
 
 
 def remove_stale(folder: Path, current: set[str]) -> None:
-    # a page whose rule or group is gone would still build, under a name that no longer exists
+    # Sphinx also reads files left over from a previous build.
     for stale in (page for page in folder.iterdir() if page.name not in current):
         stale.unlink()
 

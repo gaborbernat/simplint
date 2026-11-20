@@ -1,6 +1,3 @@
-// What a scope's body binds and reads, for the rules that follow a local variable from its binding to its reads without
-// a type checker. Control flow lives in `flow`.
-
 use std::cell::OnceCell;
 
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_pattern, walk_stmt};
@@ -11,9 +8,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::rules::logic::inline::Names;
 use crate::syntax::{Nesting, top_level};
 
-// The module and each function of a file, nested ones included, with what the local-variable rules read off each. A
-// rule asks only for the scopes its cheap syntactic trigger points at, and the first rule to ask builds the answer for
-// the others.
+// The local-variable rules share per-scope scans. Compute each scan on the first request for that scope.
 pub(crate) struct LocalScopes<'a> {
     scopes: Vec<LocalScope<'a>>,
     functions: FxHashMap<TextSize, usize>,

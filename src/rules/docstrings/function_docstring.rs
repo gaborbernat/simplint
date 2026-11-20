@@ -18,13 +18,12 @@ use edit::{block_levels, comment_replacement, removal};
 use text::{cleaned_lines, drop_fields};
 
 pub fn function_docstring(checker: &Checker) {
-    // Code that reads docstrings off objects, such as a test asserting `func.__doc__` or a framework turning them into
-    // help text or a schema, may read any of them, and which ones it reads does not show.
+    // A dynamic docstring lookup can read any object's documentation in the project.
     if checker.project().reads_docstrings() {
         return;
     }
     let api = checker.state().public_api(checker);
-    // A function or class an autodoc directive documents renders its docstring for its users, as public API does.
+    // Autodoc can expose definitions even in an application or a private module.
     let owners = checker
         .function_defs()
         .iter()
@@ -43,23 +42,20 @@ pub fn function_docstring(checker: &Checker) {
         let Some(literal) = docstring(owner_body) else {
             continue;
         };
-        // A decorator receives the object and may read its docstring, as `click.command` does for help text, unless it
-        // is one known to leave it unread.
+        // For example, Click uses the command function's docstring as help text.
         if decorators.iter().any(|decorator| !is_doc_blind(checker, &decorator.expression))
             || literal.value.to_str().lines().any(|line| line.trim_start().starts_with(">>>"))
         {
             continue;
         }
         let stmt = &owner_body[0];
-        // The text as written, since an escape such as `\n` would otherwise end the comment line.
+        // Preserve escapes such as `\n` so they cannot introduce an uncommented line.
         let written: String = literal.value.iter().map(|part| checker.text(part.content_range())).collect();
         let lines = cleaned_lines(&written);
-        // One short line rarely says more than the name; anything longer may state a contract the code does not show,
-        // such as a tie-break rule, so its text stays as a comment.
+        // Preserve longer explanations, which may document behavior such as a tie-break rule.
         let restates = lines.len() <= 1 && lines.iter().all(|line| line.split_whitespace().count() <= 5);
-        // The signature documents the parameters and results, so the comment leaves their field lists out.
         let documented = drop_fields(&lines);
-        // Rewriting the docstring can leave a file-level `noqa` code unused, as with the lines it shortened.
+        // The docstring may be the only reason a file-level suppression is needed.
         let (fix, title) = if file_noqa {
             (None, "Remove the docstring")
         } else if restates || documented.is_empty() {
@@ -90,9 +86,8 @@ pub fn function_docstring(checker: &Checker) {
     }
 }
 
-// A class body that names `__doc__` reads its own docstring, which the compiler binds in the class namespace before the
-// body runs. The headers of methods, lambdas and nested classes run in that body, as their decorators, defaults and
-// bases do, while their bodies have a namespace of their own.
+// A class body can read its own docstring by name. Check expressions in nested definition headers without entering
+// their bodies.
 fn reads_own_docstring(class: &ast::StmtClassDef) -> bool {
     if docstring(&class.body).is_none() {
         return false;
@@ -145,12 +140,11 @@ impl<'a> Visitor<'a> for ClassDocstringReads {
     }
 }
 
-// Decorators that wrap or register the object without reading its docstring; copying it, as `functools.wraps` or
-// `property` do, only hands it to `help()`. pytest shows a fixture's docstring in `pytest --fixtures`, a listing of the
-// suite's own helpers like `help()`.
+// These decorators are allowed on internal definitions even when they copy or display the docstring. Removing it still
+// makes the fix unsafe.
 fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
     let decorator = map_callable(decorator);
-    // `name.setter` on a property, whose name the module scope does not resolve.
+    // A property accessor in a class body may have no module-level binding to resolve.
     if decorator
         .as_attribute_expr()
         .is_some_and(|attribute| matches!(attribute.attr.as_str(), "setter" | "getter" | "deleter"))
@@ -179,8 +173,7 @@ fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
     })
 }
 
-// Ruff's D418 and D419 report the docstring of a definition this rule has no fix for. Ruff skips a definition that
-// `ignore-decorators` lists, and it leaves a stub's `@overload` docstrings alone.
+// Suppress a duplicate report only where Ruff's D418 or D419 would apply.
 fn left_to_ruff(
     checker: &Checker,
     decorators: &[Decorator],

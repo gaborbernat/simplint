@@ -3,7 +3,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::syntax::{Visibility, last_segment, module_statements, names_in};
 
-// Only classes and aliases can be reached through an interface, so only they set `is_type`.
+// Follow classes and type aliases named in a public signature.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Definition {
     name: String,
@@ -89,7 +89,6 @@ fn type_param_names(type_params: Option<&ast::TypeParams>) -> Vec<String> {
 
 fn class_names(class: &ast::StmtClassDef) -> Vec<String> {
     let mut refs = type_param_names(class.type_params.as_deref());
-    // Keywords such as `metaclass=` are left out.
     refs.extend(class.bases().iter().flat_map(names_in));
     for stmt in &class.body {
         match stmt {
@@ -103,8 +102,8 @@ fn class_names(class: &ast::StmtClassDef) -> Vec<String> {
     refs
 }
 
-// A root counts only when another root reaches it, so a type an exposed name uses is public though no file imports
-// it. Built once per module, so the roots of several sets share the same references.
+// Types in a public signature can be part of the API even if no other file imports them. Several sets of roots share
+// this module's reference graph.
 pub struct Closure<'a> {
     refs: FxHashMap<&'a str, Vec<&'a str>>,
     types: FxHashSet<&'a str>,
@@ -126,7 +125,7 @@ impl<'a> Closure<'a> {
     pub fn reached<'r>(&self, roots: impl IntoIterator<Item = &'r str>) -> Vec<String> {
         let mut reached: FxHashSet<&str> = FxHashSet::default();
         for root in roots {
-            // The root itself is reached only through a cycle back to it, which no other root causes.
+            // A cycle back to the starting name does not expose that name through another signature.
             let mut seen: FxHashSet<&str> = FxHashSet::default();
             let mut pending: Vec<&str> = self.refs.get(root).into_iter().flatten().copied().collect();
             while let Some(name) = pending.pop() {

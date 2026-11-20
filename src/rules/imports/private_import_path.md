@@ -4,16 +4,10 @@ must match the test's path and name.
 
 ## Why is this bad?
 
-A module imports only public names, and only from its direct private child: `from ._a import what`. A private name is
-never imported across modules. The private module makes it public instead, which keeps it out of the package API while
-the module itself stays private. When the name lives deeper, in `_a/_x.py`, the child package re-exports it
-(`from ._x import what` in `_a/__init__.py`) and every caller above imports it from there. Each package then decides
-what it exposes one level up, and moving `_x` inside `_a` touches only `_a/__init__.py`. Flattening the layout or
-suppressing the rule only hides the deeper import.
-
-Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
-package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
-as `from .._api import API` also crosses a package boundary.
+A private module can change without breaking callers when they import its public names through a stable path. For
+example, `_a/__init__.py` can re-export `what` from `._x`. Callers then write `from ._a import what`, and moving `_x.py`
+only requires changing the re-export. Importing `package._api` as an object exposes the implementation path to its
+callers.
 
 ## Example
 
@@ -76,12 +70,11 @@ choosing a public re-export or replacing uses of a module object may require cha
   ```
 
 - **Paths with two private names**, such as `from ._a._x import what` or `from ._internal._helpers import API`. A direct
-  relative import may cross one private name, not two. The fix for `from ._a._x import what` is a re-export, not moving
-  the module: the package's `__init__.py` imports `what` from its private module, and the caller imports `what` from the
-  package.
+  relative import may cross one private name. Re-export `what` in `_a/__init__.py` so the caller can import it from
+  `._a`.
 
-- **Private names from another module**, such as `from ._internal import _helper` or `from .public import _helper`.
-  Rename the name to a public one inside its module; the module can stay private. A paired test follows the same rule.
+- **Private names from another module**, such as `from ._internal import _helper` or `from .public import _helper`. Give
+  the name a public spelling inside its private module. A paired test follows the same rule.
 
   ```python report file=package/consumer.py
   from .public import _helper
@@ -167,10 +160,10 @@ choosing a public re-export or replacing uses of a module object may require cha
 
 - **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
   directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
-  `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
-  directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
-  module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
-  exists. The imported name must still be public.
+  `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. For an absolute
+  import, the remaining directories and the stem after `test_` must match an existing `.py` or `.pyi` file. A dedicated
+  subtree may instead take the module's name: `tests/_html/url/test_url.py` may import names from `package._html` when
+  `_html.py` or `_html.pyi` exists. The imported name must still be public.
 
   ```python context file=package/_api.py
   class API:
@@ -221,7 +214,8 @@ choosing a public re-export or replacing uses of a module object may require cha
 **Unsafe fix**, for a public name under a private alias: the fix drops the alias and renames the module's uses of it,
 which breaks code elsewhere that reads the alias, such as a test patching `module._canonical`. No fix is offered when
 the public name is already taken in the file, another file or a string reads the alias, the import is dotted
-(`import a.b as _b`) or the import sits inside a function. The other cases need the code moved, so they get no fix.
+(`import a.b as _b`) or the import sits inside a function. Other findings may need a public name or a re-export, which
+the author must choose.
 
 ## Ruff overlap
 
@@ -232,9 +226,3 @@ body, relative imports, imports within their own package, and `import package._a
 not report. Ruff's [unconventional-import-alias](https://docs.astral.sh/ruff/rules/unconventional-import-alias/)
 (ICN001) owns the aliases of the modules its import conventions name, such as `numpy`, so this rule leaves a private
 alias of those to it.
-
-## Other tools
-
-[Ruff's import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) reports private imports
-across packages, but exempts relative imports and absolute imports within the same top-level package. This rule checks
-those paths and module-object imports too.

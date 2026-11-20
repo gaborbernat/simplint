@@ -84,8 +84,7 @@ fn file_reached_through_a_link_is_fixed_once() {
     );
 }
 
-// Hard links share one file, so the run lints it once: under the smallest path in sort order, with symlinks last,
-// rather than under each name in parallel, where a fix would race on the file and each report would show once per name.
+// On Unix, parallel fixes must not write the same inode twice. Prefer the first sorted path, with symlinks last.
 #[cfg(unix)]
 #[test]
 fn hard_links_to_one_file_are_linted_once() {

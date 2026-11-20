@@ -1,11 +1,9 @@
-Flags an empty dict, list or set that the statements right after it only fill with entries, which the literal could hold
-instead.
+Flags an empty dict, list or set followed by statements that could put the same entries in its literal.
 
 ## Why is this bad?
 
-Filling a collection one statement at a time spreads one value over several lines, and a reader has to follow each add
-to learn what the collection holds. A literal shows the whole value where it is created, and the entries sit in the
-order they are added.
+A literal shows the initial contents in one place. With separate assignments or method calls, the reader has to follow
+mutations to see what the collection contains.
 
 ## Example
 
@@ -27,11 +25,9 @@ def headers(token: str) -> dict[str, str]:
 
 ### Active on
 
-An assignment of `{}`, `[]` or `set()` to one name is reported when the statements right after it, one after another,
-each add an entry to that name: `name[key] = value` for a dict, `name.append(value)` for a list and `name.add(value)`
-for a set. The run stops at the first statement that is not such an add.
-
-Keys and values must be constants or plain names, and must not read the collection itself.
+The rule starts at `name = {}`, `name = []` or `name = set()`. It collects consecutive `name[key] = value`,
+`name.append(value)` or `name.add(value)` statements, depending on the collection. Keys and values must be constants or
+plain names. The scan stops at the first statement that fails these checks.
 
 - **A list filled with an append**: the entry is written in the literal. A run of two or more appends is left to Ruff's
   FURB113, under Exceptions.
@@ -49,7 +45,7 @@ Keys and values must be constants or plain names, and must not read the collecti
       return out
   ```
 
-- **A set filled with constants**: a set display takes the constants in the order given.
+- **A set filled with constants.** The fix puts the elements in a set literal.
 
   ```python report
   def unique() -> set[int]:
@@ -67,8 +63,8 @@ Keys and values must be constants or plain names, and must not read the collecti
 
 ### Exceptions
 
-- **An entry that calls something or reads an attribute or a subscript**: the call runs in its statement's place, and
-  moving it into the literal would reorder it against the other entries and the collection's creation.
+- **An entry that calls a function, looks up an attribute or indexes an object.** Moving an operation into the literal
+  would run it before the assignment binds the collection's name.
 
   ```python ok
   def build() -> dict[str, int]:
@@ -102,9 +98,8 @@ Keys and values must be constants or plain names, and must not read the collecti
       return table
   ```
 
-- **Two keys, or two set elements, that are the same**: the second add replaces the first, which a literal would show as
-  a repeated key that Ruff reports. Values that hash alike count as the same, such as `1` and `True`, and so do two
-  mentions of one name.
+- **Duplicate keys or set elements.** For example, Python treats `1` and `True` as the same key. The rule also skips a
+  dict or set whose literal would contain the same name twice.
 
   ```python ok
   def build() -> dict[str, int]:
@@ -142,10 +137,10 @@ Keys and values must be constants or plain names, and must not read the collecti
       return table
   ```
 
-- **Two or more appends to a list that run one after another**:
-  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) fixes them, so this rule leaves them to Ruff. With an
-  append to another list or a comment between them, Ruff reports without a fix, and this rule keeps its fix for the
-  first entry.
+- **Consecutive appends to one list.** The rule leaves these to Ruff's
+  [repeated-append (FURB113)](https://docs.astral.sh/ruff/rules/repeated-append/). If an append to another list
+  interrupts the sequence, simplint can still fold the first list's initial entries into its literal. A comment inside
+  the span simplint would replace prevents the rewrite.
 
   ```python ok
   def build() -> list[int]:
@@ -160,9 +155,9 @@ Keys and values must be constants or plain names, and must not read the collecti
 The fix replaces the run with one literal of the same kind and keeps the assignment's name. A tuple used as a key or an
 entry is parenthesized, since a comma would end it.
 
-The fix is safe when every key and value is a constant. Building such a literal cannot raise, so it stops at the same
-point as the statements. A name may be undefined or hold an unhashable value, and then the statements would leave the
-collection partly filled while the literal leaves it unbound. Those runs are fixed as unsafe.
+The fix is marked safe when all entries are constant. A name lookup can fail, and a dict key or set element can be
+unhashable. With separate statements, the name already refers to the empty or partly filled collection when that
+happens. With a literal, the assignment never takes place. Fixes involving names are marked unsafe.
 
 ```python report
 def keyed(name: str, value: int) -> dict[str, int]:
@@ -179,17 +174,15 @@ def keyed(name: str, value: int) -> dict[str, int]:
 
 ## Ruff overlap
 
-Ruff's [unnecessary-collection-call](https://docs.astral.sh/ruff/rules/unnecessary-collection-call/) (C408) rewrites
-`dict()` and `list()` calls into literals, and does not look at the statements that follow them.
+Ruff's [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) can replace consecutive list appends with `extend`.
+Its [C408](https://docs.astral.sh/ruff/rules/unnecessary-collection-call/) replaces calls such as `dict()` and `list()`
+with empty literals.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
-  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/), which merges consecutive `append` calls into `extend`
-  and which this rule leaves to it; this rule covers dicts, sets and the appends FURB113 does not fix.
-- [flake8-simplify](https://github.com/MartinThoma/flake8-simplify) reports a dictionary filled by the statements after
-  it as [SIM904](https://github.com/MartinThoma/flake8-simplify#sim904). It covers dictionaries only, and it does not
-  fix them.
-- [pylint](https://github.com/pylint-dev/pylint) reports the same dictionaries as
-  [dict-init-mutate](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/dict-init-mutate.html). It
-  covers dictionaries only, with no fix.
+- [flake8-simplify's SIM904](https://github.com/MartinThoma/flake8-simplify#sim904) reports assignments that could be
+  included in a dict literal.
+
+- Pylint's
+  [dict-init-mutate (C3401)](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/dict-init-mutate.html)
+  also reports assignments to a newly created dict.

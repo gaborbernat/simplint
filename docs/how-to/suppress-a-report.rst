@@ -11,8 +11,8 @@ codes:
 
 - A report on a multi-line string or a line continued with ``\`` takes the comment on the last line of the string or
   continuation, as in Ruff.
-- A bare ``# noqa`` suppresses every simplint rule on its line, but
-  :doc:`suppression-without-reason </rules/SMP003>` reports it for giving no reason.
+- A bare ``# noqa`` leaves two rules active on its line. :doc:`suppression-without-reason </rules/SMP003>` checks
+  the reason and :doc:`blanket-ignore </rules/SMP004>` checks for a rule code.
 - An invalid directive, such as ``# noqa: 401``, makes a fix run warn once, not once per rule it would suppress. Both
   ``--fix`` and ``--diff`` print that warning:
 
@@ -37,7 +37,8 @@ The suppression comments at a glance:
     * - ``# ruff: noqa: SMP101`` (or ``# flake8: noqa: SMP101``) on its own line
       - The listed rules in the whole file.
     * - ``# ruff: noqa`` on its own line
-      - Every rule but :doc:`suppression-without-reason </rules/SMP003>` in the whole file.
+      - All rules in the file except :doc:`suppression-without-reason </rules/SMP003>` and
+        :doc:`blanket-ignore </rules/SMP004>`.
     * - ``# ruff: file-ignore[SMP101]`` at module scope
       - The listed rules in the whole file.
 

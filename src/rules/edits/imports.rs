@@ -14,8 +14,7 @@ pub(crate) enum Import {
     Add(Edit),
 }
 
-// The import a fix that writes `member` of `module`, or `module` itself, needs. `None` when another binding holds the
-// name at `at`, the place the fix writes it, which leaves the fix off.
+// A local binding can shadow a top-level import at the point where a fix uses it.
 pub(crate) fn ensure_import(checker: &Checker, module: &str, member: Option<&str>, at: TextRange) -> Option<Import> {
     let binding = member.unwrap_or(module);
     if checker.semantic().is_bound_around(binding, at) {
@@ -30,8 +29,7 @@ pub(crate) fn ensure_import(checker: &Checker, module: &str, member: Option<&str
     Some(Import::Add(import_insertion(checker, module, member)?))
 }
 
-// The fix of an edit that uses an import. An edit that adds the import is isolated, so the next pass sees the import
-// instead of adding it twice.
+// Apply one import-adding fix per pass so the next fix can reuse the import.
 pub(crate) fn with_import(edit: Edit, import: Import, applicability: Applicability) -> Fix {
     match import {
         Import::Present => Fix::applicable_edit(edit, applicability),
@@ -39,9 +37,7 @@ pub(crate) fn with_import(edit: Edit, import: Import, applicability: Applicabili
     }
 }
 
-// The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
-// `import x` lines before `from x import y` lines, each group in module order. A new section gets a blank line
-// after it.
+// Match the default standard-library import order to avoid a second edit from Ruff.
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Option<Edit> {
     let body = checker.body();
     let eol = checker.line_ending();
@@ -72,30 +68,28 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         let source = checker.source;
         let line_end = source.full_line_end(last.end());
         let rest = source[TextRange::new(last.end(), line_end)].trim();
-        // Code after the import on its line would run before the new import lands below it.
+        // A statement on the same line might need the new import before it runs.
         if !rest.is_empty() && !rest.starts_with('#') {
             return None;
         }
         (line_end, text)
     } else {
-        // The statement the import goes before follows the preamble, so the body has one there.
+        // The statement being fixed guarantees there is code after the preamble.
         (above_comments(checker, &body[preamble]), format!("{text}{eol}"))
     };
-    // A line that starts inside the preamble's last statement would put the import above a docstring sharing its line,
-    // which then stops being `__doc__`, or above a `from __future__` import, which is a syntax error.
+    // A shared line can put the insertion before the module docstring or a future import. Both must stay ahead of
+    // ordinary imports.
     if preamble > 0 && line < body[preamble - 1].end() {
         return None;
     }
     Some(Edit::insertion(insertion, line))
 }
 
-// The statements before a module's imports: its docstring and `from __future__` imports.
 pub(crate) fn preamble_len(body: &[Stmt]) -> usize {
     body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count()
 }
 
-// The line an import goes on above `stmt`: above the comment lines directly over it, unless they start the file,
-// where a shebang, encoding or license header stays put.
+// Keep comments with the statement below them, except for a header at the start of the file.
 pub(crate) fn above_comments(checker: &Checker, stmt: &Stmt) -> TextSize {
     let source = checker.source;
     let mut line_start = source.line_start(stmt.start());

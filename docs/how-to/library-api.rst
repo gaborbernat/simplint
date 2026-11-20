@@ -4,11 +4,11 @@ Tell simplint what your public API is
 The documentation rules treat a library's public API apart from its internal code:
 
 - :doc:`undocumented-public-api </rules/SMP903>` asks for docstrings on what users import.
-- :doc:`function-docstring </rules/SMP901>` removes them everywhere else.
+- :doc:`function-docstring </rules/SMP901>` checks docstrings on internal functions, methods and classes.
 - :doc:`unused-export </rules/SMP402>` keeps ``__all__`` of the private modules to the names other modules
   use, and :doc:`missing-from-all </rules/SMP401>` lists the types those signatures reach.
 
-An application has no Python API, so all of its code is internal.
+When ``project-kind`` is ``"application"``, simplint treats all of its Python code as internal.
 
 .. code-block:: toml
 
@@ -23,16 +23,16 @@ guesses wrong:
    :ref:`project-kind <library-or-application>` to ``"library"``.
 2. If it lists the wrong packages, name the right ones in :ref:`api-packages <api-packages-and-modules>`.
 3. Keep the modules that users import from directly public: a name without a leading underscore, such as
-   ``my_package/errors.py``, is part of the API, and a private module with a leading underscore is not.
+   ``my_package/errors.py``, is part of the API, and a module such as ``_internal.py`` is private. See
+   :ref:`api-packages-and-modules` for double-underscore names.
 
 The full resolution order for each setting is in :doc:`/configuration/project`.
 
 Layer private packages
 **********************
 
-A module imports only public names, and only from its **direct** private child. A private name is never imported across
-modules: the private module makes it public instead, which keeps it out of the package API while the module stays
-private. When a name lives deeper, each package on the way up re-exports it, and callers import it from the nearest
+A module can import public names from a public module or its **direct** private child. To share a name across
+modules, give it a public name in the private module. The enclosing package controls whether to expose it. When a name lives deeper, each package on the way up re-exports it, and callers import it from the nearest
 package:
 
 .. code-block:: text

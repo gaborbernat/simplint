@@ -3,13 +3,10 @@ it is: [module-variable-prefix](SMP404.html) checks it.
 
 ## Why is this bad?
 
-Upper case tells a reader the name is a module-level value rather than a local, the way
-[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants, so a use deep inside a function shows that it
-reads module state. pylint's
-[invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html) applies the
-same idea to names assigned once. [PEP 8](https://peps.python.org/pep-0008/#global-variable-names) and the
-[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s2.5.4-decision) give module globals
-`lower_case`; simplint upper-cases those too.
+Uppercase names make reads of module state visible inside a function.
+[PEP 8](https://peps.python.org/pep-0008/#constants) uses uppercase for constants and
+[lowercase](https://peps.python.org/pep-0008/#global-variable-names) for other global variables. simplint applies
+uppercase to both.
 
 ## Example
 
@@ -44,8 +41,9 @@ __all__ = ["LOGGER"]
   limit = 3
   ```
 
-- The Python version the code targets, taken from the first of these that applies; see
-  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
+- The [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) can be set
+  with `--target-version`. Without that override, the following settings take precedence over Poetry and setuptools
+  metadata. The default is Python 3.11.
 
   1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for
      the files a pattern matches
@@ -99,8 +97,8 @@ __all__ = ["LOGGER"]
   _timeout = 5
   ```
 
-- **Names another module in the run imports**: only the case changes, and the leading underscore stays, since the
-  importer already depends on the name.
+- **Names another module in the run imports**: the report suggests the uppercase spelling. An import elsewhere in the
+  run prevents the automatic rename.
 
   ```python report file=config.py
   limit = 3
@@ -152,6 +150,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   ```python ok
   Alias = int
   ```
+
+- **Type parameters**. A name assigned once at module level with `TypeVar`, `TypeVarTuple` or `ParamSpec` keeps its
+  spelling when the constructor's name argument matches the target.
 
 - **Type aliases from a `type` statement**: the statement binds a type, not a value, so the name follows the convention
   of classes, whatever its case.
@@ -243,9 +244,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
 - **`mixedCase` names Ruff reports without a rename**:
   [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/) reports a `mixedCase` module name at
-  each of its stores in the module scope, unless its `ignore-names` lists the name. When this rule offers no rename, the
-  name is left to Ruff, whether or not the project's Ruff configuration selects N816. A name this rule can rename keeps
-  its report.
+  each of its stores in the module scope, except for ignored names and assignments from `namedtuple` or `NamedTuple`.
+  When this rule offers no rename, the name is left to Ruff, whether or not the project's Ruff configuration selects
+  N816. A name this rule can rename keeps its report.
 
   ```python ok file=_module.py
   myValue = 3
@@ -253,7 +254,7 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   print(myValue, MYVALUE)
   ```
 
-- **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value.
+- **`TYPE_CHECKING`**. The rule preserves the spelling of this conventional type-checking guard.
 
   ```python ok
   from typing import TYPE_CHECKING
@@ -376,11 +377,9 @@ lookup:
 
 ### Fix
 
-The fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.
-**Unsafe fix:** always, as importers outside the run keep the old name, and so do string references in unchecked files,
-such as [`mocker.patch`](https://pytest-mock.readthedocs.io/en/latest/usage.html) targets. Code that loads a module
-under a name no file of the run defines, such as a test that copies a file's text into a module and reads its names off
-the copy, keeps the old name too.
+The fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name. The
+fix is unsafe because importers outside the run and dynamic lookups can still use the old name. For example, a test can
+load a copy of the module under another name and inspect its attributes.
 
 ```python report
 limit = 3
@@ -392,8 +391,8 @@ LIMIT = 3
 print(LIMIT)
 ```
 
-A name read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug
-specifier keeps its printed text: the field prints the old name, then the value in a plain field.
+For a debug f-string such as `f"{limit=}"`, the fix keeps the printed label `limit=` and renames the expression that
+supplies its value.
 
 ```python report
 limit = 3
@@ -509,10 +508,6 @@ unsafe fix.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/), which reports only `mixedCase` names,
-  without a fix; this rule reports `lower_case` names, and the `mixedCase` names it can rename, and leaves the others to
-  Ruff.
 - [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`
   as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It
   defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.

@@ -1,4 +1,4 @@
-"""Settle each built HTML page: the rule page controls, the sidebar marks, the numbered code and the inlined assets."""
+"""HTML layout and controls for the documentation."""
 
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 
 
 class _PageContext(TypedDict):
-    # The keys these handlers read or write; Sphinx's context holds many more.
     rule_sources: dict[str, str]
     body: str
     furo_navigation_tree: str
@@ -36,13 +35,12 @@ def setup(app: Sphinx) -> dict[str, bool]:
 
 
 def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
-    # Pages are built in their final shape, so no script moves them once they show: rules.js only wires up the
-    # controls. They are HTML alone, so the Markdown copies of the pages leave them out.
+    # The controls require HTML. Markdown exports include the examples without their buttons.
     del docname
     if app.builder.format != "html":
         return
     raws = list(doctree.findall(nodes.raw))
-    # filters from the URL apply before anything below the table exists, so nothing below moves once it shows
+    # Apply URL filters before the browser lays out the rest of the page.
     if (table := next((node for node in raws if 'id="rule-empty"' in node.astext()), None)) is not None:
         script = '<script>setupRulesTable(document.querySelector("table.rules"))</script>'
         table.replace_self(nodes.raw("", f"{table.astext()}{script}", format="html"))
@@ -91,9 +89,8 @@ def _add_example_toggles(examples: list[dropdown_main]) -> None:
 
 
 def _add_measures(example: nodes.Element) -> None:
-    # Before and after sit side by side only while every line fits its half. Each side holds an invisible copy of the
-    # longest line of both, built like the snippets around it, so the browser sizes both sides alike and wraps the
-    # second below the first once that line no longer fits; no script measures the page.
+    # An invisible copy of the longest line gives both columns the same minimum width. CSS stacks them when they no
+    # longer fit side by side.
     sides = [node for node in example.findall(nodes.container) if "example-side" in node["classes"]]
     lines: list[str] = []
     for side in sides:
@@ -106,7 +103,7 @@ def _add_measures(example: nodes.Element) -> None:
     )
     for side in sides:
         side.insert(0, nodes.raw("", measure, format="html"))
-    # an odd side out keeps to half the width beside an empty one, as the sides above it do
+    # A filler keeps an unpaired example aligned with the columns above it.
     if len(sides) % 2 and (parent := sides[-1].parent) is not None:
         filler = f'<div class="example-side" aria-hidden="true">{measure}</div>'
         parent.insert(parent.index(sides[-1]) + 1, nodes.raw("", filler, format="html"))
@@ -133,8 +130,7 @@ def _settle_page(
 
 
 def _point_generated_pages_at_their_source(pagename: str, context: _PageContext) -> None:
-    # Generated pages have no file under docs/, so the theme's view and edit icons would point nowhere: a rule page
-    # comes from its explanation in the crate, the group pages from the generator.
+    # Point the theme's source links at tracked files. The rule and group pages under docs/ are generated.
     if pagename.startswith("rules/"):
         source = context["rule_sources"][pagename.rsplit("/", 1)[1]]
     elif pagename.startswith("groups/"):
@@ -146,7 +142,7 @@ def _point_generated_pages_at_their_source(pagename: str, context: _PageContext)
 
 
 def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
-    # Rule pages lead with their code and take no icon; Furo links the current page as `#`.
+    # Furo links the current page with `#`. Rule codes identify their pages in the sidebar.
     classes, href = match["classes"].split(), match["href"]
     if "internal" not in classes:
         return match[0]
@@ -160,9 +156,7 @@ def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
 
 
 def _split_code_lines(match: re.Match[str]) -> str:
-    # The highlighter writes a numbered snippet as one run of text with the numbers inline, so a wrapped line would
-    # continue under the numbers. One block per line lets the stylesheet hang each continuation under its code; each
-    # keeps its newline, so copied code keeps its lines.
+    # Keep wrapped text aligned with the code after the line number. Preserve newlines for copying.
     if '<span class="linenos">' not in (code := match["code"]):
         return match[0]
     lines = code.splitlines(keepends=True)
@@ -174,12 +168,10 @@ def _split_code_lines(match: re.Match[str]) -> str:
 
 
 def _inline_assets(app: Sphinx, exception: Exception | None) -> None:
-    # Read the Docs answers every request after a round trip of 200 ms or more, so each stylesheet and script a page
-    # waits on would add one; each page carries its own instead, and arrives ready to render in a single response.
+    # Inline local styles and scripts to avoid extra requests when a reader opens a page.
     if exception is not None or app.builder.format != "html":
         return
-    # Furo writes the dark highlighting into pygments.css as the build finishes; inlined before that, every snippet
-    # would stay light in the dark theme
+    # Wait for Furo's final stylesheet before inlining it, so dark-theme snippets use dark highlighting.
     highlighting = (Path(app.outdir) / "_static" / "pygments.css").read_text(encoding="utf-8")
     if 'body[data-theme="dark"] .highlight' not in highlighting:
         msg = "pygments.css has no dark theme yet, so the pages would inline light code blocks for the dark theme"

@@ -2,12 +2,11 @@ Flags single-letter names outside comprehensions and conventional type parameter
 
 ## Why is this bad?
 
-A single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it.
-[PEP 8](https://peps.python.org/pep-0008/#names-to-avoid) bans only `l`, `O` and `I`, which some fonts confuse with
-digits. The [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.16.1-names-to-avoid) allows
-`i` for loop counters and `e` and `f` in `except` and `with`; simplint reports those forms too, since the letter alone
-still says nothing about the value. Comprehensions are exempt because the iterable the names come from sits right next
-to them.
+A descriptive name helps readers follow a value from its binding to a later use.
+[PEP 8](https://peps.python.org/pep-0008/#names-to-avoid) singles out `l`, `O` and `I` because they resemble digits in
+some fonts. The [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#s3.16.1-names-to-avoid)
+allows `i` for loop counters, `e` for exceptions and `f` for files. simplint asks for descriptive names in those cases
+too.
 
 ## Example
 
@@ -174,8 +173,8 @@ No fix is offered, since a meaningful name cannot be derived from the code.
   A lowercase name, mismatched string or different function named `TypeVar` does not qualify.
 
 - **Parameters of a method decorated with
-  [`@override`](https://docs.python.org/3/library/typing.html#typing.override)**: the method must keep the parameter
-  names of the method it replaces.
+  [`@override`](https://docs.python.org/3/library/typing.html#typing.override)**: callers may pass arguments by keyword
+  using the base method's parameter names.
 
   ```toml config
   [project]
@@ -219,16 +218,10 @@ no fix. This rule leaves those three letters to Ruff at those sites. It keeps ev
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [E741](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/),
-  [E742](https://docs.astral.sh/ruff/rules/ambiguous-class-name/) and
-  [E743](https://docs.astral.sh/ruff/rules/ambiguous-function-name/), which report `l`, `I` and `O` and which this rule
-  leaves to them; issue [#4866](https://github.com/astral-sh/ruff/issues/4866) asking for all single letters was closed
-  as not planned.
 - [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports single-letter names as
   [VNE001](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py), but
-  allows `i`, `_` and `T` by default. This rule flags `for i` loop targets but allows `T` only when it declares a type
-  parameter.
+  allows `i`, `_` and `T` by default. This rule flags `for i` loop targets and permits single letters in comprehensions,
+  lambda parameters and uppercase type parameter declarations.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports short names as
   [WPS111](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.TooShortNameViolation),
   with a configurable minimum length. It also checks module and attribute names, which this rule does not list.

@@ -7,7 +7,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::exception_classes::{ClassKey, handled_types, lineage};
 
-// One class an `except` clause names, with the classes it derives from.
 struct Caught<'a> {
     expr: &'a Expr,
     lineage: Vec<ClassKey>,
@@ -93,8 +92,7 @@ fn is_strict_base(broader: &Caught, own: ClassKey, lineage: &[ClassKey]) -> bool
     base != own && lineage.contains(&base)
 }
 
-// Dropping an entry from a tuple keeps what the clause catches, since its base stays in front of it. A lone class
-// leaves the clause empty, and a comment in the tuple would be lost, so neither gets a fix.
+// Keep the handler body and any comments in its exception tuple.
 fn removal(checker: &Checker, type_: &Expr, elements: &[&Expr], removed: &Expr) -> Option<Fix> {
     if elements.len() < 2 || checker.has_comment_in(type_.range()) {
         return None;

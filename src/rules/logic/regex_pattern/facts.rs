@@ -14,7 +14,7 @@ const MODULES: [&str; 2] = ["re", "regex"];
 const FUNCTIONS: [&str; 10] =
     ["compile", "match", "prefixmatch", "search", "fullmatch", "finditer", "findall", "split", "sub", "subn"];
 
-// The methods that return match objects, whose groups a read of the result reaches.
+// These methods return a match or, for `finditer`, an iterator over matches.
 const MATCH_METHODS: [&str; 5] = ["match", "prefixmatch", "search", "fullmatch", "finditer"];
 
 // The methods of a match object that read a group, whose call leaves no group readable beyond the fix's reach.
@@ -76,7 +76,7 @@ enum Usage {
     Other,
 }
 
-// A string or bytes literal, which implicit concatenation makes of several parts.
+// Implicit concatenation can give one literal several source ranges.
 pub(crate) struct Literal<'a> {
     pub(crate) range: TextRange,
     pub(crate) bytes: bool,
@@ -199,8 +199,7 @@ impl<'a> Visitor<'a> for Walk<'_, 'a> {
         match stmt {
             Stmt::FunctionDef(function) => {
                 self.bind(function.name.as_str());
-                // Decorators, defaults and annotations run in the enclosing scope, so they are walked before the
-                // function's own scope and parameters exist.
+                // A function's parameters are local to its body. Visit the signature and decorators before entering it.
                 for decorator in &function.decorator_list {
                     self.visit_decorator(decorator);
                 }
@@ -349,7 +348,7 @@ impl<'a> Walk<'_, 'a> {
         }
     }
 
-    // A name is only ever the value of an attribute, so an attribute parent is a read of the name's groups.
+    // A name directly inside an attribute expression is its receiver.
     fn record_usage(&mut self, name: &'a str) {
         let parent = self.ancestor(1);
         let usage = match parent {
@@ -371,8 +370,7 @@ impl<'a> Walk<'_, 'a> {
         self.pending.push((scopes, name, usage));
     }
 
-    // Each use goes to the innermost scope that binds its name, as a lookup in Python does. A use no scope binds names
-    // no binding in the module, and is left out.
+    // Search from the innermost scope outward so a local binding takes precedence over an outer name.
     fn resolve_usages(&mut self) {
         for (scopes, name, usage) in std::mem::take(&mut self.pending) {
             if let Some(scope) = scopes.into_iter().find(|scope| self.bindings.contains_key(&(*scope, name))) {
@@ -499,9 +497,8 @@ impl<'a> Facts<'a> {
         }
     }
 
-    // Whether every group a call's pattern captures reaches the code only by position: `findall` returns the groups as
-    // tuples and `split` puts them in its list, so a name would not reach the reader. A compiled pattern counts when
-    // these are the only methods its name is called with.
+    // `findall` and `split` return captured text without group names. Naming a capture would not change how a
+    // caller reads it when these are the pattern's only uses.
     pub(crate) fn positional_only(&self, call: &Call<'a>) -> bool {
         match (call.attr, call.context) {
             ("findall" | "split", _) => true,
@@ -565,9 +562,7 @@ fn flags_position(attr: &str) -> usize {
     }
 }
 
-// Whether a `flags` argument turns verbose mode on: `re.VERBOSE` or `re.X` in any `|` combination, or the value 64
-// that `re.VERBOSE` holds. `None` when the flags are a name or other expression that does not resolve to a `re` flag,
-// since the value it holds may turn verbose mode on.
+// An OR expression with a known verbose bit enables verbose mode even if the other operand is unknown.
 fn is_verbose(checker: &Checker, flags: &Expr) -> Option<bool> {
     match flags {
         Expr::BinOp(ast::ExprBinOp { left, right, op: ast::Operator::BitOr, .. }) => {
@@ -584,8 +579,7 @@ fn is_verbose(checker: &Checker, flags: &Expr) -> Option<bool> {
     }
 }
 
-// Whether a flag the `re` or `regex` module names turns verbose mode on or off. The last segment decides, so
-// `re.RegexFlag.VERBOSE` is `re.VERBOSE`; a flag this does not know, such as one of `regex` alone, is `None`.
+// Match the last segment so both `re.VERBOSE` and `re.RegexFlag.VERBOSE` qualify. Unrecognized flags stay unknown.
 fn named_flag(checker: &Checker, flags: &Expr) -> Option<bool> {
     match checker.semantic().qualified_name(flags)?.segments() {
         [module, .., flag] if MODULES.contains(module) => match *flag {

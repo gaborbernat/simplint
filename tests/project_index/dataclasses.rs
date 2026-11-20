@@ -2,7 +2,6 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// A package's `__init__.py` defines the package, so a write on an instance of a class it imports from there counts.
 #[test]
 fn dataclass_frozen_reads_writes_on_package_classes() {
     let root = project(&[
@@ -13,8 +12,7 @@ fn dataclass_frozen_reads_writes_on_package_classes() {
     assert_eq!(common::read(root.path(), "pkg/__init__.py").lines().nth(3), Some("@dataclass"));
 }
 
-// A positional call in another file is not rewritten: the class report names it, and a fix needs every call in the
-// class's own file. Each shape of caller keeps the class reported, with no fix, and leaves the caller as it was.
+// The fix can edit only the file that defines the dataclass. A positional call elsewhere prevents the fix.
 #[test_case("from models import Partition, helper\n\nhelper(1)\nPartition(\"a\", 1)\n" ; "imported")]
 #[test_case("import models\n\nmodels.Partition(\"a\", 1)\n" ; "module")]
 #[test_case("from models import Partition\n\nPartition(\"a\", 1)  # noqa: E501\n" ; "other_code_suppressed")]
@@ -36,8 +34,7 @@ fn dataclass_kw_only_leaves_cross_file_calls_to_the_class_report(caller: &str) {
     );
 }
 
-// A field option the rule cannot read leaves the order of the `__init__` parameters unknown, so a positional call
-// keeps the class reported, and nothing is rewritten.
+// A computed field option can change which constructor parameter a positional argument fills.
 #[test_case("init" ; "init")]
 #[test_case("kw_only" ; "kw_only")]
 fn dataclass_kw_only_with_a_computed_field_option_is_not_fixed(option: &str) {
@@ -50,8 +47,6 @@ fn dataclass_kw_only_with_a_computed_field_option_is_not_fixed(option: &str) {
     assert_eq!((first.contains("Found 1 error.\n"), common::read(root.path(), "models.py") == models), (true, true));
 }
 
-// The report names the positional calls of another file as related locations, in full output, and says they need
-// converting by hand, since no fix reaches them.
 #[test]
 fn dataclass_kw_only_points_at_cross_file_calls() {
     let root = project(&[
@@ -71,8 +66,6 @@ fn dataclass_kw_only_points_at_cross_file_calls() {
     );
 }
 
-// The related locations reach the machine formats as `related` in JSON and `relatedLocations` in SARIF, and a second
-// run that reads the report from the cache shows the same output.
 #[test_case("json" ; "json")]
 #[test_case("sarif" ; "sarif")]
 fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
@@ -108,7 +101,6 @@ fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     );
 }
 
-// A suppression on the class definition silences the report, and with it the positional calls it names elsewhere.
 #[test]
 fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
     let models = PARTITION.replace("@dataclass\n", "@dataclass  # noqa: SMP703\n");
@@ -126,9 +118,8 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
     assert!(check(unsuppressed.path(), &["--select", "SMP703"]).1.contains("SMP703"));
 }
 
-// A library's public dataclass keeps its positional calls, which its users make: one defined in a public module's
-// `__all__`, or re-exported from one. A dataclass that only a sibling module imports stays internal, so its class and
-// its positional calls are reported and rewritten.
+// External callers may construct a public dataclass positionally. Importing an internal class in a sibling module does
+// not expose it to library users.
 #[test_case(
     &[("models.py", "__all__ = [\"Partition\"]\n\n")],
     concat!(
@@ -169,8 +160,6 @@ fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &st
     let mut all = vec![("pyproject.toml", DEMO_BUILD), ("caller.py", caller), ("models.py", models.as_str())];
     all.extend(others);
     let root = project(&all);
-    // A library's public class is not reported at all; an internal one is, with no fix while a caller is in another
-    // file.
     let stdout = check(root.path(), &["--select", "SMP703"]).1;
     assert_eq!(
         (stdout.contains("Found 1 error."), common::read(root.path(), "caller.py")),
@@ -221,7 +210,6 @@ fn dataclass_kw_only_withholds_fix_for_unfollowed_uses(callers: &[(&str, &str)])
     assert_eq!(common::read(root.path(), "models.py"), PARTITION);
 }
 
-// Code reading docstrings off objects may read any docstring of the run, so none is reported.
 #[test_case("print(_helper.__doc__)\n" ; "attribute")]
 #[test_case("import inspect\n\nprint(inspect.getdoc(_helper))\n" ; "getdoc")]
 #[test_case("print(getattr(_helper, \"__doc__\"))\n" ; "getattr")]
@@ -256,8 +244,7 @@ fn module_docstring_read_is_no_docstring_reader() {
     );
 }
 
-// Python names a module of a namespace package, one without an `__init__.py`, from its search root, so its relative
-// imports reach the package above it.
+// The search root supplies the package name even when there is no `__init__.py`.
 #[test]
 fn relative_import_from_namespace_package_counts_as_imported() {
     let root = project(&[
@@ -274,8 +261,7 @@ fn relative_import_from_namespace_package_counts_as_imported() {
     );
 }
 
-// A module loaded by a computed name may be any module, so what is read off it keeps its name everywhere; a name read
-// off a module simplint resolves keeps it only there.
+// An unresolved module name can refer to multiple files. Only the attribute read through it needs to keep its spelling.
 #[test_case(
     "def test_app() -> None:\n    mod = importlib.import_module(f\"docs.{_NAME}\")\n    assert mod.client\n" ;
     "import_module"

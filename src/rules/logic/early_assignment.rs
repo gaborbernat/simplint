@@ -37,15 +37,13 @@ pub fn early_assignment(checker: &Checker) {
     });
 }
 
-// The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
 fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
     let target = sole_name_target(assign)?;
     let name = target.id.as_str();
     (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
 }
 
-// The ranges of the string tokens of the file in source order, which may hold a name the rule must not move past. A
-// string that keys a subscript or a dict display is data, never code `exec` runs, so it is left out.
+// A string can contain source code that reads a local by name. Treat literal dictionary and subscript keys as data.
 fn string_tokens(checker: &Checker) -> Vec<TextRange> {
     let mut keys = Keys(Vec::new());
     keys.visit_body(checker.body());
@@ -85,8 +83,6 @@ impl<'a> Visitor<'a> for Keys {
     }
 }
 
-// Moving the assignment down to its first use cannot change what the function does: nothing reads or binds the name
-// between the two, and a constant is the same wherever it is built.
 fn check_assign<'a>(
     checker: &Checker<'a>,
     scope: &FunctionNames<'a>,
@@ -99,10 +95,8 @@ fn check_assign<'a>(
     if names.declared_outer.contains(name) || names.rebound.contains(name) || names.reads_by_text {
         return;
     }
-    // The name must be read, not bound again, and every mention must sit in this block after the assignment. A use
-    // before the assignment may run again in a loop, and a use outside the block may run when the block is left by an
-    // exception, so either would see the name unbound after the move. One pass finds the first use and stops at the
-    // first use out of place, as a name a function mentions often is checked once per assignment of it.
+    // An earlier read can run again on the next iteration. An outside read can run if an exception leaves this block
+    // before the new assignment site.
     let block = TextRange::new(body[0].start(), body[body.len() - 1].end());
     let mut earliest: Option<(TextRange, ExprContext)> = None;
     for (range, context) in names.mentions.get(name).into_iter().flatten().copied() {
@@ -136,8 +130,7 @@ fn check_assign<'a>(
     if offset == 0 || checker.has_comment_in(TextRange::new(assign.start(), next.start())) {
         return;
     }
-    // Two constants that wait for the same use would take turns moving down past each other, one round after another.
-    // Left out, a constant only moves past statements that are not constants, which ends the fix rounds.
+    // Moving a constant past another one can make repeated fix passes alternate their order.
     if body[index + 1..index + 1 + offset].iter().any(is_constant_assign) {
         return;
     }

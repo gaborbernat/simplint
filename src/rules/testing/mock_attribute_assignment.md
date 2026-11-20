@@ -3,10 +3,10 @@ Flags attributes set on a mock right after it is created.
 ## Why is this bad?
 
 Setting attributes after construction spreads the mock's configuration over several statements.
-[`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock) and its subclasses take any attribute
-as a keyword argument and set it on the new mock, and
-[`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec) passes its extra
-keywords to the mock it creates, so the whole setup fits in one call.
+[`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock) and its subclasses accept attributes
+such as `return_value` and `side_effect` as keyword arguments.
+[`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec) passes extra
+keywords to the mock it creates.
 
 ## Example
 
@@ -226,7 +226,7 @@ No fix is offered when:
   client.timeout = 5
   ```
 
-- an existing keyword holds an expression whose evaluation would be lost;
+- an existing keyword to be replaced has a value other than a literal, so dropping it could change what runs;
 
 - an assignment shares a line with another statement;
 
@@ -238,7 +238,3 @@ No fix is offered when:
   client = MagicMock()
   client.timeout = 5  # seconds
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

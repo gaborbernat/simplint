@@ -1,17 +1,14 @@
-Flags exception classes that no `except` clause in the run names by name.
+Flags stateless exception classes when no handler in the checked production code distinguishes them or their subclasses
+by type.
 
 ## Why is this bad?
 
-Callers handle an error by the type they catch. A class that nothing catches by name adds a name to import and a type to
-document, yet callers cannot tell it from a built-in exception, which says the same thing. The
-[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#244-decision) asks for built-in exception
-classes where they fit, and Jack Diederich's
-[Stop Writing Classes](https://us.pycon.org/2012/schedule/presentation/352/) removes needless exception classes from
-real code. Raising a built-in such as [`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError)
-keeps the program to the types Python already has. A
-[style-guide discussion](https://github.com/amontalenti/elements-of-python-style/issues/9) records David Beazley and
-others arguing for custom types, so that an `except ValueError` cannot swallow unrelated bugs. A class that no handler
-names gives no such protection.
+Use a built-in exception when callers already handle the failure that way. In the example, `ConfigError` adds a type to
+import and document, but no handler distinguishes it from other invalid values. A custom exception is useful when a
+caller needs to recover from this failure without catching unrelated
+[`ValueError`](https://docs.python.org/3/builtins/exceptions.html#ValueError)s. The
+[Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#244-decision) recommends built-in
+exceptions when they fit.
 
 ## Example
 
@@ -35,10 +32,10 @@ def load(path: str) -> None:
 
 ### Active on
 
-- **Exception classes no handler names**: a class whose base is
-  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception),
-  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException), a class of the run that is one,
-  or a standard-library exception, with no `except` clause in non-test code that names it or a subclass of it.
+- **Module-level exception classes** are candidates when no handler in the checked production files names the class or a
+  subclass. Simplint follows inheritance from
+  [`BaseException`](https://docs.python.org/3/builtins/exceptions.html#BaseException), including through other project
+  classes.
 
   ```python report
   class ConfigError(Exception):
@@ -52,7 +49,8 @@ def load(path: str) -> None:
       pass
   ```
 
-- **Standard-library exception bases**: a class of a standard-library module whose name ends in `Error`, `Exception` or
+- **Standard-library exception bases**: a class of a standard-library module whose name ends in `Error`,
+  [`Exception`](https://docs.python.org/3/builtins/exceptions.html#Exception) or
   [`Warning`](https://docs.python.org/3/builtins/exceptions.html#Warning) counts as an exception base.
 
   ```python report
@@ -63,8 +61,8 @@ def load(path: str) -> None:
       pass
   ```
 
-- **Catches in test modules**: an `except` clause in a test module, or a `pytest.raises(...)` block, does not count, so
-  the class stays reported.
+- **Test modules** can define or catch an exception without affecting this rule. A `pytest.raises(...)` assertion also
+  leaves the production diagnostic in place.
 
   ```python report file=app/errors.py
   class ConfigError(Exception):
@@ -82,8 +80,7 @@ def load(path: str) -> None:
           pass
   ```
 
-- **What counts as naming a class in a handler**: a class named in any of these ways is caught by name, so it is not
-  reported:
+- **Handlers that distinguish an exception by type** include these cases.
 
   - **A class named in a tuple of an `except` clause**: each class of the tuple counts.
 
@@ -321,9 +318,8 @@ def load(path: str) -> None:
       pass
   ```
 
-- **Classes with state**: a class that assigns attributes, or defines `__init__`, is kept, since a handler may read
-  attributes off it that a built-in cannot carry. The rule does not follow each attribute read, so any such class is
-  skipped.
+- **Classes with state** may supply information that callers read from the exception. Simplint skips a class that
+  defines `__init__`, assigns or annotates a class attribute, or assigns an attribute on `self`.
 
   ```python ok
   class ConfigError(Exception):
@@ -332,8 +328,9 @@ def load(path: str) -> None:
           self.key = key
   ```
 
-- **A base class with a caught subclass**: a handler that names a subclass also catches its bases, so only the subclass
-  is needed. A base is reported only when no subclass of it is caught.
+- **A base class with a caught subclass** stays in the hierarchy. For example, `except ConfigError` distinguishes
+  `ConfigError`, so simplint keeps both it and its base `AppError`. The handler itself catches only `ConfigError` and
+  its subclasses.
 
   ```python ok file=app/errors.py
   class AppError(Exception):
@@ -355,16 +352,15 @@ def load(path: str) -> None:
           pass
   ```
 
-- **Warnings**: a subclass of `Warning` is raised to be seen, not caught, so it is not reported.
+- **Warning subclasses** can be selected by warning filters.
 
   ```python ok
   class ConfigWarning(UserWarning):
       pass
   ```
 
-The rule has no fix, because the right replacement type depends on what the callers expect, and only the code's author
-knows that.
+The rule offers no fix because changing the exception type can change which handlers run.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- Ruff's [rule list](https://docs.astral.sh/ruff/rules/) has no equivalent check for unused exception types.

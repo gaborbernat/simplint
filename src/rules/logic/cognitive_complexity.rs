@@ -22,29 +22,27 @@ pub fn cognitive_complexity(checker: &Checker) {
     }
 }
 
-// `nesting` is the depth an inlined body starts at, so its increments grow from there.
+// Inlining a function adds its caller's nesting depth to the branches in its body.
 pub(super) fn score(body: &[Stmt], nesting: usize) -> usize {
     let mut score = Score { nesting, ..Score::default() };
     score.visit_body(body);
     score.total
 }
 
-// The nesting an inlined body starting at `range` would have, or `None` when the walk does not reach `range`.
+// A call inside a nested definition contributes nothing to the enclosing function's score.
 pub(super) fn score_probed(body: &[Stmt], range: TextRange) -> (usize, Option<usize>) {
     let mut score = Score { probe: Some(range), ..Score::default() };
     score.visit_body(body);
     (score.total, score.probed)
 }
 
-// Mirrors SonarSource's Python analyzer: only bodies nest, so a condition counts at the level of its statement, and
-// comprehensions add nothing.
 #[derive(Default)]
 struct Score {
     total: usize,
     nesting: usize,
-    // Shared by a run of one boolean operator, which counts once.
+    // Consecutive uses of the same boolean operator add one point in total.
     boolean: Option<ast::BoolOp>,
-    // For a call site an inlined helper would move, the nesting it would start at.
+    // Inlining a helper moves its branches to the nesting depth of this call.
     probe: Option<TextRange>,
     probed: Option<usize>,
 }
@@ -64,7 +62,6 @@ impl Score {
         self.nested(|score| score.visit_body(body));
     }
 
-    // The `else` of a loop or a `try` adds one, as the `else` of an `if` does.
     fn else_body(&mut self, body: &[Stmt]) {
         if !body.is_empty() {
             self.total += 1;
@@ -76,7 +73,7 @@ impl Score {
 impl<'a> Visitor<'a> for Score {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            // A nested function or class is scored on its own, so its body does not add to this one.
+            // Nested definitions do not contribute to the enclosing function's score.
             Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 self.branch();

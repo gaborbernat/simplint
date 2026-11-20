@@ -15,7 +15,7 @@ pub struct Cycle {
     pub(super) range: TextRange,
     pub(super) chain: Vec<FileId>,
     pub(super) omitted: usize,
-    // The strongly connected component the file is in, numbered per run: files of one cycle share it.
+    // All files in one strongly connected component share an id within this run.
     pub(super) component: usize,
 }
 
@@ -32,7 +32,7 @@ impl Cycle {
         self.omitted
     }
 
-    // Ids are numbered per run, so the key hashes the paths, which a cached report must match in the next run.
+    // File ids can change between runs, so cache the paths.
     pub(super) fn cache_key_with(&self, files: &FileIds, state: &mut CacheKeyHasher) {
         range_key(self.range(), state);
         self.omitted.cache_key(state);

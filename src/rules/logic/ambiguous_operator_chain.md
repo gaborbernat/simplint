@@ -3,10 +3,10 @@ bitwise operation written without parentheses, such as `a > 1 & b < 2`.
 
 ## Why is this bad?
 
-Python [joins a comparison chain with `and`](https://docs.python.org/3/reference/expressions.html#comparisons):
-`a op1 b op2 c` is `a op1 b and b op2 c`. That reads as intended for `a < b <= c`, but `key == value in table` means
-`key == value and value in table`, and `a != b != c` never compares `a` with `c`. A bitwise operator binds tighter than
-a comparison, so the NumPy or pandas mask `a > 1 & b < 2` is `a > (1 & b) < 2`, not `(a > 1) & (b < 2)`.
+Python [compares adjacent operands](https://docs.python.org/3/reference/expressions.html#comparisons) in a chain and
+evaluates each at most once. So `key == value in table` tests both `key == value` and `value in table`, and
+`a != b != c` never compares `a` with `c`. Bitwise operators bind more tightly than comparisons. To combine two array
+comparisons into a mask, write `(a > 1) & (b < 2)`. Without the parentheses, Python compares both ends with `1 & b`.
 
 ## Example
 
@@ -26,8 +26,8 @@ def has_entry(key, value, table):
 
 ### Active on
 
-- **A chain that mixes kinds or turns around**: `in` or `not in` anywhere in a chain, `is` with another operator,
-  ordering with equality, or `<` with `>`.
+- **A chain that mixes kinds or turns around**: `in`, `not in` or `is not` anywhere in a chain, `is` with another
+  operator, ordering with equality, or `<` with `>`.
 
   ```python report
   def valid(low, value):
@@ -41,7 +41,7 @@ def has_entry(key, value, table):
       return first != second != third
   ```
 
-- **A bitwise operation as a middle operand**, without parentheses.
+- **An unparenthesized `&`, `|` or `^` expression as a middle operand.**
 
   ```python report
   def mask(frame):
@@ -58,8 +58,7 @@ def has_entry(key, value, table):
       return low <= value < high
   ```
 
-- **A single comparison with a bitwise operand**, such as `flags & MASK == 0` or `mode == A | B`, which mean what they
-  say.
+- **A single comparison with a bitwise operand**, such as `flags & MASK == 0` or `mode == A | B`.
 
   ```python ok
   def is_even(number):
@@ -68,9 +67,8 @@ def has_entry(key, value, table):
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** no rule.
 - **[pylint](https://github.com/pylint-dev/pylint):**
   [bad-chained-comparison](https://pylint.readthedocs.io/en/stable/user_guide/messages/warning/bad-chained-comparison.html)
   (W3601).
-- **[wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide):** WPS465, WPS409, WPS311
-  and WPS532.
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) checks heterogeneous
+  comparisons (WPS409), repeated membership tests (WPS311) and chained identity comparisons (WPS532).

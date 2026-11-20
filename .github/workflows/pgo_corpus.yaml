@@ -33,7 +33,6 @@ jobs:
         run: uv run --no-project --python 3.15 python -m tasks.pgo manifest
       - name: 🧹 Run prek
         run: uvx prek run --all-files
-      # A run with nothing new opens no PR; the shared workflow rejects an empty patch.
       - name: 📝 Save the changes
         id: diff
         run: |
@@ -63,8 +62,7 @@ jobs:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
     permissions:
       contents: read
-  # A tag reads only its own caches and the default branch's, so the release builds find the sdists only if main saved
-  # them; each runner OS keeps its own copy, as the release's PGO legs restore by OS.
+  # Seed the default-branch cache for each runner OS so tagged releases can reuse the pinned downloads.
   cache:
     name: 💾 Cache the PGO sdists @ ${{ matrix.os }}
     if: github.event_name != 'schedule'

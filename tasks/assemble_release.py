@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 #: The changelog's title, which the release history and the docs page both start from.
 TITLE: Final[str] = "# Changelog"
-#: The anchor line release_section writes above each release and category; generate_changelog reads them back.
+#: generate_changelog reads these anchors to preserve links to releases and categories.
 ANCHOR: Final[re.Pattern[str]] = re.compile(r'<a name="(?P<name>[^"]+)"></a>')
 RULE_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
     r"""
@@ -44,9 +44,6 @@ def rule_source_name(match: re.Match[str]) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    # Assemble the pending fragments into a release dated today from the command line.
-    #
-    # :param argv: the arguments to parse, ``sys.argv`` when omitted
     parser = argparse.ArgumentParser(description="Assemble the release history")
     parser.add_argument("version")
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -55,12 +52,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def assemble(root: Path, version: str, date: str) -> None:
-    # Move the pending fragments into the changelog as a new release section and delete them.
-    #
-    # :param root: the project root holding ``CHANGELOG.md`` and ``changelog.d``
-    # :param version: the version being released
-    # :param date: the release date in ISO format
-    # :raises ValueError: if the changelog lacks its heading or a fragment is invalid
     changelog = root / "CHANGELOG.md"
     history = changelog.read_text(encoding="utf-8")
     heading = f"{TITLE}\n"
@@ -72,8 +63,7 @@ def assemble(root: Path, version: str, date: str) -> None:
 
     for match in RULE_SOURCE_LINK.finditer(entry):
         rule_source_name(match)
-    # GitHub Release notes and PyPI resolve a relative link against no file, so the changelog links each file of the
-    # release it describes where the files of that release are browsed.
+    # The release notes also appear on GitHub and PyPI. Pin file links to the tag so they work in both places.
     blob = f"https://github.com/gaborbernat/simplint/blob/{version}"
     entry = _FRAGMENT_LINK.sub(lambda match: f"]({blob}/{match['path']})", entry)
     changelog.write_text(f"{heading}\n{entry}{history.removeprefix(heading)}", encoding="utf-8")
@@ -82,13 +72,6 @@ def assemble(root: Path, version: str, date: str) -> None:
 
 
 def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[str]:
-    # Render the fragments as Markdown lines of one release, grouped by category.
-    #
-    # :param fragments: the fragment files, named ``<issue>.<category>.md`` or ``+<slug>.<category>.md``
-    # :param title: the release heading text
-    # :param anchor: the HTML anchor of the release, also the prefix of each category anchor
-    # :returns: the lines of the release section
-    # :raises ValueError: if a fragment has an invalid name or is not one nonempty paragraph
     sections: dict[str, list[str]] = {}
     names = {
         "feature": "Added",
@@ -131,7 +114,6 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
     return release
 
 
-# The line ANCHOR reads back.
 def _anchor_line(name: str) -> str:
     return f'<a name="{name}"></a>'
 

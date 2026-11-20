@@ -1,15 +1,11 @@
-Flags imports of a backport package whose standard library module every supported Python version ships. Importing the
-standard library module instead lets the project drop the backport from its dependencies.
+Flags imports of selected backports when the file targets a Python version with a standard library alternative.
 
 ## Why is this bad?
 
-A backport exists for the versions that lack a standard library module. Once the lowest supported version has that
-module, the backport only adds an install and a second implementation that can drift from the first. `tomli`, for
-example, is [`tomllib`](https://docs.python.org/3/library/tomllib.html) from Python 3.11 on
-([PEP 680](https://peps.python.org/pep-0680/)), and its
-[README](https://github.com/hukkin/tomli#building-a-tomlitomllib-compatibility-layer) asks projects to require it only
-on older versions. The [Scientific Python guide](https://learn.scientific-python.org/development/patterns/backports/)
-says the same of any backport: it stops being a dependency once the project drops those versions.
+If the project only needs an API that its minimum Python version provides, the standard library import saves users an
+extra dependency. For example, Python 3.11 added [`tomllib`](https://docs.python.org/3/library/tomllib.html), and
+[Tomli's compatibility example](https://github.com/hukkin/tomli#building-a-tomlitomllib-compatibility-layer) requires
+`tomli` only below 3.11. Check which features you use before dropping a backport that offers a newer API.
 
 ## Example
 
@@ -33,10 +29,8 @@ print(loads("name = 'demo'"))
 
 ## Configuration
 
-- The Python version the code targets, taken from
-  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to
-  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);
-  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
+- The [target Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version) for
+  the file
 
   ```toml config
   [tool.ruff]
@@ -54,8 +48,9 @@ print(loads("name = 'demo'"))
 ### Active on
 
 - **`tomli`, `exceptiongroup`, `async_timeout` and `taskgroup`** from Python 3.11, and **`importlib_metadata` and
-  `importlib_resources`** from Python 3.10, when the target version is at least the version listed. A backport the
-  target version still needs is left alone.
+  `importlib_resources`** from Python 3.10, when the target version is at least the version listed. For `async_timeout`,
+  `taskgroup`, `importlib_metadata` and `importlib_resources`, the rule reports the import for manual review because the
+  APIs may differ.
 
   ```toml config
   [project]
@@ -109,7 +104,8 @@ print(loads("name = 'demo'"))
   print(tomli.loads("name = 'demo'"))
   ```
 
-- **Imports under `try`**: a guarded import is a fallback that [dependency-import-guard](SMP303.html) reviews.
+- **Imports directly in a `try` body, handler, `else` or `finally` clause**. These may implement a fallback.
+  [dependency-import-guard](SMP303.html) checks guards around required imports.
 
   ```toml config
   [project]
@@ -208,7 +204,7 @@ print(loads("name = 'demo'"))
   VALUE = BaseExceptionGroup
   ```
 
-The fix leaves `pyproject.toml` alone. The message names the dependency, which can go once nothing imports the backport.
+The fix leaves `pyproject.toml` alone. Remove the dependency after checking whether any supported code still needs it.
 
 ## Ruff overlap
 
@@ -221,8 +217,6 @@ an import that also names something A004 does not report, such as an alias.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) and
-  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/) do the same for `mock` and `typing_extensions`;
-  [A004](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/) reports an unaliased `exceptiongroup` import as
-  shadowing a builtin, without dropping it.
+Ruff's [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) replaces imports from `mock`.
+[UP035](https://docs.astral.sh/ruff/rules/deprecated-import/) checks deprecated imports, including selected names from
+`typing_extensions`.

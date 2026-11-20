@@ -1,5 +1,5 @@
-Flags module-scope variables whose leading underscore does not match their visibility. A name that no other module
-imports and `__all__` does not list needs one, and a name that `__all__` lists must not have one.
+Checks the leading underscore on module variables. For a name with no references from other modules, `__all__`
+determines its spelling. Listed names take no leading underscore, and unlisted names take one.
 [module-variable-case](SMP102.html) checks the case.
 
 ## Why is this bad?
@@ -14,9 +14,9 @@ imports of other modules keeps the two in line.
 
 The expected underscore comes from the first of these cases that applies:
 
-1. **Another module in the run imports it**: keep its leading underscore.
+1. **Another module uses the name.** Keep its current spelling, with or without a leading underscore.
 1. **`__all__` lists it**: no leading underscore.
-1. **Neither**: a leading underscore. In a module without `__all__`, every variable counts as private.
+1. **Neither**: add a leading underscore.
 
 ## Example
 
@@ -64,14 +64,14 @@ __all__ = ["LOGGER"]
   __all__ = ["_limit"]
   ```
 
-- **Names neither listed in `__all__` nor imported by another module**: they have a leading underscore. In a module
-  without `__all__`, every variable counts as private.
+- **Names neither listed in `__all__` nor imported by another module**: they have a leading underscore.
 
   ```python report
   LIMIT = 3
   ```
 
-simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("name")` with string literals.
+simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("name")` with string literals. A
+dynamically built export list makes visibility uncertain, so the rule skips that module.
 
 ### Exceptions
 
@@ -90,10 +90,10 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   ```
 
 - **Names [module-variable-case](SMP102.html) leaves alone**: the same exceptions apply, since renaming these breaks the
-  program or the tool that reads them by their exact spelling. They include dunder names, class-like names, type aliases
-  from a `type` statement, names also bound by an import, `def` or `class`, aliases of a function the module defines,
-  names bound only as loop targets, annotations alone under `if TYPE_CHECKING:`, the framework names and
-  `naming.keep-names`.
+  program or the tool that reads them by their exact spelling. They include names in a Sphinx configuration file, dunder
+  names, class-like names, type aliases from a `type` statement, names also bound by an import, `def` or `class`,
+  aliases of a function the module defines, names bound only as loop targets, annotations alone under
+  `if TYPE_CHECKING:`, the framework names and `naming.keep-names`.
 
   ```python ok
   Alias = int
@@ -167,16 +167,11 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
 ### Fix
 
-The fix adds the leading underscore, or removes every leading underscore, and keeps the rest of the name as written. It
-renames every use in the file, including the `__all__` entry. **Unsafe fix:** always, as importers outside the run keep
-the old name, and so do string references in unchecked files, and code that loads a module under a name no file of the
-run defines, such as a test that copies a file's text into a module.
+The fix adds a leading underscore to a private variable or removes all leading underscores from a listed variable. It
+updates uses in the file and the entry in `__all__`. The fix is unsafe because callers outside the run may still use the
+old spelling.
 
-In a public module of a library, a variable whose name the module offers gets no fix, whether `__all__` lists it or not:
-its name is the API users import, so the report asks for the variable in `__all__` or a rename by hand, and for a listed
-variable only the rename by hand.
-
-Removing every underscore, rather than one, keeps `__x` from becoming `_x`, which the rule would report again.
+In a public module of a library, rename the variable by hand or, for an unlisted public name, add it to `__all__`.
 
 ```python report
 __all__ = ["_LIMIT"]
@@ -200,8 +195,9 @@ _limit = 3
 print(_limit)
 ```
 
-No fix is offered in the cases [module-variable-case](SMP102.html) lists under its fix, such as an importer outside the
-run, a string that holds the old name, or another module that assigns the variable as an attribute of its module.
+No fix is offered in the cases [module-variable-case](SMP102.html) lists under its fix, including a string containing
+the old name, a collision with the new name or a computed write such as
+[`setattr(module, key, value)`](https://docs.python.org/3/builtins/functions.html#setattr).
 
 ### Related rules
 

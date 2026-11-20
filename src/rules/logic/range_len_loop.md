@@ -4,8 +4,8 @@ it.
 
 ## Why is this bad?
 
-The index loop spells out what `for` already does: it looks each item up again by position, and every `seq[i]` is a
-place to pick the wrong sequence or index. It also works only for sequences, while `for item in seq` takes any iterable.
+When a loop only uses the index to read each item, iterating over the items removes a lookup and works with iterables
+that have no length or integer indexes.
 
 ## Example
 
@@ -27,12 +27,13 @@ def show(names):
 
 ### Active on
 
-- **`for` loops over `range(len(seq))`**, where `seq` is a name or an attribute chain, whose body reads `seq[i]`.
-  **Unsafe fix:** the loop iterates `seq` and binds the singular of its name, `names` giving `name`, which replaces each
-  `seq[i]`. It is offered when `i` is read only as `seq[i]` and nowhere after the loop, the body does not rebind, assign
-  to or call a method of `seq`, and the singular is a name the loop's function, or the module for a module-level loop,
-  does not use yet. It is unsafe because a class may define `__getitem__` and `__len__` with an `__iter__` that yields
-  something else, as a mapping does.
+- **`for` loops over `range(len(seq))`**, where `seq` is a name or an attribute chain, whose body reads `seq[i]`. The
+  unsafe fix replaces `names[i]` with `name` and iterates over `names`. The loop must be the only binding of `i`, and
+  every read of `i` must index `seq` in the loop body. The fix skips bodies that rebind the sequence's root name, access
+  an attribute of `seq`, or write or otherwise subscript `seq`. To name the item it strips a final `s` and any leading
+  underscores. It skips candidates that still end in `s`, conflict with a keyword or built-in, or already occur in the
+  scope. Check what iterating over the object yields. For example, a mapping yields its keys even if it also supports
+  integer indexing.
 
   ```python report
   def show(names):
@@ -82,6 +83,6 @@ def show(names):
 
 ## Other tools
 
-- [Pylint](https://github.com/pylint-dev/pylint) reports the same loops as
+- [Pylint](https://github.com/pylint-dev/pylint) suggests `enumerate()` for index loops in
   [consider-using-enumerate](https://pylint.readthedocs.io/en/stable/user_guide/messages/convention/consider-using-enumerate.html)
   (C0200), with no fix.

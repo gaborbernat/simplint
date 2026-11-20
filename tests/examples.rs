@@ -16,7 +16,7 @@ use tempfile::TempDir;
 use common::{empty_project, project, read, simplint, text};
 use examples::{Block, Example, Fence, Role, parse};
 
-// Each rule's examples are checked in one run, so a wrong example is reported along with every other one.
+// Collect failures across examples so one broken example does not hide the rest.
 #[test]
 fn rule_examples_hold() {
     let root = empty_project();
@@ -45,7 +45,7 @@ fn example_failures(rules: &[Value]) -> Vec<String> {
     failures
 }
 
-// Every block parses without syntax the example's target version lacks, so a reader on that version can run it.
+// Reject syntax that Ruff identifies as unavailable at the documented minimum Python version.
 fn check_target(example: &Example) -> Result<(), String> {
     let version = target_version(example.config.as_ref())?;
     let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
@@ -58,8 +58,7 @@ fn check_target(example: &Example) -> Result<(), String> {
     Ok(())
 }
 
-// The version an example's config targets: `[tool.ruff] target-version`, else the lower bound of
-// `[project] requires-python`, else Ruff's default.
+// Keep the fallback at Python 3.11 to match tasks/compile_examples.py.
 fn target_version(config: Option<&Fence>) -> Result<PythonVersion, String> {
     let Some(config) = config else { return Ok(PythonVersion::PY311) };
     let table: toml::Table = toml::from_str(&config.source).map_err(|error| format!("config is not TOML: {error}"))?;

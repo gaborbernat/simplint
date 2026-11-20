@@ -1,15 +1,14 @@
-Flags a module or class constant assigned a bare [`object()`](https://docs.python.org/3/builtins/functions.html#object)
-placeholder, which [`sentinel`](https://docs.python.org/3/builtins/functions.html#sentinel) from Python 3.15 names
-([PEP 661](https://peps.python.org/pep-0661/)).
+Flags `object()` placeholders assigned to a name directly in a module or class body when the target is Python 3.15 or
+later.
 
 ## Why is this bad?
 
-A bare `object()` reprs as an address, so a traceback, a debugger or a function signature shows
-`<object object at 0x7f...>` instead of the placeholder's name. [PEP 661](https://peps.python.org/pep-0661/) lists two
-more problems: a copy or a pickle round trip gives a new object, so an `is` test fails, and the placeholder has no type
-of its own to annotate with. [`sentinel`](https://docs.python.org/3/builtins/functions.html#sentinel) fixes all three.
-Its repr is the name, a copy or an unpickled sentinel is the same object, and it works in a type hint such as
-`int | MISSING`.
+A function signature that uses `object()` as a default displays an address, such as `<object object at 0x7f...>`.
+Copying or pickling the object also breaks identity checks. With
+[`MISSING = sentinel("MISSING")`](https://docs.python.org/3/builtins/functions.html#sentinel), the signature shows the
+name, copies preserve identity, and `int | MISSING` is a valid type annotation. Pickling preserves identity when the
+sentinel is reachable by its name in its defining module. [PEP 661](https://peps.python.org/pep-0661/) describes these
+guarantees.
 
 ## Example
 
@@ -46,9 +45,8 @@ _MISSING = sentinel("_MISSING")
 
 ## What it does
 
-Reports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class
-body and the name is assigned only once in that body. Assignments in a method, a nested class or a comprehension of the
-class do not count, nor does a name of the same spelling in another class or the module.
+The rule checks a single-name assignment such as `MISSING = object()` directly in a module or class body. The name must
+be bound only once in that scope. A binding in a method or nested class belongs to a different scope.
 
 ### Active on
 
@@ -132,10 +130,9 @@ class Config:
 
 ### Fix
 
-The fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`
-loads only from the attribute it is stored under, so a class attribute is named with its classes, as
-`sentinel("Config.SENTINEL")`. A placeholder in a class inside a function is reported without a fix, since no qualified
-name reaches it.
+The fix is unsafe because it changes the representation and pickling behavior. For a class attribute it uses a qualified
+name, such as `sentinel("Config.SENTINEL")`, so pickle can find the object through the module. A class defined inside a
+function has no such path, so simplint reports it without a fix.
 
 ```toml config
 [project]
@@ -157,7 +154,3 @@ def build():
 
     return Config
 ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

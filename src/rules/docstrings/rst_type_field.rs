@@ -18,8 +18,7 @@ pub fn rst_type_field(checker: &Checker) {
         for field in &target.docstring.fields {
             let range = field.range_in(&target.docstring);
             let text = field.text();
-            // The fix drops a type only where the annotation already holds it; elsewhere the docstring's text, such as
-            // `list of str`, may not be an annotation at all.
+            // A type such as `list of str` cannot simply move into an annotation.
             let (message, fix, title) = match (field.kind, field.subject()) {
                 (FieldKind::Type, Some(name)) => (
                     format!("`{text}` puts a type in the docstring; annotate `{name}` in the signature instead"),

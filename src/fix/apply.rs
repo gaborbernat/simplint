@@ -17,10 +17,8 @@ pub(super) struct FixResult {
     pub(super) fixes: FixTable,
 }
 
-// Ruff's `fix_file` and `apply_fixes`, which `ruff_linter` keeps private: fixes apply in order of their first edit, a
-// fix with an edit overlapping or touching one already applied waits for the next pass, and only one fix per isolation
-// group applies per pass. Unlike Ruff, the edits of two fixes may interleave: a rename edits every use of a name across
-// the module, so with Ruff's rule a module of renames would take one pass each.
+// A rename edits every use of a name. Let unrelated edits interleave so several renames can apply in one pass.
+// Defer fixes with touching or overlapping edits and additional fixes from the same isolation group.
 pub(super) fn fix_file(
     source: &str,
     diagnostics: &[Diagnostic],

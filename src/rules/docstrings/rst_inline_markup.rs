@@ -7,7 +7,7 @@ use crate::rst::{Cause, bare_roles, classify_docstring, literal_findings};
 
 pub fn rst_inline_markup(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
-        // Positions in the source hold only for a docstring whose text is its source.
+        // Inline findings need exact offsets into the original string.
         let Some(content) = target.docstring.content else {
             continue;
         };

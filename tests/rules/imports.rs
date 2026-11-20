@@ -305,8 +305,7 @@ fn private_import_path_nested(source: &str, expected: usize) {
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
-// Each hint names a fix, which the `fixed` files apply: SMP310 must accept the result, so a hint never leads to another
-// report. An import the hint writes in backticks must be a line of the fixed files, so a wrong hint fails here.
+// A hint that quotes an import should match a line in the corrected source, and the corrected files should pass SMP310.
 fn hinted_imports(message: &str) -> Vec<&str> {
     message
         .split('`')
@@ -906,9 +905,7 @@ fn private_module_object_import_reports_both_import_and_attribute() {
     );
 }
 
-// Ruff's PLC2701 reports a private import that a module or function uses at runtime, or never uses, and leaves the
-// rest to this rule: uses only in annotations, class bodies, relative imports and a module's own package. This rule
-// leaves each of Ruff's reports to it whether or not the project selects PLC2701.
+// The overlap with PLC2701 depends on where the import is used. A use only in an annotation differs from a runtime use.
 #[test_case("consumer.py", "from pkg._api import make\n\nVALUE = make()\n", false ; "runtime_use")]
 #[test_case("consumer.py", "from pkg._api import make\n\nVALUE = 1\n", false ; "unused_import")]
 #[test_case("consumer.py", "import pkg._api as api\n\nVALUE = api.make()\n", false ; "runtime_module_alias")]
@@ -1017,8 +1014,7 @@ fn sibling_import_reported(root: &Path) -> bool {
     common::check(root, &["--select", "absolute-sibling-import"]).1.contains("SMP302")
 }
 
-// flake8-lazy keeps each module's `__lazy_modules__` in step with its absolute imports, so a project that runs it keeps
-// them absolute.
+// Switching to a relative import can invalidate a flake8-lazy declaration.
 #[test_case("[tool.flake8-lazy]\n", None, false ; "pyproject_table")]
 #[test_case("", Some((".pre-commit-config.yaml", HOOK)), false ; "pre_commit_hook")]
 #[test_case("", Some((".pre-commit-config.yml", HOOK)), false ; "pre_commit_hook_yml")]
@@ -1070,7 +1066,7 @@ fn absolute_sibling_import_follows_flake8_lazy(pyproject: &str, hook: Option<(&s
     assert_eq!(sibling_import_reported(common::project(&files).path()), reported);
 }
 
-// The hook of the repository that holds the project counts, as pre-commit reads it from the repository root.
+// A repository's pre-commit hook can apply to a project below the repository root.
 #[test]
 fn absolute_sibling_import_finds_hook_above_the_project() {
     let mut files = sibling_package("monorepo/pkg/");
@@ -1080,7 +1076,6 @@ fn absolute_sibling_import_finds_hook_above_the_project() {
     assert!(!sibling_import_reported(common::project(&files).path().join("monorepo").as_path()));
 }
 
-// The search stops at the repository root, so a hook above it does not count.
 #[test]
 fn absolute_sibling_import_stops_at_the_repository_root() {
     let mut files = sibling_package("outer/repo/");
@@ -1090,8 +1085,6 @@ fn absolute_sibling_import_stops_at_the_repository_root() {
     assert!(sibling_import_reported(common::project(&files).path().join("outer/repo").as_path()));
 }
 
-// Outside a repository, the search stops at the run's project, so a hook above it, as in the home directory, does not
-// count.
 #[test]
 fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
     let mut files = sibling_package("home/repo/");
@@ -1100,8 +1093,7 @@ fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
     assert!(sibling_import_reported(common::project(&files).path().join("home/repo").as_path()));
 }
 
-// A `[tool.flake8-lazy]` table in the settings pyproject, which a workspace member's own `pyproject.toml` does not
-// hold.
+// The workspace settings can enable flake8-lazy outside the member's own `pyproject.toml`.
 #[test]
 fn absolute_sibling_import_finds_table_in_settings_pyproject() {
     let mut files = sibling_package("workspace/member/");
@@ -1113,7 +1105,6 @@ fn absolute_sibling_import_finds_table_in_settings_pyproject() {
     assert!(!sibling_import_reported(common::project(&files).path().join("workspace").as_path()));
 }
 
-// A nested project with its own `[project]` sees the hook of the project around it.
 #[test]
 fn absolute_sibling_import_nested_project_sees_outer_hook() {
     let mut files = sibling_package("");
@@ -1124,7 +1115,6 @@ fn absolute_sibling_import_nested_project_sees_outer_hook() {
     assert!(!sibling_import_reported(common::project(&files).path()));
 }
 
-// A nested project without a `pyproject.toml` of its own takes the metadata of the project around it.
 #[test]
 fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
     let mut files = sibling_package("");
@@ -1135,7 +1125,6 @@ fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
     assert!(!sibling_import_reported(common::project(&files).path()));
 }
 
-// Without a `pyproject.toml`, the hook configuration of the directory the run starts from counts.
 #[test]
 fn absolute_sibling_import_without_pyproject_reads_hook_at_run_root() {
     let mut files = sibling_package("");
@@ -1143,7 +1132,6 @@ fn absolute_sibling_import_without_pyproject_reads_hook_at_run_root() {
     assert!(!sibling_import_reported(common::project(&files).path()));
 }
 
-// `--isolated` reads no pyproject and no hook configuration, so the hook of the project does not count.
 #[test]
 fn isolated_run_does_not_read_hook_configurations() {
     let mut files = sibling_package("");
@@ -1154,7 +1142,6 @@ fn isolated_run_does_not_read_hook_configurations() {
     assert_eq!((isolated.contains("SMP302"), sibling_import_reported(root.path())), (true, false));
 }
 
-// A hook configuration that cannot be parsed counts as no hook, with a warning from the runs whose rules read it.
 #[test_case("SMP101", (0, false) ; "rule_off_does_not_read_it")]
 #[test_case("absolute-sibling-import", (1, true) ; "rule_on_reads_it")]
 fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
@@ -1165,7 +1152,6 @@ fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
     assert_eq!((status, stderr.contains("Failed to parse")), expected);
 }
 
-// A hook configuration that cannot be read counts as no hook, with a warning from the runs whose rules read it.
 #[cfg(unix)]
 #[test_case("SMP101", (0, false) ; "rule_off_does_not_read_it")]
 #[test_case("absolute-sibling-import", (1, true) ; "rule_on_reads_it")]
@@ -1178,7 +1164,7 @@ fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
     assert_eq!((status, stderr.contains("Failed to read")), expected);
 }
 
-// A hook configuration in Latin-1 is read as far as its ids go, so its other bytes do not stop the run.
+// The hook ID is ASCII even when unrelated text in the file is not UTF-8.
 #[test]
 fn latin1_hook_configuration_still_counts() {
     let mut files = sibling_package("");
@@ -1192,7 +1178,7 @@ fn latin1_hook_configuration_still_counts() {
     assert!(!sibling_import_reported(root.path()));
 }
 
-// A function that rebinds a module variable through `global` changes it after an import would have bound it.
+// A `from` import would retain the old value after the function reassigns the module global.
 #[test]
 fn module_attribute_import_keeps_names_a_function_rebinds_through_global() {
     let root = common::project(&[
@@ -1204,8 +1190,6 @@ fn module_attribute_import_keeps_names_a_function_rebinds_through_global() {
     assert_eq!((stdout.contains("SMP304 Import `_run`"), stdout.contains("SMP304 [*]")), (true, false), "{stdout}");
 }
 
-// An attribute read off a module bound by `__import__` or a plain import is an import of that attribute, not a patch of
-// the module, so the module's importer is still reported.
 #[test_case("numpy_api = __import__(\"numpy_api\")" ; "dunder_import")]
 #[test_case("import numpy_api" ; "plain_import")]
 fn module_attribute_import_reports_a_module_read_through_an_import_of_its_name(import: &str) {
@@ -1264,8 +1248,8 @@ fn module_attribute_import_fixes_after_first_report_is_suppressed() {
     );
 }
 
-// `from . import b` at import time reads `VALUE` before `a` has defined it when `b` imports `a` back, so the cycle keeps
-// the reports and withholds the fix. A back-import under `TYPE_CHECKING` is not a runtime import, so no cycle forms.
+// Importing `VALUE` directly would read it before `a` finishes initializing. An import under `TYPE_CHECKING` cannot
+// create that runtime cycle here.
 #[test_case(
     "from . import a\n\n\ndef helper() -> int:\n    return a.VALUE\n", false
     ; "runtime_back_import"
@@ -1285,8 +1269,6 @@ fn module_attribute_import_withholds_the_fix_in_an_import_cycle(partner: &str, f
     assert_eq!((stdout.matches("SMP304 Import").count(), stdout.contains("unsafe fix")), (2, fixable), "{stdout}");
 }
 
-// The fix rewrites the reads of the module only, so a parameter, local, loop or comprehension variable of the same name
-// keeps its attribute reads.
 #[test]
 fn module_attribute_import_fix_leaves_shadowed_reads_alone() {
     let root = common::project(&[
@@ -1306,9 +1288,6 @@ fn module_attribute_import_fix_leaves_shadowed_reads_alone() {
     );
 }
 
-// The project's own top-level package bound under another name is read through that name, as `pd.NaT` is, so only the
-// reads that bypass the package's own names are reported: those through its submodules, and an alias equal to the
-// package name.
 #[test]
 fn module_attribute_import_leaves_aliased_top_level_package_reads_alone() {
     let root = common::project(&[
@@ -1480,9 +1459,8 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
     assert_eq!(missing, Vec::<&str>::new(), "{stdout}");
 }
 
-// The builtins define these names, so their import goes. Ruff's A004 reports an unaliased import of a builtin that
-// another module takes from this one or `__all__` lists, which has no fix here, so this rule leaves it to A004. The
-// other imports keep their report, and the fix removes the statement only when no other module takes the name.
+// Removing a backport import can break a consumer that imports the name from this module. A004 can also report that
+// binding when the import shadows a builtin.
 #[test_case(
     "from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", false, false
     ; "imported_by_another_module"
@@ -1524,8 +1502,6 @@ fn backport_import_follows_builtin_import_shadowing(compat: &str, consumer: &str
     );
 }
 
-// The builtins ignorelist names a builtin that Ruff's A004 lets an import shadow, so the import keeps this rule's
-// report.
 #[test]
 fn backport_import_keeps_report_for_a_builtin_the_ignorelist_allows() {
     let root = common::project(&[
@@ -1542,8 +1518,8 @@ fn backport_import_keeps_report_for_a_builtin_the_ignorelist_allows() {
     assert!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{stdout}");
 }
 
-// A listed import that the list keeps lazy stays eager once the list goes, so the list stays. CPython compiles the body
-// and the handlers of a `try` eagerly, but the `else` of a `try` without a `finally` and the `finally` lazily.
+// Dropping `__lazy_modules__` changes an import's timing if the fix leaves a formerly lazy import eager. Imports in the
+// body and handlers of a `try` are already eager.
 #[test_case("import json\n\nif FLAG:\n    import json as nested\n", false ; "nested_in_if")]
 #[test_case("import json\n\nif FLAG:\n    pass\nelse:\n    import json as fallback\n", false ; "nested_in_else")]
 #[test_case("import json\n\nwith LOCK:\n    from json import dumps\n", false ; "nested_in_with")]
@@ -1578,8 +1554,8 @@ fn lazy_modules_list_keeps_list_for_an_import_the_fix_leaves_eager(body: &str, f
     assert_eq!(common::read(root.path(), "consumer.py").contains("__lazy_modules__"), !fixable);
 }
 
-// A relative import names the module after `from`, so `from . import helper` is held by a list of `pkg`, not by one of
-// `pkg.helper`, and `from .helper import VALUE` is held by `pkg.helper`. The fix makes a held import `lazy`.
+// The module before `import` determines the match. In package `pkg`, `from . import helper` matches `pkg` and `from
+// .helper import VALUE` matches `pkg.helper`.
 #[test_case("pkg.helper", "import pkg.helper", "from . import helper\n", false ; "relative_name_of_listed_submodule")]
 #[test_case(
     "pkg.helper", "import pkg.helper", "from .helper import VALUE\n", true
@@ -1610,7 +1586,6 @@ fn lazy_modules_list_matches_a_relative_import_by_its_module(listed: &str, impor
     assert_eq!((fixed.contains("__lazy_modules__"), fixed.contains(&format!("lazy {relative}"))), (false, held));
 }
 
-// A comment in the import the fix replaces would be deleted with it, so the import keeps its report and no fix.
 #[test_case("from pkg import config\n", true ; "uncommented_import")]
 #[test_case("from pkg import (  # keep: settings live here\n    config,\n)\n", false ; "comment_in_import")]
 #[test_case("from pkg import config  # keep: settings live here\n", true ; "trailing_comment_survives")]
@@ -1632,8 +1607,6 @@ fn module_attribute_import_keeps_an_import_with_a_comment(import: &str, fixable:
     );
 }
 
-// A comment anywhere in the guard, including its handler, would be deleted with the guard, so the guard keeps its
-// report and no fix.
 #[test_case("try:\n    import json\nexcept ImportError:\n    json = None\n", true ; "uncommented_guard")]
 #[test_case("try:\n    import json  # keep\nexcept ImportError:\n    json = None\n", false ; "comment_in_body")]
 #[test_case(
@@ -1651,8 +1624,8 @@ fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bo
     );
 }
 
-// A platform-only module raises `ImportError` on the other platforms, and CPython guards its C accelerators with a
-// fallback, so a guard around them is legitimate. Other private modules, such as `_thread`, ship with every Python.
+// A missing platform module or optional C accelerator can justify an import guard. A leading underscore alone is
+// insufficient.
 #[test_case("asyncio.unix_events", "asyncio", 0 ; "asyncio_unix_events")]
 #[test_case("multiprocessing.popen_forkserver", "multiprocessing", 0 ; "multiprocessing_popen_forkserver")]
 #[test_case("_pickle", "_pickle", 0 ; "accelerator_pickle")]
@@ -1683,8 +1656,6 @@ fn module_attribute_import_outside_modules(source: &str, reported: bool) {
     assert_eq!(stdout.contains("Import `"), reported, "{stdout}");
 }
 
-// The module stays when the run imports a module of the same name or binding, when `module-attributes` keeps it, and
-// a listed module covers its submodules.
 #[test_case(
     "module-attribute-scope = [\"stdlib\"]\n", "from . import helpers\nimport json\n\nTEXT = json.dumps(helpers.VALUE)\n", true
     ; "beside_a_run_module"
@@ -1708,9 +1679,8 @@ fn module_attribute_import_scope(settings: &str, source: &str, reported: bool) {
     assert_eq!(stdout.contains("Import `dumps`") || stdout.contains("Import `join`"), reported, "{stdout}");
 }
 
-// Only the modules importing the package runs need what they import installed, so a plugin module, a test, a guarded
-// or deferred import and an import a version check picks are left alone; the `else` of a `TYPE_CHECKING` check and a
-// check of anything but the environment run.
+// An import required to load the package must be available to its users. Tests, deferred imports and environment guards
+// can have different requirements.
 #[test_case("dependencies = [\"requests\", \"google-auth\"]\n", &["yaml", "attrs", "click"] ; "listed")]
 #[test_case(
     "dependencies = [\"requests\", \"google-auth\", \"pyyaml\", \"attrs\", \"click\"]\n", &[]
@@ -1743,7 +1713,6 @@ fn undeclared_dependency_reports_imports_no_requirement_installs(project: &str, 
     assert_eq!(found, reported, "{stdout}");
 }
 
-// A handler for another error and a test of anything but the environment run the import wherever the package runs.
 #[test]
 fn undeclared_dependency_reports_imports_other_guards_leave() {
     let core = "import config\nimport os\n\ntry:\n    import rich\nexcept AttributeError:\n    pass\n\nif config.DEBUG:\n    \
@@ -1760,7 +1729,6 @@ fn undeclared_dependency_reports_imports_other_guards_leave() {
     assert_eq!(found, ["rich", "click"], "{stdout}");
 }
 
-// A module of the run imported beside a third-party one in the same statement leaves the third-party one reported.
 #[test]
 fn undeclared_dependency_judges_each_module_of_an_import() {
     let root = common::project(&[
@@ -1774,7 +1742,7 @@ fn undeclared_dependency_judges_each_module_of_an_import() {
     assert_eq!(found, ["yaml"], "{stdout}");
 }
 
-// A project under the tests is test input, whose requirements a fixture may list unused on purpose.
+// Test fixtures can list unused requirements deliberately.
 #[test]
 fn unused_dependency_leaves_a_test_fixture_project_alone() {
     let root = common::project(&[
@@ -1789,8 +1757,8 @@ fn unused_dependency_leaves_a_test_fixture_project_alone() {
     assert_eq!(found, ["requests"], "{stdout}");
 }
 
-// An import anywhere outside the tests uses a requirement, a deferred one too; a requirement with a marker installs
-// only somewhere, so it is left alone. The package's `__init__.py` holds the reports.
+// A deferred production import can still require the dependency. A marker can limit installation to another
+// environment.
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"tomli; python_version < '3.11'\"]\n", &[] ; "used")]
 #[test_case("dependencies = [\"requests\", \"google-auth\", \"pytest-mock\"]\n", &["pytest-mock"] ; "test_only")]
 #[test_case("dependencies = [\"requests\"]\ndynamic = [\"dependencies\"]\n", &[] ; "dynamic")]
@@ -1847,8 +1815,6 @@ fn private_import_path_leaves_aliases_ruff_or_convention_owns(source: &str) {
     assert!(!stdout.contains("imported as private"), "{stdout}");
 }
 
-// With `require-lazy-modules` the fix writes a list into a module that has none, below its docstring and `from
-// __future__` imports, and leaves a module with nothing to defer alone.
 #[test_case(
     "\"\"\"Doc.\"\"\"\n\nfrom __future__ import annotations\n\nimport json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n",
     "\"\"\"Doc.\"\"\"\n\nfrom __future__ import annotations\n\n__lazy_modules__ = [\"json\"]\n\nimport json\n\n\ndef dump() -> str:\n    return json.dumps(1)\n"
@@ -1876,7 +1842,6 @@ fn require_lazy_modules_writes_a_new_list(source: &str, expected: &str) {
     assert_eq!(common::read(root.path(), "mod.py"), expected);
 }
 
-// An entry list the rule reads reports the entry no import matches; a list it cannot read reports nothing.
 #[test_case("[f\"{__spec__.parent}.x\"]", 1 ; "spec_parent")]
 #[test_case("[f\"{__spec__.parent.rsplit('.', 1)[0]}.x\"]", 1 ; "spec_parent_rsplit")]
 #[test_case("[f\"{(__spec__.parent or '').rsplit('.', 1)[0]}.x\"]", 1 ; "guarded_spec_parent_rsplit")]
@@ -1901,7 +1866,6 @@ fn lazy_modules_entry_spellings(value: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP316", reports);
 }
 
-// A relative import in a module outside a package resolves to no absolute name, so the report spells it as written.
 #[test]
 fn missing_lazy_module_reports_an_unresolved_relative_import() {
     let root = common::project(&[(

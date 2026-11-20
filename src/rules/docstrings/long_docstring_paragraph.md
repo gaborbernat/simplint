@@ -1,15 +1,9 @@
-Flags docstring paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and gets
-skimmed.
+Flags docstring paragraphs longer than 100 words by default.
 
 ## Why is this bad?
 
-A docstring is read in the rendered reference and in an editor's hover help. In a
-[Nielsen Norman Group study](https://www.nngroup.com/articles/how-users-read-on-the-web/) of web pages, 79 percent of
-users scanned new pages. Past 100 words a paragraph usually covers more than one topic; that limit is simplint's own,
-since no Python style guide sets one. Split a long paragraph at a change of topic, so each part is easier to find and to
-keep accurate. CPython's
-[documentation style guide](https://devguide.python.org/documentation/style-guide/#economy-of-expression) asks for
-economy of expression. [long-paragraph](SMP002.html) asks the same of comments.
+Separate the instructions for calling a function from details such as its caching policy so readers can find either in
+hover help or the rendered reference. The default limit of 100 words is shared with [long-paragraph](SMP002.html).
 
 ## Example
 
@@ -126,8 +120,5 @@ No fix is offered, since where to split a paragraph depends on its meaning.
 
 ### Report range
 
-The report spans from the paragraph's first line to the line where it passes `max-paragraph-words` words.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+The report starts on the paragraph's first line and ends on the line that exceeds the limit. The rule counts each part
+of an implicitly concatenated docstring separately.

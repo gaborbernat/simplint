@@ -36,8 +36,7 @@ pub(super) fn references_outside(checker: &Checker, name: &str, definition: Text
     checker.semantic().references_to(name).iter().any(|reference| !definition.contains_range(reference.range))
 }
 
-// A caller reads only a returned value, so a bare `return` or `return None` does not count. A method that only returns
-// `self` offers chaining, a style of its interface rather than a value, so it counts as returning none too.
+// Bare returns and `return None` carry no result. Returning only `self` supports method chaining.
 pub(super) fn returns_value(function: &ast::StmtFunctionDef) -> bool {
     let mut returns = ReturnVisitor::default();
     returns.visit_body(&function.body);

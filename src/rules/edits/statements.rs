@@ -28,10 +28,7 @@ pub(crate) fn statement_removal(
     statement_deletion(checker, stmt, next, blanks).map(Edit::range_deletion)
 }
 
-// The text deleting a statement removes: its lines when it has them to itself, with the blank lines `blanks` names. A
-// statement sharing its line goes from the `;` that joins it to the statement before it, as in `run(); x = 1`, or up
-// to the `next` statement, as in `"""Doc."""; run()`, unless a comment in between would go with it; `ruff format` puts
-// joined statements on lines of their own either way.
+// Remove one separator with a statement on a shared line. Skip the edit if it would delete an intervening comment.
 pub(crate) fn statement_deletion(
     checker: &Checker,
     range: TextRange,
@@ -60,9 +57,8 @@ pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) ->
     }
 }
 
-// The lines of a statement, with the blank lines after it that `ruff format` would not keep once it is gone. The
-// formatter keeps two blank lines at module level and one in a block, so a statement between blank lines leaves a
-// surplus it would close, which `# fmt: off` code keeps.
+// Formatting may be disabled here. Limit the blank lines left by deletion to two at module level or one inside a block
+// when trailing blanks are available to remove.
 fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
     let lines = source.full_lines_range(range);
     let mut before: usize = 0;
@@ -91,8 +87,7 @@ fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
         end = source.full_line_end(end);
     }
     let mut start = source.line_start(range.start());
-    // At the end of the file the blank lines above go too: after a module left with comments only, `ruff format` keeps
-    // them, and Ruff reports blank lines ending the file.
+    // A file reduced to comments can otherwise end with blank lines that Ruff reports.
     if end.to_usize() == source.len() {
         while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty()
         {
@@ -102,8 +97,7 @@ fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     TextRange::new(start, end)
 }
 
-// Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
-// around it keeps the wider separation, and keep everything when the statement directly follows code.
+// Keep the wider gap when deletion joins two runs of blank lines.
 fn lines_keeping_separation(source: &str, range: TextRange) -> TextRange {
     let lines = source.full_lines_range(range);
     let before = &source[..lines.start().to_usize()];
@@ -131,8 +125,8 @@ pub(crate) fn statement_block(checker: &Checker, stmt: &Stmt) -> TextRange {
         _ => stmt.start(),
     };
     let mut line_start = source.line_start(start);
-    // A line inside a string may start with `#` too, so only a comment token above the statement counts. A deeper
-    // comment ends the block above it, as the trailing note of a method does.
+    // Inspect comment tokens so a line of a string starting with `#` stays in the string. A comment at a different
+    // indentation can belong to the preceding statement.
     let indent = checker.indentation(stmt);
     while let Some(comment) =
         checker.comment_above(TextRange::empty(line_start)).filter(|comment| checker.indentation(*comment) == indent)

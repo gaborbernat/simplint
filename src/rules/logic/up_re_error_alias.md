@@ -1,14 +1,10 @@
-Flags `re.error` references, which [`re.PatternError`](https://docs.python.org/3/library/re.html#re.PatternError) names
-from Python 3.13.
+Flags reads of `re.error` on Python 3.13 and later.
 
 ## Why is this bad?
 
-`re.PatternError` is the name the [`re` docs](https://docs.python.org/3/library/re.html#re.PatternError) give the
-exception raised for an invalid pattern. From Python 3.13 `re.error` is an alias kept for backward compatibility. The
-lowercase name reads like a function or a value rather than an exception class, as the
-[issue that led to the rename](https://github.com/python/cpython/issues/83162) argued. Serhiy Storchaka, the `re`
-maintainer, replied there that a module-level exception named `error` is common practice. The docs name `PatternError`,
-and the rule flags `re.error` to match them. `re.error` is not deprecated and keeps working.
+Python 3.13 renamed the exception raised for an invalid pattern to
+[`re.PatternError`](https://docs.python.org/3/library/re.html#re.PatternError). The old spelling `re.error` remains a
+supported alias for the same class.
 
 ## Example
 
@@ -122,8 +118,8 @@ def compile_pattern(text):
 
 ### Exceptions
 
-- **An assignment or `del`**: it patches the module, and renamed it would patch `re.PatternError` while code that reads
-  `re.error` keeps the original.
+- **Assignments and deletions.** These change the module attribute. Editing `re.error` and editing `re.PatternError` can
+  affect different callers.
 
   ```toml config
   [project]
@@ -159,8 +155,8 @@ def compile_pattern(text):
           return None
   ```
 
-- **A name also bound to another module**: `re` may be the `regex` module in that file, which has no `PatternError`, so
-  the `re.error` of a `try` import fallback is left alone.
+- **A name bound to multiple modules.** For example, after a fallback import, `re` may refer to the third-party `regex`
+  module.
 
   ```toml config
   [tool.ruff]
@@ -180,7 +176,3 @@ def compile_pattern(text):
       except re.error:
           return None
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

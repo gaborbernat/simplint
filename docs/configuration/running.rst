@@ -4,26 +4,26 @@ Running
 Run options
 ===========
 
-The table also takes the run options `Ruff <https://docs.astral.sh/ruff/>`__ reads from ``[tool.ruff]``, with the same
-names:
+Set these options in ``[tool.simplint]`` to change how ``simplint check`` runs.
 
 .. code-block:: toml
 
     [tool.simplint]
     fix = false            # apply safe fixes, like --fix
     fix-only = false       # fix and report nothing else, like --fix-only
-    unsafe-fixes = false   # include unsafe fixes, like --unsafe-fixes; unset shows a hint instead
+    unsafe-fixes = false   # set true to include unsafe fixes, or omit to show a hint
     show-fixes = false     # list what was fixed, like --show-fixes
     output-format = "full" # like --output-format
 
-The options of the table found for the **current directory** apply to the whole run. The matching command-line flag,
-or its ``--no-`` form, overrides them.
+The settings resolved for the current directory apply to the whole run. Command-line flags override them.
+Each boolean flag has a ``--no-`` form. Use ``--output-format`` for the report format.
 
 Cache
 -----
 
-Simplint caches which files had nothing to report. It checks modification time, permissions and size, and uses the
-filesystem's change information to detect edits that preserve all three. On local filesystems with reliable Unix
+simplint caches clean results and, for checks without fixes, can reuse a file's reports.
+It also caches import facts used to build the project index. It checks modification time, permissions and size, using
+the filesystem's change information to detect edits that preserve all three. On local filesystems with reliable Unix
 change times it hashes recently changed files until the clock tick has passed. On Windows it uses the file's change
 journal record when available. Other filesystems use a content hash.
 
@@ -31,49 +31,27 @@ With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also d
 from that file, so editing an importer checks the files it imports again. Files checked only by per-file rules keep
 their cached results.
 
-A file whose fixes cannot be written is not cached, because whether its directory lets it be written is not part of its
-key. A ``--diff`` run caches nothing computed from a fix it keeps in memory, neither for the file it fixes nor for
-another file linted after that fix, because those reports describe the fixed source, not the disk.
+A failed write cannot be reused because directory permissions may change between runs. During ``--diff``, simplint
+keeps edits in memory. Results that depend on those edits are valid only for that run.
 
-A report that names a path relative to the working directory, as :doc:`import-cycle </rules/SMP308>`,
-:doc:`duplicate-code </rules/SMP530>` and :doc:`undocumented-public-api </rules/SMP903>` do, is kept for the directory
-it was made in, so a run from another directory checks the file again. With :doc:`private-import-path </rules/SMP310>`
-enabled, the directory listing under the project root and under ``src/``, and the ``.py`` and ``.pyi`` links in it, are
-part of the key, so adding, removing or renaming a module checks the tests again, while editing a module's content does
-not.
+Some findings include paths relative to the working directory. Running from a different directory invalidates cached
+findings for :doc:`import-cycle </rules/SMP308>`, :doc:`duplicate-code </rules/SMP530>` and
+:doc:`undocumented-public-api </rules/SMP903>`. For :doc:`private-import-path </rules/SMP310>`, adding, removing or
+renaming a module under the project root or ``src/`` can change what a test may import.
 
-A file that does not parse is cached with nothing to report, and its warning is shown on every run, so a warm run
-warns about it without building the project index. Without fixes, a file that cannot be read because it is not UTF-8
-keeps its read error too, so a warm run reports it again without building the project index. A read error that is only
-logged, because ``io-error`` (E902) is not selected, is not cached, so every run logs it again.
-
-.. mermaid::
-
-    flowchart TD
-        file["File in the run"] --> same{"mtime, permissions<br/>or size changed?"}
-        same -->|yes| lint["Lint it"]
-        same -->|no| clean{"Cached clean under the<br/>same settings and, for<br/>cross-file rules, index?"}
-        clean -->|yes| skip["Skip it"]
-        clean -->|no| lint
-        lint --> result{"Nothing to report?"}
-        result -->|yes| remember["Remember it as clean"]
-        classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
-        classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
-        classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
-        class file,lint blue
-        class same,clean,result yellow
-        class skip,remember green
+Cached parse failures still produce a warning on each run. A check without fixes can also replay a cached UTF-8
+decoding error. If Ruff's ``io-error`` (E902) rule is disabled, simplint logs the read error again on each run.
 
 Where the cache lives:
 
 - In a ``simplint`` directory inside Ruff's cache directory: ``.ruff_cache`` unless Ruff's ``cache-dir`` setting,
-  ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another. It never touches Ruff's own files there.
+  ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another. Ruff and simplint store their results separately.
 - Inside the project, when the project picks it. A ``cache-dir`` setting that leads outside falls back to
   ``.ruff_cache``, and a run whose ``.ruff_cache`` links outside does not cache. ``--cache-dir`` and
   ``RUFF_CACHE_DIR`` may point anywhere.
-- ``--no-cache`` skips it.
-- Each simplint build keeps its own subdirectory there. A run removes the subdirectories of other builds that no run
-  has written to for 30 days.
+- ``--no-cache`` disables cache reads and writes.
+- Each simplint version and cache format has its own subdirectory. A run removes stale build directories after
+  30 days without writes.
 
 .. note::
 

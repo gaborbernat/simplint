@@ -38,6 +38,11 @@ fn rules_json_lists_parsed_examples() {
     let (code, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
     let first = &rules[0]["examples"]["parsed"][0];
+    let report_line = include_str!("../src/rules/comments/section_comment.md")
+        .lines()
+        .position(|line| line == "```python report")
+        .expect("section-comment has a report example") as u64
+        + 1;
     let imports = rules.iter().find(|rule| rule["code"] == "SMP301").expect("SMP301 is listed");
     assert_eq!(
         (
@@ -50,11 +55,20 @@ fn rules_json_lists_parsed_examples() {
             first["blocks"][0]["source"].as_str().map(|source| source.starts_with("# ---------- parsing")),
             imports["short_group"].as_str(),
         ),
-        (0, Some("Example"), Some(12), Some(16), Some("report"), Some(12), Some(true), Some("Imports"))
+        (
+            0,
+            Some("Example"),
+            Some(report_line),
+            Some(report_line + 4),
+            Some("report"),
+            Some(report_line),
+            Some(true),
+            Some("Imports")
+        )
     );
 }
 
-#[test_case("dataclass-kw-only", "# dataclass-kw-only (SMP703)", "Fix is always available." ; "by_name_always")]
+#[test_case("collection-built-by-statements", "# collection-built-by-statements (SMP531)", "Fix is always available." ; "by_name_always")]
 #[test_case("SMP901", "# function-docstring (SMP901)", "Fix is sometimes available." ; "by_code_sometimes")]
 #[test_case("SMP002", "# long-paragraph (SMP002)", "Flags comment paragraphs longer than 100 words by default." ; "by_code_never")]
 fn rule_explains(selector: &str, title: &str, third: &str) {
@@ -71,8 +85,8 @@ fn rule_leaves_out_diagram_source() {
         (
             code,
             stdout.contains("mermaid"),
-            stdout.contains("breaks it.\n\nA fix that adds `frozen`:"),
-            stdout.contains("Has fields?")
+            stdout.contains("before offering the fix.\n\nWith no conflicting use"),
+            stdout.contains("Has annotated assignments?")
         ),
         (0, false, true, false)
     );
@@ -173,8 +187,8 @@ fn rule_needs_a_rule_or_all() {
 }
 
 #[test_case(&["config"], "output-format\nfix\n" ; "list")]
-#[test_case(&["config", "fix"], "Enable fix behavior by-default" ; "text")]
-#[test_case(&["config", "fix", "--output-format", "json"], "{\n  \"doc\": \"Enable fix behavior" ; "json")]
+#[test_case(&["config", "fix"], "Apply safe fixes by default" ; "text")]
+#[test_case(&["config", "fix", "--output-format", "json"], "{\n  \"doc\": \"Apply safe fixes by default" ; "json")]
 #[test_case(&["config", "--output-format", "json"], "{\n  \"api-packages\": {" ; "list_json")]
 #[test_case(&["config", "naming.keep-names"], "A list of module-scope names" ; "nested")]
 fn config_describes_options(args: &[&str], start: &str) {

@@ -3,12 +3,8 @@ list you can change.
 
 ## Why is this bad?
 
-A module named `utils` collects whatever did not fit elsewhere, and its name says nothing about any of it. Imports from
-it read the same whatever they bring in. With no theme to turn code away, the module keeps growing, and
-[splitting it later gets more costly the longer it waits](https://breadcrumbscollector.tech/stop-naming-your-python-modules-utils/).
-wemake-python-styleguide's
-[WPS100](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.WrongModuleNameViolation)
-reports these names for the same reason: you cannot tell what such a module holds.
+An import from `utils` tells the reader little about where to look for related code. Name the module for its contents,
+such as `slugs` for URL slug generation. A specific name also helps you decide which new functions belong there.
 
 ## Example
 
@@ -84,7 +80,6 @@ No fix is offered. A rename changes every import of the module, and a split need
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3845](https://github.com/astral-sh/ruff/issues/3845).
-- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports modules named for a
-  blacklisted word, such as `utils`, as
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports modules with a
+  prohibited name, such as `utils`, as
   [WPS100](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.WrongModuleNameViolation).

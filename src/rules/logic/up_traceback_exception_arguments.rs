@@ -8,7 +8,6 @@ use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::replacement_unless_commented;
 use crate::syntax::{is_name, sole_argument};
 
-// Since Python 3.10 the `traceback` functions read the exception's type and traceback from the exception itself.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(call) = expr else {
         return;

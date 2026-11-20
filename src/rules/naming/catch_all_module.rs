@@ -5,8 +5,7 @@ use ruff_text_size::TextRange;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
-// Modules named for a grab bag hold whatever does not fit elsewhere, so their names say nothing about their contents.
-// A package is named by its folder, so the check reads its `__init__.py` and leaves its modules to their own names.
+// Check a package's folder name once at its `__init__.py`. Submodules have their own names.
 pub fn catch_all_module(checker: &Checker) {
     let path = checker.path;
     let stem = path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default();

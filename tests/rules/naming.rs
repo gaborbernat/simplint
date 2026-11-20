@@ -50,7 +50,6 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
     common::assert_report_count(root.path(), "SMP105", expected);
 }
 
-// A script target names a module under the project root, so a file outside the root is never one.
 #[test]
 fn entrypoint_module_name_skips_files_outside_the_root() {
     let source = "def run() -> None:\n    pass\n";
@@ -285,7 +284,6 @@ fn sphinx_conf_settings_keep_their_names(path: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP102"]).1, common::native(stdout));
 }
 
-// A string blocks the rename only when it holds the name as a whole word.
 #[test_case("misspelled spelled_out spelledout", true ; "inside_longer_words")]
 #[test_case("misspelled (spelled)", false ; "between_punctuation")]
 fn module_variable_rename_checks_whole_words_in_strings(text: &str, fixable: bool) {
@@ -294,7 +292,7 @@ fn module_variable_rename_checks_whole_words_in_strings(text: &str, fixable: boo
     assert_eq!(stdout.contains("SMP102 [*]"), fixable);
 }
 
-// The rename respells the name's `__all__` entry, which it cannot do when the entry is split over concatenated strings.
+// Adjacent string literals can spell one export name across disjoint source ranges.
 #[test_case("\"split_value\"", true ; "single_string")]
 #[test_case("\"split\" \"_value\"", false ; "concatenated_strings")]
 fn module_variable_rename_respells_its_export_entry(entry: &str, fixable: bool) {
@@ -303,7 +301,7 @@ fn module_variable_rename_respells_its_export_entry(entry: &str, fixable: bool) 
     assert_eq!(stdout.contains("SMP102 [*]"), fixable, "{stdout}");
 }
 
-// A debug field prints its source text, and one spread over lines has no single-line spelling to keep.
+// A debug field prints its original spelling, including any line breaks.
 #[test]
 fn module_variable_rename_leaves_a_debug_field_over_lines() {
     let root = common::project(&[("module.py", "limit = 3\nprint(f\"\"\"{limit\n=}\"\"\")\n")]);
@@ -311,8 +309,7 @@ fn module_variable_rename_leaves_a_debug_field_over_lines() {
     assert!(stdout.contains("SMP102") && !stdout.contains("SMP102 [*]"), "{stdout}");
 }
 
-// A string of another file may spell the name, as a test that looks a module variable up by its spelling does. A module
-// named like a standard library module is imported from outside the run, so its names may be read unseen.
+// A string outside the defining module may look up the variable by its old name.
 #[test_case(
     &[("config.py", "limit = 3\nprint(limit)\n"), ("tests/test_config.py", "LOOKUP = \"limit\"\n")],
     "limit" ;
@@ -335,8 +332,7 @@ fn module_variable_rename_withholds_its_fix_for_unseen_reads(files: &[(&str, &st
     );
 }
 
-// Ruff's N816 skips the names its pep8-naming `ignore-names` lists, so SMP102 keeps reporting them: without a fix
-// here, nothing else would. Without N816 selected, SMP102 reports the names N816 would skip.
+// If Ruff ignores the name, its N816 diagnostic cannot replace SMP102.
 #[test_case("[tool.ruff.lint]\nselect = [\"N816\"]\n", false ; "selected_default_names")]
 #[test_case(
     "[tool.ruff.lint]\nselect = [\"N816\"]\n[tool.ruff.lint.pep8-naming]\nignore-names = [\"myValue\"]\n",
@@ -358,9 +354,8 @@ fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported
     assert_eq!(stdout.contains("SMP102 Module-scope variable `myValue`"), reported, "{stdout}");
 }
 
-// Ruff's N816 reports a mixedCase name at each of its module-scope stores, so SMP102 leaves such a name to it when it
-// offers no rename, whether or not the run selects N816. A rename stays here, as does a name that N816 does not report:
-// an `except` target, or one N816 ignores.
+// N816 can cover an assignment even when SMP102 has no rename fix. Exception-handler targets and ignored names do not
+// have that overlap.
 #[test_case(
     "def setup():\n    global myValue\n    myValue = 1\n\n\nmyValue = 3\nMYVALUE = 4\nprint(myValue, MYVALUE, setup)\n",
     "",
@@ -400,9 +395,6 @@ fn module_variable_case_leaves_names_without_rename_to_n816(source: &str, settin
     assert_eq!(common::reported_without_and_with_ruff(&case, "Module-scope variable `myValue`"), expected);
 }
 
-// Ruff's E741, E742 and E743 report `l`, `I` and `O` on the variables, classes and functions of their kind, so SMP101
-// leaves those letters to them whether or not the project selects them. Other letters stay with the rule, and so do
-// those three letters on an import alias, which no Ruff rule checks.
 #[test_case("l = 1\n", "Single-letter name `l`", false ; "variable")]
 #[test_case("class I:\n    pass\n", "Single-letter name `I`", false ; "class")]
 #[test_case("def l() -> None:\n    pass\n", "Single-letter name `l`", false ; "function")]

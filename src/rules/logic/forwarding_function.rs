@@ -60,7 +60,7 @@ pub(super) fn forward_target<'a>(
     receiver: Option<&str>,
 ) -> Option<&'a ast::Expr> {
     let name = function.name.as_str();
-    // A function other code patches by name is a seam the tests replace, so it must keep existing.
+    // Removing a function that tests patch by name would break those patches.
     if Visibility::of(name) != Visibility::Private
         || !function.decorator_list.is_empty()
         || references.is_empty()
@@ -88,10 +88,8 @@ pub(super) fn forward_target<'a>(
         let expr = expr.as_starred_expr().map_or(expr, |starred| &starred.value);
         expr.as_name_expr().is_some_and(|name| parameters.contains(&name.id.as_str()))
     };
-    // `make(x).strip()` is a call on a computed value, not a forward to a named function. `fn(x)` calls whatever the
-    // caller passed in, so there is no fixed target to call instead. A method's receiver is the object it is called on,
-    // so a target through its attributes, such as `self.client.get`, is a fixed one, while the receiver itself is the
-    // method's own object and is not a target to call instead.
+    // A caller can name a target such as `self.client.get`. A call on `make(x)` or a callable parameter has no
+    // fixed target. Keep direct calls to the receiver itself as well.
     if UnqualifiedName::from_expr(&call.func).as_ref().is_none_or(|target| {
         let segments = target.segments();
         segments

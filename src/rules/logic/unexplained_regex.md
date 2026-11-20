@@ -1,13 +1,11 @@
-Flags a regular expression pattern of four or more parts that has no comment, a `#` comment in verbose mode or a
-`(?#...)` comment. A part is a group, an alternation, a character class with its repeat, or a repeat of a group.
+Flags regular expressions with four or more parts and no comment inside the pattern.
 
 ## Why is this bad?
 
-A reader of a pattern works out each part from its punctuation, and a long pattern holds many parts to work out. The
-[regex HOWTO](https://docs.python.org/3/howto/regex.html#using-re-verbose) says compact patterns are not very readable
-and recommends [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE) with a `#` comment on each part. A
-comment on the part's own line stays with that part, where a note above the pattern drifts away from it. The verbose
-flag alone says nothing about the parts, so the pattern still needs a comment to be read.
+In a pattern that combines groups, alternatives and repeats, it can be hard to tell which text each part matches. The
+[regex HOWTO](https://docs.python.org/3/howto/regex.html#using-re-verbose) shows how
+[`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE) lets you separate the parts onto lines and explain
+them with comments. An inline `(?#...)` comment also satisfies the rule.
 
 ## Example
 
@@ -47,11 +45,11 @@ def parse_date(text):
 ### Active on
 
 - **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit
-  concatenation. The calls are the same as in [unnamed-regex-group](SMP532.html): the module functions and the methods
-  of a compiled pattern. The rule counts the parts of the pattern, reading the verbose flag from
-  [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
-  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. A `flags` argument that is a name or
-  other expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.
+  concatenation. The rule reads the literal pattern arguments of the module functions listed under
+  [unnamed-regex-group](SMP532.html), including `compile`. The rule counts the parts of the pattern, reading the verbose
+  flag from [`re.VERBOSE`](https://docs.python.org/3/library/re.html#re.VERBOSE),
+  [`re.X`](https://docs.python.org/3/library/re.html#re.X) or an inline `(?x)`. If simplint cannot resolve the flags, it
+  skips the pattern unless the pattern itself enables verbose mode globally.
 
   A part is:
 
@@ -80,7 +78,7 @@ def parse_date(text):
 
 ### Exceptions
 
-- **A short pattern** with fewer than four parts reads at a glance, and a class with its repeat is one part of it.
+- **Patterns with fewer than four parts.** A character class and its repeat count as one part.
 
   ```python ok
   import re
@@ -98,7 +96,7 @@ def parse_date(text):
       return re.split(r"[ \t]*,[ \t]*", text)
   ```
 
-- **A pattern with a `(?#...)` comment** is explained, as a `#` comment in verbose mode explains it.
+- **A pattern containing a `(?#...)` comment**, in either mode.
 
   ```python ok
   import re
@@ -108,7 +106,7 @@ def parse_date(text):
       return bool(re.match(r"(\d+)\.(\d+)(?:\.(\d+))?(?#the optional patch)$", text))
   ```
 
-- **A verbose pattern with a `#` comment** explains its parts, whatever their number.
+- **A verbose pattern containing a `#` comment.** One comment anywhere outside a character class satisfies the rule.
 
   ```python ok
   import re
@@ -128,7 +126,7 @@ def parse_date(text):
       )
   ```
 
-- **A `#` comment in a scoped `(?x:...)` group** explains the pattern, as a comment in a verbose pattern does.
+- **A `#` comment inside `(?x:...)`.** Verbose mode applies inside that group.
 
   ```python ok
   import re

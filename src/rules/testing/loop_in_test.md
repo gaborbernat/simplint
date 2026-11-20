@@ -1,15 +1,12 @@
-Flags `for` loops in a test function that run the code under test once per case from a table the test file lists, and
-assert on each result, in a test module.
+Flags a `for` loop in a test when the loop passes each item from a table of cases to the code under test and checks the
+result.
 
 ## Why is this bad?
 
-A loop of assertions stops at its first failure, so the report names one case and hides the others, and the test does
-not show which cases it covered. The
-[`unittest` docs](https://docs.python.org/3/library/unittest.html#distinguishing-test-iterations-using-subtests) make
-the same point when they introduce subtests: without them, the run stops at the first failure and hides the failing
-value. A loop is also logic the reader has to trace, which
-[Google's testing guide](https://abseil.io/resources/swe-book/html/ch12.html) advises against. A parameterized test runs
-every case as its own test, and a failure names the case that broke.
+A failing assertion stops the loop, so the remaining cases never run. A parametrized pytest test gives each case its own
+result. In a unittest method,
+[`subTest`](https://docs.python.org/3/library/unittest.html#distinguishing-test-iterations-using-subtests) can report
+individual failures and continue with the next case.
 
 ## Example
 
@@ -39,22 +36,24 @@ def test_square(number: int, square: int) -> None:
 
 ## What it does
 
-No fix is offered: moving the cases into parameters changes the test's signature and its ids, which the rule cannot
-choose.
+There is no automatic fix. Choose the parameters and case IDs when rewriting the test.
 
 A parameter list is fixed when pytest collects the test, so the rule reports only loops whose cases are known by then
 and that hand each case to the code under test. Three things must hold:
 
 - **The cases are a table the file lists**: a literal, a module constant, or a name the test assigns once to one of
-  these and never fills in later; `enumerate`, `zip`, `sorted`, `reversed`, `list`, `tuple`, `set`, `frozenset`, the
-  `itertools` combinations, `.items()`, `.keys()`, `.values()`, `.split()`, slices and `+` over such tables count too.
+  these and never fills in later; `enumerate`, `zip`, `sorted`, `reversed`, `list`, `tuple`, `set`, `frozenset`,
+  [`itertools.product`](https://docs.python.org/3/library/itertools.html#itertools.product), `permutations`,
+  `combinations` and `combinations_with_replacement`, `.items()`, `.keys()`, `.values()`, `.split()`, slices and `+`
+  over such tables count too.
 - **The loop body asserts**: an `assert` statement, or a `self.assert...` call of `unittest`, outside a subtest.
 - **Each case reaches the code under test**: a statement other than an assertion reads the loop's target, or an
   assertion passes it to a call, as `assert parse(name)` and `self.assertRaises(ValueError, parse, name)` do.
 
 ### Active on
 
-- **Tables of literals and constants**: a list, tuple, set, dict or string written in the loop, or a module constant.
+- **Tables of literals and constants**: a list, tuple, set, dict or string written in the loop, or a name the test does
+  not bind. The rule treats names outside the test as available during collection.
 
   ```python report file=tests/test_constant.py
   CASES = [(2, 4), (3, 9)]
@@ -167,7 +166,7 @@ and that hand each case to the code under test. Three things must hold:
   ```
 
 - **Assertions in a `try` of the loop, or in its `else` clause**: a retry around an assertion waits for a condition to
-  hold, and an assertion in `else` runs once, after a search found nothing.
+  hold, and the loop's `else` clause runs once if the loop finishes without a `break`.
 
   ```python ok file=tests/test_retry.py
   def test_ready() -> None:
@@ -189,8 +188,8 @@ and that hand each case to the code under test. Three things must hold:
           assert False
   ```
 
-- **Assertions in nested functions and classes**: they run only when the function is called, not as the loop's own
-  checks.
+- **Assertions inside nested functions and classes.** The rule skips their bodies when looking for a check in the loop
+  itself.
 
   ```python ok file=tests/test_callbacks.py
   def test_callbacks() -> None:

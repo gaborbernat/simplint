@@ -1,14 +1,12 @@
-Flags [`sys.exc_info()`](https://docs.python.org/3/library/sys.html#sys.exc_info) reads of the exception being handled,
-which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns directly from Python 3.11.
+Flags uses of [`sys.exc_info()`](https://docs.python.org/3/library/sys.html#sys.exc_info) that Python 3.11 can replace
+with [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception).
 
 ## Why is this bad?
 
-`sys.exc_info()` returns what the [docs](https://docs.python.org/3/library/sys.html#sys.exc_info) call the old-style
-representation of the handled exception: the tuple `(type(e), e, e.__traceback__)`. Since Python 3.11 the type and
-traceback in it derive from the exception, so the tuple holds nothing the exception lacks. Code that reads its second
-value, or unpacks all three into
-[`traceback.print_exception`](https://docs.python.org/3/library/traceback.html#traceback.print_exception), needs only
-the exception, which [`sys.exception()`](https://docs.python.org/3/library/sys.html#sys.exception) returns.
+Inside an exception handler, `sys.exc_info()` returns `(type(e), e, e.__traceback__)`. `sys.exception()` returns `e`
+directly. Outside a handler, `sys.exception()` and `sys.exc_info()[1]` both return `None`.
+[`traceback.print_exception()`](https://docs.python.org/3/library/traceback.html#traceback.print_exception) accepts the
+exception alone.
 
 ## Example
 
@@ -53,7 +51,7 @@ error = sys.exception()
 
 ### Active on
 
-Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as system` counts:
+The rule recognizes module aliases such as `import sys as system` in both forms.
 
 - **`sys.exc_info()[1]`**: a read of the second value.
 
@@ -74,7 +72,8 @@ Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as
   error = sys.exception()
   ```
 
-- **`traceback.print_exception(*sys.exc_info())`**: an unpacking of the whole tuple as the only argument.
+- **`traceback.print_exception(*sys.exc_info())`.** The unpacked tuple must be the only positional argument. Keywords
+  such as `limit=` may follow.
 
   ```toml config
   [project]
@@ -149,9 +148,8 @@ Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as
 
 ### Fix
 
-The fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the
-same value. No fix is offered when a comment lies in the replaced code, since the rewrite would drop it. A comment in
-the subscript keeps the report without a fix:
+The safe fix replaces the subscript or the unpacked argument with `sys.exception()`. simplint reports without a fix if
+the replacement would remove a comment.
 
 ```toml config
 [project]
@@ -173,7 +171,3 @@ error = sys.exc_info()[
     1  # the exception being handled
 ]
 ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -2,7 +2,6 @@ use super::blocks::Classified;
 use super::lines::leading_whitespace;
 use super::punctuation::{ends_before, match_chars, starts_after};
 
-// What is wrong with an inline literal or a backtick run, and so what the rule says.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Cause {
     // An inline literal that no later pair of backticks closes within its paragraph.
@@ -23,9 +22,7 @@ pub(crate) struct Finding {
     pub(crate) cause: Cause,
 }
 
-// The findings in a docstring's paragraphs, in the order they occur within each paragraph. A blank line, a code line
-// or a line that opens a block ends a paragraph. A fence's own lines are reported as one fence, not as the literals in
-// them.
+// Inline literals cannot cross a paragraph or block boundary. Report a Markdown fence once at its opening.
 pub(crate) fn literal_findings(lines: &[Classified]) -> Vec<Finding> {
     let mut found = Vec::new();
     let mut paragraph = Vec::new();
@@ -115,8 +112,7 @@ fn fence(text: &str) -> Option<(char, usize, &str)> {
     (run >= 3 && !(char == '`' && rest.contains('`'))).then_some((char, run, rest))
 }
 
-// The findings of one paragraph: the literals docutils cannot close, and backtick runs that pair up wrongly. A literal
-// that is a mismatch is reported as one, not also as unclosed.
+// A mismatched literal gets one report even when its opening backticks also look unclosed.
 fn paragraph_findings(units: &[(char, usize)]) -> Vec<Finding> {
     let mut found = open_literals(units);
     let mismatches = mismatches(units);
@@ -274,13 +270,8 @@ fn closes_run(units: &[(char, usize)], start: usize, len: usize) -> bool {
         && suffix_end(units, start + len).is_some()
 }
 
-// The backtick runs that pair up wrongly within a paragraph, found by reading the runs in order: an opening run is
-// closed by the next run that can close it. A run of one backtick closed by two is a mismatch, and so is a run of two
-// closed by one.
-//
-// A literal may hold a single backtick, so a run of two closed by one is left alone only when no other run of two
-// stands between it and the first pair of double backticks after it. A closing run followed by a role's colon is left
-// to the role rules.
+// Match each opening run with the next valid closer. Single backticks inside a double-backtick literal can be
+// literal text. Look for its closing pair before reporting a mismatch. A colon after the closer belongs to a role.
 fn mismatches(units: &[(char, usize)]) -> Vec<Finding> {
     let runs = backtick_runs(units);
     let mut found = Vec::new();

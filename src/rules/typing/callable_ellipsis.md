@@ -2,16 +2,10 @@ Flags `Callable[..., T]` annotations.
 
 ## Why is this bad?
 
-`...` accepts any arguments: the
-[typing spec](https://typing.python.org/en/latest/spec/callables.html#meaning-of-in-callable) calls it a gradual form,
-so the type checker cannot catch a call with the wrong number, type or names of arguments. A
-[callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols), a
-[`Protocol`](https://docs.python.org/3/library/typing.html#typing.Protocol)
-([PEP 544](https://peps.python.org/pep-0544/)) with a `__call__` method, states the parameters, including keyword names,
-defaults and overloads, which a parameter list such as `Callable[[str, int], T]` cannot express. A decorator that passes
-arguments through keeps the wrapped signature with a
-[`ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec)
-([PEP 612](https://peps.python.org/pep-0612/#motivation)).
+The `...` in `Callable[..., T]` leaves the arguments unchecked. Use `Callable[[str, int], T]` for positional parameters,
+or a [callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols) with a `__call__`
+method for keyword names, defaults or overloads. A decorator that forwards arguments can preserve the wrapped signature
+with a [`ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec).
 
 ## Example
 
@@ -39,13 +33,12 @@ def run(callback: Callback) -> None:
 
 ## What it does
 
-No fix is offered: the real signature has to be written by hand.
+Specify the callback's signature by hand.
 
 ### Active on
 
-- **`Callable[..., T]`**: a subscript whose first argument is `...` and whose name, or the last part of a dotted name,
-  is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.
-  The matched names are:
+- simplint resolves `Callable` to `typing`, `typing_extensions` or `collections.abc`, including imports under an alias.
+  It checks expressions outside annotations too, including type alias values.
 
   - a bare `Callable` imported from `typing` or
     [`collections.abc`](https://docs.python.org/3/library/collections.abc.html#module-collections.abc).
@@ -80,9 +73,9 @@ No fix is offered: the real signature has to be written by hand.
 
 ### Exceptions
 
-- **Test parameters that are not called in the test body**: a test may inspect a callable or pass it to another API
-  without invoking it itself. Its annotation need not describe one call signature. A direct call in the body still
-  reports, including one inside a nested block.
+- **Function parameters in test modules**: a test may inspect a callable or pass it to another API without invoking it
+  itself. Its annotation need not describe one call signature. The rule checks the annotation when the body contains
+  `callback(...)` or `callback.__call__(...)`, including inside a nested block.
 
   ```python ok file=tests/test_run.py
   from collections.abc import Callable
@@ -111,7 +104,3 @@ No fix is offered: the real signature has to be written by hand.
   def run(callback: "Callable[..., None]") -> None:
       callback()
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

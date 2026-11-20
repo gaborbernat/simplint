@@ -87,13 +87,11 @@ struct Index<'i, 'f> {
     overlay: &'i Overlay,
 }
 
-// Each file's passes, in order. A fix in one file can change what another learns from the index, as folding
-// `mock.uuid = 7` into the mock's constructor leaves no assignment to stop a dataclass with a `uuid` field from
-// freezing. So with `rewrote` set, the files a round rewrites have their facts collected again, and each file whose
-// answers from the index change is linted again, until a round rewrites nothing.
+// A fix in one file can change another file's result. Folding `mock.uuid = 7` into a mock constructor removes an
+// assignment that otherwise prevents freezing a dataclass with a `uuid` field. Rebuild the changed facts and
+// recheck files whose index results changed.
 //
-// A rewritten file's cycle and repeated statements are ranges of the source it had before, so a rewritten file that
-// reports one is linted again even when its answers did not change.
+// Recheck a rewritten file's import-cycle and duplicate-code reports too. Their ranges refer to the old source.
 fn lint_rounds<'f, T: Send>(
     files: &'f [RunFile<'f>],
     mut index: Index<'_, 'f>,
@@ -102,8 +100,7 @@ fn lint_rounds<'f, T: Send>(
     plumbing: &Plumbing<'_, T>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Vec<Vec<T>> {
-    // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
-    // reports stand.
+    // Stop if fixes in different files keep changing each other's results.
     const ROUNDS: usize = 8;
     // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, so every file a later
     // round lints sees an index the disk does not hold, and nothing such a round reports is cached.

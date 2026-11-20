@@ -7,8 +7,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::replacement_unless_commented;
 
-// Since Python 3.11 `sys.exception()` returns the exception being handled, the value `sys.exc_info()` holds in its
-// second slot.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
     match expr {

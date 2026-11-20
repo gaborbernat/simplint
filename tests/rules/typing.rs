@@ -39,8 +39,7 @@ fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
     common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-// A write through `globals()` under a name the code cannot read may set any name of the module, as a computed
-// `setattr` does, so no name is final.
+// A computed key in the module globals can rebind any named constant.
 #[test_case("globals()[name] = 3" ; "computed_key")]
 #[test_case("globals().update(LIMIT=3)" ; "update")]
 #[test_case("globals().setdefault(name, 3)" ; "setdefault")]
@@ -50,7 +49,6 @@ fn missing_final_skips_every_name_a_computed_globals_write_may_set(body: &str) {
     common::assert_report_count(root.path(), "SMP601", 0);
 }
 
-// A `globals` the module defines is not the builtin, so its calls write no module name and `LIMIT` stays reported.
 #[test]
 fn missing_final_ignores_a_globals_the_module_defines() {
     let root = common::project(&[(
@@ -60,8 +58,7 @@ fn missing_final_ignores_a_globals_the_module_defines() {
     common::assert_report_count(root.path(), "SMP601", 1);
 }
 
-// At module level `vars()` and `locals()` with no argument are the module's dict, so their writes count as `globals()`
-// writes, while a call with an argument or a write in a function, class or lambda does not.
+// With no argument at module level, `vars()` and `locals()` return the module globals.
 #[test_case("vars()[\"LIMIT\"] = 3", 0 ; "module_vars_store")]
 #[test_case("locals()[\"LIMIT\"] = 3", 0 ; "module_locals_store")]
 #[test_case("del vars()[\"LIMIT\"]", 0 ; "module_vars_delete")]
@@ -80,8 +77,7 @@ fn missing_final_counts_module_vars_and_locals_writes_only(body: &str, reports: 
     common::assert_report_count(root.path(), "SMP601", reports);
 }
 
-// The parenthesized name `(LIMIT)` takes no annotation of its own, as `(LIMIT: Final[int]) = 3` is not valid Python,
-// but the other names of the file still get theirs.
+// An annotation must go outside the target's parentheses. Inserting it inside would produce `(LIMIT: Final[int]) = 3`.
 #[test_case("(LIMIT) = 3\n", false ; "parenthesized_without_annotation")]
 #[test_case("(LIMIT): int = 3\n", true ; "parenthesized_with_annotation")]
 fn missing_final_fixes_a_parenthesized_name_only_when_annotated(source: &str, fixable: bool) {
@@ -120,8 +116,6 @@ fn callable_ellipsis_in_test_module_outside_function_reports() {
     assert_eq!(stdout.matches("Callable[..., T]").count(), 1, "{stdout}");
 }
 
-// Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, so SMP602 leaves it to
-// Ruff whether or not the project selects ANN401.
 #[test_case("def f(value: Any | None) -> None:\n    print(value)\n" ; "parameter")]
 #[test_case("def f(value: Any) -> None:\n    print(value)\n" ; "whole_parameter")]
 #[test_case("def f() -> Any:\n    return 1\n" ; "whole_return")]
@@ -132,8 +126,6 @@ fn imprecise_annotation_leaves_any_to_ann401(source: &str) {
     assert!(!stdout.contains("`Any` accepts any value"), "{stdout}");
 }
 
-// Ruff's ANN401 reports an `Any` that is, or sits in an `Optional`, a `Union`, a `|` or the first argument of
-// `Annotated`, in a parameter or return annotation. SMP602 leaves those to it whether or not ANN401 is selected.
 #[test_case("def f(value: Optional[Any]) -> None:\n    print(value)\n", false ; "optional")]
 #[test_case("def f(value: Union[int, Any]) -> None:\n    print(value)\n", false ; "union")]
 #[test_case("def f(value: Union[Any]) -> None:\n    print(value)\n", false ; "single_element_union")]
@@ -150,8 +142,6 @@ fn imprecise_annotation_leaves_optional_any_to_ann401(source: &str, reported: bo
     assert_eq!(stdout.contains("`Any` accepts any value"), reported, "{stdout}");
 }
 
-// ANN401 skips `*args` and `**kwargs` under `allow-star-arg-any`, the `self` or `cls` of a method, and `@override`
-// signatures, so SMP602 reports those whether or not ANN401 is selected.
 #[test_case("", "def f(*args: Any) -> None:\n    print(args)\n", false ; "star_args")]
 #[test_case(
     "[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n",
@@ -178,8 +168,8 @@ fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, repor
     assert_eq!(stdout.contains("`Any` accepts any value"), reported, "{stdout}");
 }
 
-// `object` is the one annotation both ANN401 and SMP602 accept for `*args` and `**kwargs`, so SMP602 leaves a variadic
-// `object` alone whether or not ANN401 runs. A nested `object` or one on a regular parameter stays reported.
+// Variadic parameters can accept arbitrary objects. A nested `object` such as `list[object]` still describes the
+// elements of a container.
 #[test_case("", "def f(*args: object) -> None:\n    print(args)\n", false ; "star_args")]
 #[test_case("", "def f(**kwargs: object) -> None:\n    print(kwargs)\n", false ; "star_kwargs")]
 #[test_case(
@@ -201,9 +191,8 @@ fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, repor
     assert_eq!(common::reported_without_and_with_ruff(&case, "`object` annotation"), [reported, reported]);
 }
 
-// Ruff's ANN401 skips the `def` that implements an `@overload` set, and reads a stub through the `if` bodies after it,
-// until a `def` or a class resets it. SMP602 follows, so the `def` of the first branch is reported on its line, and the
-// one after a branch with another `def` in it, or after a class, is left to ANN401.
+// An intervening definition can end the overload group before the implementation. That changes whether ANN401 covers
+// its annotations.
 #[test_case(
     "from typing import Any, overload\n\n\n@overload\ndef f(value: int) -> int: ...\n@overload\ndef f(value: str) -> \
         str: ...\nif __debug__:\n    def f(value: Any) -> Any:\n        return value\nelse:\n    def f(value: Any) -> Any\
@@ -238,8 +227,6 @@ fn overload_implementation_follows_ruff_stub_reads(source: &str, line: usize, re
     );
 }
 
-// Another module may change a constant through its import, or every name through a star import, out of this module's
-// sight.
 #[test_case("from app.settings import PLUGINS\n\nPLUGINS.append(\"extra\")\n", 0 ; "imported_by_name")]
 #[test_case("from app import settings\n\nsettings.PLUGINS.append(\"extra\")\n", 0 ; "read_through_the_module")]
 #[test_case("from app.settings import *\n", 0 ; "star_imported")]
@@ -254,7 +241,6 @@ fn mutable_module_constant_skips_a_constant_other_modules_reach(main: &str, repo
     common::assert_report_count(root.path(), "SMP605", reports);
 }
 
-// The fix wraps a dict in `types.MappingProxyType`, which it cannot import over a name the module already binds.
 #[test]
 fn mutable_module_constant_leaves_a_dict_whose_wrapper_name_is_taken() {
     let root = common::project(&[(
@@ -266,7 +252,6 @@ fn mutable_module_constant_leaves_a_dict_whose_wrapper_name_is_taken() {
     assert!(stdout.contains("SMP605") && !stdout.contains("SMP605 [*]"), "{stdout}");
 }
 
-// A function may rebind the constant through `globals()`, where no statement names it.
 #[test]
 fn mutable_module_constant_skips_a_constant_written_through_globals() {
     let root = common::project(&[(

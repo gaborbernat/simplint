@@ -61,13 +61,12 @@ fn check_run(checker: &Checker, assign: &Stmt, (name, kind): (&str, Kind), rest:
         return;
     };
     let range = TextRange::new(assign.start(), last.stmt.end());
-    // A comment in the run would go with the statements it stands between.
+    // Replacing the whole run would discard comments between statements.
     if checker.has_comment_in(range) || has_repeated_entry(&entries, kind) {
         return;
     }
     let text = format!("{name} = {}", literal(checker, kind, &entries));
-    // A name may be unbound, and a key or element may be unhashable, so only a run of constants can raise nothing,
-    // and only then do the statements and the literal raise at the same point.
+    // A failed name lookup or hash leaves the original collection bound. A failed literal assignment does not bind it.
     let fix = if entries.iter().all(|entry| entry.key.is_none_or(is_hashable) && is_constant(entry.value)) {
         Fix::safe_edit(Edit::range_replacement(text, range))
     } else {
@@ -84,9 +83,7 @@ fn check_run(checker: &Checker, assign: &Stmt, (name, kind): (&str, Kind), rest:
     );
 }
 
-// Ruff's FURB113 fixes two or more appends to a list only while they are consecutive and no comment sits between them,
-// so the literal leaves such a run to it. The run counts every append in the appends that follow the literal, to any
-// list, not only the ones that enter it here.
+// FURB113 groups appends by list. An append to a different list or a comment between two calls can prevent its fix.
 fn ruff_fixes_appends(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
     let run: Vec<&Stmt> = rest.iter().take_while(|stmt| checker.semantic().is_list_append(stmt.range())).collect();
     let positions: Vec<usize> =
@@ -133,17 +130,14 @@ fn entry<'a>(stmt: &'a Stmt, name: &str, kind: Kind) -> Option<Entry<'a>> {
         }
         _ => return None,
     };
-    // A call would run in the literal's place, so only constants and names move into it.
     let key_ok = key.is_none_or(|key| is_hashable(key) || key.is_name_expr());
     let value_ok = if kind == Kind::Set { is_hashable(value) } else { is_constant(value) } || value.is_name_expr();
-    // The literal does not exist yet while its entries are built, so an entry that reads the collection cannot move
-    // into it.
+    // The new value is bound only after all entries have been evaluated.
     let names_ok = key.is_none_or(|key| !expr_mentions(key, name)) && !expr_mentions(value, name);
     (key_ok && value_ok && names_ok).then_some(Entry { stmt, key, value })
 }
 
-// Two keys of a dict, or two elements of a set, that hash alike as Python hashes them, such as `1` and `True`, are one
-// entry. The literal would repeat it, which Ruff reports (F601, F602, B033), so the run is left as written.
+// Repeated names and equal literal keys such as 1 and True would introduce Ruff F601, F602 or B033.
 fn has_repeated_entry(entries: &[Entry], kind: Kind) -> bool {
     let mut seen = FxHashSet::default();
     entries
@@ -156,7 +150,7 @@ fn has_repeated_entry(entries: &[Entry], kind: Kind) -> bool {
         .any(|key| !seen.insert(HashableExpr::from(key)))
 }
 
-// A tuple outside parentheses in the source needs them, since a comma would end the entry.
+// A bare tuple needs parentheses so its comma does not separate entries in the new literal.
 fn literal(checker: &Checker, kind: Kind, entries: &[Entry]) -> String {
     let text = |expr: &Expr| {
         let source = checker.text(expr);

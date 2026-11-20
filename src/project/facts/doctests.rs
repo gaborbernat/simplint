@@ -14,7 +14,7 @@ pub(super) fn doctest_names(text: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 impl FactVisitor<'_> {
-    // A doctest's imports keep their names used, as the code's own imports do.
+    // A from-import in a doctest can use a project name even if no source file imports it.
     pub(super) fn doctests(&mut self, text: &str) {
         for code in doctest_code(text) {
             if let Some((level, module, names)) = from_import(code)
@@ -26,7 +26,7 @@ impl FactVisitor<'_> {
                     .or_default()
                     .extend(names.into_iter().map(str::to_owned));
             }
-            // A doctest reads a name off a module, which is no patch, yet call-site rules must see it.
+            // Dotted names in doctests count as uses when checking call sites. Track patch targets separately.
             for path in code.split(|char: char| !(char.is_alphanumeric() || matches!(char, '_' | '.'))) {
                 if path.contains('.') && path.split('.').all(is_identifier) {
                     Self::record_path(&mut self.names[Channel::Doctest], path);

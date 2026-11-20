@@ -295,7 +295,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             && self.resolving.is_empty()
             && let Some(generator) = self.comprehension(name)
         {
-            // An unpacked target takes an item of an item, which no kind here tells.
+            // An unpacked target needs the element type of an item, which these kinds do not track.
             return generator.target.is_name_expr().then(|| self.item(&generator.iter, depth)).flatten();
         }
         let Some((bindings, depth)) = self.lookup(name, depth) else {
@@ -360,7 +360,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         kinds
     }
 
-    // What `with` gives the target of a context manager: the name of a temporary directory is a `str`.
+    // Treat a TemporaryDirectory context target as its directory name.
     fn entered(&self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         let Expr::Call(ast::ExprCall { func, .. }) = expr else {
             return None;
@@ -383,8 +383,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         })
     }
 
-    // A class body is skipped unless innermost, since its methods do not see it, but a type parameter of the class is
-    // seen from them.
+    // Methods can refer to their class's type parameters, even though they do not inherit its namespace.
     fn lookup(&self, name: &'a str, depth: usize) -> Option<(Rc<Bindings<'a>>, usize)> {
         let checker = self.walker.checker;
         self.scopes[..depth]

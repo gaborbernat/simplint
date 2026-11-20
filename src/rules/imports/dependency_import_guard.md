@@ -1,13 +1,11 @@
-Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and
-the project's required dependencies.
+Flags `try`/`except ImportError` around `import` statements when simplint recognizes every imported module as a standard
+library module available on the target versions or a required dependency.
 
 ## Why is this bad?
 
-A required dependency is installed with the project. The standard library ships with Python, and an installer puts each
-entry of [`dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) in place.
-The fallback does not run in a working environment. When the install is broken, the guard hides the import error until
-something later fails with a less clear message, against the [Zen of Python](https://peps.python.org/pep-0020/)'s rule
-that errors should not pass silently.
+If `requests` is an unconditional
+[project dependency](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies), a failed
+import can expose a broken installation. Replacing it with `requests = None` hides the cause until code tries to use it.
 
 ## Example
 
@@ -32,8 +30,8 @@ import requests
 
 ## Configuration
 
-- The Python version the code targets, taken from the first of these that applies; see
-  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
+- The following settings can select the target version. See \[Python version\](https for command-line overrides, other
+  project declarations and the default.//simplint.readthedocs.io/en/latest/configuration/project.html#python-version):
 
   1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for
      the files a pattern matches
@@ -112,14 +110,16 @@ them alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.
 
 ### Active on
 
-A module is required when its top-level package is one of these:
+simplint recognizes two kinds of required imports.
 
 - **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library
   of every Python version from the target onward, set by Ruff's
   [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
-  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every
-  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule
-  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and
+  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). The rule
+  checks releases through Python 3.15 and excludes known optional and platform-specific modules. Its submodule inventory
+  begins at Python 3.10, so a target below 3.10 gets no standard library submodule reports. A module removed in that
+  range, such as `distutils` in 3.12, does not count. A submodule counts from the version that adds it, so
+  `asyncio.taskgroups` counts from 3.11 and
   [`string.templatelib`](https://docs.python.org/3/library/string.templatelib.html#module-string.templatelib) from 3.14.
 
   ```toml config
@@ -255,7 +255,7 @@ A module is required when its top-level package is one of these:
 
 - **The C accelerators CPython imports under a fallback**, such as `_json` and `_pickle`: CPython guards each of them
   with an `ImportError` fallback of its own, so the rule does not count them as required. Other private modules, such as
-  `_thread`, are still reported, since every Python ships them.
+  `_thread`, can still trigger the rule.
 
   ```toml config
   [project]
@@ -283,8 +283,7 @@ A module is required when its top-level package is one of these:
       _thread = None
   ```
 
-- **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the
-  import can fail on a release build.
+- **Modules whose names start with `_test`**. Python installations can omit test extensions such as `_testcapi`.
 
   ```toml config
   [project]
@@ -316,8 +315,8 @@ A module is required when its top-level package is one of these:
       asyncio = None
   ```
 
-- **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not
-  reported.
+- **Local modules**. The rule checks standard library and required dependency names. A local extension such as
+  `pkg._speedups` usually belongs to neither.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -403,8 +402,8 @@ flowchart TD
 
 ### Matching dependency names
 
-- Dependencies are matched by their
-  [normalized name](https://packaging.python.org/en/latest/specifications/name-normalization/).
+- simplint compares the top-level import to the distribution name, ignoring case and replacing each hyphen or dot in the
+  distribution name with an underscore. Submodules of a matching dependency also count.
 
   ```toml config
   [project]
@@ -437,12 +436,10 @@ flowchart TD
 
 ### Fix
 
-The fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,
-because the fallback code is removed and a failing import now raises.
+The unsafe fix keeps the imports and removes the handlers. If an import fails, the exception now propagates.
 
-An import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so
-Ruff's unused-import fix does not delete it. The import is there to fail when the module is missing. In a function, an
-import counts as used when the function loads its name, so an import the function returns gets no suppression.
+The fix adds `# noqa: F401  # fails when the module is missing` to an unused import so Ruff keeps the installation
+check. A function that reads the imported name, including in a nested function, needs no suppression.
 
 ```toml config
 [project]
@@ -553,7 +550,3 @@ No fix is offered when the statement:
   except ImportError:
       pass
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

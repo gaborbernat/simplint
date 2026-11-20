@@ -117,10 +117,8 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
         .collect()
 }
 
-// A file the run indexes, with what indexing and linting it take, worked out once: its settings and Ruff's with the
-// configuration file they come from, its package, and the module it imports as from that package. Ruff sees no package
-// around a file of a namespace package, yet Python resolves its relative imports, so such a file is `importable` from
-// a search root instead.
+// Keep both import paths for the index. A namespace package can resolve relative imports through a search root even
+// when Ruff finds no package around the file.
 pub(super) struct RunFile<'a> {
     pub(super) first_parse: OnceLock<Box<WorkerParse>>,
     pub(super) path: &'a Path,

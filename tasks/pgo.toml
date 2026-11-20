@@ -1,11 +1,8 @@
-# Settings for the PGO training run in tasks/pgo.py: every rule, preview ones included, so the profile covers each
-# rule's check and fix path.
+# Enable Ruff preview for the training runs, then exclude rules that conflict with simplint.
 target-version = "py314"
 line-length = 120
 lint.select = [ "ALL" ]
 lint.preview = true
-# simplint refuses to run while Ruff asks for the docstrings its function-docstring and test-module-docstring
-# remove.
 lint.ignore = [
   "undocumented-public-module",
   "undocumented-public-class",

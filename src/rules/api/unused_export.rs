@@ -13,14 +13,9 @@ use crate::syntax::{Exports, alias_binding, all_binding, builds_all, module_stat
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
-    // The `__all__` of a public module of a library declares what users outside the run import, so no name in it needs
-    // an importer in the run. An `import *` of the module hands every listed name to the importing module, which may
-    // use it there, and so does a module that imports `__all__` from it or reads it off the module, as it iterates the
-    // list. A package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports, puts
-    // any it leaves out back into `__all__`.
-    //
-    // A module-level `__getattr__` serves names `__all__` lists without the module binding them, as a deprecation shim
-    // or a lazy loader does, so whether anything imports them shows only outside the run.
+    // External callers can use a public library API or a package re-export. A star import, a read of the export list,
+    // or a module passed to other code also makes individual uses hard to trace. Module-level `__getattr__` can supply
+    // exports dynamically.
     if checker.is_test_module()
         || checker.is_init_module()
         || project.role().public
@@ -35,9 +30,7 @@ pub fn unused_export(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
-    // A name another exported name's signature reaches is part of the interface the module exports, and a dotted path
-    // that names it, as a `mock.patch("pkg.mod.name")` target does, uses it as an import does. Code the index cannot
-    // follow may still read a name, so the removal below is withheld for it, while the report stays.
+    // A dotted patch target and a type in an exported signature both count as uses.
     let unused: Vec<&str> = exported.names().iter().copied().filter(|name| !project.is_used_elsewhere(name)).collect();
     if unused.is_empty() {
         return;
@@ -48,8 +41,7 @@ pub fn unused_export(checker: &Checker) {
         [stmt] => AllList::of(stmt).filter(|_| all_binding(stmt).is_some_and(|binding| binding.operator.is_none())),
         _ => None,
     };
-    // Ruff's fix for the import this leaves unused drops every binding of a name imported twice from one module, as in
-    // `from .question import Question, Question as Alias`, the one still in use included.
+    // Keep both names when a member is imported twice. Removing one export can make Ruff delete a still-used import.
     let doubled = doubled_bindings(checker);
     let title = format!(
         "Remove {} from `__all__`",
@@ -63,7 +55,6 @@ pub fn unused_export(checker: &Checker) {
         .and_then(|list| removal(checker, list, &unused.iter().copied().collect()))
         .map(|fix| (fix, title));
     let mut ranges: FxHashMap<&str, TextRange> = FxHashMap::default();
-    // A listed `__all__` holds only strings.
     for text in list.as_ref().map_or(&[][..], AllList::elements).iter().filter_map(Expr::as_string_literal_expr) {
         ranges.entry(text.value.to_str()).or_insert(text.range());
     }
@@ -163,7 +154,7 @@ fn removal(checker: &Checker, list: &AllList, unused: &FxHashSet<&str>) -> Optio
     fix_of(edits, applicability(checker))
 }
 
-// Code outside the run, such as a library's users, may import a name the run does not; an application has no such code.
+// Only library fixes need to account for consumers outside the project.
 fn applicability(checker: &Checker) -> Applicability {
     if checker.settings.project.api.kind == ProjectKind::Application {
         Applicability::Safe

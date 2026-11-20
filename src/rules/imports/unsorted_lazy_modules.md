@@ -3,8 +3,7 @@ list whose entries are not sorted.
 
 ## Why is this bad?
 
-The list grows with every import a module defers. Sorted, it reads like the import block below it, a missing or
-duplicated module stands out, and two branches that each add a module merge without a conflict over where it goes.
+A predictable order makes it easier to find a module in a long list and to spot duplicate entries.
 
 ## Example
 
@@ -56,8 +55,8 @@ import pathlib
 
 ### Exceptions
 
-- **A `__lazy_modules__` that is not a literal**, such as a list built by a function, or one that the module changes
-  after assigning it.
+- **A computed declaration or another use of `__lazy_modules__` in code**. The rule needs a single assignment whose
+  entries it can read.
 
   ```python ok
   __lazy_modules__ = sorted(["pathlib", "json"])
@@ -65,8 +64,8 @@ import pathlib
 
 ### Fix
 
-The fix is safe: CPython checks membership in the list, so its order changes nothing. A comment at the end of an entry's
-line moves with the entry. Any other comment inside the list withholds the fix, since the rewrite would lose it.
+The fix is safe because Python checks membership in `__lazy_modules__`. It keeps each entry's trailing comment with that
+entry. Other comments inside the list or a tuple written without parentheses prevent the fix.
 
 ```python report
 __lazy_modules__ = [
@@ -90,7 +89,6 @@ import pathlib
 
 ## Other tools
 
-- **[flake8-lazy](https://github.com/henryiii/flake8-lazy):** `LZY201`, without a fix. Its `--apply` mode rewrites the
-  whole list instead.
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
-  [`unsorted-dunder-all`](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) (`RUF022`) sorts `__all__` only.
+- [flake8-lazy](https://github.com/henryiii/flake8-lazy) reports unsorted entries as `LZY201`. Its standalone
+  `--apply=list` mode regenerates the list.
+- Ruff's [`unsorted-dunder-all`](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) (`RUF022`) sorts `__all__`.

@@ -7,8 +7,8 @@ use ruff_python_semantic::SemanticModel;
 use ruff_python_semantic::analyze::{class, typing};
 use rustc_hash::FxHashMap;
 
-// The runtime semantics `flake8-type-checking` gives annotations through the base classes and decorators it lists,
-// which decide whether Ruff's import-private-name exempts a read in an annotation.
+// Ruff's type-checking settings identify decorators and bases that need annotations at runtime. PLC2701 uses that
+// distinction for private imports.
 pub(super) struct Runtime<'a> {
     base_classes: &'a FxHashMap<String, RuntimeSemantics>,
     decorators: &'a FxHashMap<String, RuntimeSemantics>,

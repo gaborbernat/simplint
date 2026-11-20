@@ -1,20 +1,15 @@
-Flags [`asyncio.get_event_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop)
-calls inside coroutines, where
-[`asyncio.get_running_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_running_loop) (added
-in Python 3.7) returns the loop the coroutine runs on.
+Flags calls to
+[`asyncio.get_event_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop) inside an
+`async def` body.
 
 ## Why is this bad?
 
-Inside a coroutine, a loop is running. The
-[asyncio docs](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_event_loop) prefer
-`get_running_loop()` there and in callbacks, because `get_event_loop()` behaves in more complex ways, especially with
-custom event loop policies. `get_running_loop()` returns the running loop or raises
-[`RuntimeError`](https://docs.python.org/3/builtins/exceptions.html#RuntimeError), and it consults no policy.
-
-`get_event_loop()` serves code outside a loop, and that part keeps changing: Python
-[3.10](https://docs.python.org/3.10/library/asyncio-eventloop.html#asyncio.get_event_loop) deprecated the call without a
-running loop, Python 3.14 made it raise `RuntimeError`, and the policy system it consults is deprecated for removal in
-Python 3.16.
+When asyncio runs a coroutine,
+[`get_running_loop()`](https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.get_running_loop) returns its
+loop directly. Outside a running loop the two calls can differ. `get_running_loop()` raises
+[`RuntimeError`](https://docs.python.org/3/builtins/exceptions.html#RuntimeError), while `get_event_loop()` can return a
+loop set for the current thread, even if it is stopped. Since Python 3.14, `get_event_loop()` also raises `RuntimeError`
+if there is no current loop.
 
 ## Example
 
@@ -44,7 +39,8 @@ async def run() -> asyncio.AbstractEventLoop:
   counts as part of it, while the body of a nested `def` or `lambda` does not. Their decorators and defaults run in the
   coroutine, so a call there is reported too, and so is a call in an annotation of a nested `def` unless the annotations
   are lazy. **Safe fix:** the attribute is renamed to `get_running_loop`. A call through a name imported from `asyncio`,
-  such as `get_event_loop()`, is reported without a fix.
+  such as `get_event_loop()`, is reported without a fix. The rule assumes that asyncio runs the coroutine. If a caller
+  drives it manually or with another async runtime, there may be no running asyncio loop.
 
   ```python report
   import asyncio
@@ -86,8 +82,9 @@ async def run() -> asyncio.AbstractEventLoop:
 
 ### Exceptions
 
-- **Decorators, defaults and annotations of an `async def`**: they run where the `def` statement runs, before any loop
-  is running, so a call there stays.
+- **Function headers outside coroutines.** Decorators and default arguments run where the function is defined. The rule
+  skips those calls unless an enclosing coroutine is executing the definition. It also skips annotations outside an
+  enclosing coroutine.
 
   ```python ok
   import asyncio
@@ -139,7 +136,3 @@ async def run() -> asyncio.AbstractEventLoop:
 
       return later
   ```
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

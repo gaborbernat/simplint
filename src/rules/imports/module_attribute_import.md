@@ -1,10 +1,9 @@
-Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same
-object.
+Flags attribute reads such as `findings.DbWriter` on imported modules. By default it checks modules in the project.
 
 ## Why is this bad?
 
-Reaching a name through its module makes the reader trace where the module came from at every use, and it repeats the
-module name in each line. Importing the name once states the dependency at the top of the file.
+`from findings import DbWriter` shows which part of `findings` the file uses and lets callers write `DbWriter()`
+directly.
 
 ## Example
 
@@ -87,7 +86,7 @@ writer = DbWriter()
 ### Active on
 
 - **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the
-  module must resolve to a file of the run, so the attribute reads a name the file defines.
+  module must resolve to a file in the run. A report can name an attribute that the file does not define.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -136,8 +135,8 @@ writer = DbWriter()
   response = requests.get("https://example.com")
   ```
 
-- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a
-  module that resolves to a file of this project is checked.
+- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. The
+  configured scope determines which modules are checked.
 
   ```python context file=pkg/main.py
   def _compute() -> int:
@@ -328,9 +327,8 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
-- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is
-  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still
-  reported.
+- **Locals that shadow the module name**. An attribute read through a parameter or local variable named `findings`
+  refers to that value. Other reads through the imported module still count.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -349,8 +347,8 @@ writer = DbWriter()
       return findings.DbWriter()
   ```
 
-- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the
-  wrong module.
+- **Module dunders such as `__name__`**. Importing the attribute under its own name could replace the importing module's
+  `__name__`.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -486,18 +484,14 @@ writer = DbWriter()
 
 ### Fix
 
-**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
-patches the module attribute later no longer reaches the name.
+The fix is unsafe. After `from findings import DbWriter`, replacing `findings.DbWriter` during a test no longer changes
+the name in the importing module.
 
-The fix replaces the import and every `findings.Name` access in the file. It is offered only when every use of the
-module is such an access to a name the module defines, no computed write, such as
-[`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr), may set a name of the
-module, no other module of the run imports or reads the module's name, `__all__` does not list it, since the replaced
-import would no longer bind it, and the file and the module are not in one cycle of run-time imports.
-
-The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
-report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries
-it.
+simplint replaces a single module import and every attribute read through it together. The source module must define
+each name, and the import statement must contain no comments. simplint withholds the fix if a computed write such as
+[`setattr(module, name, value)`](https://docs.python.org/3/builtins/functions.html#setattr) could change an attribute,
+if another file reads the imported module binding, if `__all__` exports it or if the modules share a runtime import
+cycle. The first unsuppressed report carries the fix.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -520,7 +514,7 @@ from .findings import DbWriter
 writer = DbWriter()
 ```
 
-The fix rewrites every access in the file, so only the first report below carries it, and the second has none.
+Here one fix imports both `DbWriter` and `Reader`.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -549,8 +543,7 @@ writer = DbWriter()
 reader = Reader()
 ```
 
-A use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`
-is reported without a fix.
+Reading `findings.__name__` still needs the module object, so `findings.DbWriter` gets a report without a fix.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -568,8 +561,8 @@ writer = findings.DbWriter()
 label = findings.__name__
 ```
 
-A use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to
-that binding. Here the type parameter `Item` shadows the module's `Item`.
+Inside `make`, the bare name `Item` refers to a type parameter. Replacing `findings.Item()` with `Item()` would call
+that parameter.
 
 ```toml config
 [project]
@@ -594,9 +587,8 @@ def make[Item](kind: type[Item]) -> object:
     return findings.Item()
 ```
 
-A name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the
-module may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin
-`set`.
+Importing `set` would shadow the builtin. The rule leaves `findings.set` qualified even if the file never calls the
+builtin.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -621,8 +613,7 @@ configured = findings.set("a", 1)
 values = set([1, 2])
 ```
 
-A name that another file of the run imports from this module keeps the report without a fix, since the replaced import
-would no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.
+Replacing the import in `pkg.consumer` would break `from .consumer import findings` in `pkg/other.py`.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -649,8 +640,7 @@ from . import findings
 writer = findings.DbWriter()
 ```
 
-A module name that the file lists in `__all__` keeps the report without a fix, since the replaced import would stop
-binding the name the file exports. Here `pkg/api.py` re-exports `findings`.
+The import in `pkg/api.py` stays because `__all__` exports `findings`.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -708,11 +698,10 @@ writer = DbWriter()
 
 ## Private module attributes
 
-The rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of
-classes, functions or other values. Private names and private module paths receive no automatic fix: a replacement
-import can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's
-[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute
-access, so selecting it does not suppress this report.
+Only attribute reads on imported modules are in scope. Private names and private module paths receive no automatic fix
+because the replacement import can violate [private-import-path](SMP310.html). Ruff's
+[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks the import itself.
+Selecting it leaves the attribute-access report enabled.
 
 ## Other tools
 

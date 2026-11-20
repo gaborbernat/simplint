@@ -1,15 +1,10 @@
-Flags `+` chains that join a string literal or f-string with other values. An f-string builds the same text in a single
-expression, without `+`.
+Flags `+` chains that include a string literal or f-string. When the operands are strings, one f-string can show the
+text in the order it appears.
 
 ## Why is this bad?
 
-A chain of `+` scatters the text across quotes and operators, and every non-string operand needs an explicit `str()`. An
-f-string ([PEP 498](https://peps.python.org/pep-0498/)) shows the final text in one piece and formats each value itself.
-
-The f-string is also faster. Each `+` builds a
-[new string](https://docs.python.org/3/builtins/stdtypes.html#common-sequence-operations) that the next `+` copies
-again, while an f-string formats its fields and joins every piece in one
-[`BUILD_STRING`](https://docs.python.org/3/library/dis.html#opcode-BUILD_STRING) step.
+With `+`, the quotes, operators and calls to `str()` can obscure where the values appear in the output. An
+[f-string](https://peps.python.org/pep-0498/) puts each expression inside the surrounding text.
 
 ## Example
 
@@ -46,10 +41,10 @@ message = f"Hello, {name}!"
 
 - **`+` chains that join a string literal or
   [f-string](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) with other values**, such as
-  `"Hello, " + name + "!"`: the whole chain is reported once. **Unsafe fix:** always, and offered only when the code
-  shows every operand is a `str`. `+` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError)
-  for a non-string operand and honors a custom
-  [`__add__`](https://docs.python.org/3/reference/datamodel.html#object.__add__) or `__radd__`, such as
+  `"Hello, " + name + "!"`: simplint reports the chain once. A fix is available only when simplint infers that every
+  operand is a `str`, and it is always marked unsafe. `+` raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) for a non-string operand and honors a
+  custom [`__add__`](https://docs.python.org/3/reference/datamodel.html#object.__add__) or `__radd__`, such as
   `markupsafe.Markup` escaping the other operand, while an f-string formats any value.
 
   ```python report
@@ -178,7 +173,7 @@ flowchart TD
 
 ### Known `str` operands
 
-An operand is known to be a `str` when it is one of these.
+Simplint treats the following operands as strings when deciding whether to offer a fix.
 
 Literals and expressions:
 
@@ -265,21 +260,22 @@ The fix copies each non-literal operand into a placeholder as written:
 
 No fix is offered when:
 
-- a literal is triple-quoted, raw or `u`-prefixed;
+- a literal in the chain is triple-quoted, raw, `u`-prefixed or contains a named Unicode escape such as `\N{BULLET}`.
 
   ```python report
   def greet(name: str) -> str:
       return """Hello, """ + name
   ```
 
-- the literals use different quote characters;
+- the literals use different delimiters and cannot share one without changing their contents. Inside another f-string
+  before Python 3.12, they must already use the same delimiter.
 
   ```python report
   def greet(name: str) -> str:
       return 'Say "hi", ' + name + ". It's late."
   ```
 
-- a comment sits between the operands, since the f-string has no place for it;
+- a comment between the operands would be lost.
 
   ```python report
   def greet(name: str) -> str:
@@ -313,8 +309,9 @@ No fix is offered when:
       return "a" + s
   ```
 
-- the target Python version is older than 3.12 and a non-literal operand contains the string's quote character, which
-  f-strings allow only from 3.12 on ([PEP 701](https://peps.python.org/pep-0701/#considerations-of-quote-reuse)).
+- the target is older than Python 3.12 and a string inside a replacement field cannot be rewritten to avoid the
+  enclosing delimiter. From Python 3.12, [PEP 701](https://peps.python.org/pep-0701/#considerations-of-quote-reuse)
+  allows reusing the delimiter.
 
   ```toml config
   [tool.ruff]
@@ -333,7 +330,7 @@ No fix is offered when:
   [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which report `+` in logging calls and
   between two literals split across lines and which this rule leaves to them, ISC003 only while it runs; open issue
   [#11060](https://github.com/astral-sh/ruff/issues/11060) lists Sourcery's use-fstring-for-concatenation.
-- [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
+- [Sourcery](https://sourcery.ai) rewrites a mixture of string literals and computed values through its
   [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)
   refactoring.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports explicit string

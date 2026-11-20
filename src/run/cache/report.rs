@@ -217,8 +217,7 @@ impl StoredFix {
         }
     }
 
-    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an
-    // edit outside a source of `length` bytes.
+    // Reject empty fixes and out-of-bounds edits when reconstructing a fix from cached bytes.
     fn fix(&self, length: usize) -> Option<Fix> {
         let applicability = match self.applicability {
             StoredApplicability::DisplayOnly => Applicability::DisplayOnly,

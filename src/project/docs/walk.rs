@@ -12,9 +12,8 @@ use ruff_workspace::resolver::match_exclusion;
 use crate::project::cache::{Stat, stat, stat_key};
 use crate::settings::is_nested_root;
 
-// The same walk as file discovery: ignore files apply when the settings respect them, and symlinks are not followed.
-// It yields the pages, which Ruff's exclusions leave out, and every `conf.py`, which Sphinx reads whether or not Ruff
-// lints it.
+// Honor the discovery exclusions for directories and pages. A conf.py in a visited directory can affect autodoc even if
+// Ruff excludes the file itself.
 pub(super) fn pages(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> Vec<PathBuf> {
     let exclusions = Exclusions::of(settings);
     let main = main.to_path_buf();
@@ -56,7 +55,6 @@ impl Exclusions {
     }
 }
 
-// Only a directory can be a nested project root, so a file skips this check.
 fn enters(path: &Path, name: &OsStr, exclusions: &Exclusions, main: &Path) -> bool {
     !is_hidden(name) && !exclusions.excludes(path, name) && !is_nested_root(main, path)
 }
@@ -65,8 +63,7 @@ fn is_hidden(name: &OsStr) -> bool {
     name.to_str().is_some_and(|name| name.starts_with('.'))
 }
 
-// A page Ruff does not exclude, or a `conf.py`, which counts even where Ruff excludes it. A symlinked `conf.py` counts
-// when its target lies inside the project, as Sphinx follows the link.
+// Accept a symlinked conf.py only if its target stays inside the project.
 fn is_candidate(root: &Path, entry: &ignore::DirEntry, exclusions: &Exclusions) -> bool {
     let path = entry.path();
     let name = path.file_name().unwrap_or_default();
@@ -77,7 +74,7 @@ fn is_candidate(root: &Path, entry: &ignore::DirEntry, exclusions: &Exclusions) 
             kind.is_file()
                 && is_page(path)
                 && !exclusions.excludes(path, name)
-                // Past 8 MiB a markup file is generated output, and reading it whole costs memory for nothing.
+                // Limit memory use when a generated page is large.
                 && entry.metadata().is_ok_and(|metadata| metadata.len() <= 8 << 20)
         }
     })
@@ -95,13 +92,10 @@ pub(super) fn is_configuration(path: &Path) -> bool {
     path.file_name().is_some_and(|name| name == "conf.py")
 }
 
-// Directories a project's own `conf.py` does not belong to: vendored copies, and the ones a parent project's build
-// keeps, which a project under the root is a separate project of.
+// Vendored documentation may use different autodoc settings.
 const VENDORED: [&str; 4] = ["_vendor", "vendor", "third_party", "subprojects"];
 const MARKERS: [&str; 3] = ["pyproject.toml", "setup.py", "setup.cfg"];
 
-// Whether a `conf.py` under the root belongs to another project or to vendored code: one of the vendored directories
-// is on its way, or a directory between it and the root holds a project marker.
 pub(super) fn is_foreign(root: &Path, path: &Path) -> bool {
     path.ancestors().skip(1).take_while(|directory| *directory != root).any(|directory| {
         directory.file_name().is_some_and(|name| VENDORED.iter().any(|vendored| name == *vendored))
@@ -109,15 +103,11 @@ pub(super) fn is_foreign(root: &Path, path: &Path) -> bool {
     })
 }
 
-// Files whose presence or content changes what the documentation reads, which the key stats along with the pages.
-// The index files and project markers decide which `conf.py` counts and which project it belongs to.
+// Changes to ignore rules, index files or project markers can change which pages and configurations count.
 const WATCHED: [&str; 6] = [".gitignore", ".ignore", "index.txt", "pyproject.toml", "setup.py", "setup.cfg"];
 
-// Stats stand in for the ignore files' matchers, which cost more than listing directories. A directory's time moves
-// when an entry is added or renamed but not when a page is edited, so pages and ignore files are stat'd too. Each
-// level is listed on all threads, as a gitignored build tree can hold tens of thousands of directories. A directory an
-// ignore file hides is listed too, so the key covers at least what the walk reads.
-// `global` is git's excludes file, which git finds only through a home directory or its configuration.
+// Hash directory metadata to catch additions and renames, and file metadata to catch edits. Listing ignored directories
+// avoids rebuilding the ignore matchers for this cache check.
 pub(super) fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path, global: Option<&Path>) -> u64 {
     let mut hasher = CacheKeyHasher::new();
     settings.file_resolver.cache_key(&mut hasher);
@@ -177,7 +167,6 @@ enum Listed {
     Skip,
 }
 
-// An entry whose type cannot be read was removed after the listing, which the directory's own stat records.
 fn listed(path: &Path, name: &OsStr, file_type: Option<fs::FileType>, exclusions: &Exclusions, main: &Path) -> Listed {
     let Some(file_type) = file_type else {
         return Listed::Skip;
@@ -220,7 +209,6 @@ mod tests {
         assert_eq!(listed(Path::new("conf.py"), OsStr::new("conf.py"), None, &exclusions, Path::new("")), Listed::Skip);
     }
 
-    // Sphinx reads a `conf.py` a link points at, but not one that is a socket or another special file.
     #[cfg(unix)]
     #[test]
     fn configuration_counts_as_a_file_or_a_link_only() {

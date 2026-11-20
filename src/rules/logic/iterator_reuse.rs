@@ -10,7 +10,7 @@ use crate::rules::logic::name_uses::LocalScope;
 
 // The builtins that return a one-pass iterator.
 const ITERATOR_BUILTINS: [&str; 5] = ["map", "filter", "zip", "reversed", "enumerate"];
-// The builtins that read an iterable to its end.
+// `any` and `all` can stop early. A later consumer sees only the remaining items.
 const CONSUMERS: [&str; 12] =
     ["list", "tuple", "set", "frozenset", "sorted", "sum", "min", "max", "any", "all", "dict", "len"];
 
@@ -81,7 +81,7 @@ fn report(checker: &Checker, name: &str, binding_path: &[Branch], sites: &[&Site
     }
 }
 
-// Two reads in different arms of one `if`, `match` or `try`, or after an arm that leaves the block, never both run.
+// Treat `try` and `except` as separate paths too, since a read in the `try` may have failed before consuming anything.
 fn exclusive(earlier: &[Branch], later: &[Branch]) -> bool {
     for (index, branch) in earlier.iter().enumerate() {
         match later.get(index) {

@@ -12,20 +12,17 @@ pub fn absolute_sibling_import(checker: &Checker) {
     let Some((_, package)) = checker.module_path().and_then(<[String]>::split_last) else {
         return;
     };
-    // Ruff's `namespace-packages` makes a directory without `__init__.py` a package, yet pytest imports a test module
-    // there as a top-level module, where a relative import fails.
+    // pytest can import a test in a namespace package as a top-level module, where relative imports fail.
     if !checker.has_sibling_init() {
         return;
     }
-    // A module that expects some other `__name__` than its dotted path runs outside its package: as a script under
-    // `"__main__"`, or as source sent to another interpreter, like execnet's `"__channelexec__"`.
+    // Scripts and modules sent as source may run outside their package under another `__name__`.
     if checker.body().iter().any(compares_module_name) {
         return;
     }
     let current = package.join(".");
     let shipped = shipped_functions(checker.body());
     for stmt in checker.body() {
-        // The body of a function sent as source runs on its own, with no package around it.
         if let Stmt::FunctionDef(function) = stmt
             && shipped.contains(function.name.as_str())
         {
@@ -78,7 +75,7 @@ fn compares_module_name(stmt: &Stmt) -> bool {
     )
 }
 
-// `remote_exec` and `inspect.getsource` turn a function into source text that runs elsewhere.
+// These calls may pass the function's source to an interpreter outside its package.
 fn shipped_functions(body: &[Stmt]) -> FxHashSet<&str> {
     let mut finder = ShippedFinder { names: FxHashSet::default() };
     finder.visit_body(body);

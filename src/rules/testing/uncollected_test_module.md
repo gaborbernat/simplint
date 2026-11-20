@@ -1,14 +1,12 @@
-Flags a test module that defines tests but whose file name pytest's
-[`python_files`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_files) patterns do not match,
-so pytest never collects it.
+Flags a module that defines tests but whose filename falls outside the configured
+[`python_files` patterns](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_files).
 
 ## Why is this bad?
 
-pytest only
-[collects](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery)
-`test_*.py` and `*_test.py` files unless the configuration says otherwise. A module named `tests/parser_tests.py` or
-`tests/check_parser.py` holds tests that never run, and nothing says so: the run passes, and the coverage report shows
-their lines as never run.
+By default, pytest
+[discovers](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery)
+files named `test_*.py` or `*_test.py`. A plain `pytest` run can pass without running any of the tests in
+`tests/check_parser.py`. Passing that filename explicitly still runs them.
 
 ## Example
 
@@ -22,7 +20,7 @@ def test_lex():
     assert lex("a")
 ```
 
-Use instead: rename `tests/check_parser.py` to `tests/test_parser.py`.
+Rename `tests/check_parser.py` to `tests/test_parser.py`.
 
 ## What it does
 
@@ -30,13 +28,14 @@ Use instead: rename `tests/check_parser.py` to `tests/test_parser.py`.
 
 - **Modules with tests in a collected directory**: a module of the test suite, other than `conftest.py` and
   `__init__.py`, that defines a `test*` function at module level or in a test class, whose name the `python_files`
-  patterns do not match, and whose directory holds at least one module they do match. The patterns come from the same
-  configuration files pytest reads, and default to `test_*.py` and `*_test.py`.
+  patterns do not match, and whose directory holds at least one module they do match. simplint reads the patterns from
+  its supported pytest configuration files and defaults to `test_*.py` and `*_test.py`.
 
 ### Exceptions
 
-- **Directories pytest does not collect from**: without a collected module next to it, a module is taken as data, such
-  as the inputs of a type checker's tests.
+- **Directories without a matching sibling.** A directory of test inputs, such as samples for a type checker, may
+  contain functions named `test_*`. The rule requires a sibling `.py` file matching `python_files`, excluding
+  `conftest.py`.
 
 - **Modules kept out of the run on purpose**: a module with a `__main__` guard is a script, a module whose name appears
   in a string of the project is data another test hands to `pytester`, and a module whose docstring names its own file
@@ -55,12 +54,9 @@ Use instead: rename `tests/check_parser.py` to `tests/test_parser.py`.
       assert not ping(offline=True)
   ```
 
-- **Tests another module imports**: they run where that module is collected.
+- **Imported tests.** If another module imports a test by name, pytest may collect it there. The rule then skips the
+  source module.
 
 ### Fix
 
 No fix is offered, as renaming a module changes its imports elsewhere.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

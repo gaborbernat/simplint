@@ -1,29 +1,23 @@
 simplint and Ruff
 #################
 
-simplint is a companion to `Ruff <https://docs.astral.sh/ruff/>`__. It adds checks that make Python code easier to read
-and review, and does not report what a Ruff rule reports, whether or not your configuration selects that Ruff rule. The
-exceptions are cases simplint can fix and Ruff cannot, and Ruff rules the recommended setup turns off;
-:doc:`/explanation/design-principles` explains both. Each rule page names any Ruff overlap.
-
-simplint is a separate program. It ships as one binary inside a Python wheel, like Ruff, and you install it as a tool
-apart from the project it lints.
+simplint adds checks for Python code that Ruff leaves to reviewers. It generally defers to Ruff when their rules
+overlap. See :doc:`/explanation/design-principles` for exceptions, including cases where only simplint can offer a fix.
 
 Shared settings
 ===============
 
-The two tools read the same ``pyproject.toml`` and accept the same ``noqa`` comments. simplint resolves Ruff's
-configuration with Ruff's own code, so the Python version and the files to check come out the same for both.
+simplint uses `Ruff <https://docs.astral.sh/ruff/>`__'s configuration resolver for file exclusions and settings such
+as the Python target version. It also reads its own ``[tool.simplint]`` table. See :doc:`/configuration/project` for
+version inference and :doc:`/how-to/suppress-a-report` for the suppression comments the tools recognize.
 
 Where they meet
 ===============
 
-A simplint fix can give a Ruff rule something to report that the file was clean for. simplint then checks the new
-report. When Ruff has a fix for it, simplint applies that fix too. When Ruff has none, simplint withdraws its own fix
-and keeps the report.
+Run ``ruff check --fix``, then ``simplint check --fix``, then ``ruff format``. When a simplint fix introduces a
+finding from an enabled Ruff rule, simplint tries Ruff's fix. If that leaves new findings, simplint can withdraw its
+own fix and still report the original problem.
 
-The run order is simplint between Ruff's linter and its formatter, as the :doc:`tutorial </tutorial/getting-started>`
-shows. Some rules of the two undo each other's work under some settings, and :doc:`/how-to/resolve-ruff-conflicts`
-covers those pairs.
+Some rule pairs require a configuration change before simplint will run. See :doc:`/how-to/resolve-ruff-conflicts`.
 
 To set up both tools on one project, see :doc:`/how-to/pair-with-ruff`.

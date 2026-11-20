@@ -3,14 +3,10 @@ section.
 
 ## Why is this bad?
 
-Sphinx renders a field outside its
-[info field list](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists) as a plain field
-list, and a section from another style as prose, so the reference shows a misspelled parameter or a Google-style block
-in place of the formatted parameter list. A field placed directly under a line of text is not parsed as a field:
-[reStructuredText](https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html#paragraph) needs a blank line
-between body elements, so the field joins the paragraph. A duplicate or misplaced field shows twice or apart from the
-others. A field spelled with a Sphinx alias, such as `:arg:` for `:param:`, renders the same, but mixed spellings read
-unevenly and a search for `:param` misses fields.
+A misspelling such as `:parm path:` prevents
+[Sphinx](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists) from displaying the entry as a
+parameter. A missing blank line after a paragraph can make the field part of the paragraph. Using one spelling for each
+field also makes the source searchable.
 
 ## Example
 
@@ -67,10 +63,8 @@ def read(path: str) -> str:
 
 ## What it does
 
-Checks the field lists of reStructuredText docstrings, as
-[Sphinx's Python domain](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists) reads them,
-when `docstring-style = "rst"`. No fix is offered for most reports, since the intended field depends on what the author
-meant.
+With `docstring-style = "rst"`, simplint checks field lists in function, method and class docstrings. It can rename an
+alias and add a missing blank line. Other corrections depend on what the author meant.
 
 ### Active on
 
@@ -236,8 +230,8 @@ meant.
 
 ### Exceptions
 
-- **Two `:raises ValueError:` fields**: they may document two conditions that raise the same exception, so they are not
-  repeated fields.
+- **Repeated `:raises:` and `:meta:` fields.** Two `:raises ValueError:` fields can describe different failures. The
+  rule also allows repeated metadata fields.
 
   ```toml config
   [tool.simplint]
@@ -294,7 +288,7 @@ meant.
 A field is a line at the docstring's own indentation that starts with `:name:` followed by a space or the end of the
 line.
 
-The known field names, with the aliases Sphinx also reads and the rule reports:
+simplint recognizes the following fields and reports the aliases in the second column.
 
 | Field     | Reported aliases                                                     |
 | --------- | -------------------------------------------------------------------- |
@@ -311,14 +305,16 @@ The known field names, with the aliases Sphinx also reads and the rule reports:
 | `yields`  | `yield`                                                              |
 | `ytype`   |                                                                      |
 
-Sphinx renders `var`, `ivar` and `cvar` alike, yet they say different things: `ivar` documents an instance attribute and
-`cvar` a class variable, which [rst-attribute-kind](SMP922.html) checks. So none of them counts as an alias of another.
+Sphinx groups `var`, `ivar` and `cvar` under Variables. simplint preserves the distinction between instance attributes
+and class variables for [rst-attribute-kind](SMP922.html). The generator fields `yields`, `yield` and `ytype` are
+additions to the
+[Python domain's info fields](https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists).
 
-`yields`, its alias `yield` and `ytype` are not Sphinx's own: documentation tools accept them for generators.
+Field fixes require a single triple-quoted string whose text matches the source. The field must start below the opening
+quotes.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#458](https://github.com/astral-sh/ruff/issues/458)
-  (darglint DAR001, docstrings that do not parse). Open pull request
-  [#13286](https://github.com/astral-sh/ruff/pull/13286) teaches the DOC rules to read Sphinx fields but does not check
-  their syntax.
+- [Ruff issue #458](https://github.com/astral-sh/ruff/issues/458) tracks darglint checks, including DAR001 for
+  docstrings that fail to parse. [Ruff PR #13286](https://github.com/astral-sh/ruff/pull/13286) proposes Sphinx-style
+  field support for Ruff's pydoclint rules.

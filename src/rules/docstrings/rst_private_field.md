@@ -2,13 +2,9 @@ Flags fields in public API docstrings that document a parameter or attribute nam
 
 ## Why is this bad?
 
-[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) marks internal names with a leading underscore
-and counts documented interfaces as public, so a field for `_retries` in the reference makes the name public and invites
-users to depend on it. autodoc leaves
-[private members out](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-option-automodule-private-members)
-unless asked, and [numpydoc](https://numpydoc.readthedocs.io/en/latest/format.html) says not to list private methods.
-[rst-missing-param](SMP916.html) does not ask for such parameters, and [rst-missing-attribute](SMP920.html) does not ask
-for such attributes.
+Publishing a field for `_retries` can lead callers to depend on an internal setting.
+[PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) uses a leading underscore to mark an internal
+interface. [rst-missing-param](SMP916.html) and [rst-missing-attribute](SMP920.html) skip those names.
 
 ## Example
 
@@ -65,6 +61,8 @@ def fetch(url: str, _retries: int = 3) -> bytes:
 
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
 `docstring-style = "rst"`, for fields naming a parameter or attribute with a leading underscore.
+
+It also checks definitions documented by the project's autodoc directives.
 
 ### Active on
 
@@ -147,8 +145,8 @@ Checks the docstrings of a library's public API (see [undocumented-public-api](S
   ```
 
 - **Parameters named with two leading underscores, such as `__obj`**: by the
-  [typeshed convention](https://typing.python.org/en/latest/spec/historical.html#positional-only-parameters) the double
-  underscore marks the parameter positional-only, so it counts as public.
+  [typeshed convention](https://typing.python.org/en/latest/spec/historical.html#positional-only-parameters) type
+  checkers can interpret these names as positional-only. simplint allows them in parameter fields.
 
   ```toml config
   [project]
@@ -206,8 +204,5 @@ def fetch(url: str, _retries: int) -> bytes:
     return b""
 ```
 
-No fix is offered when escapes in the docstring make its text differ from the source.
-
-## Other tools
-
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#970](https://github.com/astral-sh/ruff/issues/970).
+The field must start below the opening quotes in a single triple-quoted string whose text matches the source. If the
+field ends the docstring, a comment after the closing quotes also prevents the fix.

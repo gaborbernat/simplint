@@ -119,8 +119,6 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP809", reports);
 }
 
-// Ruff's TID251 reports an import that `banned-api` bans by its module, a parent of it, or a member's full name. SMP809
-// leaves those to it, whether or not the project selects TID251.
 #[test_case("unittest.mock", "from unittest.mock import MagicMock", 0 ; "module_keyed")]
 #[test_case("unittest", "from unittest.mock import MagicMock", 0 ; "parent_keyed_from_module")]
 #[test_case("unittest", "import unittest.mock", 0 ; "parent_keyed_import")]
@@ -144,8 +142,7 @@ fn stdlib_mock_follows_ruff_banned_api(key: &str, imports: &str, reports: usize)
     common::assert_report_count(root.path(), "SMP809", reports);
 }
 
-// A `pytest_plugins` a test module sets may load fixtures that request a `conftest.py` fixture overriding one of
-// theirs, so the conftest's fixtures are kept; pytest's own plugins request none of the run's.
+// An external plugin fixture can request a conftest fixture by name without an explicit reference in the project tests.
 #[test_case("pytest_plugins = [\"sphinx.testing.fixtures\"]", false ; "plugin_list")]
 #[test_case("pytest_plugins: tuple[str, ...] = (\"sphinx.testing.fixtures\",)", false ; "annotated_tuple")]
 #[test_case("pytest_plugins = \"sphinx.testing.fixtures\"", false ; "plugin_string")]
@@ -162,8 +159,6 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
-// A plugin outside the tests registers fixtures pytest resolves, so a fixture it requests is used, whether the plugin's
-// decorator is called or not.
 #[test_case("@pytest.fixture" ; "bare")]
 #[test_case("@pytest.fixture(scope=\"session\")" ; "called")]
 fn unused_fixture_counts_requests_of_plugin_fixtures(decorator: &str) {
@@ -178,9 +173,6 @@ fn unused_fixture_counts_requests_of_plugin_fixtures(decorator: &str) {
     assert!(!stdout.contains("`base`"), "{stdout}");
 }
 
-// Ruff's PGH005 reports a non-existent mock method in the test of an assert and in a statement of its own, and PGH005
-// offers no fix. SMP814 leaves a name it has no fix for to Ruff, and reports the names it can fix, whether or not the
-// project selects PGH005.
 #[test_case("mock.not_called()", true ; "call_statement")]
 #[test_case("mock.not_called", false ; "attribute_statement")]
 #[test_case("assert mock.not_called()", true ; "assert_call")]
@@ -202,8 +194,6 @@ fn mock_assertion_typo_leaves_ruff_names_without_a_fix(statement: &str, reported
     assert_eq!(stdout.contains("is not a mock assertion"), reported, "{stdout}");
 }
 
-// Ruff's F631 and PLW0129 report a non-empty tuple and a string, bytes or f-string literal, so SMP804 leaves a case
-// without a fix of its own to them, whether or not the project selects them, and reports the cases it can fix.
 #[test_case("def check() -> None:\n    assert (True, 1, 2)\n", false ; "assert_tuple")]
 #[test_case("def check() -> None:\n    assert (1, 2, 3)\n", false ; "assert_tuple_without_fix")]
 #[test_case("def check() -> None:\n    assert (True, \"message\")\n", true ; "assert_tuple_with_fix")]
@@ -224,9 +214,6 @@ fn constant_assert_leaves_ruff_cases_without_a_fix(source: &str, reported: bool)
     assert_eq!(stdout.contains("Assertion on a constant always passes"), reported, "{stdout}");
 }
 
-// Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, so SMP808 leaves that sleep to Ruff
-// whether or not the project selects it. A body with another statement is not one ASYNC110 reports, so the rule keeps
-// it.
 #[test_case("while not done():\n        await asyncio.sleep(1)", 0 ; "sole_await_left_to_ruff")]
 #[test_case("while not done():\n        await asyncio.sleep(1)\n        done()", 1 ; "await_with_another_statement")]
 fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
@@ -238,8 +225,8 @@ fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, reports: usize) {
 const MARKED: &str =
     "import pytest\n\n\n@pytest.mark.slow\n@pytest.mark.skip\ndef test_marked() -> None:\n    assert True\n";
 
-// pytest knows the marks the configuration registers, its own, and the ones common plugins register; without a
-// configuration the registered marks are unknown.
+// simplint recognizes configured markers and known plugin markers. Without readable pytest settings it skips the
+// registration check.
 #[test_case("[tool.pytest.ini_options]\nmarkers = [\"slow: slow tests\"]\n", MARKED, 0 ; "registered")]
 #[test_case("[tool.pytest.ini_options]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "unregistered")]
 #[test_case("[tool.pytest]\nmarkers = [\"fast\"]\n", MARKED, 1 ; "native_table")]
@@ -283,7 +270,6 @@ fn unregistered_marker_reads_ini_files(file: &str, configuration: &str) {
     common::assert_report_count(root.path(), "SMP820", 1);
 }
 
-// pytest fails on a `pytest.ini` it cannot decode, so which marks it registers is unknown.
 #[test]
 fn unregistered_marker_leaves_an_unreadable_pytest_ini() {
     let root = common::project(&[
@@ -294,7 +280,6 @@ fn unregistered_marker_leaves_an_unreadable_pytest_ini() {
     common::assert_report_count(root.path(), "SMP820", 0);
 }
 
-// A module pytest collects by its `python_files`, under its `testpaths` when set, is a test module like `test_*.py`.
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"check_*.py\"\n", "src/check_value.py", 1 ; "python_files")]
 #[test_case("pytest.ini", "[pytest]\npython_files = check_*.py\n", "src/check_value.py", 1 ; "pytest_ini")]
 #[test_case("pyproject.toml", "[tool.pytest.ini_options]\npython_files = \"*.py\"\ntestpaths = [\"suite\"]\n", "suite/value.py", 1 ; "under_testpaths")]
@@ -314,7 +299,7 @@ fn collected_module_is_a_test_module(file: &str, configuration: &str, module: &s
     common::assert_report_count(root.path(), "SMP817", reports);
 }
 
-// A `python_files` pattern too large to compile matches no file, so pytest collects nothing and no test rule applies.
+// The glob exceeds simplint's matcher limit, so SMP817 cannot identify this file as a collected test.
 #[test]
 fn uncompilable_python_files_collect_nothing() {
     let pyproject = format!(
@@ -330,8 +315,6 @@ fn uncompilable_python_files_collect_nothing() {
 
 const CHECKED: &str = "def test_value() -> None:\n    assert True\n";
 
-// pytest collects `test_*.py` and `*_test.py` unless `python_files` says otherwise; a module it skips on purpose is
-// left alone.
 #[test_case("", "tests/check_value.py", CHECKED, 1 ; "default_patterns")]
 #[test_case("", "tests/value_test.py", CHECKED, 0 ; "suffix_pattern")]
 #[test_case("[tool.pytest.ini_options]\npython_files = [\"check_*.py\", \"test_*.py\"]\n", "tests/check_value.py", CHECKED, 0 ; "configured")]

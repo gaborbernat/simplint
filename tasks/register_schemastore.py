@@ -19,9 +19,6 @@ _EXTERNAL_ANCHOR: Final[re.Pattern[str]] = re.compile(r'(?P<indent> *)"partial-t
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    # Register simplint's schema in a SchemaStore checkout from the command line.
-    #
-    # :param argv: the arguments to parse, ``sys.argv`` when omitted
     parser = argparse.ArgumentParser(description="Register simplint's JSON Schema with a SchemaStore checkout")
     parser.add_argument("schema", type=Path, help="simplint's JSON Schema")
     parser.add_argument("store", type=Path, help="root of the SchemaStore checkout")
@@ -31,14 +28,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def register(schema: Path, store: Path, options: Path) -> None:
-    # Write the partial, reference it from pyproject.json and the validation lists, and copy the sample options. A file
-    # that already names the partial is left alone, so a second run changes nothing. Every file is edited before any is
-    # written, so a missing anchor leaves the checkout untouched.
-    #
-    # :param schema: simplint's JSON Schema, the source of the partial
-    # :param store: the root of the SchemaStore checkout
-    # :param options: the sample options the checkout's tests validate against the partial
-    # :raises ValueError: if a file lacks the line the registration goes next to
+    # Validate insertion points before writing so a missing anchor leaves the checkout intact.
+    # Existing references are reused. The schema and sample options are refreshed on each run.
     pyproject = store / "src" / "schemas" / "json" / "pyproject.json"
     pyproject_text = pyproject.read_text(encoding="utf-8")
     partial_name = "partial-simplint.json"
@@ -75,13 +66,6 @@ def register(schema: Path, store: Path, options: Path) -> None:
 def _insert_before(text: str, anchor: re.Pattern[str], entry: str, name: str) -> str:
     # Insert the entry above each line the anchor matches. The entry's ``{indent}`` takes the anchor line's indentation,
     # so the file keeps its layout without a JSON round trip that would reflow it.
-    #
-    # :param text: the file's text
-    # :param anchor: the pattern of the line to insert above, with an ``indent`` group
-    # :param entry: the lines to insert, ending with a newline
-    # :param name: the file's name, for the error message
-    # :returns: the text with the entry inserted
-    # :raises ValueError: if no line matches the anchor
     lines: list[str] = []
     matches = 0
     for line in text.splitlines(keepends=True):

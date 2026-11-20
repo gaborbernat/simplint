@@ -31,7 +31,6 @@ pub(crate) fn unused_default(checker: &Checker) {
     }
 }
 
-// A module-level function, called by the other files of the run through its module and in this file by its name.
 fn module_function(checker: &Checker, function: &ast::StmtFunctionDef, functions: &FxHashMap<&str, Vec<Use>>) {
     if let Some(sites) = module_sites(checker, function, functions) {
         report(checker, function, &sites, None);
@@ -111,7 +110,6 @@ fn report_default(
         None => parameter.name.range.end(),
     };
     let removed = TextRange::new(start, range.end());
-    // A comment in the default goes with it, so the fix would delete a note the code keeps.
     let fix = (removable && !checker.has_comment_in(removed)).then(|| Fix::unsafe_edit(Edit::range_deletion(removed)));
     if fix.is_none() && pytest_test {
         return;

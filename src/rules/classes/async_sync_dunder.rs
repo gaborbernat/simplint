@@ -5,8 +5,7 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::syntax::yields;
 
-// The special methods Python calls without awaiting the result. `__getitem__`, `__getattr__`, `__get__` and `__call__`
-// are left out, as `await obj[key]`, `await obj.name` and `await obj()` are ways to design an awaitable API.
+// Some synchronous protocols can intentionally return awaitables, as in `await obj[key]` or `await obj()`.
 const SYNCHRONOUS: [&str; 52] = [
     "__init__",
     "__new__",
@@ -69,8 +68,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     if !matches!(walker.scopes().last(), Some(Scope::Class(_))) || !SYNCHRONOUS.contains(&name.as_str()) {
         return;
     }
-    // An `async def __aiter__` that yields is an async generator function, and the async generator it returns is the
-    // async iterator `async for` asks for.
+    // An async generator already implements the iterator protocol required by `async for`.
     let generator = yields(body);
     if generator && name.as_str() == "__aiter__" {
         return;

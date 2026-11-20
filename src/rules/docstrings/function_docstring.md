@@ -1,16 +1,15 @@
-Flags docstrings on internal functions, methods and classes. Their readers have the source open, so a docstring there
-mostly repeats the name and signature.
+Flags docstrings on internal functions, methods and classes.
 
 ## Why is this bad?
 
-[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public code and, for a
-non-public method, only a comment after the `def` line; the fix writes that comment.
-[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) asks for a docstring
-on any nontrivial or non-obvious function. On internal code such a docstring restates the name, signature and
-annotations, and nothing checks it as the code changes.
+For a private helper, a docstring such as `"""Load the config file."""` repeats what `load_config(path)` already tells
+the reader. A longer explanation can record behavior the signature omits, such as which item wins a tie. The fix keeps
+that explanation as a comment.
 
-A longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a
-comment.
+[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) recommends docstrings on public definitions and a
+comment for non-public methods.
+[Google's style guide](https://google.github.io/styleguide/pyguide.html#383-functions-and-methods) also recommends
+docstrings on nontrivial or non-obvious functions.
 
 ## Example
 
@@ -41,24 +40,16 @@ Ruff's pydocstyle rules ask for the docstrings this rule removes:
 simplint stops with an error before linting while any of them applies to a file this rule checks. Turn them off and let
 [undocumented-public-api](SMP903.html) ask for documentation on the public API, or turn this rule off.
 
-Use [undocumented-public-api](SMP903.html) in place of Ruff's
-[pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for docstrings, such as
-[undocumented-public-function](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
-[undocumented-public-class](https://docs.astral.sh/ruff/rules/undocumented-public-class/): they treat every name without
-a leading `_` as public, while [undocumented-public-api](SMP903.html) follows `__all__`.
-
 When the comment the fix writes gives a Ruff rule a new report, such as
 [commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) for code in the docstring, simplint
 withdraws the fix and keeps the report.
 
 ## Ruff overlap
 
-Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) and
-[overload-with-docstring](https://docs.astral.sh/ruff/rules/overload-with-docstring/) (D418) report a docstring this
-rule offers no fix for, such as under a file-level `# ruff: noqa`. Where this rule offers no fix, it leaves to them an
-empty docstring of a single string, and a non-empty one of a function decorated with `@overload` in a `.py` file,
-whether or not the project selects them. A definition that `ignore-decorators` lists stays with this rule, since Ruff
-skips it.
+When simplint cannot offer a fix, it defers to Ruff in two cases. An empty single string belongs to
+[D419](https://docs.astral.sh/ruff/rules/empty-docstring/). A nonempty single string on an `@overload` function outside
+a stub belongs to [D418](https://docs.astral.sh/ruff/rules/overload-with-docstring/). simplint defers even if Ruff has
+that rule disabled. If the function has a decorator listed in Ruff's `ignore-decorators`, simplint keeps its report.
 
 ## What it does
 
@@ -67,8 +58,8 @@ classes, at any nesting depth. What counts as internal depends on the project.
 
 ### Active on
 
-- **All code of an application**: an application has no public API, so every function, method and class in it is
-  internal.
+- **Application code.** simplint treats functions, methods and classes as internal unless one of the exceptions below
+  applies.
 
   ```python report
   def run() -> None:
@@ -176,7 +167,7 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **Public names of a module that an entry point names without an attribute**: a pytest plugin's hooks and fixtures are
-  found by convention, so they are public API and need no docstring.
+  found by convention, so the rule preserves their docstrings.
 
   ```toml config
   [project]
@@ -223,7 +214,8 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **Docstrings holding a [doctest](https://docs.python.org/3/library/doctest.html) example**: a line starting with `>>>`
-  is a test that `pytest --doctest-modules` runs, so the docstring is data rather than documentation.
+  can introduce a doctest that `pytest --doctest-modules` collects. The rule preserves any docstring with that prefix on
+  a line after leading whitespace.
 
   ```python ok
   def add(a: int, b: int) -> int:
@@ -235,9 +227,9 @@ classes, at any nesting depth. What counts as internal depends on the project.
       return a + b
   ```
 
-- **Decorated functions and classes**: the decorator receives the docstring and may read `__doc__`, as `click.command`
-  does for help text or `deprecated` does to build its warning. The decorators in the table below are known to leave the
-  docstring unread, so the rule still reports under them.
+- **Decorated functions and classes.** A decorator can use the object's docstring. For example, Click uses a command's
+  docstring as its default help text. simplint skips decorated definitions unless it recognizes every decorator in the
+  table below. [Click command help](https://click.palletsprojects.com/en/stable/documentation/#help-texts)
 
   ```python ok
   @register
@@ -271,8 +263,8 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```
 
 - **A class whose body reads `__doc__`**: in a class body the bare name is the class's own docstring, so the class keeps
-  it. A method's `__doc__` is the module's, so a method reading it does not count. The decorators, defaults and bases in
-  the header of a method, lambda or nested class run in the class body, so reading `__doc__` there counts too.
+  it. An unqualified `__doc__` inside a method normally refers to the module's docstring. The rule also checks
+  references in method decorators, defaults and annotations, lambda defaults and nested class headers.
 
   ```python ok
   class Sync:
@@ -289,7 +281,8 @@ classes, at any nesting depth. What counts as internal depends on the project.
           return text
   ```
 
-Decorators known to leave the docstring unread still let the rule report:
+simplint checks definitions with the following decorators. Some copy or display the docstring, including `property` and
+`pytest.fixture`.
 
 | Module        | Decorators                                                                         |
 | ------------- | ---------------------------------------------------------------------------------- |
@@ -326,17 +319,16 @@ flowchart TD
 
 ### Fix
 
-**Unsafe fix:** code that reads `__doc__` sees the change. That includes
-[`help()`](https://docs.python.org/3/builtins/functions.html#help) and code outside the run: a framework the function is
-handed to as a value, such as a Starlette route, or a pydantic model whose docstring becomes its schema description.
+**Unsafe fix:** code that reads `__doc__` can see the change, including
+[`help()`](https://docs.python.org/3/builtins/functions.html#help) and callers outside the files simplint checked.
 
 A file with a file-level `ruff: noqa` gets no fix: the docstring's lines may be what its codes silence, and rewriting
 the docstring would leave them unused.
 
 The fix depends on the docstring's length:
 
-- A docstring of one line with at most five words, such as `"""Return the value."""` or `"""Helper class."""`, restates
-  the name. The fix **deletes** it with the blank lines after it.
+- The fix **deletes** a docstring with at most one line and five words after cleaning, along with the blank lines that
+  follow. Examples include `"""Return the value."""` and `"""Helper class."""`.
 
   ```python report
   def run() -> None:
@@ -363,13 +355,10 @@ The fix depends on the docstring's length:
       return max(items)
   ```
 
-The conditions under which the comment is not safe to write are listed under "No fix is offered" below.
+#### Comment text
 
-The comment text is built this way:
-
-- The text is the docstring's source between its quotes, escapes such as `\n` as written, cleaned as
-  [`inspect.cleandoc`](https://docs.python.org/3/library/inspect.html#inspect.cleandoc) gives it: without the quotes,
-  the common indentation, and the blank lines around it, with each line's trailing whitespace dropped.
+- It copies the source between the quotes, preserving escapes such as `\n`. It replaces each tab with eight spaces,
+  removes common indentation after the first line, trims trailing whitespace and drops surrounding blank lines.
 
 - Blank lines between paragraphs become a lone `#`.
 
@@ -393,9 +382,8 @@ The comment text is built this way:
 - Lines made only of heading underline characters, such as the `----------` under a numpydoc `Parameters`, are dropped,
   since as comments they read as section dividers (see [section-comment](SMP001.html)).
 
-- Field lists and sections documenting the parameters and results, such as reST `:param name:` and `:return:` fields or
-  the `Args:` and `Returns:` of Google style, the `Parameters` of numpydoc, are left out with their bodies, since the
-  signature documents them. A docstring with nothing else left is deleted, as a one-line one is.
+- The fix drops reST fields, including their indented continuations. It also drops Google and numpydoc sections for
+  arguments, returns, yields and exceptions. If nothing remains, it deletes the docstring.
 
   ```python report
   def _run(args: list[str] | None = None) -> int:
@@ -426,7 +414,7 @@ The comment text is built this way:
   [`max-doc-length`](https://docs.astral.sh/ruff/settings/#lint_pycodestyle_max-doc-length), at the indentation
   `ruff format` gives the body, so the result does not depend on how the code is laid out now.
 
-Around the docstring, both fixes do the following:
+#### Surrounding code
 
 - When the docstring is the whole body, the fix leaves
   [`...`](https://docs.python.org/3/builtins/constants.html#Ellipsis) as the body, after the comment when there is one.
@@ -468,8 +456,8 @@ Around the docstring, both fixes do the following:
       print()
   ```
 
-- When other code follows the docstring, a comment after it stays on a line of its own, unless it is a pragma or tool
-  directive, as the deletion keeps it.
+- When the fix deletes a docstring on its own line before another statement, it keeps an ordinary trailing comment on
+  its own line.
 
   ```python report
   def _acquire() -> int:
@@ -483,17 +471,17 @@ Around the docstring, both fixes do the following:
       return 1
   ```
 
-- Like the deletion, the comment takes the blank lines after the docstring.
+- The fix removes blank lines between the docstring and the next statement.
 
 - A comment cannot share a line with code before it. The comment for a docstring on the `def` line, or sharing its line
   with the next statement, goes on lines of its own, and so do the statements after it, as `ruff format` would put them.
 
-No fix is offered when:
+#### When the fix is unavailable
 
-- a comment sits between the docstring and a statement sharing its line;
+- A comment sits between the docstring and a statement sharing its line.
 
-- a comment line would read as a tool directive, such as one starting with `type:`, `noqa`, `fmt:` or `simplint:`, or
-  holding `# noqa` in its text;
+- A comment line would read as a tool directive, such as one starting with `type:`, `noqa`, `fmt:` or `simplint:`, or
+  holding `# noqa` in its text.
 
   ```python report
   def _level() -> int:
@@ -501,9 +489,9 @@ No fix is offered when:
       return 1
   ```
 
-- a word too long for the room, other than a URL ending the line, would leave a comment line Ruff's
+- A word too long for the room, other than a URL ending the line, would leave a comment line Ruff's
   [line-too-long](https://docs.astral.sh/ruff/rules/line-too-long/) reports, which it skips on a docstring line of a
-  single word;
+  single word.
 
 - `ruff format` leaves the docstring alone, under `# fmt: off`, with `# fmt: skip` or in an excluded file, and its
   indentation is not a multiple of the indent width, which Ruff's
@@ -512,7 +500,6 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [D418](https://docs.astral.sh/ruff/rules/overload-with-docstring/) and
-  [D419](https://docs.astral.sh/ruff/rules/empty-docstring/), which this rule leaves to them where it has no fix (see
-  Ruff overlap).
+- Ruff's [D418](https://docs.astral.sh/ruff/rules/overload-with-docstring/) checks overloads with docstrings.
+  [D419](https://docs.astral.sh/ruff/rules/empty-docstring/) checks empty docstrings. See the Ruff overlap section for
+  when simplint defers to them.
