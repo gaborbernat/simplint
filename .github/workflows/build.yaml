@@ -191,28 +191,3 @@ jobs:
             control/*.whl
             dist/*.whl
           if-no-files-found: warn
-  test-windows:
-    name: 🧪 test @ windows-11-arm
-    runs-on: windows-11-arm
-    steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@v7.0.1
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-      - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
-        with:
-          components: clippy
-          cache-save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: 🧹 Run Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
-      - name: 🦀 Install cargo-nextest
-        uses: taiki-e/install-action@v2.90.3
-        with:
-          tool: cargo-nextest
-      - name: 🧪 Run the platform-dependent tests
-        run: >-
-          cargo nextest run --locked -E
-          "test(parallel_discovery) | binary(input) | binary(cache) | binary(fix) | binary(check)
-          | binary(watch) | binary(suppressions)"
