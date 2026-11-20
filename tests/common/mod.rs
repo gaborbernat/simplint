@@ -73,6 +73,7 @@ pub fn command(root: &Path) -> process::Command {
         .env_remove("SIMPLINT_OUTPUT_FILE")
         .env_remove("SIMPLINT_NO_CACHE")
         .env_remove("RUFF_CACHE_DIR")
+        .env_remove("TERM")
         .env_remove("FORCE_COLOR")
         .env_remove("CLICOLOR_FORCE");
     command

@@ -61,6 +61,12 @@ class Worker(str):
     def call(self, first, second):
         self.deliver(first, first, second)
         self.replace(first, first, second)
+        self.find(first, first, second)
 
     def deliver(self, first, second, third):
+        pass
+
+
+class TextBuffer:
+    def replace(self, first, second, third):
         pass
