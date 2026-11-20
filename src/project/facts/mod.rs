@@ -113,6 +113,17 @@ impl FileFacts {
         parts: Parts,
     ) -> Option<Self> {
         let parsed = parse_module(source).ok()?;
+        Some(Self::from_parse(path, source, module_path, importable, parts, &parsed))
+    }
+
+    pub(crate) fn from_parse(
+        path: &Path,
+        source: &str,
+        module_path: Option<&[String]>,
+        importable: Option<&[String]>,
+        parts: Parts,
+        parsed: &Parsed<ModModule>,
+    ) -> Self {
         // A file outside any package has no module path, so its relative imports resolve against its importable path.
         let mut visitor = FactVisitor::new(
             path,
@@ -133,7 +144,7 @@ impl FileFacts {
         let attribute_writes =
             AttributeWrites::collect(&parsed.syntax().body, &visitor.aliases, &module_name(module_path, path));
         let mut scan = Scan::of(&parsed.syntax().body, parts);
-        let constructors = constructors(path, (source, &parsed), &visitor, parts, &mut scan);
+        let constructors = constructors(path, (source, parsed), &visitor, parts, &mut scan);
         // A module whose spec no static path resolves reads names of any module, as a computed import does.
         let mut modules = scan.modules;
         modules.extend(visitor.unknown_modules.iter().cloned());
@@ -162,7 +173,7 @@ impl FileFacts {
             Expr::Name(name) => bound.get(name.id.as_str()).map(|module| (*module).to_owned()),
             other => visitor.qualified(other),
         });
-        Some(Self {
+        Self {
             names: visitor.names.map(grouped),
             declared,
             assigned_attributes: visitor.assigned_attributes,
@@ -207,14 +218,14 @@ impl FileFacts {
             pytest_requests: visitor.pytest_requests.into_iter().collect(),
             doctest_names: visitor.doctest_names.into_iter().collect(),
             runtime_imports: visitor.runtime_sites,
-            statements: if parts.has(Parts::STATEMENTS) { statements(&parsed, source) } else { Vec::new() },
+            statements: if parts.has(Parts::STATEMENTS) { statements(parsed, source) } else { Vec::new() },
             parts,
             string_words: string_words(scan.words),
             global_names: scan.global_names.into_iter().collect(),
             bound_marks: scan.bound_marks.into_iter().collect(),
             source_digest: source_digest(source),
             module_digest: module_digest(module_path, importable),
-        })
+        }
     }
 
     pub fn covers(&self, wanted: Parts, module_path: Option<&[String]>, importable: Option<&[String]>) -> bool {

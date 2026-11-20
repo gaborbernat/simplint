@@ -1,5 +1,6 @@
 use std::hash::Hasher;
 use std::path::Path;
+use std::sync::Mutex;
 use std::time::Instant;
 
 use anyhow::Result;
@@ -8,8 +9,8 @@ use rayon::prelude::*;
 
 use super::Overlay;
 use super::check::Plumbing;
-use super::files::{ProjectInputs, RunFile};
-use crate::lint::Linter;
+use super::files::{ProjectInputs, RunFile, WorkerParse};
+use crate::lint::{Linter, parse_source};
 use crate::project::cache::FileKey;
 use crate::project::{DocReferences, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
 use crate::run::cache::Cache;
@@ -119,7 +120,13 @@ fn lint_rounds<'f, T: Send>(
         index.resolver.release(plumbing.ending);
     }
     let lint = |file: &RunFile, project: &Project, cache| {
-        work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
+        let first = file
+            .first_parse
+            .get()
+            .and_then(|retained| retained.syntax.lock().expect("no worker panics while taking a parse").take());
+        let mut linter = file_linter(file, project);
+        linter.first_parse = first.as_ref().map(|(source, tree)| (source.as_str(), tree));
+        work(&DiscoveredFile { path: file.path, linter, cache })
     };
     let mut passes = (0..files.len()).map(|_| Vec::new()).collect::<Vec<_>>();
     // Workers take the largest files first so the last large module does not delay the entire round.
@@ -130,7 +137,31 @@ fn lint_rounds<'f, T: Send>(
                 .map_or_else(|| files[at].path.metadata().map_or(0, |metadata| metadata.len()), |(_, key)| key.length),
         )
     });
-    order.into_iter().par_bridge().for_each(|(at, passes)| passes.push(lint(&files[at], &project, file_caches[at])));
+    if files.iter().any(|file| file.first_parse.get().is_some()) {
+        // Prefer the worker that allocated the tree. Idle workers can take a file from any queue.
+        let count = rayon::current_num_threads();
+        let mut queues = (0..=count).map(|_| Mutex::new(Vec::new())).collect::<Vec<_>>();
+        for (at, result) in order.into_iter().rev() {
+            let slot = files[at].first_parse.get().map_or(count, |parse| parse.worker);
+            queues[slot].get_mut().expect("the queues are new").push((at, result));
+        }
+        rayon::broadcast(|thread| {
+            let owner = thread.index();
+            loop {
+                let next = std::iter::once(owner)
+                    .chain(std::iter::once(count))
+                    .chain((1..count).map(|offset| (owner + offset) % count))
+                    .find_map(|slot| queues[slot].lock().expect("no worker panics while taking a file").pop());
+                let Some((at, result)) = next else { break };
+                result.push(lint(&files[at], &project, file_caches[at]));
+            }
+        });
+    } else {
+        order
+            .into_iter()
+            .par_bridge()
+            .for_each(|(at, passes)| passes.push(lint(&files[at], &project, file_caches[at])));
+    }
     let Some(rewrote) = plumbing.rewrote else {
         plumbing.ending.end(project);
         return passes;
@@ -146,7 +177,7 @@ fn lint_rounds<'f, T: Send>(
         for &at in &rewritten {
             words[at] = None;
         }
-        let collect = |at: usize| file_facts(&files[at], recache(at), parts, overlay);
+        let collect = |at: usize| file_facts(&files[at], recache(at), parts, overlay, false);
         let (next, dependents) = reindex(&mut index, &rewritten, collect, files, &mut words, &project);
         project = next;
         let relinted: Vec<(usize, T)> =
@@ -160,7 +191,7 @@ fn lint_rounds<'f, T: Send>(
     passes
 }
 
-fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
+fn file_linter<'a>(file: &'a RunFile<'a>, project: &'a Project) -> Linter<'a> {
     Linter::new(
         file.ruff,
         file.settings.clone(),
@@ -180,6 +211,7 @@ pub(super) fn file_facts(
     cache: Option<(&Cache<'_>, FileKey)>,
     parts: Parts,
     overlay: &Overlay,
+    retain: bool,
 ) -> Option<FileFacts> {
     let (module_path, importable) = (file.module_path.as_deref(), file.importable.as_deref());
     let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
@@ -189,7 +221,23 @@ pub(super) fn file_facts(
         None => parts,
     };
     let source = overlay.source(file.path).ok()?;
-    let facts = FileFacts::collect(file.path, &source, module_path, importable, parts)?;
+    let facts = if retain && cache.is_some_and(|(_, key)| source.len() as u64 <= key.length) {
+        let parsed = parse_source(&source, file.settings.from_ruff.target_version);
+        let facts = if parsed.has_valid_syntax() {
+            FileFacts::from_parse(file.path, &source, module_path, importable, parts, &parsed)
+        } else {
+            FileFacts::collect(file.path, &source, module_path, importable, parts)?
+        };
+        file.first_parse.get_or_init(|| {
+            Box::new(WorkerParse {
+                worker: rayon::current_thread_index().unwrap_or(0),
+                syntax: Mutex::new(Some((source, parsed))),
+            })
+        });
+        facts
+    } else {
+        FileFacts::collect(file.path, &source, module_path, importable, parts)?
+    };
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, &facts);
     }

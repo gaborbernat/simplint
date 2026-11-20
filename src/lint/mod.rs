@@ -12,7 +12,7 @@ use ruff_db::diagnostic::{Diagnostic, Span};
 use ruff_linter::SuppressionKind;
 use ruff_linter::package::PackageRoot;
 use ruff_linter::settings::flags;
-use ruff_python_ast::{ModModule, PySourceType};
+use ruff_python_ast::{ModModule, PySourceType, PythonVersion};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::{ParseOptions, Parsed, UnsupportedSyntaxError, parse_unchecked};
@@ -32,6 +32,7 @@ pub struct Linter<'a> {
     pub ruff: RuffFile<'a>,
     // Whether the file's directory holds an `__init__.py`, when a rule reads it; the run checks only then.
     pub sibling_init: bool,
+    pub(crate) first_parse: Option<(&'a str, &'a Parsed<ModModule>)>,
 }
 
 // One parse of a file's source, with the indexes built from its tokens.
@@ -63,7 +64,14 @@ impl<'a> Linter<'a> {
         module_path: Option<Vec<String>>,
         sibling_init: bool,
     ) -> Self {
-        Self { settings, project: *project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
+        Self {
+            settings,
+            project: *project,
+            module_path,
+            ruff: RuffFile::new(&ruff.linter, package),
+            sibling_init,
+            first_parse: None,
+        }
     }
 
     // The syntax errors of a file that does not parse come back for the fix loop, which reads them to catch a fix that
@@ -98,10 +106,16 @@ impl<'a> Linter<'a> {
         then: impl FnOnce(Vec<Diagnostic>, &Suppressions) -> T,
     ) -> (Vec<UnsupportedSyntaxError>, Result<T, Vec<Diagnostic>>) {
         let file = SourceFileBuilder::new(path.to_string_lossy(), source).finish();
-        let options =
-            ParseOptions::from(PySourceType::Python).with_target_version(self.settings.from_ruff.target_version);
-        // A Python source parses to a module, whatever the target version.
-        let parsed = parse_unchecked(source, options).try_into_module().expect("a Python source parses to a module");
+        // A fix or an editor can change the source after the project index parsed it.
+        let owned;
+        let parsed = if let Some((original, parsed)) = self.first_parse
+            && source == original
+        {
+            parsed
+        } else {
+            owned = parse_source(source, self.settings.from_ruff.target_version);
+            &owned
+        };
         let unsupported = parsed.unsupported_syntax_errors().to_vec();
         if !parsed.has_valid_syntax() {
             let errors = parsed
@@ -113,7 +127,7 @@ impl<'a> Linter<'a> {
         }
         let indexer = Indexer::from_tokens(parsed.tokens(), source);
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
-        let parse = Parse { path, file: &file, parsed: &parsed, indexer: &indexer, stylist: &stylist };
+        let parse = Parse { path, file: &file, parsed, indexer: &indexer, stylist: &stylist };
         let suppressions = Suppressions::new(parse);
         let diagnostics = Checker::new(parse, self, &suppressions).run(include_unused_ignore.then_some(&suppressions));
         (unsupported, Ok(then(diagnostics, &suppressions)))
@@ -142,4 +156,10 @@ impl<'a> Linter<'a> {
 pub(crate) fn relative_path(path: &Path) -> String {
     let relative = std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok());
     relative.unwrap_or(path).display().to_string()
+}
+
+pub(crate) fn parse_source(source: &str, target_version: PythonVersion) -> Parsed<ModModule> {
+    let options = ParseOptions::from(PySourceType::Python).with_target_version(target_version);
+    // A Python source parses to a module, whatever the target version.
+    parse_unchecked(source, options).try_into_module().expect("a Python source parses to a module")
 }
