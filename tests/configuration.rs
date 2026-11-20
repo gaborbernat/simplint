@@ -229,18 +229,13 @@ fn unreadable_pyproject_fails() {
 fn unknown_selector_names_its_pyproject(flags: &[&str]) {
     let root =
         project(&[("sub/pyproject.toml", "[tool.simplint]\nselect = [\"SMP999\"]\n"), ("sub/module.py", CLEAN_MODULE)]);
-    let pyproject = common::canonical(root.path()).join("sub").join("pyproject.toml");
-    assert_eq!(
-        check(root.path(), &[flags, &["sub"]].concat()),
-        (
-            2,
-            String::new(),
-            format!(
-                "simplint failed\n  Cause: Unknown rule selector `SMP999` in `select` from `{}`\n",
-                pyproject.display()
-            )
-        )
-    );
+    let (code, stdout, stderr) = check(root.path(), &[flags, &["sub"]].concat());
+    assert_eq!((code, stdout.as_str()), (2, ""));
+    let path = stderr
+        .strip_prefix("simplint failed\n  Cause: Unknown rule selector `SMP999` in `select` from `")
+        .and_then(|message| message.strip_suffix("`\n"))
+        .expect("the error names the configuration file");
+    assert_eq!(common::canonical(Path::new(path)), common::canonical(&root.path().join("sub/pyproject.toml")));
 }
 
 #[test]

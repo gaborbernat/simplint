@@ -60,7 +60,7 @@ fn entrypoint_module_name_skips_files_outside_the_root() {
     ]);
     let args = ["--no-cache", "--config", "proj/pyproject.toml", "--select", "SMP105", "proj/main.py", "other/main.py"];
     let stdout = common::check(root.path(), &args).1;
-    assert!(stdout.contains("proj/main.py") && !stdout.contains("other/main.py"), "{stdout}");
+    assert_eq!(common::report_paths(&stdout, "SMP105"), ["proj/main.py"], "{stdout}");
 }
 
 #[test_case("", "main()", 0 ; "name_alone_main")]

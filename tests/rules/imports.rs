@@ -1086,11 +1086,17 @@ fn absolute_sibling_import_stops_at_the_repository_root() {
 }
 
 #[test]
-fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
+fn absolute_sibling_import_reads_parent_hooks_only_inside_a_repository() {
     let mut files = sibling_package("home/repo/");
-    files.push(("home/.pre-commit-config.yaml".to_owned(), HOOK));
-    files.push(("home/repo/pyproject.toml".to_owned(), PROJECT));
-    assert!(sibling_import_reported(common::project(&files).path().join("home/repo").as_path()));
+    files.push(("home/.pre-commit-config.yaml".to_owned(), "repos: []\n"));
+    let config = format!("{PROJECT}\n[tool.ruff]\nrespect-gitignore = false\n[tool.simplint]\n");
+    files.push(("home/repo/pyproject.toml".to_owned(), &config));
+    let root = common::project(&files);
+    let project = root.path().join("home/repo");
+    assert!(sibling_import_reported(&project));
+    fs::write(root.path().join("home/.pre-commit-config.yaml"), HOOK).expect("enable the parent hook");
+    let in_repository = root.path().ancestors().any(|dir| dir.join(".git").exists());
+    assert_eq!(sibling_import_reported(&project), !in_repository);
 }
 
 // The workspace settings can enable flake8-lazy outside the member's own `pyproject.toml`.
@@ -1226,8 +1232,8 @@ fn module_attribute_import_reports_each_same_named_module_read_through_an_import
     let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
     assert_eq!(
         (
-            stdout.contains("pkg/gen.py:5:12: SMP304 Import `TABLE`"),
-            stdout.contains("tools/gen.py:5:12: SMP304 Import `TABLE`")
+            stdout.contains(&common::native("pkg/gen.py:5:12: SMP304 Import `TABLE`")),
+            stdout.contains(&common::native("tools/gen.py:5:12: SMP304 Import `TABLE`"))
         ),
         (true, true),
         "{stdout}"
@@ -1774,11 +1780,8 @@ fn unused_dependency_reports_requirements_nothing_imports(project: &str, reporte
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "unused-dependency"]);
     let lines = common::reports(&stdout, "SMP313");
     let found: Vec<&str> = lines.iter().filter_map(|line| line.split('`').nth(1)).collect();
-    assert_eq!(
-        (found, lines.iter().all(|line| line.starts_with("pkg/__init__.py:1:1:"))),
-        (reported.to_vec(), true),
-        "{stdout}"
-    );
+    let location = common::native("pkg/__init__.py:1:1:");
+    assert_eq!((found, lines.iter().all(|line| line.starts_with(&location))), (reported.to_vec(), true), "{stdout}");
 }
 
 #[test_case("from ._api import canonical as _canonical\n\nVALUE = _canonical\n", Some("from ._api import canonical\n\nVALUE = canonical\n") ; "from_import")]
