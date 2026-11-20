@@ -59,8 +59,9 @@ Common ``simplint check`` options are listed below.
       - Enables Ruff's preview mode. This affects rule names in the output and which Ruff rules simplint considers
         when checking fixes and conflicts. simplint has no preview rules.
 
-When several symlinks point to one file, simplint checks it once. Unix also detects hard links. Direct paths take
-precedence over symlinks, then paths sort lexicographically. A symlink to a file outside the linted roots is skipped.
+When several symlinks point to one file, simplint checks it once. On Unix and Windows, it also detects hard links when
+it can read a file ID. Direct paths take precedence over symlinks, then paths sort lexicographically. A symlink to a
+file outside the linted roots is skipped.
 
 Environment variables
 ---------------------

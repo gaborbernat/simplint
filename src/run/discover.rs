@@ -99,7 +99,7 @@ fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
 }
 
 // Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
-// twice. On Unix, the device and inode also identify hard links.
+// twice. File IDs also identify hard links on filesystems that provide them.
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
@@ -114,7 +114,40 @@ fn identity(path: &Path) -> Option<(u64, u64)> {
     fs::metadata(path).ok().map(|metadata| (metadata.dev(), metadata.ino()))
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+#[derive(PartialEq, Eq, Hash)]
+enum WindowsIdentity {
+    File(u64, [u8; 16]),
+    Path(PathBuf),
+}
+
+#[cfg(windows)]
+fn identity(path: &Path) -> Option<WindowsIdentity> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ID_INFO, FILE_READ_ATTRIBUTES, FileIdInfo, GetFileInformationByHandleEx,
+    };
+
+    if let Ok(file) = fs::File::options().access_mode(FILE_READ_ATTRIBUTES).open(path) {
+        let mut info = FILE_ID_INFO::default();
+        // The handle stays open while Windows fills the buffer of the requested type.
+        let ok = unsafe {
+            GetFileInformationByHandleEx(
+                file.as_raw_handle(),
+                FileIdInfo,
+                (&raw mut info).cast(),
+                size_of::<FILE_ID_INFO>() as u32,
+            )
+        };
+        if ok != 0 && info.FileId.Identifier != [0; 16] {
+            return Some(WindowsIdentity::File(info.VolumeSerialNumber, info.FileId.Identifier));
+        }
+    }
+    fs::canonicalize(path).ok().map(WindowsIdentity::Path)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn identity(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok()
 }

@@ -1,6 +1,6 @@
 mod common;
 
-#[cfg(unix)]
+#[cfg(any(unix, windows))]
 use std::fs;
 
 use test_case::test_case;
@@ -84,14 +84,15 @@ fn file_reached_through_a_link_is_fixed_once() {
     );
 }
 
-// On Unix, parallel fixes must not write the same inode twice. Prefer the first sorted path, with symlinks last.
-#[cfg(unix)]
+// Parallel fixes must write a shared file only once, even when two paths name it.
+#[cfg(any(unix, windows))]
 #[test]
 fn hard_links_to_one_file_are_linted_once() {
     let root = project(&[("module.py", "VALUE = vars(None)\n"), ("other.py", "VALUE = vars(None)\n")]);
     fs::hard_link(root.path().join("module.py"), root.path().join("link.py")).expect("hard link");
-    let (_, stdout, _) = check(root.path(), &["--select", "SMP604"]);
-    assert_eq!(stdout.matches("SMP604").count(), 2);
+    let (code, stdout, stderr) = check(root.path(), &["--select", "SMP604"]);
+    assert_eq!((code, stderr.as_str()), (1, ""));
+    assert_eq!(common::report_paths(&stdout, "SMP604"), ["link.py", "other.py"]);
 }
 
 // Standard input names no file, so `--add-noqa` and `--add-ignore` have nothing to edit and must not edit the files
