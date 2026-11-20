@@ -6,6 +6,7 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use ignore::Error as WalkError;
 use log::warn;
+use rayon::prelude::*;
 use ruff_workspace::resolver::{ResolvedFile, Resolver, match_exclusion, project_files_in_path};
 use rustc_hash::FxHashSet;
 
@@ -26,7 +27,9 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     let mut python = Vec::new();
     let mut unlinted = Vec::new();
     let mut missing = Vec::new();
-    for file in found {
+    let links: Vec<_> =
+        found.par_iter().map(|entry| entry.as_ref().is_ok_and(|file| file.path().is_symlink())).collect();
+    for (file, link) in found.into_iter().zip(links) {
         let file = match file {
             Ok(file) => file,
             Err(error) => {
@@ -38,7 +41,7 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
             }
         };
         let path = file.path();
-        if escapes_roots(path, &roots) {
+        if link && escapes_roots(path, &roots) {
             warn!("{} {}: its target lies outside the linted paths", "Skipped symlink".bold(), path.display());
             continue;
         }
@@ -59,7 +62,7 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
             unlinted.push(path.to_path_buf());
             continue;
         }
-        python.push(path.to_path_buf());
+        python.push((link, path.to_path_buf()));
     }
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
 }
@@ -93,19 +96,28 @@ fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
 
 // Whether a symlink points at a file outside the paths the run lints, which the run neither reads nor writes.
 fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
-    path.is_symlink()
-        && path.is_file()
-        && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
+    path.is_file() && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
 }
 
 // Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
 // twice. File IDs also identify hard links on filesystems that provide them.
-fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
-    python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
+fn distinct(python: Vec<(bool, PathBuf)>) -> Vec<PathBuf> {
+    let mut files: Vec<_> = python
+        .into_par_iter()
+        .map(|(link, path)| {
+            let id = identity(&path);
+            ((link, path), id)
+        })
+        .collect();
+    files.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+    let has_links = files.last().is_some_and(|((link, _), _)| *link);
     let mut seen = FxHashSet::default();
-    python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
-    python.sort();
-    python
+    let mut paths: Vec<_> =
+        files.into_iter().filter_map(|((_, path), id)| id.is_none_or(|id| seen.insert(id)).then_some(path)).collect();
+    if has_links {
+        paths.sort_unstable();
+    }
+    paths
 }
 
 #[cfg(unix)]
