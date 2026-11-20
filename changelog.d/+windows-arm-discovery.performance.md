@@ -1,2 +1,2 @@
-Windows ARM64 checks file identities in parallel during discovery and reuses each symlink check. Across 100 PyPI
-packages, the two changes cut cold-check time by 2.68% and a further 2.01%.
+On Windows ARM64, parallel file identity lookups cut cold-check time by 2.68% across 100 PyPI packages. Reusing symlink
+checks saved another 2.01%, and checking for `__init__.py` once per directory saved a further 2.16%.
