@@ -100,12 +100,38 @@ fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
 
 // Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
 // twice. File IDs also identify hard links on filesystems that provide them.
+#[cfg(not(all(windows, target_arch = "aarch64")))]
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
     python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
     python.sort();
     python
+}
+
+#[cfg(all(windows, target_arch = "aarch64"))]
+use distinct_parallel as distinct;
+
+#[cfg(any(all(test, any(unix, windows)), all(windows, target_arch = "aarch64")))]
+fn distinct_parallel(python: Vec<PathBuf>) -> Vec<PathBuf> {
+    use rayon::prelude::*;
+
+    let mut files: Vec<_> = python
+        .into_par_iter()
+        .map(|path| {
+            let id = identity(&path);
+            ((path.is_symlink(), path), id)
+        })
+        .collect();
+    files.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+    let has_links = files.last().is_some_and(|((link, _), _)| *link);
+    let mut seen = FxHashSet::default();
+    let mut paths: Vec<_> =
+        files.into_iter().filter_map(|((_, path), id)| id.is_none_or(|id| seen.insert(id)).then_some(path)).collect();
+    if has_links {
+        paths.sort_unstable();
+    }
+    paths
 }
 
 #[cfg(unix)]
@@ -207,6 +233,35 @@ mod tests {
     use anyhow::anyhow;
 
     use super::redact_extended;
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn parallel_discovery_keeps_the_first_hard_link_and_missing_paths() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let first = dir.path().join("a.py");
+        let alias = dir.path().join("z.py");
+        let missing = dir.path().join("missing.py");
+        std::fs::write(&first, "").expect("write file");
+        std::fs::hard_link(&first, &alias).expect("hard link");
+        let paths = super::distinct_parallel(vec![alias, missing.clone(), first.clone()]);
+        assert_eq!(paths, [first, missing]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn parallel_discovery_sorts_retained_symlinks_with_regular_files() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let original = dir.path().join("z.py");
+        let target = dir.path().join("target.py");
+        let alias = dir.path().join("a.py");
+        let only_link = dir.path().join("b.py");
+        std::fs::write(&original, "").expect("write original");
+        std::fs::write(&target, "").expect("write target");
+        std::os::unix::fs::symlink(&original, &alias).expect("symlink original");
+        std::os::unix::fs::symlink(&target, &only_link).expect("symlink target");
+        let paths = super::distinct_parallel(vec![alias, original.clone(), only_link.clone()]);
+        assert_eq!(paths, [only_link, original]);
+    }
 
     // A message that names no complete path is not one about an extended file, so it stays as Ruff wrote it.
     #[test]

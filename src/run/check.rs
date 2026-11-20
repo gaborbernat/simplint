@@ -151,7 +151,15 @@ fn lint_alone<T: Send>(
         .and_then(|parent| detect_package_root(parent, &ruff.linter.namespace_packages))
         .map(PackageRoot::root);
     let roots = SearchRoots::new(ruff, package);
-    let files = [RunFile::new(absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
+    let files = [RunFile::new(
+        absolute,
+        &settings,
+        ruff,
+        resolved.pyproject_config.path.as_deref(),
+        package,
+        &roots,
+        &mut FxHashMap::default(),
+    )];
     let linted: Vec<&RunFile> = files.iter().collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
@@ -230,6 +238,7 @@ fn for_each_file<T: Send>(
     let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
     // Each nested project is indexed and linted on its own, so the files are grouped by project, and kept in the run's
     // order within a group, where the linted ones come first.
+    let mut initializers = FxHashMap::default();
     let mut indexed: Vec<RunFile> = paths
         .iter()
         .zip(&settings)
@@ -240,7 +249,7 @@ fn for_each_file<T: Send>(
             RunFile {
                 at,
                 linted: at < python.len(),
-                ..RunFile::new(path, settings, ruff, ruff_config, package, &roots)
+                ..RunFile::new(path, settings, ruff, ruff_config, package, &roots, &mut initializers)
             }
         })
         .collect();

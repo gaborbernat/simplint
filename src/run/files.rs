@@ -160,13 +160,16 @@ impl<'a> RunFile<'a> {
         ruff_config: Option<&'a Path>,
         package: Option<PackageRoot<'a>>,
         roots: &SearchRoots,
+        initializers: &mut FxHashMap<&'a Path, bool>,
     ) -> Self {
         let module_path = package.and_then(|package| to_module_path(package.path(), path));
         let importable = if module_path.is_none() { roots.module_path(path) } else { None };
         let settings = FileSettings::new(settings, ruff, path);
         // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
-        let sibling_init =
-            settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
+        let sibling_init = settings.rules.overlaps(RuleSet::sibling_init())
+            && *initializers
+                .entry(path.parent().unwrap_or(path))
+                .or_insert_with(|| path.with_file_name("__init__.py").is_file());
         let nested = settings.project.nested.then(|| settings.project.root.clone());
         Self {
             path,
