@@ -100,12 +100,35 @@ fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
 
 // Prefer the original path when a symlink also reaches it. Otherwise parallel fixes could write the same file
 // twice. File IDs also identify hard links on filesystems that provide them.
+#[cfg(not(windows))]
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
     python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
     python.sort();
     python
+}
+
+#[cfg(windows)]
+fn distinct(python: Vec<PathBuf>) -> Vec<PathBuf> {
+    use rayon::prelude::*;
+
+    let mut files: Vec<_> = python
+        .into_par_iter()
+        .map(|path| {
+            let id = identity(&path);
+            ((path.is_symlink(), path), id)
+        })
+        .collect();
+    files.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+    let has_links = files.last().is_some_and(|((link, _), _)| *link);
+    let mut seen = FxHashSet::default();
+    let mut paths: Vec<_> =
+        files.into_iter().filter_map(|((_, path), id)| id.is_none_or(|id| seen.insert(id)).then_some(path)).collect();
+    if has_links {
+        paths.sort_unstable();
+    }
+    paths
 }
 
 #[cfg(unix)]
