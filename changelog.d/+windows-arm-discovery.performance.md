@@ -1,2 +1,2 @@
-Cold checks on Windows ARM64 spend less time finding files. Across 100 PyPI packages, they took 2.68% less time than in
-0.14.4.
+Windows ARM64 checks file identities in parallel during discovery and reuses each symlink check. Across 100 PyPI
+packages, the two changes cut cold-check time by 2.68% and a further 2.01%.
