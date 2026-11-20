@@ -1,9 +1,11 @@
 #![allow(dead_code, reason = "every test binary compiles this module and uses only the helpers of its own concern")]
 
+use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{MAIN_SEPARATOR_STR, Path, PathBuf};
 use std::process;
+use std::sync::LazyLock;
 
 use assert_cmd::Command;
 use serde::de::DeserializeOwned;
@@ -240,6 +242,10 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
         };
         let location = &diagnostic["location"];
         let (code, message) = (text(&diagnostic["code"]), text(&diagnostic["message"]));
+        assert!(
+            !fix.is_empty() || !ALWAYS_FIXABLE.contains(code),
+            "{fixture}: {code} advertises an always-available fix but offered none for {message}"
+        );
         writeln!(output, "{}:{} {code} {message}{fix}", location["row"], location["column"]).expect("write");
     }
     if diagnostics.iter().any(|diagnostic| !diagnostic["fix"].is_null()) {
@@ -253,6 +259,11 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
     }
     output
 }
+
+static ALWAYS_FIXABLE: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
+    let rules: Vec<Value> = json(empty_project().path(), &["rules", "--output-format", "json"]);
+    rules.iter().filter(|rule| rule["fix"] == "Always").map(|rule| text(&rule["code"]).to_owned()).collect()
+});
 
 // Every fixture is copied so rules that look across modules see the same project. Its configuration matches what the
 // rule fixtures assume. Only the Ruff rules that overlap fixtures select run, so the fixes show simplint's own work.

@@ -404,7 +404,8 @@ fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() 
     let root = collapsible_if_project(source);
     let report = "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 1 error.\n";
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502"]);
-    assert_eq!((code, stdout.as_str()), (1, report));
+    let rule: serde_json::Value = common::json(root.path(), &["rule", "SMP502", "--output-format", "json"]);
+    assert_eq!((code, stdout.as_str(), rule["fix_availability"].as_str()), (1, report, Some("Sometimes")));
     common::assert_fix_keeps_report(root.path(), "SMP502", &["--fix", "--unsafe-fixes"], "module.py", report);
 }
 
