@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.6 (2026-11-21)
+
+<a name="release-0-14-6"></a>
+
+<a name="release-0-14-6-fixed"></a>
+
+### Fixed
+
+- `private-import-path` now accepts names exported by a direct private child of the top-level package, such as
+  `from pkg._core import Settings`, within the package and its distribution's tests
+  ([#182](https://github.com/gaborbernat/simplint/pull/182)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.5 (2026-11-20)
 
 <a name="release-0-14-5"></a>
