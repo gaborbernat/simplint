@@ -101,7 +101,7 @@ pub(super) fn private_package_exports(
             }
             let module = resolver.search.module_path(path).unwrap_or_default();
             let parts = module_parts(&module);
-            let [_, .., family] = parts else { return None };
+            let [_, family] = parts else { return None };
             if Visibility::of(family) != Visibility::Private {
                 return None;
             }

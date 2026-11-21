@@ -149,40 +149,38 @@ choosing a public re-export or replacing uses of a module object may require cha
 
 ### Exceptions
 
-- **Names exported by a private subpackage**. Siblings and the distribution's tests may import public names listed in
-  the subpackage's `__all__`. Here `pkg/_core/__init__.py` re-exports `Settings` for `pkg._native`. Include the
-  initializer in the check so simplint can read its export list.
+- **Exports of a first-level private subpackage**. `a/_b/_c.py` defines `x`. The owner exposes it in `a/_b/__init__.py`
+  so callers can import it from `a._b`.
 
-  ```python context file=pkg/__init__.py
+  ```python context file=a/__init__.py
   ```
 
-  ```python context file=pkg/_native/__init__.py
+  ```python context file=a/_b/_c.py
+  x = 1
   ```
 
-  ```python context file=pkg/_core/_settings.py
-  class Settings: ...
+  ```python context file=a/_b/__init__.py
+  from ._c import x
+
+  __all__ = ["x"]
   ```
 
-  ```python context file=pkg/_core/__init__.py
-  from ._settings import Settings
+  ```python ok file=a/use.py
+  from a._b import x
 
-  __all__ = ["Settings"]
+  value = x
   ```
 
-  ```python ok file=pkg/_native/lock.py
-  from pkg._core import Settings
+  ```python report file=a/consumer.py
+  from ._b._c import x
 
-  settings: Settings
+  value = x
   ```
 
-  ```python report file=pkg/_native/reader.py
-  from pkg._core._settings import Settings
-
-  settings: Settings
-  ```
-
-  The import from `pkg._core._settings` reaches into the implementation. Platform branches can list different exports. A
-  computed `__all__` leaves the exports unknown.
+  Inside `a/use.py`, the relative form is `from ._b import x`. The exception also applies to tests in the same
+  distribution. Reaching through `_b` still triggers the rule even if `_c` is a package with its own `__all__`. Include
+  the package initializer in the check. Platform branches may list different exports. A computed list leaves them
+  unknown.
 
 - **A public name from a direct private child**: `from ._api import API` lets the package use a private sibling to build
   an API outside tests.

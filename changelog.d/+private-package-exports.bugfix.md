@@ -1,2 +1,2 @@
-`private-import-path` now accepts imports of names listed in a private subpackage's `__all__` from sibling packages and
-the project's tests.
+`private-import-path` now accepts names exported by a direct private child of the top-level package, such as
+`from pkg._core import Settings`, within the package and its distribution's tests.

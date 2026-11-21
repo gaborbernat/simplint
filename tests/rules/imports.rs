@@ -903,6 +903,26 @@ fn private_package_exports_are_shared_within_the_package(file: &str, source: &st
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
+#[test_case("pkg/_consumer/module.py", "pkg._family._nested" ; "private parent")]
+#[test_case("pkg/_consumer/module.py", ".._family._nested" ; "relative private parent")]
+#[test_case("pkg/_consumer/module.py", "pkg.public._family" ; "public parent")]
+#[test_case("pkg/_consumer/module.py", "..public._family" ; "relative public parent")]
+#[test_case("tests/test_consumer.py", "pkg._family._nested" ; "project test")]
+#[test_case("pkg/tests/test_consumer.py", "..public._family" ; "package test")]
+fn nested_packages_do_not_share_private_exports(caller: &str, module: &str) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_consumer/__init__.py", ""),
+        ("pkg/_family/__init__.py", ""),
+        ("pkg/_family/_nested/__init__.py", "Ready = 1\n__all__ = ['Ready']\n"),
+        ("pkg/public/__init__.py", ""),
+        ("pkg/public/_family/__init__.py", "Ready = 1\n__all__ = ['Ready']\n"),
+        ("pkg/tests/__init__.py", ""),
+        (caller, &format!("from {module} import Ready\nvalue: Ready\n")),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", 1);
+}
+
 #[test_case("if win:\n    if x64:\n        __all__ = ['Ready']\n", 0 ; "nested platform export")]
 #[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    fallback = True\n", 0 ; "other platform has no export list")]
 #[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    __all__ = []\n", 0 ; "platform export")]
