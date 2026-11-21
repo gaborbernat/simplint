@@ -21,6 +21,7 @@ use std::mem::take;
 use std::ops::{Index, IndexMut};
 use std::path::Path;
 
+use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
@@ -271,11 +272,8 @@ fn conditional_package_exports(path: &Path, body: &[Stmt], dynamic: bool) -> Vec
 
 // A package can offer different names on different platforms. Other rules need the list for a single execution.
 fn conditional_exports(body: &[Stmt]) -> Option<Vec<String>> {
-    let mut writers = body.iter().filter(|stmt| !matches!(dunder_all(std::slice::from_ref(stmt)), Exports::Absent));
-    let branch = writers.next()?.as_if_stmt()?;
-    if writers.next().is_some() {
-        return None;
-    }
+    let writers = body.iter().filter(|stmt| !matches!(dunder_all(std::slice::from_ref(stmt)), Exports::Absent));
+    let branch = writers.exactly_one().ok()?.as_if_stmt()?;
     let mut names = Vec::new();
     for body in std::iter::once(&branch.body).chain(branch.elif_else_clauses.iter().map(|clause| &clause.body)) {
         match dunder_all(body) {

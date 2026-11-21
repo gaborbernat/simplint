@@ -99,14 +99,14 @@ pub(super) fn private_package_exports(
             if !(path.ends_with("__init__.py") || path.ends_with("__init__.pyi")) || exports.is_empty() {
                 return None;
             }
-            let module = resolver.search.module_path(path)?;
+            let module = resolver.search.module_path(path).unwrap_or_default();
             let parts = module_parts(&module);
             let [_, .., family] = parts else { return None };
             if Visibility::of(family) != Visibility::Private {
                 return None;
             }
-            let root = path.ancestors().nth(parts.len())?;
-            Some((*id, (parts.join("."), root, exports, distributions.get(path)?)))
+            let root = path.ancestors().nth(parts.len()).expect("each module component comes from the path");
+            Some((*id, (parts.join("."), root, exports, distributions[path])))
         })
         .collect();
     let mut allowed = FxHashMap::<_, FxHashSet<String>>::default();
@@ -117,8 +117,7 @@ pub(super) fn private_package_exports(
         let path = resolver.files.path(*caller);
         for (target, names) in &resolver.modules[caller].names[Channel::Import].files {
             let Some((module, package, exports, distribution)) = packages.get(target) else { continue };
-            if Some(*distribution) != distributions.get(path) || (!path.starts_with(package) && !tests.contains(caller))
-            {
+            if *distribution != distributions[path] || (!path.starts_with(package) && !tests.contains(caller)) {
                 continue;
             }
             for name in names.iter().filter(|name| Visibility::of(name) == Visibility::Public && exports.contains(name))

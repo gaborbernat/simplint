@@ -903,6 +903,7 @@ fn private_package_exports_are_shared_within_the_package(file: &str, source: &st
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
+#[test_case("if win:\n    if x64:\n        __all__ = ['Ready']\n", 0 ; "nested platform export")]
 #[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    fallback = True\n", 0 ; "other platform has no export list")]
 #[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    __all__ = []\n", 0 ; "platform export")]
 #[test_case("if win:\n    __all__ = []\nelif mac:\n    __all__ = ('Ready',)\n", 0 ; "elif export")]
