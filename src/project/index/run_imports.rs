@@ -1,9 +1,14 @@
+use std::path::Path;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::FileId;
 use super::classes::Reexports;
 use super::resolve::{ClassKey, ModuleFacts};
-use crate::project::facts::{ImportBinding, Signature};
+use super::{FileId, ImportResolver};
+use crate::project::FileFacts;
+use crate::project::facts::{Channel, ImportBinding, Signature};
+use crate::project::receivers::module_parts;
+use crate::syntax::Visibility;
 
 // A resolved class maps to true and a function to false, including re-exports. Other names have no entry.
 pub(super) type Members = FxHashMap<String, bool>;
@@ -78,4 +83,49 @@ pub(super) fn run_import_kinds(
         })
         .collect();
     RunImports { names, modules, members, signatures }
+}
+
+pub(super) fn private_package_exports(
+    indexed: &[(FileId, &FileFacts)],
+    resolver: &ImportResolver,
+    tests: &FxHashSet<FileId>,
+    distributions: &FxHashMap<&Path, &Path>,
+) -> FxHashMap<FileId, FxHashSet<String>> {
+    let packages: FxHashMap<_, _> = indexed
+        .iter()
+        .filter_map(|(id, facts)| {
+            let path = resolver.files.path(*id);
+            let exports = facts.exports.as_deref().unwrap_or(&facts.conditional_exports);
+            if !(path.ends_with("__init__.py") || path.ends_with("__init__.pyi")) || exports.is_empty() {
+                return None;
+            }
+            let module = resolver.search.module_path(path)?;
+            let parts = module_parts(&module);
+            let [_, .., family] = parts else { return None };
+            if Visibility::of(family) != Visibility::Private {
+                return None;
+            }
+            let root = path.ancestors().nth(parts.len())?;
+            Some((*id, (parts.join("."), root, exports, distributions.get(path)?)))
+        })
+        .collect();
+    let mut allowed = FxHashMap::<_, FxHashSet<String>>::default();
+    if packages.is_empty() {
+        return allowed;
+    }
+    for (caller, _) in indexed {
+        let path = resolver.files.path(*caller);
+        for (target, names) in &resolver.modules[caller].names[Channel::Import].files {
+            let Some((module, package, exports, distribution)) = packages.get(target) else { continue };
+            if Some(*distribution) != distributions.get(path) || (!path.starts_with(package) && !tests.contains(caller))
+            {
+                continue;
+            }
+            for name in names.iter().filter(|name| Visibility::of(name) == Visibility::Public && exports.contains(name))
+            {
+                allowed.entry(*caller).or_default().insert(format!("{module}.{name}"));
+            }
+        }
+    }
+    allowed
 }

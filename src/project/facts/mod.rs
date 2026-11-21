@@ -52,6 +52,7 @@ pub struct FileFacts {
     pub(super) mixins: Vec<String>,
     pub(super) star_imports: Vec<String>,
     pub(super) exports: Option<Vec<String>>,
+    pub(super) conditional_exports: Vec<String>,
     pub(super) exports_unknown: ExportsUnknown,
     pub(super) bindings: Vec<ImportBinding>,
     pub(super) module_names: Vec<(String, String)>,
@@ -181,6 +182,7 @@ impl FileFacts {
             mixins: visitor.mixins,
             star_imports: visitor.stars.into_iter().collect(),
             exports,
+            conditional_exports: conditional_package_exports(path, &parsed.syntax().body, dynamic_exports),
             exports_unknown: match (dynamic_exports, module_getattr) {
                 (true, _) => ExportsUnknown::Dynamic,
                 (false, true) => ExportsUnknown::Lazy,
@@ -258,6 +260,31 @@ impl FileFacts {
             .chain(self.module_reads.iter().map(String::as_str))
             .chain(self.attribute_loads.keys().map(String::as_str))
     }
+}
+
+fn conditional_package_exports(path: &Path, body: &[Stmt], dynamic: bool) -> Vec<String> {
+    if dynamic && (path.ends_with("__init__.py") || path.ends_with("__init__.pyi")) {
+        return conditional_exports(body).unwrap_or_default();
+    }
+    Vec::new()
+}
+
+// A package can offer different names on different platforms. Other rules need the list for a single execution.
+fn conditional_exports(body: &[Stmt]) -> Option<Vec<String>> {
+    let mut writers = body.iter().filter(|stmt| !matches!(dunder_all(std::slice::from_ref(stmt)), Exports::Absent));
+    let branch = writers.next()?.as_if_stmt()?;
+    if writers.next().is_some() {
+        return None;
+    }
+    let mut names = Vec::new();
+    for body in std::iter::once(&branch.body).chain(branch.elif_else_clauses.iter().map(|clause| &clause.body)) {
+        match dunder_all(body) {
+            Exports::Absent => {}
+            Exports::Listed(listed) => names.extend(listed.names().iter().copied().map(str::to_owned)),
+            Exports::Dynamic => names.extend(conditional_exports(body)?),
+        }
+    }
+    Some(names)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

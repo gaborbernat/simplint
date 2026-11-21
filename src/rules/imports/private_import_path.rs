@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use itertools::Itertools;
+use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -43,6 +44,12 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             let paired = private > 0 && paired_test_module(walker, path, *level);
             let direct = *level == 1 && !path.contains('.');
             if private > 0 && !paired && (!direct || walker.checker.is_test_module()) {
+                let project = walker.checker.project();
+                if resolve_imported_module_path(*level, Some(path), caller).is_some_and(|module| {
+                    names.iter().all(|alias| project.imports_private_package_export(&module, alias.name.as_str()))
+                }) {
+                    return;
+                }
                 if !names.iter().any(|alias| walker.checker.semantic().reported_by_plc2701(alias.identifier())) {
                     report(walker, *level, path, module.as_ref().map_or(stmt.range(), Ranged::range), || {
                         import_hint(*level, path, names, is_lazy(stmt), caller)
