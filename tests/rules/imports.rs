@@ -877,6 +877,82 @@ fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: 
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import Ready\nvalue: Ready\n", 0 ; "absolute sibling")]
+#[test_case("src/pkg/_consumer/module.py", "from .._family import Ready\nvalue: Ready\n", 0 ; "relative sibling")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import Ready as Export\nvalue: Export\n", 0 ; "public alias")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import Hidden\nvalue: Hidden\n", 1 ; "unlisted name")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import Ready, Hidden\nvalue: Ready | Hidden\n", 1 ; "mixed exports")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import _private\nvalue: _private\n", 1 ; "listed private name")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family import *\n", 1 ; "star import")]
+#[test_case("src/pkg/_consumer/module.py", "from pkg._family._impl import Ready\nvalue: Ready\n", 1 ; "private leaf")]
+#[test_case("src/other/consumer.py", "from pkg._family import Ready\nvalue: Ready\n", 1 ; "another top level package")]
+#[test_case("src/pkg/_consumer/module.py", "def make():\n    from .._family import Ready\n    return Ready()\n", 0 ; "function local")]
+#[test_case("tests/consumer/test_work.py", "from pkg._family import Ready\nvalue: Ready\n", 0 ; "project tests")]
+fn private_package_exports_are_shared_within_the_package(file: &str, source: &str, expected: usize) {
+    let root = common::project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/_consumer/__init__.py", ""),
+        (
+            "src/pkg/_family/__init__.py",
+            "from ._impl import Ready\nHidden = 1\n_private = 0\n__all__ = ['Ready', '_private']\n",
+        ),
+        ("src/pkg/_family/_impl.py", "class Ready: pass\n__all__ = ['Ready']\n"),
+        ("src/other/__init__.py", ""),
+        (file, source),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", expected);
+}
+
+#[test_case("pkg/_consumer/module.py", "pkg._family._nested" ; "private parent")]
+#[test_case("pkg/_consumer/module.py", ".._family._nested" ; "relative private parent")]
+#[test_case("pkg/_consumer/module.py", "pkg.public._family" ; "public parent")]
+#[test_case("pkg/_consumer/module.py", "..public._family" ; "relative public parent")]
+#[test_case("tests/test_consumer.py", "pkg._family._nested" ; "project test")]
+#[test_case("pkg/tests/test_consumer.py", "..public._family" ; "package test")]
+fn nested_packages_do_not_share_private_exports(caller: &str, module: &str) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_consumer/__init__.py", ""),
+        ("pkg/_family/__init__.py", ""),
+        ("pkg/_family/_nested/__init__.py", "Ready = 1\n__all__ = ['Ready']\n"),
+        ("pkg/public/__init__.py", ""),
+        ("pkg/public/_family/__init__.py", "Ready = 1\n__all__ = ['Ready']\n"),
+        ("pkg/tests/__init__.py", ""),
+        (caller, &format!("from {module} import Ready\nvalue: Ready\n")),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", 1);
+}
+
+#[test_case("if win:\n    if x64:\n        __all__ = ['Ready']\n", 0 ; "nested platform export")]
+#[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    fallback = True\n", 0 ; "other platform has no export list")]
+#[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    __all__ = []\n", 0 ; "platform export")]
+#[test_case("if win:\n    __all__ = []\nelif mac:\n    __all__ = ('Ready',)\n", 0 ; "elif export")]
+#[test_case("if win:\n    __all__ = ['Other']\nelse:\n    __all__ = []\n", 1 ; "unlisted on every platform")]
+#[test_case("if win:\n    __all__ = ['Ready']\nelse:\n    __all__ = build()\n", 1 ; "dynamic branch")]
+#[test_case("if win:\n    __all__ = ['Ready']\n__all__ = []\n", 1 ; "overwritten")]
+#[test_case("__all__ = build()\n", 1 ; "dynamic initializer")]
+#[test_case("", 1 ; "no export list")]
+fn private_package_exports_on_alternative_platforms(listing: &str, expected: usize) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_family/__init__.py", &format!("Ready = 1\n{listing}")),
+        ("pkg/_consumer.py", "from pkg._family import Ready\nvalue: Ready\n"),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", expected);
+}
+
+#[test]
+fn another_distributions_tests_cannot_use_private_package_exports() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = 'library'\n"),
+        ("src/library/__init__.py", ""),
+        ("src/library/_family/__init__.py", "class Ready: pass\n__all__ = ['Ready']\n"),
+        ("consumer/pyproject.toml", "[project]\nname = 'consumer'\n"),
+        ("consumer/tests/test_boundary.py", "from library._family import Ready\nvalue: Ready\n"),
+    ]);
+    common::assert_report_count(root.path(), "SMP310", 1);
+}
+
 #[test]
 fn private_module_object_remains_disallowed_in_paired_suite() {
     let root = common::project(&[

@@ -125,6 +125,7 @@ pub(super) struct FileAnswers<'a> {
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) overridden: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) package_loaded: bool,
+    pub(super) private_package_exports: Option<&'a FxHashSet<String>>,
     pub(super) resolved_imports: Option<&'a FxHashSet<String>>,
     pub(super) imported_modules: Option<&'a FxHashSet<String>>,
     pub(super) cycle: Option<&'a Cycle>,
@@ -173,6 +174,7 @@ impl CacheKey for FileIndex<'_> {
             inherited,
             overridden,
             package_loaded,
+            private_package_exports,
             resolved_imports,
             imported_modules,
             cycle,
@@ -213,6 +215,7 @@ impl CacheKey for FileIndex<'_> {
         inherited.cache_key(state);
         overridden.cache_key(state);
         package_loaded.cache_key(state);
+        private_package_exports.cache_key(state);
         resolved_imports.cache_key(state);
         imported_modules.cache_key(state);
         cycle.is_some().cache_key(state);
@@ -316,6 +319,10 @@ impl<'a> FileIndex<'a> {
     // An import from a top-level package initializer or a __main__.py can make this file a runtime dependency.
     pub fn is_package_loaded(&self) -> bool {
         self.answers.package_loaded
+    }
+
+    pub fn imports_private_package_export(&self, module: &str, name: &str) -> bool {
+        self.answers.private_package_exports.is_some_and(|exports| exports.contains(&format!("{module}.{name}")))
     }
 
     pub fn imports_run_file(&self, module: &str) -> bool {

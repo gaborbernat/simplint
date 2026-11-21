@@ -657,6 +657,21 @@ fn reexport_added_later_checks_the_source_again() {
 }
 
 #[test]
+fn changing_private_package_exports_rechecks_its_importer() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_family/__init__.py", "class Ready: pass\nif win:\n    __all__ = ['Ready']\nelse:\n    __all__ = []\n"),
+        ("pkg/consumer.py", "from pkg._family import Ready\nvalue: Ready\n"),
+    ]);
+    let args = ["--select", "SMP310"];
+    assert_eq!(check(root.path(), &args).1, PASSED);
+    write_file(root.path(), "pkg/_family/__init__.py", "class Ready: pass\n__all__ = []\n");
+    let warm = check(root.path(), &args).1;
+    assert!(warm.contains("Private import `pkg._family`"), "{warm}");
+    assert_eq!(warm, check(root.path(), &["--no-cache", "--select", "SMP310"]).1);
+}
+
+#[test]
 fn caches_of_other_builds_expire_after_thirty_days() {
     let root = project(&[
         ("module.py", CLEAN_MODULE),

@@ -51,7 +51,7 @@ use self::hatch::hatch_hook_classes;
 use self::prefixes::{PrefixSiblings, prefix_siblings, test_directory_modules};
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached};
 use self::resolve::UnreachedPath;
-use self::run_imports::{Members, RunImports, run_import_kinds};
+use self::run_imports::{Members, RunImports, private_package_exports, run_import_kinds};
 use self::run_reads::{RunReads, RunWide, run_names};
 
 // Resolve modules with the same ty resolver Ruff uses for its import graph.
@@ -80,6 +80,7 @@ pub struct Project {
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     pub(super) overridden: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
+    pub(super) private_package_exports: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) package_loaded: FxHashSet<FileId>,
     // The modules whose runtime import in each file reaches a file of the run.
     pub(super) resolved_imports: FxHashMap<FileId, FxHashSet<String>>,
@@ -314,6 +315,7 @@ impl Project {
             run_modules,
             run_members,
             run_signatures,
+            private_package_exports: private_package_exports(&indexed, resolver, &test_modules, distribution_roots),
             api_reached,
             library_reached,
             inherited,
@@ -380,6 +382,7 @@ impl Project {
                 inherited: self.inherited.get(&id),
                 overridden: self.overridden.get(&id),
                 package_loaded: self.package_loaded.contains(&id),
+                private_package_exports: self.private_package_exports.get(&id),
                 resolved_imports: self.resolved_imports.get(&id),
                 imported_modules: self.dependency_hosts.contains(&id).then_some(&self.imported_modules),
                 cycle: self.cycles.get(&id),
