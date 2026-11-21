@@ -149,10 +149,40 @@ choosing a public re-export or replacing uses of a module object may require cha
 
 ### Exceptions
 
-- A package and its distribution's tests may import a **private subpackage's exports** when its `__all__` lists them by
-  public name. For example, `pkg._native` can import `Settings` from `pkg._core` when `pkg/_core/__init__.py` lists it.
-  Include the initializer in the check so simplint can read its export list. Platform branches may list different names.
-  A computed list leaves the exports unknown.
+- **Names exported by a private subpackage**. Siblings and the distribution's tests may import public names listed in
+  the subpackage's `__all__`. Here `pkg/_core/__init__.py` re-exports `Settings` for `pkg._native`. Include the
+  initializer in the check so simplint can read its export list.
+
+  ```python context file=pkg/__init__.py
+  ```
+
+  ```python context file=pkg/_native/__init__.py
+  ```
+
+  ```python context file=pkg/_core/_settings.py
+  class Settings: ...
+  ```
+
+  ```python context file=pkg/_core/__init__.py
+  from ._settings import Settings
+
+  __all__ = ["Settings"]
+  ```
+
+  ```python ok file=pkg/_native/lock.py
+  from pkg._core import Settings
+
+  settings: Settings
+  ```
+
+  ```python report file=pkg/_native/reader.py
+  from pkg._core._settings import Settings
+
+  settings: Settings
+  ```
+
+  The import from `pkg._core._settings` reaches into the implementation. Platform branches can list different exports. A
+  computed `__all__` leaves the exports unknown.
 
 - **A public name from a direct private child**: `from ._api import API` lets the package use a private sibling to build
   an API outside tests.
