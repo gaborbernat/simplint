@@ -55,7 +55,7 @@ supports-hyperlinks = "3.2.0"
 tempfile = "3.27.0"
 toml = "1.1.8"
 unicode-normalization = "0.1.26"
-url = "2.5.8"
+url = "2.5.9"
 ty_module_resolver = "=0.0.21"
 walkdir = "2.5.0"
 
