@@ -39,7 +39,7 @@ impl FileKey {
         }
         let (mut file, metadata) = options.open(path).and_then(|file| file.metadata().map(|meta| (file, meta))).ok()?;
         let mut hasher = CacheKeyHasher::new();
-        FileTime::from_system_time(metadata.modified().ok()?).cache_key(&mut hasher);
+        FileTime::from_system_time(metadata.modified().expect("file modification time")).cache_key(&mut hasher);
         if !source::change_key(&file, &metadata, checked, &mut hasher) {
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes).ok()?;
@@ -80,9 +80,10 @@ fn read_archive(mut reader: impl Read, size: io::Result<u64>) -> io::Result<Alig
 pub(super) type Stat = (i64, u32, u64);
 
 pub(super) fn stat(path: &Path) -> Option<Stat> {
-    let metadata = fs::metadata(path).ok()?;
-    let modified = FileTime::from_system_time(metadata.modified().ok()?);
-    Some((modified.unix_seconds(), modified.nanoseconds(), metadata.len()))
+    fs::metadata(path).ok().map(|metadata| {
+        let modified = FileTime::from_system_time(metadata.modified().expect("file modification time"));
+        (modified.unix_seconds(), modified.nanoseconds(), metadata.len())
+    })
 }
 
 pub(super) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
