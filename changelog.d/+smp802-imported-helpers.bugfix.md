@@ -1,2 +1,2 @@
-- [`parametrize-without-id` (SMP802)](../rules/SMP802.html) no longer reports rows built by imported helpers that may
-  already supply an ID.
+[`parametrize-without-id`](../src/rules/testing/parametrize_without_id.md) (SMP802) skips rows built by imported helpers
+that may already supply an ID.
