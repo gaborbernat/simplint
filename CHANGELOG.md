@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.7 (2026-11-23)
+
+<a name="release-0-14-7"></a>
+
+<a name="release-0-14-7-fixed"></a>
+
+### Fixed
+
+- [`parametrize-without-id`](https://github.com/gaborbernat/simplint/blob/0.14.7/src/rules/testing/parametrize_without_id.md)
+  (SMP802) skips rows built by imported helpers that may already supply an ID
+  ([#184](https://github.com/gaborbernat/simplint/pull/184)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.6 (2026-11-21)
 
 <a name="release-0-14-6"></a>
