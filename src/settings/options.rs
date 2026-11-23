@@ -68,7 +68,7 @@ impl Selector {
 pub fn ruff_selector(text: &str) -> Option<RuleSelector> {
     RuleSelector::from_str(text).ok().or_else(|| {
         let rule = ruff_linter::registry::Rule::from_name(text).ok()?;
-        Some(RuleSelector::Rule { rule, redirected_from: None })
+        Some(RuleSelector::Rule { rule })
     })
 }
 

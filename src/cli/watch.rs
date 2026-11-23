@@ -1,6 +1,6 @@
 use std::convert::Infallible;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use anyhow::Result;
@@ -26,7 +26,11 @@ pub(super) fn watch(
     // Kept until watching ends, as dropping the watcher stops the events.
     let _watcher = watcher(
         sender,
-        files.iter().chain(&resolved.pyproject_config.path).chain(&resolved.settings_resolver.root.path),
+        files
+            .iter()
+            .map(PathBuf::as_path)
+            .chain(resolved.ruff_settings.resolved.config_path())
+            .chain(resolved.settings_resolver.root.path.as_deref()),
     )?;
     let Err(error) = rounds(&receiver, |change| {
         if change == Some(ChangeKind::Configuration) {
@@ -50,7 +54,7 @@ pub(super) fn watch(
 
 fn watcher<'a>(
     sender: Sender<notify::Result<Event>>,
-    paths: impl IntoIterator<Item = &'a PathBuf>,
+    paths: impl IntoIterator<Item = &'a Path>,
 ) -> notify::Result<RecommendedWatcher> {
     let mut watcher = recommended_watcher(sender)?;
     for file in paths {
@@ -166,7 +170,7 @@ mod tests {
     fn watching_a_missing_path_fails() {
         let directory = tempfile::TempDir::new().expect("temporary directory");
         let (sender, _receiver) = std::sync::mpsc::channel();
-        assert!(watcher(sender, [&directory.path().join("missing")]).is_err());
+        assert!(watcher(sender, [directory.path().join("missing").as_path()]).is_err());
     }
 
     // The watcher needs file descriptors of its own, so it fails to start in a process that has none left.

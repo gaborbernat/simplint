@@ -23,6 +23,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if values.iter().any(|value| any_over_expr(value, &has_effect)) {
         return;
     }
+    #[expect(clippy::mutable_key_type, reason = "Ruff excludes mutable node indices from equality and hashing")]
     let mut seen: FxHashSet<ComparableExpr> = FxHashSet::default();
     for value in values {
         if !seen.insert(ComparableExpr::from(value)) {
@@ -54,6 +55,7 @@ fn repeated_tests(walker: &Walker, if_stmt: &ast::StmtIf) {
     if branches.iter().any(|(test, _)| any_over_expr(test, &has_effect)) {
         return;
     }
+    #[expect(clippy::mutable_key_type, reason = "Ruff excludes mutable node indices from equality and hashing")]
     let mut first: FxHashMap<ComparableExpr, usize> = FxHashMap::default();
     for (index, (test, body)) in branches.iter().enumerate() {
         let earlier = *first.entry(ComparableExpr::from(*test)).or_insert(index);
@@ -78,6 +80,7 @@ fn same_body(first: &[Stmt], second: &[Stmt]) -> bool {
 
 // A guarded case leaves its pattern available to a later case when the guard fails.
 fn repeated_patterns(walker: &Walker, match_stmt: &ast::StmtMatch) {
+    #[expect(clippy::mutable_key_type, reason = "Ruff excludes mutable node indices from equality and hashing")]
     let mut earlier_cases: FxHashMap<ComparablePattern, Vec<&ast::MatchCase>> = FxHashMap::default();
     for case in &match_stmt.cases {
         let earlier = earlier_cases.entry(ComparablePattern::from(&case.pattern)).or_default();

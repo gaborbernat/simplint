@@ -39,7 +39,7 @@ impl FileKey {
         }
         let (mut file, metadata) = options.open(path).and_then(|file| file.metadata().map(|meta| (file, meta))).ok()?;
         let mut hasher = CacheKeyHasher::new();
-        FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
+        FileTime::from_system_time(metadata.modified().ok()?).cache_key(&mut hasher);
         if !source::change_key(&file, &metadata, checked, &mut hasher) {
             let mut bytes = Vec::new();
             file.read_to_end(&mut bytes).ok()?;
@@ -80,10 +80,9 @@ fn read_archive(mut reader: impl Read, size: io::Result<u64>) -> io::Result<Alig
 pub(super) type Stat = (i64, u32, u64);
 
 pub(super) fn stat(path: &Path) -> Option<Stat> {
-    fs::metadata(path).ok().map(|metadata| {
-        let modified = FileTime::from_last_modification_time(&metadata);
-        (modified.unix_seconds(), modified.nanoseconds(), metadata.len())
-    })
+    let metadata = fs::metadata(path).ok()?;
+    let modified = FileTime::from_system_time(metadata.modified().ok()?);
+    Some((modified.unix_seconds(), modified.nanoseconds(), metadata.len()))
 }
 
 pub(super) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
@@ -312,21 +311,26 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn directory_without_search_permission_goes_by_its_own_time() {
+        use std::fs::FileTimes;
         use std::os::unix::fs::PermissionsExt;
-
-        use filetime::{FileTime, set_file_mtime};
+        use std::time::{Duration, SystemTime};
 
         let root = TempDir::new().expect("create a temporary directory");
         let directory = root.path().join("0.0.1-00000000000000a1");
         fs::create_dir(&directory).expect("create the directory");
         fs::write(directory.join("1"), "").expect("write a cache file");
-        set_file_mtime(directory.join("1"), FileTime::from_unix_time(1_000, 0)).expect("age the file");
-        set_file_mtime(&directory, FileTime::from_unix_time(2_000, 0)).expect("age the directory");
+        fs::set_times(
+            directory.join("1"),
+            FileTimes::new().set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(1_000)),
+        )
+        .expect("age the file");
+        let directory_time = SystemTime::UNIX_EPOCH + Duration::from_secs(2_000);
+        fs::set_times(&directory, FileTimes::new().set_modified(directory_time)).expect("age the directory");
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o444)).expect("make the directory unsearchable");
         let written = last_written(&directory);
         fs::set_permissions(&directory, fs::Permissions::from_mode(0o755)).expect("make the directory searchable");
 
-        assert_eq!(written.map(FileTime::from_system_time), Some(FileTime::from_unix_time(2_000, 0)));
+        assert_eq!(written, Some(directory_time));
     }
 
     #[test]

@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{Result, bail};
 use itertools::Itertools;
 use ruff::ExitStatus;
-use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::logging::LogLevel;
 use ruff_linter::settings::flags;
 use ruff_linter::{SuppressionKind, warn_user, warn_user_once};
@@ -15,6 +14,7 @@ use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::cli::write_flushed;
+use crate::lint::diagnostic_order;
 use crate::lint::registry::RuleSet;
 use crate::project::{Ending, cache};
 use crate::run::{
@@ -122,13 +122,13 @@ pub(super) fn printer<'a>(cli: &CheckCommand, resolved: &Resolved, mode: &'a Mod
         log_level,
         mode,
         flags: printer_flags,
-        preview: resolved.pyproject_config.settings.linter.preview.is_enabled(),
-        prefer_rule_codes: resolved.pyproject_config.settings.output_prefer_rule_codes,
+        preview: resolved.ruff_settings.resolved.settings.linter.preview.is_enabled(),
+        prefer_rule_codes: resolved.ruff_settings.resolved.settings.output_prefer_rule_codes,
     }
 }
 
 pub(super) fn write_diffs(diagnostics: &mut Diagnostics, writer: &mut dyn Write) -> Result<()> {
-    diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
+    diagnostics.inner.sort_by(diagnostic_order);
     // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
     diagnostics.diffs.sort_by(|left, right| left.0.cmp(&right.0));
     write_flushed(writer, diagnostics.diffs.iter().map(|(_, diff)| diff))?;

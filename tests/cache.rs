@@ -82,7 +82,7 @@ fn cache_is_not_written_when_nothing_changed() {
 }
 
 fn set_mtime(path: &Path, time: SystemTime) {
-    filetime::set_file_mtime(path, filetime::FileTime::from_system_time(time)).expect("set modified time");
+    fs::set_times(path, fs::FileTimes::new().set_modified(time)).expect("set modified time");
 }
 
 #[test]

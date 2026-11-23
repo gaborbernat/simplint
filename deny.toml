@@ -1,7 +1,5 @@
 [advisories]
 version = 2
-# Ruff's dependency tree includes these crates. Both advisories concern maintenance status.
 ignore = [
   { id = "RUSTSEC-2024-0436", reason = "libcst depends on the unmaintained paste crate" },
-  { id = "RUSTSEC-2026-0543", reason = "ruff_db enables quick-junit, which depends on the unmaintained chrono crate" },
 ]

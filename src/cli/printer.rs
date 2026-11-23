@@ -1,6 +1,7 @@
 // A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the output reads as `ruff check`'s does.
 use std::borrow::Cow;
 use std::cmp::Reverse;
+use std::fmt::Display;
 use std::io::Write;
 use std::iter;
 use std::path::Path;
@@ -19,7 +20,6 @@ use ruff_linter::fs::relativize_path;
 use ruff_linter::linter::FixTable;
 use ruff_linter::logging::LogLevel;
 use ruff_linter::message::{RenderContext, render_diagnostics};
-use ruff_linter::notify_user;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::{OutputFormat, UnsafeFixes};
 use ruff_source_file::LineColumn;
@@ -186,10 +186,8 @@ impl Printer<'_> {
     // Ruff's watch mode output: a timestamped count on standard output, then the diagnostics without a summary.
     // Silent mode prints nothing at all.
     pub(super) fn write_continuously(&self, writer: &mut dyn Write, diagnostics: &Diagnostics) -> Result<()> {
-        if self.log_level >= LogLevel::Default {
-            let count = diagnostics.inner.len();
-            notify_user!("Found {count} error{}. Watching for file changes.", plural(count, "s"));
-        }
+        let count = diagnostics.inner.len();
+        self.write_to_user(format_args!("Found {count} error{}. Watching for file changes.", plural(count, "s")));
         let notebooks = FxHashMap::default();
         let context = RenderContext::new(&notebooks);
         let config = self.render_config(diagnostics);
@@ -200,9 +198,9 @@ impl Printer<'_> {
         Ok(())
     }
 
-    pub(super) fn write_to_user(&self, message: &str) {
+    pub(super) fn write_to_user(&self, message: impl Display) {
         if self.log_level >= LogLevel::Default {
-            notify_user!("{message}");
+            println!("[{}] {message}", jiff::ZonedDateTime::now().strftime("%H:%M:%S %p").to_string().dimmed());
         }
     }
 

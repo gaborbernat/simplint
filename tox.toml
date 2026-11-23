@@ -168,7 +168,7 @@ commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
 description = "lint and fix the most downloaded PyPI projects, failing on crashes and on fixes that break code"
 dependency_groups = []
 # Use the same Ruff version as the Rust linter dependency in Cargo.toml.
-deps = [ "ruff==0.17.4" ]
+deps = [ "ruff==0.17.6" ]
 commands = [
   [
     "python",
