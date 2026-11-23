@@ -223,7 +223,7 @@ fn rows<'e>(checker: &'e Checker, elements: &'e [Expr]) -> Vec<&'e Expr> {
 fn row<'e>(checker: &'e Checker, element: &'e Expr) -> Option<&'e Expr> {
     let semantic = checker.semantic();
     let Expr::Name(name) = element else {
-        return (!is_helper_with_ids(semantic, element)).then_some(element);
+        return (!accepts_row_call(semantic, element)).then_some(element);
     };
     let bindings = semantic.resolved_bindings(name);
     let values: Vec<&Expr> = bindings
@@ -233,7 +233,7 @@ fn row<'e>(checker: &'e Checker, element: &'e Expr) -> Option<&'e Expr> {
         .into_iter()
         .flatten()
         .collect();
-    if values.iter().any(|value| is_param_with_id(semantic, value) || is_helper_with_ids(semantic, value)) {
+    if values.iter().any(|value| is_param_with_id(semantic, value) || accepts_row_call(semantic, value)) {
         return None;
     }
     match (bindings.as_slice(), values.as_slice()) {
@@ -242,15 +242,25 @@ fn row<'e>(checker: &'e Checker, element: &'e Expr) -> Option<&'e Expr> {
     }
 }
 
-// A local helper can already supply IDs. Coroutines and generators return other objects, and decorators other than the
-// supported caches may replace its result.
-fn is_helper_with_ids(semantic: &Semantic, element: &Expr) -> bool {
+fn accepts_row_call(semantic: &Semantic, element: &Expr) -> bool {
     let Expr::Call(ast::ExprCall { func, .. }) = element else {
         return false;
     };
-    let Expr::Name(name) = func.as_ref() else {
+    if semantic.resolves_to(func, &["pytest", "param"]) {
         return false;
-    };
+    }
+    // An imported factory may supply its own ID, just as an imported row may already carry one.
+    let mut root = func.as_ref();
+    while let Expr::Attribute(attribute) = root {
+        root = &attribute.value;
+    }
+    let Expr::Name(name) = root else { return false };
+    if matches!(semantic.resolved_bindings(name).as_slice(), [binding] if binding.as_any_import().is_some()) {
+        return !semantic.is_rebound(name.id.as_str());
+    }
+    if !func.is_name_expr() {
+        return false;
+    }
     let Some(function) = semantic.module_function(name) else {
         return false;
     };

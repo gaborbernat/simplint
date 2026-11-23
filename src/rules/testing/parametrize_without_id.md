@@ -189,8 +189,8 @@ An `ids=` list gets one that moves each id into its row.
   [`contextlib.suppress`](https://docs.python.org/3/library/contextlib.html#contextlib.suppress), `pytest.raises`,
   [`contextlib.ExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.ExitStack),
   [`contextlib.AsyncExitStack`](https://docs.python.org/3/library/contextlib.html#contextlib.AsyncExitStack) or one
-  entered by name could suppress an exception and let the function reach the end. The rule reports calls to helpers it
-  cannot verify, including generators, lambdas and decorated functions. It accepts the
+  entered by name could suppress an exception and let the function reach the end. The rule reports calls to local
+  helpers it cannot verify, including generators, lambdas and decorated functions. It accepts the
   [`functools.cache` and `lru_cache` decorators](https://docs.python.org/3/library/functools.html#functools.lru_cache).
 
   ```python ok
@@ -205,6 +205,9 @@ An `ids=` list gets one that moves each id into its row.
   def test_total(values: list[int], expected: int) -> None:
       assert sum(values) == expected
   ```
+
+- **Rows built by imported helpers.** An imported factory may supply its own ID, so the rule skips its calls. It still
+  checks calls it recognizes as `pytest.param(...)`, including calls through an import alias.
 
 - **Rows built elsewhere**, such as a module constant passed as the argument values: the decorator holds no rows to
   check.

@@ -2,8 +2,11 @@ import contextlib
 import functools
 
 import pytest
+import tests.shared_rows as shared_rows
+from pytest import param as pytest_param
 
 from tests.shared_rows import shared_row
+from tests.shared_rows import shared_row as rebound_row
 
 
 def _row(name: str) -> pytest.ParameterSet:
@@ -373,4 +376,37 @@ def _open_match_row(name: str) -> pytest.ParameterSet:
 
 @pytest.mark.parametrize("name", [_open_match_row("b")])
 def test_helpers_through_open_match(name: str) -> None:
+    assert name
+
+
+SHARED_ROW = shared_row("case802_from_binding")
+
+
+@pytest.mark.parametrize("name", [SHARED_ROW, shared_rows.shared_row("case802_qualified")])
+def test_imported_factory_rows(name: str) -> None:
+    assert name
+
+
+@pytest.mark.parametrize("name", [pytest_param("case802_missing_id"), pytest.param("case802_none_id", id=None)])
+def test_known_factories_without_ids(name: str) -> None:
+    assert name
+
+
+def rebound_row(name: str) -> tuple[str]:
+    return (name,)
+
+
+@pytest.mark.parametrize("name", [rebound_row("case802_rebound")])
+def test_rebound_import(name: str) -> None:
+    assert name
+
+
+class LocalRows:
+    @staticmethod
+    def row(name: str) -> tuple[str]:
+        return (name,)
+
+
+@pytest.mark.parametrize("name", [LocalRows.row("case802_method"), [LocalRows.row][0]("case802_dynamic")])
+def test_unverified_local_factories(name: str) -> None:
     assert name
