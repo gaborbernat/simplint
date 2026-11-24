@@ -24,6 +24,6 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: 🔍 Check advisories
-        uses: EmbarkStudios/cargo-deny-action@v2.1.1
+        uses: EmbarkStudios/cargo-deny-action@v2.1.2
         with:
           command: check advisories
