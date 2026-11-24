@@ -131,6 +131,9 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.json
           disable_search: true
+          # Dependabot has no Actions secret even when its branch is in this repository.
+          override_branch: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && format('pr{0}:{1}', github.event.pull_request.number, github.head_ref) || '' }}
+          override_pr: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.number || '' }}
           # Fork pull requests do not receive the Codecov secret.
           fail_ci_if_error: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
   # The Linux wheel has its own job, so the jobs that test it start without waiting for the slower platforms.
