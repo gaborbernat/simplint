@@ -81,7 +81,7 @@ pub(super) fn change_key(_: &File, _: &Metadata, _: FileTime, _: &mut CacheKeyHa
 
 #[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
 mod tests {
-    use std::fs::{self, File};
+    use std::fs::{self, File, FileTimes};
     use std::os::unix::fs::MetadataExt;
 
     use filetime::FileTime;
@@ -103,7 +103,8 @@ mod tests {
         fs::write(&old, "value = 1").expect("write original");
         fs::copy(&old, &new).expect("copy source");
         let metadata = old.metadata().expect("metadata");
-        filetime::set_file_mtime(&new, FileTime::from_last_modification_time(&metadata)).expect("restore mtime");
+        fs::set_times(&new, FileTimes::new().set_modified(metadata.modified().expect("modified time")))
+            .expect("restore mtime");
         let changed = metadata.ctime().max(new.metadata().expect("metadata").ctime());
         let key = |path, age| FileKey::of(path, FileTime::from_unix_time(changed + age, 0)).expect("file key").hash;
         let supported = local_change_times(&File::open(&old).expect("open original"));

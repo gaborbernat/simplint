@@ -8,6 +8,7 @@ use ruff_linter::message::{RenderContext, render_diagnostics};
 use ruff_linter::settings::types::OutputFormat;
 use rustc_hash::FxHashMap;
 
+use crate::lint::diagnostic_order;
 use crate::project::cache::read_aligned;
 use crate::run::Diagnostics;
 
@@ -27,6 +28,7 @@ pub(crate) struct DisplayKey<'a> {
 pub(crate) struct FullDisplay {
     config: DisplayDiagnosticConfig,
     base: u64,
+    required: Applicability,
 }
 
 impl FullDisplay {
@@ -38,7 +40,7 @@ impl FullDisplay {
         key.hyperlinks.cache_key(&mut hasher);
         format!("{:?}", key.required).cache_key(&mut hasher);
         key.cwd.cache_key(&mut hasher);
-        Self { config, base: hasher.finish() }
+        Self { config, base: hasher.finish(), required: key.required }
     }
 
     pub(super) fn key(&self, name: &str) -> u64 {
@@ -50,8 +52,8 @@ impl FullDisplay {
 
     fn render(&self, diagnostics: &[Diagnostic]) -> Vec<u8> {
         let mut sorted = diagnostics.to_vec();
-        sorted.sort_by(Diagnostic::ruff_start_ordering);
-        let fixable = sorted.iter().any(|diagnostic| diagnostic.has_applicable_fix(self.config.fix_applicability()));
+        sorted.sort_by(diagnostic_order);
+        let fixable = sorted.iter().any(|diagnostic| diagnostic.has_applicable_fix(self.required));
         let config = self.config.clone().with_show_fix_status(fixable);
         let notebooks = FxHashMap::default();
         let context = RenderContext::new(&notebooks);

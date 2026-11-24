@@ -28,7 +28,7 @@ use ruff_linter::source_kind::SourceKindDiff;
 use ruff_linter::{IOError, Violation, warn_user};
 use ruff_source_file::SourceFileBuilder;
 use ruff_text_size::{TextRange, TextSize};
-use ruff_workspace::resolver::PyprojectConfig;
+use ruff_workspace::resolver::RootSettings;
 use rustc_hash::FxHashMap;
 
 use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
@@ -46,7 +46,7 @@ pub(crate) use overlay::Overlay;
 pub(crate) struct Resolved {
     pub(crate) config_arguments: ConfigArguments,
     pub(crate) settings_resolver: SettingsResolver,
-    pub(crate) pyproject_config: PyprojectConfig,
+    pub(crate) ruff_settings: RootSettings,
     pub(crate) cache_dir: Option<PathBuf>,
     // Read once, as the run starts, so paths shown relative to it stay the same through the run.
     pub(crate) cwd: PathBuf,
@@ -55,8 +55,8 @@ pub(crate) struct Resolved {
 impl Resolved {
     // Ruff's `output-prefer-rule-codes`: in preview, messages name rules unless it is set.
     fn names_rules(&self) -> bool {
-        self.pyproject_config.settings.linter.preview.is_enabled()
-            && !self.pyproject_config.settings.output_prefer_rule_codes
+        self.ruff_settings.resolved.settings.linter.preview.is_enabled()
+            && !self.ruff_settings.resolved.settings.output_prefer_rule_codes
     }
 }
 
@@ -65,13 +65,15 @@ impl Resolved {
 // link committed in place of the default, so it must stay inside the project root: the directory of the configuration
 // file, or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there,
 // and a default that leaves it too turns the cache off.
-pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig, cwd: &Path) -> Option<PathBuf> {
-    let configured = &config.settings.cache_dir;
+pub(crate) fn choose_cache_dir(named: bool, config: &RootSettings, cwd: &Path) -> Option<PathBuf> {
+    let configured = &config.resolved.settings.cache_dir;
     if named {
         return Some(configured.clone());
     }
-    let root =
-        config.path.as_deref().map_or(cwd, |path| path.parent().expect("a configuration file lies in a directory"));
+    let root = config
+        .resolved
+        .config_path()
+        .map_or(cwd, |path| path.parent().expect("a configuration file lies in a directory"));
     let chosen = if within(configured, root) { configured.clone() } else { ruff_cache::cache_dir(root) };
     // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
     let build = crate::project::cache::documentation_file(&chosen, root);

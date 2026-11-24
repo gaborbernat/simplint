@@ -113,7 +113,7 @@ pub(crate) fn check_files(
 
 // Ruff's `io-error` for each path the run names that does not exist, or a warning each while that rule is off.
 fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> Diagnostics {
-    if !reports_io_errors(&resolved.pyproject_config.settings.linter) {
+    if !reports_io_errors(&resolved.ruff_settings.resolved.settings.linter) {
         warn_missing(&missing);
         return Diagnostics::default();
     }
@@ -144,7 +144,7 @@ fn lint_alone<T: Send>(
     resolved: &Resolved,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<T> {
-    let ruff = &resolved.pyproject_config.settings;
+    let ruff = &resolved.ruff_settings.resolved.settings;
     let settings = resolved.settings_resolver.for_file(absolute)?;
     let package = absolute
         .parent()
@@ -152,7 +152,7 @@ fn lint_alone<T: Send>(
         .map(PackageRoot::root);
     let roots = SearchRoots::new(ruff, package);
     let files =
-        [RunFile::new(absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots, None)];
+        [RunFile::new(absolute, &settings, ruff, resolved.ruff_settings.resolved.config_path(), package, &roots, None)];
     let linted: Vec<&RunFile> = files.iter().collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
@@ -228,7 +228,7 @@ fn for_each_file<T: Send>(
     let settings: Vec<Arc<Settings>> =
         paths.iter().map(|path| resolved.settings_resolver.for_file(path)).collect::<Result<_>>()?;
     let packages = resolver.package_roots(&paths);
-    let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
+    let roots = SearchRoots::new(&resolved.ruff_settings.resolved.settings, packages.values().flatten().copied());
     let mut initializers = cfg!(all(windows, target_arch = "aarch64")).then(FxHashMap::default);
     // Each nested project is indexed and linted on its own, so the files are grouped by project, and kept in the run's
     // order within a group, where the linted ones come first.
@@ -237,12 +237,20 @@ fn for_each_file<T: Send>(
         .zip(&settings)
         .enumerate()
         .map(|(at, (&path, settings))| {
-            let (ruff, ruff_config) = resolver.resolve_with_path(path);
+            let ruff = resolver.resolve_with_path(path);
             let package = path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
             RunFile {
                 at,
                 linted: at < python.len(),
-                ..RunFile::new(path, settings, ruff, ruff_config, package, &roots, initializers.as_mut())
+                ..RunFile::new(
+                    path,
+                    settings,
+                    &ruff.settings,
+                    ruff.config_path(),
+                    package,
+                    &roots,
+                    initializers.as_mut(),
+                )
             }
         })
         .collect();

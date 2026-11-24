@@ -78,7 +78,7 @@ fn project_files<'a>(
     files: &[PathBuf],
     configuration: &'a Resolved,
 ) -> Result<(Vec<Result<ResolvedFile, WalkError>>, Resolver<'a>)> {
-    project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)
+    project_files_in_path(files, &configuration.ruff_settings, &configuration.config_arguments)
         .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))
 }
 

@@ -5,10 +5,11 @@ pub(crate) mod registry;
 pub(crate) mod ruff;
 pub(crate) mod walker;
 
+use std::cmp::Ordering;
 use std::path::Path;
 
 use anyhow::Result;
-use ruff_db::diagnostic::{Diagnostic, Span};
+use ruff_db::diagnostic::{Annotation, Diagnostic, Span};
 use ruff_linter::SuppressionKind;
 use ruff_linter::package::PackageRoot;
 use ruff_linter::settings::flags;
@@ -17,7 +18,7 @@ use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::{ParseOptions, Parsed, UnsupportedSyntaxError, parse_unchecked};
 use ruff_source_file::{SourceFile, SourceFileBuilder};
-use ruff_text_size::TextSize;
+use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::noqa::Suppressions;
@@ -83,7 +84,7 @@ impl<'a> Linter<'a> {
     fn lint_inner(&self, path: &Path, source: &str, noqa: flags::Noqa, include_unused_ignore: bool) -> Lint {
         let (unsupported, outcome) =
             self.check(path, source, include_unused_ignore, |mut diagnostics, suppressions| {
-                diagnostics.sort_by(Diagnostic::ruff_start_ordering);
+                diagnostics.sort_by(diagnostic_order);
                 if noqa.is_enabled() {
                     suppressions.pending(diagnostics).into_iter().unzip()
                 } else {
@@ -162,4 +163,17 @@ pub(crate) fn parse_source(source: &str, target_version: PythonVersion) -> Parse
     let options = ParseOptions::from(PySourceType::Python).with_target_version(target_version);
     // A Python source parses to a module, whatever the target version.
     parse_unchecked(source, options).try_into_module().expect("a Python source parses to a module")
+}
+
+pub(crate) fn diagnostic_order(left: &Diagnostic, right: &Diagnostic) -> Ordering {
+    fn key(diagnostic: &Diagnostic) -> (bool, Option<&SourceFile>, Option<TextSize>) {
+        let span = diagnostic.primary_annotation().map(Annotation::get_span);
+        (
+            diagnostic.severity().is_fatal(),
+            span.and_then(Span::as_ruff_file),
+            span.and_then(Span::range).map(TextRange::start),
+        )
+    }
+
+    key(left).cmp(&key(right))
 }

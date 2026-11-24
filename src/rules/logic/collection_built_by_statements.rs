@@ -139,6 +139,7 @@ fn entry<'a>(stmt: &'a Stmt, name: &str, kind: Kind) -> Option<Entry<'a>> {
 
 // Repeated names and equal literal keys such as 1 and True would introduce Ruff F601, F602 or B033.
 fn has_repeated_entry(entries: &[Entry], kind: Kind) -> bool {
+    #[expect(clippy::mutable_key_type, reason = "Ruff excludes mutable node indices from equality and hashing")]
     let mut seen = FxHashSet::default();
     entries
         .iter()

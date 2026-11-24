@@ -101,7 +101,7 @@ fn set_up_logging(level: LogLevel) {
             log::Level::Warn => out.finish(format_args!("{}{} {message}", "warning".yellow().bold(), ":".bold())),
             log::Level::Info | log::Level::Debug | log::Level::Trace => out.finish(format_args!(
                 "{}[{}][{}] {message}",
-                jiff::Zoned::now().strftime("[%Y-%m-%d][%H:%M:%S]"),
+                jiff::ZonedDateTime::now().strftime("[%Y-%m-%d][%H:%M:%S]"),
                 record.target(),
                 record.level(),
             )),
