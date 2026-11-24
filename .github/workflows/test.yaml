@@ -120,7 +120,7 @@ jobs:
           components: llvm-tools-preview
           cache-save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: 🦀 Install cargo-llvm-cov and cargo-nextest
-        uses: taiki-e/install-action@v2.90.3
+        uses: taiki-e/install-action@v2.90.5
         with:
           tool: cargo-llvm-cov,cargo-nextest
       - name: 🧪 Run tests with coverage
@@ -241,7 +241,7 @@ jobs:
       - name: 🧹 Run Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: 🦀 Install cargo-nextest
-        uses: taiki-e/install-action@v2.90.3
+        uses: taiki-e/install-action@v2.90.5
         with:
           tool: cargo-nextest
       - name: 🧪 Run the platform-dependent tests
