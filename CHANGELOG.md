@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.8 (2026-11-27)
+
+<a name="release-0-14-8"></a>
+
+<a name="release-0-14-8-fixed"></a>
+
+### Fixed
+
+- [`dataclass-slots`](https://github.com/gaborbernat/simplint/blob/0.14.8/src/rules/classes/dataclass_slots.md) (SMP702)
+  no longer reports a dataclass that uses `functools.cached_property`, which needs the instance `__dict__` that
+  `slots=True` removes. A cached property on a subclass no longer withholds the fix, since the subclass keeps its own
+  `__dict__` ([#193](https://github.com/gaborbernat/simplint/pull/193)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.14.7 (2026-11-23)
 
 <a name="release-0-14-7"></a>

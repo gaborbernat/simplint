@@ -3028,7 +3028,7 @@ dependencies = [
 
 [[package]]
 name = "simplint"
-version = "0.14.7"
+version = "0.14.8"
 dependencies = [
  "anyhow",
  "assert_cmd",
