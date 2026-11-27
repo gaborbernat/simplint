@@ -238,9 +238,6 @@ impl Hazards<'_, '_> {
     }
 
     fn mention(&mut self, name: &str) {
-        if name == "cached_property" {
-            self.slots = true;
-        }
         self.suspected |= ["__dict__", "__weakref__", "__setattr__", "__delattr__", "super"].contains(&name);
     }
 }
@@ -294,22 +291,36 @@ fn is_generic(base: &Expr) -> bool {
 
 // Before the CPython fix, methods on the replacement class could still refer to the original class.
 pub(super) fn uses_class_cell(class: &ast::StmtClassDef) -> bool {
-    let mut cells = ClassCells { found: false };
-    cells.visit_body(&class.body);
-    cells.found
+    finds(class, |expr| match expr {
+        Expr::Name(ast::ExprName { id, .. }) => id.as_str() == "__class__",
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => arguments.is_empty() && is_name(func, "super"),
+        _ => false,
+    })
 }
 
-struct ClassCells {
+// A cached property stores its value in the instance `__dict__`, which slots remove.
+pub(super) fn uses_cached_property(class: &ast::StmtClassDef) -> bool {
+    finds(class, |expr| match expr {
+        Expr::Name(ast::ExprName { id, .. }) => id.as_str() == "cached_property",
+        Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr.as_str() == "cached_property",
+        _ => false,
+    })
+}
+
+fn finds(class: &ast::StmtClassDef, matches: impl Fn(&Expr) -> bool) -> bool {
+    let mut finder = Finder { matches, found: false };
+    finder.visit_body(&class.body);
+    finder.found
+}
+
+struct Finder<F> {
+    matches: F,
     found: bool,
 }
 
-impl<'a> Visitor<'a> for ClassCells {
+impl<'a, F: Fn(&Expr) -> bool> Visitor<'a> for Finder<F> {
     fn visit_expr(&mut self, expr: &'a Expr) {
-        self.found |= match expr {
-            Expr::Name(ast::ExprName { id, .. }) => id.as_str() == "__class__",
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => arguments.is_empty() && is_name(func, "super"),
-            _ => false,
-        };
+        self.found |= (self.matches)(expr);
         visitor::walk_expr(self, expr);
     }
 }

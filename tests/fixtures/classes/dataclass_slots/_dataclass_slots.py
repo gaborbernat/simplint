@@ -1,3 +1,4 @@
+import functools
 import pickle
 import threading
 from dataclasses import dataclass
@@ -45,6 +46,26 @@ class Cached:
     @cached_property
     def doubled(self) -> int:
         return self.radius * 2
+
+
+@dataclass(frozen=True)
+class QualifiedCached:
+    radius: int
+
+    @functools.cached_property
+    def doubled(self) -> int:
+        return self.radius * 2
+
+
+@dataclass(frozen=True)
+class Tag:
+    name: str
+
+
+class CachedTag(Tag):
+    @cached_property
+    def major(self) -> int:
+        return int(self.name.split(".")[0])
 
 
 @dataclass(frozen=True)
