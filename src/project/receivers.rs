@@ -27,8 +27,7 @@ pub(super) struct AttributeWrites {
     pub(super) untyped: Vec<String>,
     // Freezing an instance can prevent assignment or deletion of __dict__ even when reading it still works.
     pub(super) dict_stores: Vec<String>,
-    // A slotted base can remove the instance dictionary a cached property needs or cause a layout conflict with another
-    // base.
+    // A slotted base can cause a layout conflict with another base.
     pub(super) unslottable_bases: Vec<String>,
     // A frozen, slotted dataclass pickles its declared fields. Subclasses with extra instance state can lose that
     // state.
@@ -127,7 +126,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 if !members.is_empty() {
                     self.writes.stateful_bases.extend(bases.iter().cloned());
                 }
-                if class.bases().len() > 1 || class_mentions(class, "cached_property") {
+                if class.bases().len() > 1 {
                     self.writes.unslottable_bases.extend(bases);
                 }
                 for decorator in &class.decorator_list {
@@ -678,28 +677,6 @@ fn class_body_names(class: &ast::StmtClassDef) -> impl Iterator<Item = &str> {
             _ => Vec::new(),
         }
     })
-}
-
-fn class_mentions(class: &ast::StmtClassDef, name: &str) -> bool {
-    let mut mentions = Mentions { name, found: false };
-    mentions.visit_body(&class.body);
-    mentions.found
-}
-
-struct Mentions<'n> {
-    name: &'n str,
-    found: bool,
-}
-
-impl<'a> Visitor<'a> for Mentions<'_> {
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        self.found |= match expr {
-            Expr::Name(ast::ExprName { id, .. }) => id.as_str() == self.name,
-            Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr.as_str() == self.name,
-            _ => false,
-        };
-        visitor::walk_expr(self, expr);
-    }
 }
 
 // The parts of the module a file defines. A package's `__init__.py` defines the package itself, which imports name

@@ -139,6 +139,25 @@ class Release:
           return super().__repr__()
   ```
 
+- **Classes that use [`cached_property`](https://docs.python.org/3/library/functools.html#functools.cached_property).**
+  A cached property stores its value in the instance `__dict__`, which `slots=True` removes, so the first read raises
+  [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError). A subclass without slots keeps its own
+  `__dict__`, so a cached property there does not stop the fix.
+
+  ```python ok
+  from dataclasses import dataclass
+  from functools import cached_property
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+      @cached_property
+      def label(self) -> str:
+          return self.version.upper()
+  ```
+
 ### Fix
 
 The fix sets `slots=True` unless it would remove a comment inside the decorator. Simplint also withholds the fix in the
@@ -264,25 +283,6 @@ class Release:
   class Release:
       __slots__ = ("version",)
       version: str
-  ```
-
-- the class uses [`cached_property`](https://docs.python.org/3/library/functools.html#functools.cached_property), or has
-  a subclass that does
-
-  ```python report
-  from dataclasses import dataclass
-
-
-  from functools import cached_property
-
-
-  @dataclass(frozen=True)
-  class Release:
-      version: str
-
-      @cached_property
-      def label(self) -> str:
-          return self.version.upper()
   ```
 
 - The class has a subclass with multiple bases. Giving one of those bases slots can cause an instance layout conflict.
